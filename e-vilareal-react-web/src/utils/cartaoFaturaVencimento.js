@@ -1,3 +1,10 @@
+/** Crédito-síntese de fechamento (AUTO-FAT) — visível só em /financeiro/fatura/fechamentos. */
+export function ehLancamentoFechamentoAutomatico(row) {
+  const numero = String(row?.numeroLancamento ?? '').trim();
+  const origem = String(row?.origem ?? '').trim();
+  return /^AUTO-FAT-/i.test(numero) || origem === 'AUTO';
+}
+
 /** Normaliza data ISO (YYYY-MM-DD) ou BR (DD/MM/AAAA) para YYYY-MM-DD. */
 export function isoDataCartao(val) {
   const s = String(val ?? '').trim();
@@ -38,6 +45,7 @@ export function valorAssinadoLinhaCartao(row) {
 export function listarVencimentosFaturaCartao(rows) {
   const map = new Map();
   for (const row of rows ?? []) {
+    if (ehLancamentoFechamentoAutomatico(row)) continue;
     const iso = vencimentoFaturaDeLancamento(row);
     if (!iso) continue;
     const cur = map.get(iso) ?? { count: 0, total: 0 };

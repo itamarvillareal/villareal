@@ -14,8 +14,8 @@ import process from 'node:process';
 
 import {
   parseFaturaCartaoItauPdfText,
-  parseFaturaCartaoItauXlsxArrayBuffer,
 } from '../src/utils/faturaCartaoItauImport.js';
+import { lerEParsearFaturaCartaoXlsx } from '../src/utils/faturaCartaoXlsx.js';
 
 function parseArgs(argv) {
   const out = {
@@ -26,19 +26,23 @@ function parseArgs(argv) {
     baseUrl: (process.env.VILAREAL_API_BASE || 'http://localhost:8080').replace(/\/$/, ''),
     dryRun: false,
     substituir: false,
+    mesclar: false,
     finalCartao: null,
+    senhaExcel: process.env.VILAREAL_FATURA_EXCEL_SENHA || '',
   };
   for (const a of argv) {
     if (a === '--dry-run') out.dryRun = true;
     else if (a === '--substituir') out.substituir = true;
+    else if (a === '--mesclar') out.mesclar = true;
     else if (a.startsWith('--cartao=')) out.cartao = a.slice(9).trim();
     else if (a.startsWith('--login=')) out.login = a.slice(8);
     else if (a.startsWith('--senha=')) out.senha = a.slice(8);
+    else if (a.startsWith('--senha-excel=')) out.senhaExcel = a.slice(14);
     else if (a.startsWith('--base-url=')) out.baseUrl = a.slice(11).replace(/\/$/, '');
     else if (a.startsWith('--final-cartao=')) out.finalCartao = a.slice(15).trim();
     else if (!a.startsWith('-')) out.file = a;
   }
-  if (!out.substituir && !out.dryRun) out.substituir = true;
+  if (!out.substituir && !out.mesclar && !out.dryRun) out.substituir = true;
   return out;
 }
 
@@ -101,16 +105,18 @@ async function postLancamento(token, baseUrl, body) {
   return { ok: true };
 }
 
-function lerArquivoFatura(filePath, opts) {
+async function lerArquivoFatura(filePath, opts) {
   const lower = filePath.toLowerCase();
   const parseOpts = {
     finalCartaoFiltro: opts.finalCartao,
     ignorarPagamento: true,
+    password: opts.senhaExcel || null,
   };
   if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) {
     const buf = fs.readFileSync(filePath);
-    const parsed = parseFaturaCartaoItauXlsxArrayBuffer(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength), parseOpts);
-    return { ...parsed, origem: 'FATURA_XLSX' };
+    const parsed = await lerEParsearFaturaCartaoXlsx(buf, parseOpts);
+    const origem = parsed.meta?.formato === 'BTG' ? 'FATURA_XLSX_BTG' : 'FATURA_XLSX';
+    return { ...parsed, origem };
   }
   if (lower.endsWith('.pdf')) {
     console.warn('PDF: use o script via UI para OCR ou exporte Excel. Tentando texto bruto não disponível em CLI.');
@@ -133,7 +139,7 @@ async function main() {
 
   console.log(`Arquivo: ${filePath}`);
   console.log(`Cartão: ${opts.cartao}`);
-  const { rows, meta, origem } = lerArquivoFatura(filePath, opts);
+  const { rows, meta, origem } = await lerArquivoFatura(filePath, opts);
   const dataVencimento = meta?.dataVencimento ?? null;
   console.log(`Origem: ${origem} · ${rows.length} lançamentos (${meta?.ignoradosPagamento ?? 0} pagamentos ignorados)`);
   if (meta?.dataVencimento) console.log(`Vencimento: ${meta.dataVencimento}`);

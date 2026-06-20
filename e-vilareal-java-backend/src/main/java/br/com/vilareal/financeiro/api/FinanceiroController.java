@@ -291,27 +291,33 @@ public class FinanceiroController {
     @Operation(description = "Página de lançamentos IMPORTADO + sugestões de classificação em uma única resposta.")
     public InboxClassificarPaginaResponse inboxClassificar(
             @RequestParam(value = "numeroBanco", required = false) Integer numeroBanco,
+            @RequestParam(value = "numeroCartao", required = false) Integer numeroCartao,
             @RequestParam(value = "ano", required = false) Integer ano,
             @RequestParam(value = "mes", required = false) Integer mes,
             @PageableDefault(size = 50, sort = "dataLancamento", direction = Sort.Direction.DESC) Pageable pageable) {
-        EtapaLancamento etapaImportado = EtapaLancamento.IMPORTADO;
-        Page<LancamentoFinanceiroResponse> page = financeiroService.listarLancamentosPaginado(
-                null,
-                null,
-                null,
-                null,
-                null,
-                etapaImportado,
-                numeroBanco,
-                null,
-                null,
-                null,
-                ano,
-                mes,
-                null,
-                null,
-                null,
-                pageable);
+        Page<LancamentoFinanceiroResponse> page;
+        if (numeroCartao != null) {
+            page = financeiroCartaoService.listarInboxClassificarPaginado(numeroCartao, ano, mes, pageable);
+        } else {
+            EtapaLancamento etapaImportado = EtapaLancamento.IMPORTADO;
+            page = financeiroService.listarLancamentosPaginado(
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    etapaImportado,
+                    numeroBanco,
+                    null,
+                    null,
+                    null,
+                    ano,
+                    mes,
+                    null,
+                    null,
+                    null,
+                    pageable);
+        }
         List<Long> ids = page.getContent().stream().map(LancamentoFinanceiroResponse::getId).toList();
         Map<Long, List<SugestaoClassificacaoResponse>> sugestoes =
                 ids.isEmpty() ? Map.of() : financeiroSugestaoService.sugerirLote(ids);

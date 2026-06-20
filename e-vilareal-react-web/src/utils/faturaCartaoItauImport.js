@@ -525,15 +525,31 @@ export async function parseArquivoFaturaCartao(file, opts = {}) {
   if (arquivoFaturaCartaoEhExcel(file)) {
     try {
       const buffer = await file.arrayBuffer();
-      const { rows, meta } = parseFaturaCartaoItauXlsxArrayBuffer(buffer, opts);
+      const { lerEParsearFaturaCartaoXlsx, FaturaCartaoXlsxProtegidoError } = await import(
+        './faturaCartaoXlsx.js'
+      );
+      const { rows, meta } = await lerEParsearFaturaCartaoXlsx(buffer, {
+        ...opts,
+        password: opts.senhaExcel ?? opts.password ?? null,
+      });
       if (!rows.length) {
         return {
           ok: false,
-          message: meta?.erro || 'Planilha sem lançamentos reconhecidos (exporte «Fatura Paga» do Itaú).',
+          message:
+            meta?.erro ||
+            'Planilha sem lançamentos reconhecidos (Itaú «Fatura Paga» ou Excel BTG).',
         };
       }
-      return { ok: true, origem: 'XLSX', rows, meta };
+      const origem = meta?.formato === 'BTG' ? 'XLSX_BTG' : 'XLSX';
+      return { ok: true, origem, rows, meta };
     } catch (e) {
+      if (e?.precisaSenhaExcel) {
+        return {
+          ok: false,
+          precisaSenhaExcel: true,
+          message: 'Arquivo Excel protegido por senha. Informe a senha (geralmente o CPF).',
+        };
+      }
       return { ok: false, message: e?.message || String(e) };
     }
   }
@@ -557,6 +573,6 @@ export async function parseArquivoFaturaCartao(file, opts = {}) {
 
   return {
     ok: false,
-    message: 'Formato não suportado. Use .xlsx (recomendado) ou .pdf da fatura Itaú.',
+    message: 'Formato não suportado. Use .xlsx (Itaú ou BTG) ou .pdf da fatura Itaú.',
   };
 }

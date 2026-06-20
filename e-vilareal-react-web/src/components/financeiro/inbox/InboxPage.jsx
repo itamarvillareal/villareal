@@ -18,7 +18,8 @@ import {
   descartarSemelhantesEscritorioApi,
   sugestoesClassificacaoLoteApi,
 } from '../../../repositories/financeiroRepository.js';
-import { ETAPAS, INBOX_TIPOS, clampFinanceiroPageSize } from '../constants/financeiroConstants.js';
+import { INBOX_TIPOS, clampFinanceiroPageSize } from '../constants/financeiroConstants.js';
+import { isNumeroCartaoFinanceiro } from '../../../data/financeiroData.js';
 import { useFinanceiro } from '../FinanceiroContext.jsx';
 import { PeriodoSelector } from '../shared/PeriodoSelector.jsx';
 import {
@@ -97,7 +98,7 @@ function normalizeSugestoesMap(raw) {
 export function InboxPage() {
   const { tipo: tipoParam } = useParams();
   const tipo = TIPOS_VALIDOS.has(tipoParam) ? tipoParam : INBOX_TIPOS.classificar;
-  const { bancos, bancoAtivo, filters, setBanco, setMes, setTipoPar, setTipoDia, setLetraSugestao } =
+  const { bancos, cartoes, bancoAtivo, filters, setBanco, setMes, setTipoPar, setTipoDia, setLetraSugestao } =
     useFinanceiro();
   const toast = useFinanceiroToast();
 
@@ -136,8 +137,23 @@ export function InboxPage() {
   const periodoAnoMes = useMemo(() => periodoParaAnoMesApi(filters.mes), [filters.mes]);
   const bancoFiltro = useMemo(() => {
     if (!Number.isFinite(bancoAtivo)) return undefined;
+    if (isNumeroCartaoFinanceiro(bancoAtivo)) return undefined;
     return bancoAtivo;
   }, [bancoAtivo]);
+
+  const cartaoFiltro = useMemo(() => {
+    if (!Number.isFinite(bancoAtivo)) return undefined;
+    if (!isNumeroCartaoFinanceiro(bancoAtivo)) return undefined;
+    return bancoAtivo;
+  }, [bancoAtivo]);
+
+  const filtroInboxConta = useMemo(
+    () => ({
+      numeroBanco: bancoFiltro,
+      numeroCartao: cartaoFiltro,
+    }),
+    [bancoFiltro, cartaoFiltro],
+  );
 
   const filtroTipoPar = filters.tipoPar ?? TIPO_PAR_TODOS;
   const filtroTipoDia = filters.tipoDia ?? TIPO_DIA_TODOS;
@@ -150,8 +166,8 @@ export function InboxPage() {
   );
 
   const chaveFiltrosCompensar = useMemo(
-    () => [filters.mes, bancoFiltro ?? '', filtroTipoPar, filtroTipoDia].join('|'),
-    [filters.mes, bancoFiltro, filtroTipoPar, filtroTipoDia],
+    () => [filters.mes, bancoFiltro ?? '', cartaoFiltro ?? '', filtroTipoPar, filtroTipoDia].join('|'),
+    [filters.mes, bancoFiltro, cartaoFiltro, filtroTipoPar, filtroTipoDia],
   );
 
   const pageSizeEfetivo = useMemo(() => clampFinanceiroPageSize(pageSize), [pageSize]);
@@ -167,13 +183,12 @@ export function InboxPage() {
   const loadCounts = useCallback(
     async (signal) => {
       const [classificarRes, fatura, saude, inconsistentesRes, semelhantesRes] = await Promise.all([
-        listarLancamentosFinanceiroPaginados(
+        listarInboxClassificarPaginaApi(
           {
             page: 0,
             size: 1,
-            etapa: ETAPAS.IMPORTADO,
-            ...periodo,
-            numeroBanco: bancoFiltro,
+            ...periodoAnoMes,
+            ...filtroInboxConta,
           },
           { signal },
         ),
@@ -212,7 +227,7 @@ export function InboxPage() {
         [INBOX_TIPOS.semelhantes]: Number(semelhantesRes?.totalItensAcionaveis ?? 0),
       }));
     },
-    [filters.mes, periodo, periodoAnoMes, bancoFiltro, tipo],
+    [filters.mes, periodoAnoMes, filtroInboxConta, tipo],
   );
 
   const scheduleLoadCounts = useCallback(() => {
@@ -297,7 +312,7 @@ export function InboxPage() {
               page,
               size: pageSize,
               ...periodoAnoMes,
-              numeroBanco: bancoFiltro,
+              ...filtroInboxConta,
               sort: 'dataLancamento,desc',
             },
             { signal: ac.signal },
@@ -862,6 +877,19 @@ export function InboxPage() {
     setSelected(new Set());
   }, [totalClassificacaoFiltrada, idsClassificacaoFiltrados]);
 
+  const todosClassificarSelecionados =
+    idsClassificacaoFiltrados.length > 0 &&
+    idsClassificacaoFiltrados.every((id) => selected.has(id));
+
+  const handleSelecionarTodosClassificarNaTela = useCallback(() => {
+    if (totalClassificacaoFiltrada === 0) return;
+    if (todosClassificarSelecionados) {
+      setSelected(new Set());
+      return;
+    }
+    setSelected(new Set(idsClassificacaoFiltrados));
+  }, [totalClassificacaoFiltrada, todosClassificarSelecionados, idsClassificacaoFiltrados]);
+
   const handleAprovarGrupo = useCallback(
     async (grupo) => {
       const sug = grupo.sugestao;
@@ -1003,8 +1031,15 @@ export function InboxPage() {
   }, [handleRejeitarPares, paresVisiveis]);
 
   const handleSelecionarTodosNaTela = useCallback(() => {
-    setSelected(new Set(paresVisiveis.map(parKey)));
-  }, [paresVisiveis]);
+    if (paresVisiveis.length === 0) return;
+    const keys = paresVisiveis.map(parKey);
+    const todosSelecionados = keys.length > 0 && keys.every((k) => selected.has(k));
+    if (todosSelecionados) {
+      setSelected(new Set());
+      return;
+    }
+    setSelected(new Set(keys));
+  }, [paresVisiveis, selected]);
 
   const handleBatchRejeitar = useCallback(() => {
     const lista = [];
@@ -1224,8 +1259,8 @@ export function InboxPage() {
         <select
           value={bancoAtivo ?? ''}
           onChange={(e) => setBanco(e.target.value ? Number(e.target.value) : null)}
-          className="text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1"
-          aria-label="Filtrar banco"
+          className="text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1 min-w-[10rem]"
+          aria-label="Filtrar banco ou cartão"
         >
           <option value="">Todos os bancos</option>
           {bancos.map((b) => (
@@ -1233,6 +1268,15 @@ export function InboxPage() {
               {b.nome}
             </option>
           ))}
+          {cartoes.length > 0 ? (
+            <optgroup label="Cartões">
+              {cartoes.map((c) => (
+                <option key={`cartao-${c.numero}`} value={c.numero}>
+                  {c.nome}
+                </option>
+              ))}
+            </optgroup>
+          ) : null}
         </select>
         {tipo === INBOX_TIPOS.compensar ? (
           <select
@@ -1279,7 +1323,9 @@ export function InboxPage() {
             className="inline-flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
             title="Marca todos os pares visíveis nesta página"
           >
-            Selecionar todos
+            {paresVisiveis.length > 0 && paresVisiveis.every((p) => selected.has(parKey(p)))
+              ? 'Limpar seleção'
+              : 'Selecionar todos'}
             {paresVisiveis.length > 0 ? ` (${paresVisiveis.length})` : ''}
           </button>
         ) : null}
@@ -1323,6 +1369,18 @@ export function InboxPage() {
                 </option>
               ) : null}
             </select>
+            {totalClassificacaoFiltrada > 0 ? (
+              <button
+                type="button"
+                onClick={handleSelecionarTodosClassificarNaTela}
+                disabled={busy || loading}
+                className="inline-flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
+                title="Marca todos os lançamentos visíveis nesta página"
+              >
+                {todosClassificarSelecionados ? 'Limpar seleção' : 'Selecionar todos'}
+                {` (${totalClassificacaoFiltrada})`}
+              </button>
+            ) : null}
             {filtroLetraAtivo && totalClassificacaoFiltrada > 0 ? (
               <>
                 {filtroLetraSugestao !== LETRA_SUGESTAO_SEM ? (
@@ -1368,6 +1426,27 @@ export function InboxPage() {
       {showBatch ? (
         <InboxBatchBar
           count={selected.size}
+          totalVisiveis={
+            tipo === INBOX_TIPOS.classificar
+              ? totalClassificacaoFiltrada
+              : tipo === INBOX_TIPOS.compensar
+                ? paresVisiveis.length
+                : 0
+          }
+          onSelecionarTodos={
+            tipo === INBOX_TIPOS.classificar
+              ? handleSelecionarTodosClassificarNaTela
+              : tipo === INBOX_TIPOS.compensar
+                ? handleSelecionarTodosNaTela
+                : undefined
+          }
+          todosSelecionados={
+            tipo === INBOX_TIPOS.classificar
+              ? todosClassificarSelecionados
+              : tipo === INBOX_TIPOS.compensar
+                ? paresVisiveis.length > 0 && paresVisiveis.every((p) => selected.has(parKey(p)))
+                : false
+          }
           onAprovarTodos={handleBatchAprovar}
           onPular={handleBatchPular}
           onRejeitar={tipo === INBOX_TIPOS.compensar ? handleBatchRejeitar : undefined}

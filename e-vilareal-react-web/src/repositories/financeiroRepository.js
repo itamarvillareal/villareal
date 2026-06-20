@@ -433,6 +433,7 @@ export async function listarInboxClassificarPaginaApi(filtros = {}, opts = {}) {
     size: clampFinanceiroPageSize(filtros.size ?? 50),
     sort: filtros.sort ?? 'dataLancamento,desc',
     numeroBanco: filtros.numeroBanco ?? undefined,
+    numeroCartao: filtros.numeroCartao ?? undefined,
     ano: filtros.ano ?? undefined,
     mes: filtros.mes ?? undefined,
   };

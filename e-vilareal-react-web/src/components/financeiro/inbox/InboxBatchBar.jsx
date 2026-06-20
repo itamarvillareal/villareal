@@ -6,6 +6,9 @@ import {
 
 export function InboxBatchBar({
   count,
+  totalVisiveis = 0,
+  onSelecionarTodos,
+  todosSelecionados = false,
   onAprovarTodos,
   onPular,
   onRejeitar,
@@ -24,6 +27,8 @@ export function InboxBatchBar({
     ? contas.find((c) => String(c.id) === String(contaLoteId))
     : null;
   const codigoEscolhido = contaEscolhida?.codigo ?? '';
+  const parcialmenteSelecionado =
+    totalVisiveis > 0 && count > 0 && count < totalVisiveis && !todosSelecionados;
 
   return (
     <div
@@ -31,9 +36,41 @@ export function InboxBatchBar({
       role="toolbar"
       aria-label="Ações em lote"
     >
+      {onSelecionarTodos ? (
+        <label className="inline-flex items-center gap-2 cursor-pointer shrink-0">
+          <input
+            type="checkbox"
+            checked={todosSelecionados}
+            ref={(el) => {
+              if (el) el.indeterminate = parcialmenteSelecionado;
+            }}
+            onChange={onSelecionarTodos}
+            disabled={busy}
+            className="rounded border-slate-300"
+            aria-label={
+              todosSelecionados
+                ? 'Limpar seleção da tela'
+                : `Selecionar todos (${totalVisiveis})`
+            }
+          />
+        </label>
+      ) : null}
+
       <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
-        ☑ {count} selecionado{count !== 1 ? 's' : ''}
+        {count} selecionado{count !== 1 ? 's' : ''}
+        {totalVisiveis > 0 ? ` de ${totalVisiveis}` : ''}
       </span>
+
+      {parcialmenteSelecionado ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onSelecionarTodos}
+          className="text-sm text-blue-700 dark:text-blue-300 hover:underline disabled:opacity-50"
+        >
+          Selecionar todos ({totalVisiveis})
+        </button>
+      ) : null}
 
       {modoClassificar ? (
         <>

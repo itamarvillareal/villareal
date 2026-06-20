@@ -143,6 +143,12 @@ export const CARTAO_TO_NUMERO = {
   'BTG Cartão': 20,
 };
 
+export const NUMEROS_CARTAO_FINANCEIRO = new Set(Object.values(CARTAO_TO_NUMERO));
+
+export function isNumeroCartaoFinanceiro(numero) {
+  return NUMEROS_CARTAO_FINANCEIRO.has(Number(numero));
+}
+
 const CARTAO_NOMES = new Set(Object.keys(CARTAO_TO_NUMERO));
 
 export function isNomeCartaoFinanceiro(nome) {

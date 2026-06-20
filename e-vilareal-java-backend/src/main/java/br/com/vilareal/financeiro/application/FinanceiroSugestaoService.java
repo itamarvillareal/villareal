@@ -8,9 +8,11 @@ import br.com.vilareal.financeiro.domain.*;
 import br.com.vilareal.financeiro.domain.FinanceiroDescricaoPessoaExtracao;
 import br.com.vilareal.financeiro.domain.FinanceiroDescricaoPessoaExtrator;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabilEntity;
+import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoCartaoEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.RegraClassificacaoEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaContabilRepository;
+import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoCartaoRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.RegraClassificacaoRepository;
 import br.com.vilareal.imovel.application.LocacaoReconciliacaoService;
@@ -44,6 +46,8 @@ public class FinanceiroSugestaoService {
 
     private final RegraClassificacaoRepository regraRepository;
     private final LancamentoFinanceiroRepository lancamentoRepository;
+    private final LancamentoCartaoRepository lancamentoCartaoRepository;
+    private final FinanceiroCartaoApplicationService financeiroCartaoService;
     private final ContaContabilRepository contaContabilRepository;
     private final PessoaRepository pessoaRepository;
     private final ProcessoRepository processoRepository;
@@ -56,6 +60,8 @@ public class FinanceiroSugestaoService {
     public FinanceiroSugestaoService(
             RegraClassificacaoRepository regraRepository,
             LancamentoFinanceiroRepository lancamentoRepository,
+            LancamentoCartaoRepository lancamentoCartaoRepository,
+            @Lazy FinanceiroCartaoApplicationService financeiroCartaoService,
             ContaContabilRepository contaContabilRepository,
             PessoaRepository pessoaRepository,
             ProcessoRepository processoRepository,
@@ -66,6 +72,8 @@ public class FinanceiroSugestaoService {
             @Lazy LocacaoReconciliacaoService locacaoReconciliacaoService) {
         this.regraRepository = regraRepository;
         this.lancamentoRepository = lancamentoRepository;
+        this.lancamentoCartaoRepository = lancamentoCartaoRepository;
+        this.financeiroCartaoService = financeiroCartaoService;
         this.contaContabilRepository = contaContabilRepository;
         this.pessoaRepository = pessoaRepository;
         this.processoRepository = processoRepository;
@@ -78,8 +86,7 @@ public class FinanceiroSugestaoService {
 
     @Transactional(readOnly = true)
     public List<SugestaoClassificacaoResponse> sugerir(Long lancamentoId) {
-        LancamentoFinanceiroEntity lancamento = carregarLancamento(lancamentoId);
-        return sugerir(lancamento);
+        return sugerirPorId(lancamentoId);
     }
 
     @Transactional(readOnly = true)
@@ -114,22 +121,64 @@ public class FinanceiroSugestaoService {
         }
         Map<Long, List<SugestaoClassificacaoResponse>> out = new LinkedHashMap<>();
         for (Long id : lancamentoIds) {
-            out.put(id, sugerir(id));
+            out.put(id, sugerirPorId(id));
         }
         return out;
     }
 
     @Transactional
     public LancamentoFinanceiroResponse aplicarSugestao(AplicarSugestaoRequest req) {
-        LancamentoFinanceiroEntity e = carregarLancamento(req.getLancamentoId());
-        aplicarClassificacaoEmEntity(e, req.getContaContabilId(), req.getClienteId(), req.getProcessoId());
-        LancamentoFinanceiroEntity persistido = lancamentoRepository.save(e);
-        // Convergência: classificar um crédito ≈ aluguel num processo com contrato VIGENTE também
-        // cria o vínculo de reconciliação (papel=ALUGUEL) e dispara o repasse interno (idempotente).
-        locacaoReconciliacaoService.registrarAluguelClassificado(persistido);
-        LancamentoFinanceiroResponse saved = toLancamentoResponse(persistido);
-        financeiroSaudeService.invalidarCacheSaude();
-        return saved;
+        var banco = lancamentoRepository.findById(req.getLancamentoId());
+        if (banco.isPresent()) {
+            LancamentoFinanceiroEntity e = banco.get();
+            aplicarClassificacaoEmEntity(e, req.getContaContabilId(), req.getClienteId(), req.getProcessoId());
+            LancamentoFinanceiroEntity persistido = lancamentoRepository.save(e);
+            locacaoReconciliacaoService.registrarAluguelClassificado(persistido);
+            LancamentoFinanceiroResponse saved = toLancamentoResponse(persistido);
+            financeiroSaudeService.invalidarCacheSaude();
+            return saved;
+        }
+        LancamentoCartaoEntity cartao = lancamentoCartaoRepository
+                .findById(req.getLancamentoId())
+                .orElseThrow(() -> new ResourceNotFoundException("Lançamento não encontrado: " + req.getLancamentoId()));
+        financeiroCartaoService.aplicarClassificacaoInbox(
+                req.getLancamentoId(),
+                req.getContaContabilId(),
+                req.getClienteId(),
+                req.getProcessoId());
+        return lancamentoCartaoRepository
+                .findById(req.getLancamentoId())
+                .map(financeiroCartaoService::toInboxClassificarResponse)
+                .orElseThrow(() -> new ResourceNotFoundException("Lançamento não encontrado: " + req.getLancamentoId()));
+    }
+
+    private List<SugestaoClassificacaoResponse> sugerirPorId(Long lancamentoId) {
+        return lancamentoRepository
+                .findById(lancamentoId)
+                .map(this::sugerir)
+                .orElseGet(() -> lancamentoCartaoRepository
+                        .findById(lancamentoId)
+                        .map(this::sugerirCartao)
+                        .orElse(List.of()));
+    }
+
+    private List<SugestaoClassificacaoResponse> sugerirCartao(LancamentoCartaoEntity cartao) {
+        return sugerir(adaptarCartaoParaSugestao(cartao));
+    }
+
+    private LancamentoFinanceiroEntity adaptarCartaoParaSugestao(LancamentoCartaoEntity cartao) {
+        LancamentoFinanceiroEntity e = new LancamentoFinanceiroEntity();
+        e.setId(cartao.getId());
+        e.setDescricao(cartao.getDescricao());
+        e.setDescricaoDetalhada(cartao.getDescricaoDetalhada());
+        e.setDescricaoNorm(cartao.getDescricaoNorm());
+        BigDecimal valor = cartao.getValor() != null ? cartao.getValor() : BigDecimal.ZERO;
+        e.setValor(valor.abs());
+        e.setNatureza(valor.signum() < 0 ? NaturezaLancamento.CREDITO : NaturezaLancamento.DEBITO);
+        if (cartao.getCartao() != null) {
+            e.setNumeroBanco(cartao.getCartao().getNumeroCartao());
+        }
+        return e;
     }
 
     @Transactional

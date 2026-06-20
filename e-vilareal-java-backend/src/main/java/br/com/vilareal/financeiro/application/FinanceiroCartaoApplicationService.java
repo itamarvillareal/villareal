@@ -5,6 +5,7 @@ import br.com.vilareal.common.exception.ResourceNotFoundException;
 import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.financeiro.api.dto.*;
 import br.com.vilareal.financeiro.domain.EtapaLancamento;
+import br.com.vilareal.financeiro.domain.NaturezaLancamento;
 import br.com.vilareal.financeiro.infrastructure.persistence.LancamentoCartaoSpecifications;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.CartaoEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabilEntity;
@@ -17,6 +18,8 @@ import br.com.vilareal.pessoa.application.TitularPessoaRefHelper;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -143,6 +146,41 @@ public class FinanceiroCartaoApplicationService {
     }
 
     @Transactional(readOnly = true)
+    public Page<LancamentoFinanceiroResponse> listarInboxClassificarPaginado(
+            Integer numeroCartao, Integer ano, Integer mes, Pageable pageable) {
+        var spec = LancamentoCartaoSpecifications.inboxClassificar(
+                numeroCartao, EtapaLancamento.IMPORTADO, ano, mes);
+        return lancamentoCartaoRepository.findAll(spec, pageable).map(this::toInboxClassificarResponse);
+    }
+
+    @Transactional
+    public void aplicarClassificacaoInbox(
+            Long lancamentoCartaoId, Long contaContabilId, Long clienteId, Long processoId) {
+        LancamentoCartaoEntity e = lancamentoCartaoRepository.findById(lancamentoCartaoId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Lançamento de cartão não encontrado: " + lancamentoCartaoId));
+        ContaContabilEntity conta = contaContabilRepository.findById(contaContabilId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Conta contábil não encontrada: " + contaContabilId));
+        e.setContaContabil(conta);
+
+        ProcessoEntity processo = null;
+        if (processoId != null) {
+            processo = processoRepository.findById(processoId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Processo não encontrado: " + processoId));
+        }
+        ClienteResolverService.VinculoClientePessoa vinculo =
+                clienteResolverService.resolverVinculoOpcional(clienteId, processo);
+        e.setClienteEntidade(vinculo.clienteEntidade());
+        e.setProcesso(processo);
+
+        Long cid = e.getClienteEntidade() != null ? e.getClienteEntidade().getId() : null;
+        e.setEtapa(EtapaLancamento.calcular(conta.getCodigo(), e.getGrupoCompensacao(), cid));
+        lancamentoCartaoRepository.save(e);
+        financeiroSaudeService.invalidarCacheSaude();
+    }
+
+    @Transactional(readOnly = true)
     public Map<String, Long> contarPorEtapa() {
         Map<String, Long> mapa = new LinkedHashMap<>();
         for (EtapaLancamento etapa : EtapaLancamento.values()) {
@@ -220,6 +258,35 @@ public class FinanceiroCartaoApplicationService {
         r.setNumeroCartao(e.getNumeroCartao());
         r.setAtivo(e.getAtivo());
         r.setOrdemExibicao(e.getOrdemExibicao());
+        return r;
+    }
+
+    public LancamentoFinanceiroResponse toInboxClassificarResponse(LancamentoCartaoEntity e) {
+        LancamentoCartaoResponse c = toLancamentoResponse(e);
+        LancamentoFinanceiroResponse r = new LancamentoFinanceiroResponse();
+        r.setId(c.getId());
+        r.setContaContabilId(c.getContaContabilId());
+        r.setContaContabilNome(c.getContaContabilNome());
+        r.setClienteId(c.getClienteId());
+        r.setPessoaRefId(c.getPessoaRefId());
+        r.setProcessoId(c.getProcessoId());
+        r.setCodigoCliente(c.getCodigoCliente());
+        r.setNumeroInternoProcesso(c.getNumeroInternoProcesso());
+        r.setBancoNome(c.getCartaoNome());
+        r.setNumeroBanco(c.getNumeroCartao());
+        r.setNumeroLancamento(c.getNumeroLancamento());
+        r.setDataLancamento(c.getDataLancamento());
+        r.setDataCompetencia(c.getDataCompetencia());
+        r.setDescricao(c.getDescricao());
+        r.setDescricaoDetalhada(c.getDescricaoDetalhada());
+        java.math.BigDecimal valor = c.getValor() != null ? c.getValor() : java.math.BigDecimal.ZERO;
+        r.setValor(valor.abs());
+        r.setNatureza(valor.signum() < 0 ? NaturezaLancamento.CREDITO : NaturezaLancamento.DEBITO);
+        r.setRefTipo(c.getRefTipo());
+        r.setOrigem(c.getOrigem());
+        r.setStatus(c.getStatus());
+        r.setEtapa(c.getEtapa());
+        r.setGrupoCompensacao(c.getGrupoCompensacao());
         return r;
     }
 

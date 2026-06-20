@@ -3,6 +3,7 @@ import {
   isoDataCartao,
   vencimentoFaturaDeLancamento,
   listarVencimentosFaturaCartao,
+  ehLancamentoFechamentoAutomatico,
 } from './cartaoFaturaVencimento.js';
 
 describe('cartaoFaturaVencimento', () => {
@@ -41,6 +42,38 @@ describe('cartaoFaturaVencimento', () => {
         valor: -1500,
       }),
     ).toBe('2025-07-10');
+  });
+
+  it('identifica AUTO-FAT', () => {
+    expect(
+      ehLancamentoFechamentoAutomatico({
+        numeroLancamento: 'AUTO-FAT-20-2025-07-01',
+        origem: 'AUTO',
+      }),
+    ).toBe(true);
+    expect(
+      ehLancamentoFechamentoAutomatico({
+        numeroLancamento: '123',
+        origem: 'FATURA_XLSX_BTG',
+      }),
+    ).toBe(false);
+  });
+
+  it('ignora AUTO-FAT no total do dropdown de vencimentos', () => {
+    const rows = [
+      { dataLancamento: '2025-06-01', dataCompetencia: '2025-07-10', origem: 'FATURA_XLSX', valor: 100 },
+      {
+        dataLancamento: '2025-07-10',
+        dataCompetencia: '2025-07-10',
+        origem: 'AUTO',
+        numeroLancamento: 'AUTO-FAT-8-2025-07-10',
+        valor: -100,
+      },
+    ];
+    const venc = listarVencimentosFaturaCartao(rows);
+    expect(venc).toHaveLength(1);
+    expect(venc[0].total).toBe(100);
+    expect(venc[0].count).toBe(1);
   });
 
   it('agrupa lançamentos pela data de vencimento da fatura', () => {

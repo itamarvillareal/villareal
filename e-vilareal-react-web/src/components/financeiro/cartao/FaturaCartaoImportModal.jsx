@@ -19,6 +19,7 @@ export function FaturaCartaoImportModal({ open, onClose, cartao, onSuccess }) {
   const toast = useFinanceiroToast();
   const inputRef = useRef(null);
   const [file, setFile] = useState(null);
+  const [senhaExcel, setSenhaExcel] = useState('');
   const [modo, setModo] = useState('mesclar');
   const [dragOver, setDragOver] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -31,6 +32,7 @@ export function FaturaCartaoImportModal({ open, onClose, cartao, onSuccess }) {
   useEffect(() => {
     if (!open) return;
     setFile(null);
+    setSenhaExcel('');
     setPreview(null);
     setStep('form');
     setImportResult(null);
@@ -40,13 +42,17 @@ export function FaturaCartaoImportModal({ open, onClose, cartao, onSuccess }) {
   }, [open]);
 
   const processarArquivo = useCallback(
-    async (f) => {
+    async (f, senha = senhaExcel) => {
       if (!f) return;
       setFile(f);
       setPreview(null);
-      const parsed = await parseArquivoFaturaCartao(f);
+      const parsed = await parseArquivoFaturaCartao(f, { senhaExcel: senha || null });
       if (!parsed.ok) {
-        toast.error(parsed.message);
+        if (parsed.precisaSenhaExcel) {
+          toast.info('Informe a senha do Excel (geralmente o CPF) e tente novamente.');
+        } else {
+          toast.error(parsed.message);
+        }
         return;
       }
       setPreview(parsed);
@@ -54,7 +60,7 @@ export function FaturaCartaoImportModal({ open, onClose, cartao, onSuccess }) {
         toast.info('PDF importado. Quando disponível, prefira o Excel exportado pelo banco.');
       }
     },
-    [toast],
+    [toast, senhaExcel],
   );
 
   const executarImportacao = useCallback(async () => {
@@ -68,7 +74,12 @@ export function FaturaCartaoImportModal({ open, onClose, cartao, onSuccess }) {
         numeroCartao: cartao.numeroCartao,
         rows: preview.rows,
         modo,
-        origem: preview.origem === 'XLSX' ? 'FATURA_XLSX' : 'FATURA_PDF',
+        origem:
+          preview.origem === 'XLSX_BTG'
+            ? 'FATURA_XLSX_BTG'
+            : preview.origem === 'XLSX'
+              ? 'FATURA_XLSX'
+              : 'FATURA_PDF',
         dataVencimento: preview.meta?.dataVencimento ?? null,
       });
       setImportResult({ res, conferencia });
@@ -221,10 +232,24 @@ export function FaturaCartaoImportModal({ open, onClose, cartao, onSuccess }) {
             ) : (
               <>
             <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-              Exporte a <strong>fatura paga</strong> no internet banking Itaú. Prefira{' '}
-              <strong>Excel (.xlsx)</strong> — mais confiável. PDF é aceito como alternativa.
-              Linhas «Pagamento Efetuado» são ignoradas (já constam no extrato bancário).
+              Exporte a fatura no internet banking (<strong>Itaú</strong> ou <strong>BTG</strong>). Prefira{' '}
+              <strong>Excel (.xlsx)</strong>. PDF Itaú é aceito como alternativa.
+              Linhas de pagamento de fatura são ignoradas (já constam no extrato bancário).
+              Arquivos BTG protegidos por senha: use o CPF abaixo.
             </p>
+
+            <label className="block text-xs text-slate-600 dark:text-slate-400">
+              Senha do Excel (BTG, se protegido)
+              <input
+                type="password"
+                value={senhaExcel}
+                onChange={(e) => setSenhaExcel(e.target.value)}
+                placeholder="CPF (somente se o arquivo pedir senha)"
+                disabled={busy}
+                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800"
+                autoComplete="off"
+              />
+            </label>
 
             <div
               className={`rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
@@ -266,7 +291,7 @@ export function FaturaCartaoImportModal({ open, onClose, cartao, onSuccess }) {
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
-                  if (f) void processarArquivo(f);
+                  if (f) void processarArquivo(f, senhaExcel);
                   e.target.value = '';
                 }}
               />
@@ -277,6 +302,16 @@ export function FaturaCartaoImportModal({ open, onClose, cartao, onSuccess }) {
                     <span className="ml-1 text-slate-500">({preview.origem})</span>
                   ) : null}
                 </p>
+              ) : null}
+              {file && !preview?.rows?.length ? (
+                <button
+                  type="button"
+                  className="mt-2 text-xs text-amber-700 font-medium hover:underline disabled:opacity-50"
+                  disabled={busy || !senhaExcel.trim()}
+                  onClick={() => void processarArquivo(file, senhaExcel)}
+                >
+                  Desbloquear e ler planilha
+                </button>
               ) : null}
             </div>
 

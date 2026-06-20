@@ -23,6 +23,7 @@ import {
   listarVencimentosFaturaCartao,
   valorAssinadoLinhaCartao,
   vencimentoFaturaDeLancamento,
+  ehLancamentoFechamentoAutomatico,
 } from '../../../utils/cartaoFaturaVencimento.js';
 import { LimparContaDialog } from '../shared/LimparContaDialog.jsx';
 import { FaturaCartaoImportModal } from './FaturaCartaoImportModal.jsx';
@@ -103,9 +104,9 @@ export function CartaoPage() {
     setErro('');
     listarLancamentosCartaoFinanceiro({ cartaoId: cartaoAtivo.id }, { signal: ac.signal })
       .then((lista) => {
-        const mapped = (Array.isArray(lista) ? lista : []).map((l) =>
-          mapApiLancamentoCartaoToExtratoRow(l, contaToLetra),
-        );
+        const mapped = (Array.isArray(lista) ? lista : [])
+          .map((l) => mapApiLancamentoCartaoToExtratoRow(l, contaToLetra))
+          .filter((row) => !ehLancamentoFechamentoAutomatico(row));
         setRows(mapped);
         setSelectedIds(new Set());
         setDetailItem(null);
@@ -454,6 +455,12 @@ export function CartaoPage() {
             <Trash2 className="w-3 h-3" aria-hidden />
             Limpar cartão
           </button>
+          <Link
+            to="/financeiro/fatura/fechamentos"
+            className="text-xs text-blue-600 hover:underline whitespace-nowrap"
+          >
+            Fechamentos AUTO-FAT
+          </Link>
           <Link to="/financeiro/cartao" className="text-xs text-blue-600 hover:underline">
             Todos os cartões
           </Link>
