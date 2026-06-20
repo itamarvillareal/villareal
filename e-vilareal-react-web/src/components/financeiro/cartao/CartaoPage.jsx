@@ -33,6 +33,7 @@ import { FINANCEIRO_CARTAO_IMPORTADO } from '../constants/financeiroConstants.js
 import { ExtratoTable } from '../extrato/ExtratoTable.jsx';
 import { ExtratoDetailPanel } from '../extrato/ExtratoDetailPanel.jsx';
 import { ExtratoBatchBar } from '../extrato/ExtratoBatchBar.jsx';
+import { EtapaFiltroSelect } from '../shared/EtapaFiltroSelect.jsx';
 import {
   extratoRowToUi,
   mapApiLancamentoCartaoToExtratoRow,
@@ -63,6 +64,7 @@ export function CartaoPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [vencimentoFiltro, setVencimentoFiltro] = useState('');
+  const [etapaFiltro, setEtapaFiltro] = useState('');
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [detailItem, setDetailItem] = useState(null);
   const [contasApi, setContasApi] = useState([]);
@@ -154,6 +156,7 @@ export function CartaoPage() {
   useEffect(() => {
     setPage(0);
     setVencimentoFiltro('');
+    setEtapaFiltro('');
     setSelectedIds(new Set());
     setDetailItem(null);
   }, [cartaoAtivo?.id]);
@@ -183,9 +186,13 @@ export function CartaoPage() {
   }, [vencimentoFiltro, vencimentosDisponiveis]);
 
   const rowsFiltradas = useMemo(() => {
-    let list = vencimentoFiltro
-      ? rows.filter((row) => vencimentoFaturaDeLancamento(row) === vencimentoFiltro)
-      : rows;
+    let list = rows;
+    if (etapaFiltro) {
+      list = list.filter((row) => String(row.etapa ?? 'IMPORTADO').toUpperCase() === etapaFiltro);
+    }
+    if (vencimentoFiltro) {
+      list = list.filter((row) => vencimentoFaturaDeLancamento(row) === vencimentoFiltro);
+    }
     list = [...list].sort((a, b) => {
       const da = String(a.dataLancamento ?? '');
       const db = String(b.dataLancamento ?? '');
@@ -193,7 +200,7 @@ export function CartaoPage() {
       return sortDataAsc ? cmp : -cmp;
     });
     return list;
-  }, [rows, vencimentoFiltro, sortDataAsc]);
+  }, [rows, vencimentoFiltro, etapaFiltro, sortDataAsc]);
 
   const somaFatura = useMemo(
     () => rowsFiltradas.reduce((s, row) => s + valorAssinadoLinhaCartao(row), 0),
@@ -484,6 +491,13 @@ export function CartaoPage() {
           <h2 className="text-sm font-medium text-slate-900 dark:text-slate-100">
             {cartaoAtivo.nome}
           </h2>
+          <EtapaFiltroSelect
+            value={etapaFiltro}
+            onChange={(v) => {
+              setEtapaFiltro(v);
+              setPage(0);
+            }}
+          />
           {vencimentosDisponiveis.length > 0 ? (
             <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
               <span className="whitespace-nowrap">Vencimento</span>

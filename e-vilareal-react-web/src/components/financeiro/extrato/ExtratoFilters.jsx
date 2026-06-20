@@ -3,10 +3,10 @@ import { Pencil, Search, Trash2 } from 'lucide-react';
 import { useFinanceiroChrome, useFinanceiroFilters } from '../FinanceiroContext.jsx';
 import { PeriodoSelector } from '../shared/PeriodoSelector.jsx';
 import { FilterTag } from '../shared/FilterTag.jsx';
+import { EtapaFiltroSelect } from '../shared/EtapaFiltroSelect.jsx';
 import { LimparContaDialog } from '../shared/LimparContaDialog.jsx';
 import { SaldoInicialDialog } from '../shared/SaldoInicialDialog.jsx';
 import { formatDataCurta, formatMoeda } from '../shared/financeiroFormat.js';
-import { ETAPAS } from '../constants/financeiroConstants.js';
 import { FINANCEIRO_REFRESH_PENDENTES } from '../hooks/useKeyboardShortcuts.js';
 import { LetrasFiltroExtrato } from './LetrasFiltroExtrato.jsx';
 import {
@@ -45,14 +45,6 @@ export function ExtratoFilters({
 
   const bancoNome = bancos.find((b) => b.numero === bancoAtivo)?.nome;
 
-  const togglePendentes = () => {
-    if (filters.etapa === ETAPAS.IMPORTADO) {
-      setEtapa(null);
-    } else {
-      setEtapa(ETAPAS.IMPORTADO);
-    }
-  };
-
   return (
     <>
     <div
@@ -60,25 +52,10 @@ export function ExtratoFilters({
     >
       <PeriodoSelector value={filters.mes} onChange={setMes} />
 
-      {filters.etapa === ETAPAS.IMPORTADO ? (
-        <FilterTag
-          label="Pendentes"
-          onRemove={() => setEtapa(null)}
-          style={{
-            background: 'var(--fin-etapa-importado-bg)',
-            borderColor: 'var(--fin-etapa-importado)',
-            color: 'var(--fin-etapa-importado)',
-          }}
-        />
-      ) : (
-        <button
-          type="button"
-          onClick={togglePendentes}
-          className="text-xs px-2 py-0.5 rounded-md border border-amber-200 bg-amber-50 text-amber-800 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-200"
-        >
-          Pendentes
-        </button>
-      )}
+      <EtapaFiltroSelect
+        value={filters.etapa ?? ''}
+        onChange={(v) => setEtapa(v || null)}
+      />
 
       <LetrasFiltroExtrato
         letras={filters.letras ?? []}

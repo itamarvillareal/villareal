@@ -28,6 +28,7 @@ import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -35,6 +36,7 @@ import org.springframework.util.StringUtils;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.Normalizer;
+import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -287,16 +289,17 @@ public class FinanceiroSugestaoService {
             return List.of();
         }
 
-        List<LancamentoFinanceiroEntity> anteriores = lancamentoRepository.findDepositosIdentificadosPorCpfNoTexto(
-                ext.cpfDigitos(),
-                lancamento.getId(),
-                EtapaLancamento.IMPORTADO,
-                PageRequest.of(0, 3));
-        if (anteriores.isEmpty()) {
+        List<LancamentoFinanceiroEntity> refs = buscarDepositosIdentificadosReferencia(lancamento, ext);
+        if (refs.isEmpty()) {
             return List.of();
         }
 
-        LancamentoFinanceiroEntity ref = anteriores.get(0);
+        boolean posterior = refs.stream()
+                .anyMatch(r -> lancamento.getDataLancamento() != null
+                        && r.getDataLancamento() != null
+                        && r.getDataLancamento().isAfter(lancamento.getDataLancamento()));
+
+        LancamentoFinanceiroEntity ref = refs.get(0);
         if (ref.getPessoaRef() == null) {
             return List.of();
         }
@@ -314,10 +317,31 @@ public class FinanceiroSugestaoService {
             s.setProcessoId(ref.getProcesso().getId());
         }
         pessoaOpt.ifPresent(p -> s.setPagadorPessoaId(p.getId()));
-        s.setOcorrencias((long) anteriores.size());
-        s.setDescricaoRegra(montarDescricaoDepositoAnterior(ref, ext));
+        s.setOcorrencias((long) refs.size());
+        s.setDescricaoRegra(
+                posterior
+                        ? montarDescricaoDepositoPosterior(ref, ext)
+                        : montarDescricaoDepositoAnterior(ref, ext));
         s.setRotuloVinculo(montarRotuloVinculo(ref.getPessoaRef().getId(), ref.getProcesso()));
         return List.of(s);
+    }
+
+    private List<LancamentoFinanceiroEntity> buscarDepositosIdentificadosReferencia(
+            LancamentoFinanceiroEntity lancamento, FinanceiroDescricaoPessoaExtracao ext) {
+        Long excluirId = lancamento.getId();
+        LocalDate dataRef = lancamento.getDataLancamento();
+        Pageable page = PageRequest.of(0, 3);
+        if (dataRef != null) {
+            List<LancamentoFinanceiroEntity> anteriores = lancamentoRepository.findDepositosIdentificadosPorCpfAnteriores(
+                    ext.cpfDigitos(), excluirId, EtapaLancamento.IMPORTADO, dataRef, page);
+            if (!anteriores.isEmpty()) {
+                return anteriores;
+            }
+            return lancamentoRepository.findDepositosIdentificadosPorCpfPosteriores(
+                    ext.cpfDigitos(), excluirId, EtapaLancamento.IMPORTADO, dataRef, page);
+        }
+        return lancamentoRepository.findDepositosIdentificadosPorCpfNoTexto(
+                ext.cpfDigitos(), excluirId, EtapaLancamento.IMPORTADO, page);
     }
 
     private List<SugestaoClassificacaoResponse> camadaPessoaProcessos(LancamentoFinanceiroEntity lancamento) {
@@ -458,8 +482,29 @@ public class FinanceiroSugestaoService {
         if (!StringUtils.hasText(descricao)) {
             return List.of();
         }
-        List<Object[]> rows = lancamentoRepository.contarContaPorDescricaoHistorico(
-                lancamento.getNumeroBanco(), DescricaoNormalizer.normalizar(descricao));
+        String descricaoNorm = DescricaoNormalizer.normalizar(descricao);
+        LocalDate dataRef = lancamento.getDataLancamento();
+        Long excluirId = lancamento.getId();
+
+        List<Object[]> rows;
+        OrigemSugestao origem = OrigemSugestao.HISTORICO;
+        if (dataRef != null) {
+            rows = lancamentoRepository.contarContaPorDescricaoHistoricoAnterior(
+                    lancamento.getNumeroBanco(), descricaoNorm, dataRef, excluirId);
+            if (rows.isEmpty()) {
+                rows = lancamentoRepository.contarContaPorDescricaoHistoricoPosterior(
+                        lancamento.getNumeroBanco(), descricaoNorm, dataRef, excluirId);
+                origem = OrigemSugestao.HISTORICO_POSTERIOR;
+            }
+        } else {
+            rows = lancamentoRepository.contarContaPorDescricaoHistorico(
+                    lancamento.getNumeroBanco(), descricaoNorm);
+        }
+        return montarSugestoesHistorico(rows, origem);
+    }
+
+    private List<SugestaoClassificacaoResponse> montarSugestoesHistorico(
+            List<Object[]> rows, OrigemSugestao origem) {
         List<SugestaoClassificacaoResponse> out = new ArrayList<>();
         for (Object[] row : rows) {
             Long contaId = ((Number) row[0]).longValue();
@@ -470,7 +515,10 @@ public class FinanceiroSugestaoService {
                 continue;
             }
             ConfiancaSugestao conf = total >= 3 ? ConfiancaSugestao.MEDIA : ConfiancaSugestao.BAIXA;
-            SugestaoClassificacaoResponse s = baseSugestao(conta, conf, OrigemSugestao.HISTORICO);
+            if (origem == OrigemSugestao.HISTORICO_POSTERIOR && conf == ConfiancaSugestao.MEDIA) {
+                conf = ConfiancaSugestao.BAIXA;
+            }
+            SugestaoClassificacaoResponse s = baseSugestao(conta, conf, origem);
             s.setOcorrencias(total);
             out.add(s);
         }
@@ -488,27 +536,46 @@ public class FinanceiroSugestaoService {
         BigDecimal valorMin = valor.multiply(new BigDecimal("0.95")).setScale(2, RoundingMode.HALF_UP);
         BigDecimal valorMax = valor.multiply(new BigDecimal("1.05")).setScale(2, RoundingMode.HALF_UP);
         int anoMes = lancamento.getDataLancamento().getYear() * 100 + lancamento.getDataLancamento().getMonthValue();
+        LocalDate dataRef = lancamento.getDataLancamento();
+        Long excluirId = lancamento.getId();
+        String descricaoNorm = DescricaoNormalizer.normalizar(lancamento.getDescricao());
 
-        List<LancamentoFinanceiroEntity> candidatos = lancamentoRepository.findRecorrenciaCandidatos(
-                lancamento.getNumeroBanco(),
-                DescricaoNormalizer.normalizar(lancamento.getDescricao()),
-                valorMin,
-                valorMax,
-                anoMes);
+        List<LancamentoFinanceiroEntity> candidatos = lancamentoRepository.findRecorrenciaCandidatosAnteriores(
+                lancamento.getNumeroBanco(), descricaoNorm, valorMin, valorMax, anoMes, dataRef, excluirId);
+        OrigemSugestao origem = OrigemSugestao.RECORRENCIA;
+        if (candidatos.isEmpty()) {
+            candidatos = lancamentoRepository.findRecorrenciaCandidatosPosteriores(
+                    lancamento.getNumeroBanco(), descricaoNorm, valorMin, valorMax, anoMes, dataRef, excluirId);
+            origem = OrigemSugestao.RECORRENCIA_POSTERIOR;
+        }
         if (candidatos.isEmpty()) {
             return List.of();
         }
 
+        return montarSugestaoRecorrencia(lancamento, candidatos, origem);
+    }
+
+    private List<SugestaoClassificacaoResponse> montarSugestaoRecorrencia(
+            LancamentoFinanceiroEntity lancamento,
+            List<LancamentoFinanceiroEntity> candidatos,
+            OrigemSugestao origem) {
         Map<Long, Long> freqPorConta = new LinkedHashMap<>();
         LancamentoFinanceiroEntity melhorA = null;
         for (LancamentoFinanceiroEntity c : candidatos) {
             Long contaId = c.getContaContabil().getId();
             freqPorConta.merge(contaId, 1L, Long::sum);
             if ("A".equalsIgnoreCase(c.getContaContabil().getCodigo()) && c.getPessoaRef() != null) {
-                if (c.getDataLancamento() != null
+                if (origem == OrigemSugestao.RECORRENCIA) {
+                    if (c.getDataLancamento() != null
+                            && (melhorA == null
+                                    || melhorA.getDataLancamento() == null
+                                    || c.getDataLancamento().isAfter(melhorA.getDataLancamento()))) {
+                        melhorA = c;
+                    }
+                } else if (c.getDataLancamento() != null
                         && (melhorA == null
                                 || melhorA.getDataLancamento() == null
-                                || c.getDataLancamento().isAfter(melhorA.getDataLancamento()))) {
+                                || c.getDataLancamento().isBefore(melhorA.getDataLancamento()))) {
                     melhorA = c;
                 }
             }
@@ -526,7 +593,10 @@ public class FinanceiroSugestaoService {
             return List.of();
         }
 
-        SugestaoClassificacaoResponse s = baseSugestao(conta, ConfiancaSugestao.MEDIA, OrigemSugestao.RECORRENCIA);
+        ConfiancaSugestao conf = origem == OrigemSugestao.RECORRENCIA_POSTERIOR
+                ? ConfiancaSugestao.BAIXA
+                : ConfiancaSugestao.MEDIA;
+        SugestaoClassificacaoResponse s = baseSugestao(conta, conf, origem);
         s.setOcorrencias(freqPorConta.get(contaIdMaisFrequente));
         if (melhorA != null && "A".equalsIgnoreCase(conta.getCodigo())) {
             preencherClienteIdSugestao(s, melhorA.getClienteEntidade(), melhorA.getPessoaRef(), melhorA.getProcesso());
@@ -643,6 +713,15 @@ public class FinanceiroSugestaoService {
         String quando = ref.getDataLancamento() != null ? ref.getDataLancamento().toString() : "";
         String nome = StringUtils.hasText(ext.nome()) ? resumirNome(ext.nome()) : "mesmo CPF";
         return "depósito anterior (" + nome + ", " + quando + "): " + rotulo;
+    }
+
+    private String montarDescricaoDepositoPosterior(
+            LancamentoFinanceiroEntity ref, FinanceiroDescricaoPessoaExtracao ext) {
+        String rotulo = montarRotuloVinculo(
+                ref.getPessoaRef().getId(), ref.getProcesso());
+        String quando = ref.getDataLancamento() != null ? ref.getDataLancamento().toString() : "";
+        String nome = StringUtils.hasText(ext.nome()) ? resumirNome(ext.nome()) : "mesmo CPF";
+        return "depósito posterior (" + nome + ", " + quando + "): " + rotulo;
     }
 
     private static String resumirNome(String nome) {

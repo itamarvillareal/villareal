@@ -33,8 +33,14 @@ export function textoOrigemSugestao(sug) {
   if (origem === 'HISTORICO' && sug.ocorrencias != null) {
     return `histórico: ${sug.ocorrencias} ocorrências`;
   }
+  if (origem === 'HISTORICO_POSTERIOR' && sug.ocorrencias != null) {
+    return `histórico posterior: ${sug.ocorrencias} ocorrências`;
+  }
   if (origem === 'RECORRENCIA') {
     return 'recorrência mensal';
+  }
+  if (origem === 'RECORRENCIA_POSTERIOR') {
+    return 'recorrência posterior';
   }
   if (origem === 'DEPOSITO_IDENTIFICADO' && sug.descricaoRegra) {
     return sug.descricaoRegra;

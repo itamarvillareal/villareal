@@ -16,6 +16,7 @@ import { ExtratoSkeleton } from '../shared/LoadingSkeleton.jsx';
 import { formatDataCurta, formatMoeda } from '../shared/financeiroFormat.js';
 import { ExtratoTable } from '../extrato/ExtratoTable.jsx';
 import { ExtratoDetailPanel } from '../extrato/ExtratoDetailPanel.jsx';
+import { EtapaFiltroSelect } from '../shared/EtapaFiltroSelect.jsx';
 import { mapApiLancamentoCartaoToExtratoRow } from '../extrato/extratoMappers.js';
 
 function inicioFimMes(mesIso) {
@@ -39,6 +40,7 @@ export function FechamentoFaturaExtratoPage() {
   const [cartaoFiltro, setCartaoFiltro] = useState('');
   const [mes, setMes] = useState('');
   const [statusFiltro, setStatusFiltro] = useState('todos');
+  const [etapaFiltro, setEtapaFiltro] = useState('');
   const [vinculadosIds, setVinculadosIds] = useState(() => new Set());
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(50);
@@ -107,6 +109,11 @@ export function FechamentoFaturaExtratoPage() {
         } else if (statusFiltro === 'conferido') {
           mapped = mapped.filter((r) => r.vinculadoBanco || String(r.contaCodigo) === 'E');
         }
+        if (etapaFiltro) {
+          mapped = mapped.filter(
+            (r) => String(r.etapa ?? 'IMPORTADO').toUpperCase() === etapaFiltro,
+          );
+        }
         setRows(mapped);
         setPage(0);
       })
@@ -116,7 +123,7 @@ export function FechamentoFaturaExtratoPage() {
       })
       .finally(() => setLoading(false));
     return () => ac.abort();
-  }, [mes, cartaoFiltro, statusFiltro, contaToLetra, vinculadosIds, reloadKey]);
+  }, [mes, cartaoFiltro, statusFiltro, etapaFiltro, contaToLetra, vinculadosIds, reloadKey]);
 
   const rowsOrdenadas = useMemo(() => {
     return [...rows].sort((a, b) => {
@@ -189,6 +196,13 @@ export function FechamentoFaturaExtratoPage() {
               ))}
             </select>
           </label>
+          <EtapaFiltroSelect
+            value={etapaFiltro}
+            onChange={(v) => {
+              setEtapaFiltro(v);
+              setPage(0);
+            }}
+          />
           <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
             <span>Status</span>
             <select

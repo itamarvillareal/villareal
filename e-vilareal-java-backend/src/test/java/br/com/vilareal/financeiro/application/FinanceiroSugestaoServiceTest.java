@@ -121,6 +121,29 @@ class FinanceiroSugestaoServiceTest {
         lancamento.setNatureza(NaturezaLancamento.DEBITO);
         lancamento.setDataLancamento(LocalDate.of(2026, 3, 15));
         lancamento.setNumeroLancamento("PL-test");
+
+        lenient()
+                .when(lancamentoRepository.contarContaPorDescricaoHistoricoAnterior(any(), any(), any(), any()))
+                .thenReturn(List.of());
+        lenient()
+                .when(lancamentoRepository.contarContaPorDescricaoHistoricoPosterior(any(), any(), any(), any()))
+                .thenReturn(List.of());
+        lenient()
+                .when(lancamentoRepository.findRecorrenciaCandidatosAnteriores(
+                        any(), any(), any(), any(), anyInt(), any(), any()))
+                .thenReturn(List.of());
+        lenient()
+                .when(lancamentoRepository.findRecorrenciaCandidatosPosteriores(
+                        any(), any(), any(), any(), anyInt(), any(), any()))
+                .thenReturn(List.of());
+        lenient()
+                .when(lancamentoRepository.findDepositosIdentificadosPorCpfAnteriores(
+                        any(), any(), any(), any(), any(Pageable.class)))
+                .thenReturn(List.of());
+        lenient()
+                .when(lancamentoRepository.findDepositosIdentificadosPorCpfPosteriores(
+                        any(), any(), any(), any(), any(Pageable.class)))
+                .thenReturn(List.of());
     }
 
     @Test
@@ -137,8 +160,8 @@ class FinanceiroSugestaoServiceTest {
         when(contaContabilRepository.findFirstByCodigoIgnoreCase("F")).thenReturn(Optional.of(contaF));
         when(lancamentoRepository.findDepositosIdentificadosPorCpfNoTexto(any(), any(), any(), any()))
                 .thenReturn(List.of());
-        when(lancamentoRepository.contarContaPorDescricaoHistorico(any(), any())).thenReturn(List.of());
-        when(lancamentoRepository.findRecorrenciaCandidatos(any(), any(), any(), any(), anyInt()))
+        when(lancamentoRepository.contarContaPorDescricaoHistoricoAnterior(any(), any(), any(), any())).thenReturn(List.of());
+        when(lancamentoRepository.findRecorrenciaCandidatosAnteriores(any(), any(), any(), any(), anyInt(), any(), any()))
                 .thenReturn(List.of());
 
         List<SugestaoClassificacaoResponse> sugestoes = service.sugerir(lancamento);
@@ -163,8 +186,8 @@ class FinanceiroSugestaoServiceTest {
         when(regraRepository.findByAtivoTrueOrderByPrioridadeAscIdAsc()).thenReturn(List.of(regra));
         when(lancamentoRepository.findDepositosIdentificadosPorCpfNoTexto(any(), any(), any(), any()))
                 .thenReturn(List.of());
-        when(lancamentoRepository.contarContaPorDescricaoHistorico(any(), any())).thenReturn(List.of());
-        when(lancamentoRepository.findRecorrenciaCandidatos(any(), any(), any(), any(), anyInt()))
+        when(lancamentoRepository.contarContaPorDescricaoHistoricoAnterior(any(), any(), any(), any())).thenReturn(List.of());
+        when(lancamentoRepository.findRecorrenciaCandidatosAnteriores(any(), any(), any(), any(), anyInt(), any(), any()))
                 .thenReturn(List.of());
 
         List<SugestaoClassificacaoResponse> sugestoes = service.sugerir(lancamento);
@@ -187,10 +210,10 @@ class FinanceiroSugestaoServiceTest {
         when(regraRepository.findByAtivoTrueOrderByPrioridadeAscIdAsc()).thenReturn(List.of());
         when(lancamentoRepository.findDepositosIdentificadosPorCpfNoTexto(any(), any(), any(), any()))
                 .thenReturn(List.of());
-        when(lancamentoRepository.contarContaPorDescricaoHistorico(1, DescricaoNormalizer.normalizar(lancamento.getDescricao())))
+        when(lancamentoRepository.contarContaPorDescricaoHistoricoAnterior(1, DescricaoNormalizer.normalizar(lancamento.getDescricao()), lancamento.getDataLancamento(), 99L))
                 .thenReturn(List.<Object[]>of(new Object[] {5L, 10L}));
         when(contaContabilRepository.findById(5L)).thenReturn(Optional.of(contaN));
-        when(lancamentoRepository.findRecorrenciaCandidatos(any(), any(), any(), any(), anyInt()))
+        when(lancamentoRepository.findRecorrenciaCandidatosAnteriores(any(), any(), any(), any(), anyInt(), any(), any()))
                 .thenReturn(List.of());
 
         List<SugestaoClassificacaoResponse> sugestoes = service.sugerir(lancamento);
@@ -203,10 +226,10 @@ class FinanceiroSugestaoServiceTest {
         when(regraRepository.findByAtivoTrueOrderByPrioridadeAscIdAsc()).thenReturn(List.of());
         when(lancamentoRepository.findDepositosIdentificadosPorCpfNoTexto(any(), any(), any(), any()))
                 .thenReturn(List.of());
-        when(lancamentoRepository.contarContaPorDescricaoHistorico(1, DescricaoNormalizer.normalizar(lancamento.getDescricao())))
+        when(lancamentoRepository.contarContaPorDescricaoHistoricoAnterior(1, DescricaoNormalizer.normalizar(lancamento.getDescricao()), lancamento.getDataLancamento(), 99L))
                 .thenReturn(List.<Object[]>of(new Object[] {6L, 5L}));
         when(contaContabilRepository.findById(6L)).thenReturn(Optional.of(contaE));
-        when(lancamentoRepository.findRecorrenciaCandidatos(any(), any(), any(), any(), anyInt()))
+        when(lancamentoRepository.findRecorrenciaCandidatosAnteriores(any(), any(), any(), any(), anyInt(), any(), any()))
                 .thenReturn(List.of());
 
         List<SugestaoClassificacaoResponse> sugestoes = service.sugerir(lancamento);
@@ -254,11 +277,11 @@ class FinanceiroSugestaoServiceTest {
 
         when(regraRepository.findByAtivoTrueOrderByPrioridadeAscIdAsc()).thenReturn(List.of());
         when(pessoaRepository.findByCpf("76467791134")).thenReturn(Optional.of(pagador));
-        when(lancamentoRepository.findDepositosIdentificadosPorCpfNoTexto(
-                        eq("76467791134"), eq(99L), eq(EtapaLancamento.IMPORTADO), any(Pageable.class)))
+        when(lancamentoRepository.findDepositosIdentificadosPorCpfAnteriores(
+                        eq("76467791134"), eq(99L), eq(EtapaLancamento.IMPORTADO), eq(lancamento.getDataLancamento()), any(Pageable.class)))
                 .thenReturn(List.of(anterior));
-        when(lancamentoRepository.contarContaPorDescricaoHistorico(any(), any())).thenReturn(List.of());
-        when(lancamentoRepository.findRecorrenciaCandidatos(any(), any(), any(), any(), anyInt()))
+        when(lancamentoRepository.contarContaPorDescricaoHistoricoAnterior(any(), any(), any(), any())).thenReturn(List.of());
+        when(lancamentoRepository.findRecorrenciaCandidatosAnteriores(any(), any(), any(), any(), anyInt(), any(), any()))
                 .thenReturn(List.of());
         when(processoApplicationService.resolverTextosPartesVinculoEmLote(Set.of(50L)))
                 .thenReturn(
@@ -317,8 +340,8 @@ class FinanceiroSugestaoServiceTest {
                                 50L,
                                 new ProcessoPartesVinculoTexto(
                                         "Itamar Villa Real", "Ana Luisa")));
-        when(lancamentoRepository.contarContaPorDescricaoHistorico(any(), any())).thenReturn(List.of());
-        when(lancamentoRepository.findRecorrenciaCandidatos(any(), any(), any(), any(), anyInt()))
+        when(lancamentoRepository.contarContaPorDescricaoHistoricoAnterior(any(), any(), any(), any())).thenReturn(List.of());
+        when(lancamentoRepository.findRecorrenciaCandidatosAnteriores(any(), any(), any(), any(), anyInt(), any(), any()))
                 .thenReturn(List.of());
 
         List<SugestaoClassificacaoResponse> sugestoes = service.sugerir(lancamento);
@@ -366,8 +389,8 @@ class FinanceiroSugestaoServiceTest {
                                 1345L,
                                 new ProcessoPartesVinculoTexto(
                                         "SE77E TELECOM EIRELI ME", "Francisco Jefferson Da Silva Souza")));
-        when(lancamentoRepository.contarContaPorDescricaoHistorico(any(), any())).thenReturn(List.of());
-        when(lancamentoRepository.findRecorrenciaCandidatos(any(), any(), any(), any(), anyInt()))
+        when(lancamentoRepository.contarContaPorDescricaoHistoricoAnterior(any(), any(), any(), any())).thenReturn(List.of());
+        when(lancamentoRepository.findRecorrenciaCandidatosAnteriores(any(), any(), any(), any(), anyInt(), any(), any()))
                 .thenReturn(List.of());
 
         List<SugestaoClassificacaoResponse> sugestoes = service.sugerir(lancamento);
@@ -404,8 +427,8 @@ class FinanceiroSugestaoServiceTest {
         when(processoRepository.findAllDistinctVinculadosPessoa(1L)).thenReturn(List.of(processo));
         when(lancamentoRepository.findDepositosIdentificadosPorCpfNoTexto(any(), any(), any(), any()))
                 .thenReturn(List.of());
-        when(lancamentoRepository.contarContaPorDescricaoHistorico(any(), any())).thenReturn(List.of());
-        when(lancamentoRepository.findRecorrenciaCandidatos(any(), any(), any(), any(), anyInt()))
+        when(lancamentoRepository.contarContaPorDescricaoHistoricoAnterior(any(), any(), any(), any())).thenReturn(List.of());
+        when(lancamentoRepository.findRecorrenciaCandidatosAnteriores(any(), any(), any(), any(), anyInt(), any(), any()))
                 .thenReturn(List.of());
 
         List<SugestaoClassificacaoResponse> sugestoes = service.sugerir(lancamento);
@@ -426,8 +449,8 @@ class FinanceiroSugestaoServiceTest {
         when(contaContabilRepository.findFirstByCodigoIgnoreCase("I")).thenReturn(Optional.of(contaI));
         when(lancamentoRepository.findDepositosIdentificadosPorCpfNoTexto(any(), any(), any(), any()))
                 .thenReturn(List.of());
-        when(lancamentoRepository.contarContaPorDescricaoHistorico(any(), any())).thenReturn(List.of());
-        when(lancamentoRepository.findRecorrenciaCandidatos(any(), any(), any(), any(), anyInt()))
+        when(lancamentoRepository.contarContaPorDescricaoHistoricoAnterior(any(), any(), any(), any())).thenReturn(List.of());
+        when(lancamentoRepository.findRecorrenciaCandidatosAnteriores(any(), any(), any(), any(), anyInt(), any(), any()))
                 .thenReturn(List.of());
 
         List<SugestaoClassificacaoResponse> sugestoes = service.sugerir(lancamento);
@@ -446,10 +469,11 @@ class FinanceiroSugestaoServiceTest {
         when(regraRepository.findByAtivoTrueOrderByPrioridadeAscIdAsc()).thenReturn(List.of());
         when(lancamentoRepository.findDepositosIdentificadosPorCpfNoTexto(any(), any(), any(), any()))
                 .thenReturn(List.of());
-        when(lancamentoRepository.contarContaPorDescricaoHistorico(1, norm))
+        when(lancamentoRepository.contarContaPorDescricaoHistoricoAnterior(
+                        eq(1), eq(norm), eq(lancamento.getDataLancamento()), eq(99L)))
                 .thenReturn(List.<Object[]>of(new Object[] {6L, 4L}));
         when(contaContabilRepository.findById(6L)).thenReturn(Optional.of(contaE));
-        when(lancamentoRepository.findRecorrenciaCandidatos(eq(1), eq(norm), any(), any(), anyInt()))
+        when(lancamentoRepository.findRecorrenciaCandidatosAnteriores(eq(1), eq(norm), any(), any(), anyInt(), any(), any()))
                 .thenReturn(List.of());
 
         List<SugestaoClassificacaoResponse> sugestoes = service.sugerir(lancamento);
@@ -470,8 +494,10 @@ class FinanceiroSugestaoServiceTest {
         when(regraRepository.findByAtivoTrueOrderByPrioridadeAscIdAsc()).thenReturn(List.of());
         when(lancamentoRepository.findDepositosIdentificadosPorCpfNoTexto(any(), any(), any(), any()))
                 .thenReturn(List.of());
-        when(lancamentoRepository.contarContaPorDescricaoHistorico(1, norm)).thenReturn(List.of());
-        when(lancamentoRepository.findRecorrenciaCandidatos(eq(1), eq(norm), any(), any(), anyInt()))
+        when(lancamentoRepository.contarContaPorDescricaoHistoricoAnterior(eq(1), eq(norm), eq(lancamento.getDataLancamento()), eq(99L)))
+                .thenReturn(List.of());
+        when(lancamentoRepository.findRecorrenciaCandidatosAnteriores(
+                        eq(1), eq(norm), any(), any(), anyInt(), eq(lancamento.getDataLancamento()), eq(99L)))
                 .thenReturn(List.of(anterior));
         when(contaContabilRepository.findById(6L)).thenReturn(Optional.of(contaE));
 
@@ -484,6 +510,7 @@ class FinanceiroSugestaoServiceTest {
     @Test
     void sugerir_descricaoSemData_continuaCasandoHistorico() {
         lancamento.setDescricao("PAGTO CARTAO PERSONNALITE");
+        lancamento.setDataLancamento(null);
         String norm = DescricaoNormalizer.normalizar(lancamento.getDescricao());
 
         when(regraRepository.findByAtivoTrueOrderByPrioridadeAscIdAsc()).thenReturn(List.of());
@@ -492,12 +519,35 @@ class FinanceiroSugestaoServiceTest {
         when(lancamentoRepository.contarContaPorDescricaoHistorico(1, norm))
                 .thenReturn(List.<Object[]>of(new Object[] {6L, 3L}));
         when(contaContabilRepository.findById(6L)).thenReturn(Optional.of(contaE));
-        when(lancamentoRepository.findRecorrenciaCandidatos(eq(1), eq(norm), any(), any(), anyInt()))
+        when(lancamentoRepository.findRecorrenciaCandidatosAnteriores(any(), any(), any(), any(), anyInt(), any(), any()))
                 .thenReturn(List.of());
 
         List<SugestaoClassificacaoResponse> sugestoes = service.sugerir(lancamento);
 
         assertThat(sugestoes).anyMatch(s -> s.getOrigem() == OrigemSugestao.HISTORICO);
+    }
+
+    @Test
+    void sugerir_historicoPosterior_quandoAnteriorVazio() {
+        String norm = DescricaoNormalizer.normalizar(lancamento.getDescricao());
+
+        when(regraRepository.findByAtivoTrueOrderByPrioridadeAscIdAsc()).thenReturn(List.of());
+        when(lancamentoRepository.findDepositosIdentificadosPorCpfNoTexto(any(), any(), any(), any()))
+                .thenReturn(List.of());
+        when(lancamentoRepository.contarContaPorDescricaoHistoricoAnterior(
+                        eq(1), eq(norm), eq(lancamento.getDataLancamento()), eq(99L)))
+                .thenReturn(List.of());
+        when(lancamentoRepository.contarContaPorDescricaoHistoricoPosterior(
+                        eq(1), eq(norm), eq(lancamento.getDataLancamento()), eq(99L)))
+                .thenReturn(List.<Object[]>of(new Object[] {6L, 2L}));
+        when(contaContabilRepository.findById(6L)).thenReturn(Optional.of(contaE));
+        when(lancamentoRepository.findRecorrenciaCandidatosAnteriores(any(), any(), any(), any(), anyInt(), any(), any()))
+                .thenReturn(List.of());
+
+        List<SugestaoClassificacaoResponse> sugestoes = service.sugerir(lancamento);
+
+        assertThat(sugestoes).anyMatch(s ->
+                s.getOrigem() == OrigemSugestao.HISTORICO_POSTERIOR && s.getContaCodigo().equals("E"));
     }
 
     @Test

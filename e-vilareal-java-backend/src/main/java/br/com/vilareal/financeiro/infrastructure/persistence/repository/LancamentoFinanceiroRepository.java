@@ -145,6 +145,90 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             @Param("numeroBanco") Integer numeroBanco,
             @Param("descricaoNorm") String descricaoNorm);
 
+    @Query(value = """
+            SELECT conta_contabil_id, COUNT(*) AS total
+            FROM financeiro_lancamento
+            WHERE etapa != 'IMPORTADO'
+              AND (:numeroBanco IS NULL OR numero_banco = :numeroBanco)
+              AND descricao_norm = :descricaoNorm
+              AND (:excluirId IS NULL OR id <> :excluirId)
+              AND data_lancamento < :dataRef
+            GROUP BY conta_contabil_id
+            ORDER BY total DESC
+            LIMIT 3
+            """, nativeQuery = true)
+    List<Object[]> contarContaPorDescricaoHistoricoAnterior(
+            @Param("numeroBanco") Integer numeroBanco,
+            @Param("descricaoNorm") String descricaoNorm,
+            @Param("dataRef") java.time.LocalDate dataRef,
+            @Param("excluirId") Long excluirId);
+
+    @Query(value = """
+            SELECT conta_contabil_id, COUNT(*) AS total
+            FROM financeiro_lancamento
+            WHERE etapa != 'IMPORTADO'
+              AND (:numeroBanco IS NULL OR numero_banco = :numeroBanco)
+              AND descricao_norm = :descricaoNorm
+              AND (:excluirId IS NULL OR id <> :excluirId)
+              AND data_lancamento > :dataRef
+            GROUP BY conta_contabil_id
+            ORDER BY total DESC
+            LIMIT 3
+            """, nativeQuery = true)
+    List<Object[]> contarContaPorDescricaoHistoricoPosterior(
+            @Param("numeroBanco") Integer numeroBanco,
+            @Param("descricaoNorm") String descricaoNorm,
+            @Param("dataRef") java.time.LocalDate dataRef,
+            @Param("excluirId") Long excluirId);
+
+    @Query("""
+            SELECT l FROM LancamentoFinanceiroEntity l
+            JOIN FETCH l.contaContabil c
+            LEFT JOIN FETCH l.pessoaRef
+            LEFT JOIN FETCH l.clienteEntidade
+            LEFT JOIN FETCH l.processo
+            WHERE l.etapa <> br.com.vilareal.financeiro.domain.EtapaLancamento.IMPORTADO
+              AND l.numeroBanco = :numeroBanco
+              AND l.descricaoNorm = :descricaoNorm
+              AND l.valor BETWEEN :valorMin AND :valorMax
+              AND (YEAR(l.dataLancamento) * 100 + MONTH(l.dataLancamento)) <> :anoMes
+              AND (:excluirId IS NULL OR l.id <> :excluirId)
+              AND l.dataLancamento < :dataRef
+            ORDER BY l.dataLancamento DESC
+            """)
+    List<LancamentoFinanceiroEntity> findRecorrenciaCandidatosAnteriores(
+            @Param("numeroBanco") Integer numeroBanco,
+            @Param("descricaoNorm") String descricaoNorm,
+            @Param("valorMin") java.math.BigDecimal valorMin,
+            @Param("valorMax") java.math.BigDecimal valorMax,
+            @Param("anoMes") int anoMes,
+            @Param("dataRef") java.time.LocalDate dataRef,
+            @Param("excluirId") Long excluirId);
+
+    @Query("""
+            SELECT l FROM LancamentoFinanceiroEntity l
+            JOIN FETCH l.contaContabil c
+            LEFT JOIN FETCH l.pessoaRef
+            LEFT JOIN FETCH l.clienteEntidade
+            LEFT JOIN FETCH l.processo
+            WHERE l.etapa <> br.com.vilareal.financeiro.domain.EtapaLancamento.IMPORTADO
+              AND l.numeroBanco = :numeroBanco
+              AND l.descricaoNorm = :descricaoNorm
+              AND l.valor BETWEEN :valorMin AND :valorMax
+              AND (YEAR(l.dataLancamento) * 100 + MONTH(l.dataLancamento)) <> :anoMes
+              AND (:excluirId IS NULL OR l.id <> :excluirId)
+              AND l.dataLancamento > :dataRef
+            ORDER BY l.dataLancamento ASC
+            """)
+    List<LancamentoFinanceiroEntity> findRecorrenciaCandidatosPosteriores(
+            @Param("numeroBanco") Integer numeroBanco,
+            @Param("descricaoNorm") String descricaoNorm,
+            @Param("valorMin") java.math.BigDecimal valorMin,
+            @Param("valorMax") java.math.BigDecimal valorMax,
+            @Param("anoMes") int anoMes,
+            @Param("dataRef") java.time.LocalDate dataRef,
+            @Param("excluirId") Long excluirId);
+
     @Query("""
             SELECT l FROM LancamentoFinanceiroEntity l
             JOIN FETCH l.contaContabil c
@@ -191,6 +275,58 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             @Param("cpfDigitos") String cpfDigitos,
             @Param("excluirId") Long excluirId,
             @Param("importado") EtapaLancamento importado,
+            Pageable pageable);
+
+    @Query("""
+            SELECT l FROM LancamentoFinanceiroEntity l
+            JOIN FETCH l.contaContabil c
+            LEFT JOIN FETCH l.pessoaRef
+            LEFT JOIN FETCH l.clienteEntidade
+            LEFT JOIN FETCH l.processo
+            WHERE l.id <> :excluirId
+              AND l.etapa <> :importado
+              AND l.pessoaRef IS NOT NULL
+              AND UPPER(c.codigo) = 'A'
+              AND l.dataLancamento < :dataRef
+              AND (
+                  REPLACE(REPLACE(REPLACE(UPPER(COALESCE(l.descricao, '')), '.', ''), '-', ''), ' ', '')
+                      LIKE CONCAT('%', :cpfDigitos, '%')
+                  OR REPLACE(REPLACE(REPLACE(UPPER(COALESCE(l.descricaoDetalhada, '')), '.', ''), '-', ''), ' ', '')
+                      LIKE CONCAT('%', :cpfDigitos, '%')
+              )
+            ORDER BY l.dataLancamento DESC, l.id DESC
+            """)
+    List<LancamentoFinanceiroEntity> findDepositosIdentificadosPorCpfAnteriores(
+            @Param("cpfDigitos") String cpfDigitos,
+            @Param("excluirId") Long excluirId,
+            @Param("importado") EtapaLancamento importado,
+            @Param("dataRef") java.time.LocalDate dataRef,
+            Pageable pageable);
+
+    @Query("""
+            SELECT l FROM LancamentoFinanceiroEntity l
+            JOIN FETCH l.contaContabil c
+            LEFT JOIN FETCH l.pessoaRef
+            LEFT JOIN FETCH l.clienteEntidade
+            LEFT JOIN FETCH l.processo
+            WHERE l.id <> :excluirId
+              AND l.etapa <> :importado
+              AND l.pessoaRef IS NOT NULL
+              AND UPPER(c.codigo) = 'A'
+              AND l.dataLancamento > :dataRef
+              AND (
+                  REPLACE(REPLACE(REPLACE(UPPER(COALESCE(l.descricao, '')), '.', ''), '-', ''), ' ', '')
+                      LIKE CONCAT('%', :cpfDigitos, '%')
+                  OR REPLACE(REPLACE(REPLACE(UPPER(COALESCE(l.descricaoDetalhada, '')), '.', ''), '-', ''), ' ', '')
+                      LIKE CONCAT('%', :cpfDigitos, '%')
+              )
+            ORDER BY l.dataLancamento ASC, l.id ASC
+            """)
+    List<LancamentoFinanceiroEntity> findDepositosIdentificadosPorCpfPosteriores(
+            @Param("cpfDigitos") String cpfDigitos,
+            @Param("excluirId") Long excluirId,
+            @Param("importado") EtapaLancamento importado,
+            @Param("dataRef") java.time.LocalDate dataRef,
             Pageable pageable);
 
     @EntityGraph(attributePaths = {"contaContabil", "pessoaRef", "clienteEntidade", "processo"})

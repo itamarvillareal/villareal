@@ -18,6 +18,15 @@ export const ETAPA_LABELS = {
   FECHADO: 'Fechado',
 };
 
+/** Etapas do workflow exibidas no filtro de extratos (banco, cartão, consolidado). */
+export const ETAPAS_FILTRO_WORKFLOW = [
+  ETAPAS.IMPORTADO,
+  ETAPAS.CLASSIFICADO,
+  ETAPAS.COMPENSADO,
+  ETAPAS.VINCULADO,
+  ETAPAS.FECHADO,
+];
+
 export const CONFIANCA = {
   ALTA: 'ALTA',
   MEDIA: 'MEDIA',
