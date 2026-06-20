@@ -354,6 +354,20 @@ public class DocumentoDrivePastaService {
                 "Procuracao - " + nome + " - " + dataArquivo);
     }
 
+    static String formatarNomeArquivoContrato(String nomePessoa, java.time.LocalDate data) {
+        return formatarNomeArquivoContrato("Contrato", nomePessoa, data);
+    }
+
+    static String formatarNomeArquivoContrato(String rotuloTipo, String nomePessoa, java.time.LocalDate data) {
+        String tipo = StringUtils.hasText(rotuloTipo) ? rotuloTipo.trim() : "Contrato";
+        String nome = StringUtils.hasText(nomePessoa)
+                ? QualificacaoPessoaUtil.normalizarNome(nomePessoa.trim())
+                : "Sem Nome";
+        java.time.LocalDate dataArquivo = data != null ? data : java.time.LocalDate.now();
+        return GoogleDriveService.sanitizarNomeArquivo(
+                tipo + " - " + nome + " - " + dataArquivo);
+    }
+
     static String formatarNomeArquivoPeticao(String tipoPeca, java.time.LocalDate data) {
         String tipo = StringUtils.hasText(tipoPeca) ? tipoPeca.trim() : "Peticao";
         java.time.LocalDate dataArquivo = data != null ? data : java.time.LocalDate.now();

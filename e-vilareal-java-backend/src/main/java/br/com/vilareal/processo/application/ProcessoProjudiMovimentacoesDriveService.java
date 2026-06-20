@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 
 /**
@@ -46,9 +47,14 @@ public class ProcessoProjudiMovimentacoesDriveService {
             throw new BusinessRuleException("Processo sem número CNJ — não é possível consultar o PROJUDI.");
         }
 
+        LocalDate dataProtocoloAntes = processo.getDataProtocolo();
         ProjudiOrquestradorService.ResultadoSomenteDriveProcesso resultado =
                 orquestradorService.executarSomenteDriveProgressivo(
                         credencialIdPadrao, processo, new ArrayList<>());
+
+        LocalDate dataProtocolo = sincronizarDataProtocoloSeVazio(processo, resultado.dataDistribuicaoProjudi());
+        boolean dataProtocoloSincronizada = dataProtocoloAntes == null && dataProtocolo != null;
+        LocalDate dataProtocoloResposta = dataProtocoloSincronizada ? dataProtocolo : null;
 
         if (acervoIntegralEstado != null) {
             acervoIntegralEstado.atualizarAposExecucaoDrive(processoId, resultado);
@@ -62,10 +68,11 @@ public class ProcessoProjudiMovimentacoesDriveService {
                     false,
                     null,
                     resumoSelecao(resultado),
-                    resultado.erro());
+                    resultado.erro(),
+                    dataProtocoloResposta);
         }
 
-        String mensagem = montarMensagem(resultado);
+        String mensagem = montarMensagem(resultado, dataProtocoloSincronizada);
         return new ProcessoProjudiMovimentacoesDriveResponse(
                 resultado.arquivosBaixados(),
                 resultado.totalComDocumento(),
@@ -73,7 +80,18 @@ public class ProcessoProjudiMovimentacoesDriveService {
                 resultado.temMais(),
                 mensagem,
                 resumoSelecao(resultado),
-                null);
+                null,
+                dataProtocoloResposta);
+    }
+
+    private LocalDate sincronizarDataProtocoloSeVazio(
+            ProcessoEntity processo, LocalDate dataDistribuicaoProjudi) {
+        if (processo.getDataProtocolo() != null || dataDistribuicaoProjudi == null) {
+            return processo.getDataProtocolo();
+        }
+        processo.setDataProtocolo(dataDistribuicaoProjudi);
+        processoRepository.save(processo);
+        return dataDistribuicaoProjudi;
     }
 
     private static String resumoSelecao(ProjudiOrquestradorService.ResultadoSomenteDriveProcesso resultado) {
@@ -81,22 +99,27 @@ public class ProcessoProjudiMovimentacoesDriveService {
         return s != null ? String.valueOf(s) : null;
     }
 
-    private static String montarMensagem(ProjudiOrquestradorService.ResultadoSomenteDriveProcesso resultado) {
+    private static String montarMensagem(
+            ProjudiOrquestradorService.ResultadoSomenteDriveProcesso resultado,
+            boolean dataProtocoloSincronizada) {
         int baixados = resultado.arquivosBaixados();
+        String base;
         if (baixados <= 0) {
             if (resultado.totalComDocumento() <= 0) {
-                return "Nenhuma movimentação com documento encontrada no PROJUDI.";
+                base = "Nenhuma movimentação com documento encontrada no PROJUDI.";
+            } else if (!resultado.temMais()) {
+                base = "Todas as movimentações com documento já estão no Drive.";
+            } else {
+                base = "Nenhum arquivo novo enviado neste passo. Clique novamente para continuar o arquivamento.";
             }
-            // Conclusão por conjunto (temMais já reflete se ainda faltam números no Drive),
-            // não por comparação de contagens.
-            if (!resultado.temMais()) {
-                return "Todas as movimentações com documento já estão no Drive.";
+        } else {
+            base = baixados + " arquivo(s) enviado(s) ao Drive.";
+            if (resultado.temMais()) {
+                base += " Clique novamente para buscar mais movimentações.";
             }
-            return "Nenhum arquivo novo enviado neste passo. Clique novamente para continuar o arquivamento.";
         }
-        String base = baixados + " arquivo(s) enviado(s) ao Drive.";
-        if (resultado.temMais()) {
-            return base + " Clique novamente para buscar mais movimentações.";
+        if (dataProtocoloSincronizada) {
+            base += " Data do protocolo preenchida a partir do Projudi.";
         }
         return base;
     }

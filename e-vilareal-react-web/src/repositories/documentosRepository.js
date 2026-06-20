@@ -217,6 +217,70 @@ export async function gerarProcuracao({ pessoaId, cidadeEstado, data, processoId
   return postPdf('/api/documentos/procuracao', body, opts);
 }
 
+export async function gerarContratoHonorarios(
+  {
+    pessoaId,
+    cidadeEstado,
+    data,
+    processoId,
+    codigoCliente,
+    numeroInterno,
+    objetoContrato,
+    clausula3Remuneracao,
+    clausula3Dados,
+    persistirDados,
+    formaAssinatura,
+  },
+  opts = {},
+) {
+  const body = { pessoaId: Number(pessoaId) };
+  if (cidadeEstado) body.cidadeEstado = cidadeEstado;
+  if (data) body.data = data;
+  if (processoId != null && processoId !== '') body.processoId = Number(processoId);
+  if (codigoCliente) body.codigoCliente = String(codigoCliente);
+  if (numeroInterno != null && numeroInterno !== '') body.numeroInterno = Number(numeroInterno);
+  if (objetoContrato?.trim()) body.objetoContrato = objetoContrato.trim();
+  if (clausula3Dados) {
+    body.clausula3Dados = clausula3Dados;
+    body.persistirDados = persistirDados !== false;
+  } else if (clausula3Remuneracao?.trim()) {
+    body.clausula3Remuneracao = clausula3Remuneracao.trim();
+  }
+  if (formaAssinatura) body.formaAssinatura = formaAssinatura;
+  return postPdf('/api/documentos/contrato-honorarios', body, opts);
+}
+
+export async function montarClausula3TextoContratoHonorarios(clausula3Dados, opts = {}) {
+  return request('/api/documentos/contrato-honorarios/clausula3-texto', {
+    method: 'POST',
+    body: clausula3Dados,
+    signal: opts.signal,
+  });
+}
+
+export async function listarContratosHonorarios(params = {}, opts = {}) {
+  const q = new URLSearchParams();
+  if (params.processoId != null) q.set('processoId', String(params.processoId));
+  if (params.pessoaId != null) q.set('pessoaId', String(params.pessoaId));
+  if (params.de) q.set('de', params.de);
+  if (params.ate) q.set('ate', params.ate);
+  const suffix = q.toString() ? `?${q.toString()}` : '';
+  return request(`/api/documentos/contratos-honorarios${suffix}`, { signal: opts.signal });
+}
+
+export async function gerarContratoAluguel(
+  { processoId, cidadeEstado, data, codigoCliente, numeroInterno, formaAssinatura },
+  opts = {},
+) {
+  const body = { processoId: Number(processoId) };
+  if (cidadeEstado) body.cidadeEstado = cidadeEstado;
+  if (data) body.data = data;
+  if (codigoCliente) body.codigoCliente = String(codigoCliente);
+  if (numeroInterno != null && numeroInterno !== '') body.numeroInterno = Number(numeroInterno);
+  if (formaAssinatura) body.formaAssinatura = formaAssinatura;
+  return postPdf('/api/documentos/contrato-aluguel', body, opts);
+}
+
 /** Gera a petição de Execução de Taxa Condominial (PDF). Retorna Blob. */
 export function gerarPeticaoExecucao(body, opts = {}) {
   return postPdf('/api/documentos/peticao-execucao', body, opts);
@@ -230,4 +294,15 @@ export function nomeArquivoProcuracaoPdf(nomeOutorgante) {
     .replace(/^_|_$/g, '')
     .slice(0, 40);
   return `procuracao_${base || 'cliente'}.pdf`;
+}
+
+export function nomeArquivoContratoPdf(nomeContratante, sufixoModelo) {
+  const base = (nomeContratante || 'cliente')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/^_|_$/g, '')
+    .slice(0, 40);
+  const modelo = sufixoModelo ? `_${sufixoModelo}` : '';
+  return `contrato${modelo}_${base || 'cliente'}.pdf`;
 }

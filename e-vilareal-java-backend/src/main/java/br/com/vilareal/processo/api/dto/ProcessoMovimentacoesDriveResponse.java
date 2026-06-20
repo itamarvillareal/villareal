@@ -1,5 +1,7 @@
 package br.com.vilareal.processo.api.dto;
 
+import java.time.LocalDate;
+
 /**
  * Resultado do botão «Obter movimentações» — roteado por {@code processo.tramitacao}.
  */
@@ -13,7 +15,8 @@ public record ProcessoMovimentacoesDriveResponse(
         Boolean temMais,
         String mensagem,
         String selecaoResumo,
-        String erro) {
+        String erro,
+        LocalDate dataProtocolo) {
 
     public static ProcessoMovimentacoesDriveResponse fromProjudi(
             String tramitacao, ProcessoProjudiMovimentacoesDriveResponse projudi) {
@@ -26,7 +29,8 @@ public record ProcessoMovimentacoesDriveResponse(
                 projudi.temMais(),
                 projudi.mensagem(),
                 projudi.selecaoResumo(),
-                projudi.erro());
+                projudi.erro(),
+                projudi.dataProtocolo());
     }
 
     public static ProcessoMovimentacoesDriveResponse pjeIniciado(String tramitacao) {
@@ -39,12 +43,13 @@ public record ProcessoMovimentacoesDriveResponse(
                 null,
                 "PJe iniciado — acompanhe o badge No Drive na publicação por e-mail.",
                 null,
+                null,
                 null);
     }
 
     public static ProcessoMovimentacoesDriveResponse semSistema(String tramitacao, String mensagem) {
         return new ProcessoMovimentacoesDriveResponse(
-                tramitacao, "SEM_SISTEMA", null, null, null, null, mensagem, null, mensagem);
+                tramitacao, "SEM_SISTEMA", null, null, null, null, mensagem, null, mensagem, null);
     }
 
     public static ProcessoMovimentacoesDriveResponse pjeAutomacaoIndisponivel(
@@ -58,6 +63,7 @@ public record ProcessoMovimentacoesDriveResponse(
                 null,
                 mensagem,
                 null,
-                mensagem);
+                mensagem,
+                null);
     }
 }

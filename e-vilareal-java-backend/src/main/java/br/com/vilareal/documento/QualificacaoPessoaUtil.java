@@ -83,6 +83,70 @@ public class QualificacaoPessoaUtil {
         return base + montarSufixoRepresentantePj(pessoaId, dados, false);
     }
 
+    /** Qualificação do contratante no contrato de honorários (inclui telefone, quando cadastrado). */
+    @Transactional(readOnly = true)
+    public String gerarQualificacaoContratoContratantePorPessoaId(Long pessoaId) {
+        DadosQualificacao dados = carregarDadosQualificacao(pessoaId);
+        String base = appendTelefoneContrato(gerarQualificacaoProcuracao(dados), dados.telefone());
+        if (!ehPessoaJuridica(dados)) {
+            return base;
+        }
+        return base + montarSufixoRepresentantePj(pessoaId, dados, false);
+    }
+
+    static String montarQualificacaoContratoContratado(String advogadoNome, String advogadoOab) {
+        String nome = advogadoNome != null ? advogadoNome.trim() : "";
+        if (nome.regionMatches(true, 0, "Dr. ", 0, 4)) {
+            nome = "Dr. " + nome.substring(4).trim().toUpperCase(Locale.ROOT);
+        } else if (nome.regionMatches(true, 0, "Dra. ", 0, 5)) {
+            nome = "Dra. " + nome.substring(5).trim().toUpperCase(Locale.ROOT);
+        } else if (!nome.isEmpty()) {
+            nome = nome.toUpperCase(Locale.ROOT);
+        }
+        String oabNumero = extrairNumeroOab(advogadoOab);
+        return "o advogado "
+                + escapeHtml(nome)
+                + ", brasileiro, casado, advogado, inscrito na OAB/GO sob o nº "
+                + escapeHtml(oabNumero)
+                + ", com escritório profissional na Avenida Pinheiro Chagas, número 232, Bairro Jundiaí, "
+                + "CEP nº 75.110-580, Anápolis, Estado de Goiás";
+    }
+
+    static String montarPreambuloContratoHonorarios(String qualificacaoContratante, String qualificacaoContratado) {
+        return "Pelo presente instrumento particular, como CONTRATANTE, "
+                + qualificacaoContratante
+                + ", e, como CONTRATADO, "
+                + qualificacaoContratado
+                + ", nesta, têm por justo e contratado o seguinte:";
+    }
+
+    static String montarPreambuloContratoAluguel(String qualificacaoLocador, String qualificacaoLocatario) {
+        return "Pelo presente instrumento particular, como LOCADOR, "
+                + qualificacaoLocador
+                + ", e, como LOCATÁRIO, "
+                + qualificacaoLocatario
+                + ", nesta, têm por justo e contratado o seguinte:";
+    }
+
+    private static String appendTelefoneContrato(String qualificacao, String telefone) {
+        if (telefone == null || telefone.isBlank()) {
+            return qualificacao;
+        }
+        return qualificacao + ", e o número de telefone: " + escapeHtml(telefone.trim());
+    }
+
+    private static String extrairNumeroOab(String advogadoOab) {
+        if (advogadoOab == null || advogadoOab.isBlank()) {
+            return "33.329";
+        }
+        String digits = advogadoOab.replaceAll("[^0-9]", "");
+        if (digits.length() >= 5) {
+            String raw = digits.substring(digits.length() - 5);
+            return raw.substring(0, 2) + "." + raw.substring(2);
+        }
+        return advogadoOab.replace("OAB/GO", "").replace("OAB/GO n°", "").trim();
+    }
+
     private String montarQualificacaoParaPessoa(Long pessoaId, boolean nomeEmNegrito) {
         DadosQualificacao dados = carregarDadosQualificacao(pessoaId);
         String base = montarQualificacao(dados, nomeEmNegrito);

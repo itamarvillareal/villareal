@@ -44,6 +44,24 @@ export function poloEhLadoCliente(polo) {
   );
 }
 
+/** Polo processual autor/requerente (locador no contrato de aluguel). */
+export function poloEhAutorProcesso(polo) {
+  const p = String(polo ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+  return p.includes('AUTOR') || p.includes('REQUERENTE');
+}
+
+/** Polo processual réu/requerido (locatário no contrato de aluguel). */
+export function poloEhReuProcesso(polo) {
+  const p = String(polo ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+  return p.includes('REU') || p.includes('REQUERIDO');
+}
+
 export function inferirEnderecamento(competencia, cidade, uf) {
   const cid = String(cidade || 'Anápolis').trim() || 'Anápolis';
   const cidUpper = cid.toUpperCase();
@@ -218,6 +236,19 @@ export async function montarDadosParaDocumentoFromProcesso(ctx) {
       ? Number(principalCliente.pessoaId)
       : null;
 
+  const partesAutor = partes.filter((p) => poloEhAutorProcesso(p.polo));
+  const partesReu = partes.filter((p) => poloEhReuProcesso(p.polo));
+  const nomeLocador =
+    partesAutor
+      .map((p) => String(p.nomeExibicao || p.nomeLivre || '').trim())
+      .filter(Boolean)
+      .join(' e ') || nomeAutor;
+  const nomeLocatarios =
+    partesReu
+      .map((p) => String(p.nomeExibicao || p.nomeLivre || '').trim())
+      .filter(Boolean)
+      .join(' e ') || nomeReu;
+
   return {
     enderecamento,
     numeroProcesso,
@@ -231,6 +262,8 @@ export async function montarDadosParaDocumentoFromProcesso(ctx) {
     cidadeEstado,
     pessoaIdOutorgante,
     nomeOutorgante: clienteEhRequerente ? nomeAutor : nomeReu,
+    nomeLocador,
+    nomeLocatarios,
     codigoCliente: ctx.codigoCliente,
     numeroInterno: ctx.numeroInterno ?? ctx.processo,
     processoApiId: ctx.processoApiId ?? null,

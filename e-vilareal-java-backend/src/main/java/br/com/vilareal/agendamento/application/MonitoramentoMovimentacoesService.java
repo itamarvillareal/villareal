@@ -114,7 +114,7 @@ public class MonitoramentoMovimentacoesService {
 
         List<MovimentacaoProjudi> movs;
         try {
-            movs = listagemService.listarComFallbackReduzido(credencialIdPadrao, numeroCnj);
+            movs = listagemService.listarMovimentacoesComFallbackReduzido(credencialIdPadrao, numeroCnj);
         } catch (Exception e) {
             return registrarErro(processo, iniciada, baseline, origem, agendamentoId, e);
         }

@@ -7,9 +7,11 @@ import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRe
 import br.com.vilareal.projudi.ProjudiOrquestradorService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -49,6 +51,7 @@ class ProcessoProjudiMovimentacoesDriveServiceTest {
                 100L,
                 null,
                 List.of(),
+                null,
                 null);
         when(orquestradorService.executarSomenteDriveProgressivo(eq(1L), eq(processo), any()))
                 .thenReturn(resultado);
@@ -61,5 +64,39 @@ class ProcessoProjudiMovimentacoesDriveServiceTest {
         verify(acervoIntegralEstado).atualizarAposExecucaoDrive(42L, resultado);
         assertThat(resp.erro()).isNull();
         assertThat(resp.mensagem()).contains("já estão no Drive");
+    }
+
+    @Test
+    void executar_preencheDataProtocoloQuandoVazio() {
+        ProcessoEntity processo = new ProcessoEntity();
+        processo.setId(42L);
+        processo.setNumeroCnj("5161328-98.2023.8.09.0007");
+        when(processoRepository.findByIdWithClienteAndPessoa(42L)).thenReturn(Optional.of(processo));
+
+        LocalDate dataDistribuicao = LocalDate.of(2024, 3, 20);
+        var resultado = new ProjudiOrquestradorService.ResultadoSomenteDriveProcesso(
+                processo.getNumeroCnj(),
+                0,
+                5,
+                5,
+                5,
+                false,
+                100L,
+                null,
+                List.of(),
+                null,
+                dataDistribuicao);
+        when(orquestradorService.executarSomenteDriveProgressivo(eq(1L), eq(processo), any()))
+                .thenReturn(resultado);
+
+        ProcessoProjudiMovimentacoesDriveService svc =
+                new ProcessoProjudiMovimentacoesDriveService(processoRepository, orquestradorService, acervoIntegralEstado, 1L);
+        ProcessoProjudiMovimentacoesDriveResponse resp = svc.executar(42L);
+
+        ArgumentCaptor<ProcessoEntity> captor = ArgumentCaptor.forClass(ProcessoEntity.class);
+        verify(processoRepository).save(captor.capture());
+        assertThat(captor.getValue().getDataProtocolo()).isEqualTo(dataDistribuicao);
+        assertThat(resp.dataProtocolo()).isEqualTo(dataDistribuicao);
+        assertThat(resp.mensagem()).contains("Data do protocolo preenchida");
     }
 }

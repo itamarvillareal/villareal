@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.math.BigInteger;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -184,13 +185,23 @@ public class ProjudiOrquestradorService {
             long duracaoMs,
             String erro,
             List<String> detalhes,
-            ProjudiDriveProgressivoUtil.SelecaoProgressiva selecao) {
+            ProjudiDriveProgressivoUtil.SelecaoProgressiva selecao,
+            LocalDate dataDistribuicaoProjudi) {
 
         /** F8: candidato a mover o record para o pacote pipeline. */
         public static ResultadoSomenteDriveProcesso erro(
                 String cnj, long duracaoMs, String erro, List<String> detalhes) {
+            return erro(cnj, duracaoMs, erro, detalhes, null);
+        }
+
+        public static ResultadoSomenteDriveProcesso erro(
+                String cnj,
+                long duracaoMs,
+                String erro,
+                List<String> detalhes,
+                LocalDate dataDistribuicaoProjudi) {
             return new ResultadoSomenteDriveProcesso(
-                    cnj, 0, 0, 0, 0, false, duracaoMs, erro, detalhes, null);
+                    cnj, 0, 0, 0, 0, false, duracaoMs, erro, detalhes, null, dataDistribuicaoProjudi);
         }
 
         public static ResultadoSomenteDriveProcesso erroComEstado(
@@ -203,6 +214,30 @@ public class ProjudiOrquestradorService {
                 String erro,
                 List<String> detalhes,
                 ProjudiDriveProgressivoUtil.SelecaoProgressiva selecao) {
+            return erroComEstado(
+                    cnj,
+                    jaArquivados,
+                    totalComDocumento,
+                    totalArquivadasDrive,
+                    temMais,
+                    duracaoMs,
+                    erro,
+                    detalhes,
+                    selecao,
+                    null);
+        }
+
+        public static ResultadoSomenteDriveProcesso erroComEstado(
+                String cnj,
+                int jaArquivados,
+                int totalComDocumento,
+                int totalArquivadasDrive,
+                boolean temMais,
+                long duracaoMs,
+                String erro,
+                List<String> detalhes,
+                ProjudiDriveProgressivoUtil.SelecaoProgressiva selecao,
+                LocalDate dataDistribuicaoProjudi) {
             return new ResultadoSomenteDriveProcesso(
                     cnj,
                     0,
@@ -213,7 +248,8 @@ public class ProjudiOrquestradorService {
                     duracaoMs,
                     erro,
                     detalhes,
-                    selecao);
+                    selecao,
+                    dataDistribuicaoProjudi);
         }
 
         public Map<String, Object> toRelatorioMap() {

@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -45,6 +46,21 @@ public class ProjudiTeorService {
         this.objectMapper = objectMapper;
     }
 
+    /** Resultado da consulta read-only ao PROJUDI (movimentações + metadados do cabeçalho). */
+    public record ConsultaProcessoProjudi(List<MovimentacaoProjudi> movimentacoes, LocalDate dataDistribuicao) {}
+
+    /**
+     * Consulta o processo no PROJUDI e extrai movimentações e metadados do mesmo HTML.
+     */
+    public ConsultaProcessoProjudi consultarProcesso(Long credencialId, String numeroProcesso) {
+        String html = sessionService.buscarProcessoConsulta(credencialId, numeroProcesso).body();
+        Document doc = Jsoup.parse(html);
+        List<MovimentacaoProjudi> movimentacoes = parseMovimentacoes(doc, numeroProcesso, html);
+        LocalDate dataDistribuicao =
+                ProjudiProcessoMetadadosParser.extrairDataDistribuicao(doc).orElse(null);
+        return new ConsultaProcessoProjudi(movimentacoes, dataDistribuicao);
+    }
+
     /**
      * Lista as movimentações do processo. A tabela (table#TabelaArquivos) vem na própria
      * RESPOSTA do POST de busca; por isso parseamos o corpo de
@@ -52,9 +68,11 @@ public class ProjudiTeorService {
      * "BuscaProcesso?PaginaAtual=4" é só o formulário de busca, sem movimentações).
      */
     public List<MovimentacaoProjudi> listarMovimentacoes(Long credencialId, String numeroProcesso) {
-        String html = sessionService.buscarProcessoConsulta(credencialId, numeroProcesso).body();
+        return consultarProcesso(credencialId, numeroProcesso).movimentacoes();
+    }
 
-        Document doc = Jsoup.parse(html);
+    private List<MovimentacaoProjudi> parseMovimentacoes(
+            Document doc, String numeroProcesso, String html) {
         if (doc.selectFirst("table#TabelaArquivos") == null) {
             log.warn("Tabela de movimentações (table#TabelaArquivos) não encontrada (processo={}). Corpo (300): {}",
                     numeroProcesso, html == null ? "" : html.substring(0, Math.min(html.length(), 300)));

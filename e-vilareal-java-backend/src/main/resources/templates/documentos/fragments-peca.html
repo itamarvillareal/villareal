@@ -189,7 +189,14 @@
         .corpo-procuracao,
         .data-procuracao,
         .titulo-procuracao,
-        .assinatura-outorgante {
+        .assinatura-outorgante,
+        .contrato-texto,
+        .contrato-preambulo,
+        .contrato-clausula,
+        .contrato-fecho,
+        .contrato-data,
+        .contrato-assinaturas,
+        .contrato-assinaturas .nome {
             line-height: 1.21;
         }
     </style>
@@ -239,6 +246,150 @@
         p {
             margin: 0;
             padding: 0;
+        }
+    </style>
+</th:block>
+
+<th:block th:fragment="estiloContrato">
+    <th:block th:replace="~{documentos/fragments-peca :: estiloTimbrado}"/>
+    <th:block th:replace="~{documentos/fragments-peca :: estiloCorpoPadrao}"/>
+    <style type="text/css">
+        @page {
+            size: A4;
+            margin: 28mm 15mm 15mm 15mm;
+            @top-center {
+                content: element(cabecalho-padrao);
+                vertical-align: top;
+            }
+            @bottom-center {
+                content: element(rodape);
+                vertical-align: bottom;
+            }
+        }
+
+        @page :first {
+            margin: 0 15mm 22mm 15mm;
+            @top-center {
+                content: none;
+            }
+            @bottom-center {
+                content: element(rodape-primeira);
+                vertical-align: bottom;
+            }
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: "Arial Unicode MS", Arial, sans-serif;
+            font-size: 9pt;
+            line-height: 1.21;
+            color: #000;
+        }
+
+        p {
+            margin: 0;
+            padding: 0;
+        }
+
+        .corpo-documento {
+            margin-left: 15mm;
+        }
+
+        .contrato-texto {
+            font-family: Arial, sans-serif;
+            font-size: 9pt;
+            text-align: justify;
+            margin-top: 0;
+            margin-bottom: 0;
+            padding-left: 0;
+            text-indent: 0;
+        }
+
+        .contrato-preambulo,
+        .contrato-fecho {
+            padding-left: 0;
+            text-indent: 0;
+        }
+
+        .contrato-preambulo {
+            margin-bottom: 8pt;
+        }
+
+        .contrato-clausula {
+            display: block;
+            margin-bottom: 0;
+            /* Recuo francês só nas cláusulas: 1ª linha na margem; da 2ª em diante, leve recuo. */
+            padding-left: 1.25cm;
+            text-indent: -1.25cm;
+        }
+
+        .contrato-clausula:last-of-type {
+            margin-bottom: 0;
+        }
+
+        .contrato-fecho {
+            margin-top: 12pt;
+            margin-bottom: 0;
+        }
+
+        .contrato-data {
+            font-family: Arial, sans-serif;
+            font-size: 9pt;
+            text-align: center;
+            padding-left: 0;
+            text-indent: 0;
+            margin-top: 36pt;
+            margin-bottom: 36pt;
+        }
+
+        .contrato-assinaturas {
+            width: 100%;
+            border-collapse: collapse;
+            border: none;
+            margin-top: 12pt;
+            font-family: Arial, sans-serif;
+            font-size: 9pt;
+        }
+
+        .contrato-assinaturas td {
+            border: none;
+            width: 50%;
+            vertical-align: top;
+            text-align: center;
+            padding: 0 8pt;
+        }
+
+        .contrato-assinaturas .linha {
+            border-bottom: 1pt solid #000;
+            height: 36pt;
+            margin-bottom: 6pt;
+        }
+
+        .contrato-assinaturas tr + tr td {
+            padding-top: 12pt;
+        }
+
+        .contrato-assinaturas .nome {
+            font-weight: normal;
+            text-transform: uppercase;
+            line-height: 1.21;
+            margin: 0;
+        }
+
+        .contrato-assinaturas .rotulo {
+            margin-top: 0;
+            font-size: 9pt;
+            text-transform: uppercase;
+        }
+
+        .contrato-assinaturas .rotulo-testemunha {
+            margin-top: 0;
+            text-transform: none;
         }
     </style>
 </th:block>

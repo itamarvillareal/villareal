@@ -19,6 +19,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import java.time.LocalDate;
+
 /**
  * Passada somente-Drive (NOVAS_TOPO + BACKFILL) — caminho de produção (UI + pipeline e-mail).
  */
@@ -73,8 +75,10 @@ public class ProjudiSomenteDrivePassadaService {
         }
 
         try {
-            List<ProjudiTeorService.MovimentacaoProjudi> movs =
+            ProjudiMovimentacoesListagemService.ListagemMovimentacoes listagem =
                     movimentacoesListagemService.listarComFallbackReduzido(credencialId, numeroCnj);
+            List<ProjudiTeorService.MovimentacaoProjudi> movs = listagem.movimentacoes();
+            LocalDate dataDistribuicaoProjudi = listagem.dataDistribuicao();
 
             if (movs.isEmpty()) {
                 logDetalhes.add(numeroCnj + " | PROJUDI retornou 0 movimentações.");
@@ -85,7 +89,8 @@ public class ProjudiSomenteDrivePassadaService {
                                 + "Verifique número CNJ e credenciais. "
                                 + "O código OTP é lido automaticamente da conta Gmail configurada no servidor "
                                 + "(projudi.token.remetente), não da sua caixa pessoal.",
-                        logDetalhes);
+                        logDetalhes,
+                        listagem.dataDistribuicao());
             }
 
             List<ProjudiTeorService.MovimentacaoProjudi> comDoc =
@@ -97,7 +102,8 @@ public class ProjudiSomenteDrivePassadaService {
                         numeroCnj,
                         System.currentTimeMillis() - inicioMs,
                         "Pasta Movimentações não resolvida.",
-                        logDetalhes);
+                        logDetalhes,
+                        dataDistribuicaoProjudi);
             }
 
             List<String> nomesDrive = googleDriveService.listarFilhos(pastaMovimentacoesId).stream()
@@ -158,7 +164,8 @@ public class ProjudiSomenteDrivePassadaService {
                         System.currentTimeMillis() - inicioMs,
                         ProjudiOrquestradorErroUtil.resumirFalhaUploadDrive(logDetalhes),
                         logDetalhes,
-                        selecao);
+                        selecao,
+                        dataDistribuicaoProjudi);
             }
 
             return new ProjudiOrquestradorService.ResultadoSomenteDriveProcesso(
@@ -171,7 +178,8 @@ public class ProjudiSomenteDrivePassadaService {
                     System.currentTimeMillis() - inicioMs,
                     null,
                     logDetalhes,
-                    selecao);
+                    selecao,
+                    dataDistribuicaoProjudi);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return ProjudiOrquestradorService.ResultadoSomenteDriveProcesso.erro(

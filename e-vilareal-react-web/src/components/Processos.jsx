@@ -2222,6 +2222,11 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       }
       const baixados = Number(r?.arquivosBaixados ?? 0);
       const msg = String(r?.mensagem ?? '').trim();
+      const dataProtocoloIso = String(r?.dataProtocolo ?? '').trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dataProtocoloIso)) {
+        const [y, m, d] = dataProtocoloIso.split('-');
+        setDataProtocolo(`${d}/${m}/${y}`);
+      }
       if (msg) {
         showProcessoToast(msg);
       } else if (baixados > 0) {

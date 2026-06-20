@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { FileSignature, FileText, FileUp, Layers, Loader2, Scale, Sparkles, X } from 'lucide-react';
+import {
+  FileSignature,
+  FileText,
+  FileUp,
+  Layers,
+  Loader2,
+  Scale,
+  ScrollText,
+  Sparkles,
+  X,
+} from 'lucide-react';
 import { mapearDadosProcessoParaFormIA } from '../../helpers/documentoHelper.js';
 import { buildRouterStateChaveClienteProcesso } from '../../domain/camposProcessoCliente.js';
 import {
@@ -8,7 +18,10 @@ import {
   gerarPdfComIA,
   gerarPdfManual,
   gerarPreviewIA,
+  gerarContratoAluguel,
+  gerarContratoHonorarios,
   gerarProcuracao,
+  nomeArquivoContratoPdf,
   nomeArquivoPeticaoPdf,
   nomeArquivoProcuracaoPdf,
 } from '../../repositories/documentosRepository.js';
@@ -30,6 +43,18 @@ import {
   gerarPeticaoExecucaoDeCalculoSalvo,
 } from '../../services/peticaoExecucaoDeRodada.js';
 import { dataBRparaISO } from '../../data/peticaoExecucaoBuilder.js';
+import {
+  CLAUSULA_3_REMUNERACAO_PADRAO,
+  CONTRATADO_HONORARIOS_NOME,
+  FORMA_ASSINATURA_DUAS_VIAS,
+  FORMAS_ASSINATURA_CONTRATO,
+  MODELO_CONTRATO_ALUGUEL,
+  MODELO_CONTRATO_HONORARIOS,
+  MODELOS_CONTRATO,
+  rotuloModeloContrato,
+} from './contratoModelos.js';
+import { ContratoHonorariosClausula3Modal } from './components/ContratoHonorariosClausula3Modal.jsx';
+import { estadoInicialClausula3, parcelamentoAtivo } from './contratoHonorariosClausula3.js';
 
 const hojeIso = () => new Date().toISOString().split('T')[0];
 
@@ -41,6 +66,7 @@ const hojeBR = () => {
 const MODO_IA = 'ia';
 const MODO_MANUAL = 'manual';
 const MODO_PROCURACAO = 'procuracao';
+const MODO_CONTRATO = 'contrato';
 const MODO_MODELO = 'modelo';
 const MODO_ARQUIVO = 'arquivo';
 const MODO_EXECUCAO = 'execucao';
@@ -134,6 +160,17 @@ function validarModoIA(form) {
   return errors;
 }
 
+function sugerirObjetoContrato(dadosProcesso) {
+  if (!dadosProcesso) return '';
+  const emFaceDe =
+    dadosProcesso.nomeOutorgante?.trim() === dadosProcesso.nomeAutor?.trim()
+      ? dadosProcesso.nomeReu?.trim()
+      : dadosProcesso.nomeAutor?.trim();
+  const tipo = (dadosProcesso.tipoPeca || 'INDENIZAÇÃO POR DANO MORAL E MATERIAL').trim().toUpperCase();
+  const pedido = tipo.startsWith('EM ') ? tipo : `EM PEDIDO DE ${tipo}`;
+  return emFaceDe ? `${pedido}, em face de ${emFaceDe.toUpperCase()}` : `${pedido}, em face de XXXXXXXXXXXX`;
+}
+
 function validarModoManual(form) {
   const errors = {};
   const enderecamento = resolveEnderecamento(form);
@@ -158,6 +195,7 @@ export function GerarDocumento() {
   const [modo, setModo] = useState(() => (vindoDoProcesso ? MODO_IA : MODO_IA));
   const modoIA = modo === MODO_IA;
   const modoProcuracao = modo === MODO_PROCURACAO;
+  const modoContrato = modo === MODO_CONTRATO;
   const modoModelo = modo === MODO_MODELO;
   const modoArquivo = modo === MODO_ARQUIVO;
   const modoExecucao = modo === MODO_EXECUCAO;
@@ -174,6 +212,23 @@ export function GerarDocumento() {
     cidadeEstado: dadosProcesso?.cidadeEstado || CIDADE_ESTADO_PADRAO,
     nomeOutorgante: dadosProcesso?.nomeOutorgante || '',
   }));
+  const [formContrato, setFormContrato] = useState(() => ({
+    modelo: MODELO_CONTRATO_HONORARIOS,
+    pessoaId: dadosProcesso?.pessoaIdOutorgante ? String(dadosProcesso.pessoaIdOutorgante) : '',
+    cidadeEstado: dadosProcesso?.cidadeEstado || CIDADE_ESTADO_PADRAO,
+    nomeContratante: dadosProcesso?.nomeOutorgante || '',
+    objetoContrato: sugerirObjetoContrato(dadosProcesso),
+    clausula3Remuneracao: CLAUSULA_3_REMUNERACAO_PADRAO,
+    clausula3Form: estadoInicialClausula3(),
+    clausula3Dados: null,
+    clausula3Configurada: false,
+    formaAssinatura: FORMA_ASSINATURA_DUAS_VIAS,
+    nomeLocador: dadosProcesso?.nomeLocador || '',
+    nomeLocatarios: dadosProcesso?.nomeLocatarios || '',
+  }));
+  const contratoHonorarios = formContrato.modelo === MODELO_CONTRATO_HONORARIOS;
+  const contratoAluguel = formContrato.modelo === MODELO_CONTRATO_ALUGUEL;
+  const [clausula3ModalOpen, setClausula3ModalOpen] = useState(false);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [loadingPreview, setLoadingPreview] = useState(false);
@@ -214,6 +269,20 @@ export function GerarDocumento() {
       pessoaId: '',
       cidadeEstado: CIDADE_ESTADO_PADRAO,
       nomeOutorgante: '',
+    });
+    setFormContrato({
+      modelo: MODELO_CONTRATO_HONORARIOS,
+      pessoaId: '',
+      cidadeEstado: CIDADE_ESTADO_PADRAO,
+      nomeContratante: '',
+      objetoContrato: '',
+      clausula3Remuneracao: CLAUSULA_3_REMUNERACAO_PADRAO,
+      clausula3Form: estadoInicialClausula3(),
+      clausula3Dados: null,
+      clausula3Configurada: false,
+      formaAssinatura: FORMA_ASSINATURA_DUAS_VIAS,
+      nomeLocador: '',
+      nomeLocatarios: '',
     });
     setErrors({});
     setMensagemErro('');
@@ -321,10 +390,83 @@ export function GerarDocumento() {
     }
   };
 
+  const handleGerarContrato = async () => {
+    setMensagemErro('');
+    setErrors({});
+
+    if (contratoAluguel) {
+      if (!processoApiId) {
+        setMensagemErro(
+          'Abra esta tela a partir de um processo para gerar o contrato de aluguel (locador e locatário vêm das partes do processo).',
+        );
+        return;
+      }
+      setLoading(true);
+      try {
+        const blob = await gerarContratoAluguel({
+          processoId: processoApiId,
+          cidadeEstado: formContrato.cidadeEstado?.trim() || CIDADE_ESTADO_PADRAO,
+          data: hojeIso(),
+          codigoCliente: codigoClienteProcesso,
+          numeroInterno: numeroInternoProcesso,
+          formaAssinatura: formContrato.formaAssinatura,
+        });
+        downloadPdfBlob(
+          blob,
+          nomeArquivoContratoPdf(formContrato.nomeLocador || 'locador', 'aluguel'),
+        );
+      } catch (e) {
+        setMensagemErro(e?.message || 'Falha ao gerar contrato de aluguel.');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    const pessoaId = Number(formContrato.pessoaId);
+    if (!Number.isFinite(pessoaId) || pessoaId <= 0) {
+      setErrors({ pessoaIdContrato: 'Informe o ID da pessoa (contratante).' });
+      return;
+    }
+    setLoading(true);
+    try {
+      const blob = await gerarContratoHonorarios({
+        pessoaId,
+        cidadeEstado: formContrato.cidadeEstado?.trim() || CIDADE_ESTADO_PADRAO,
+        data: hojeIso(),
+        processoId: processoApiId,
+        codigoCliente: codigoClienteProcesso,
+        numeroInterno: numeroInternoProcesso,
+        objetoContrato: formContrato.objetoContrato,
+        clausula3Remuneracao: formContrato.clausula3Configurada ? undefined : formContrato.clausula3Remuneracao,
+        clausula3Dados: formContrato.clausula3Configurada ? formContrato.clausula3Dados : undefined,
+        persistirDados: formContrato.clausula3Configurada,
+        formaAssinatura: formContrato.formaAssinatura,
+      });
+      downloadPdfBlob(
+        blob,
+        nomeArquivoContratoPdf(formContrato.nomeContratante, 'honorarios'),
+      );
+      if (formContrato.clausula3Configurada && parcelamentoAtivo(formContrato.clausula3Form)) {
+        setMensagemSucesso('Contrato gerado. Recebíveis de honorários criados no financeiro do processo.');
+      } else if (formContrato.clausula3Configurada) {
+        setMensagemSucesso('Contrato gerado e dados de remuneração registrados para relatório.');
+      }
+    } catch (e) {
+      setMensagemErro(e?.message || 'Falha ao gerar contrato de honorários.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleGerarPdf = async () => {
     setMensagemErro('');
     if (modoProcuracao) {
       await handleGerarProcuracao();
+      return;
+    }
+    if (modoContrato) {
+      await handleGerarContrato();
       return;
     }
     if (modoIA) {
@@ -498,6 +640,24 @@ export function GerarDocumento() {
           >
             <FileSignature className="h-4 w-4" aria-hidden />
             Procuração
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={modoContrato}
+            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${
+              modoContrato
+                ? 'bg-white text-cyan-700 shadow-sm dark:bg-slate-900 dark:text-cyan-300'
+                : 'text-slate-600 hover:text-slate-900 dark:text-slate-400'
+            }`}
+            onClick={() => {
+              setModo(MODO_CONTRATO);
+              setErrors({});
+              setMensagemErro('');
+            }}
+          >
+            <ScrollText className="h-4 w-4" aria-hidden />
+            Contrato
           </button>
           <button
             type="button"
@@ -759,6 +919,202 @@ export function GerarDocumento() {
               </label>
             </div>
           </CollapsibleSection>
+        ) : modoContrato ? (
+          <CollapsibleSection title="Contrato" defaultOpen>
+            <div className="mb-4 grid gap-4">
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">
+                  Modelo de contrato
+                </span>
+                <select
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900"
+                  value={formContrato.modelo}
+                  onChange={(e) => {
+                    setFormContrato((f) => ({ ...f, modelo: e.target.value }));
+                    setErrors({});
+                    setMensagemErro('');
+                  }}
+                >
+                  {MODELOS_CONTRATO.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                {MODELOS_CONTRATO.find((m) => m.id === formContrato.modelo)?.descricao}
+              </p>
+              <fieldset className="block text-sm">
+                <legend className="mb-2 font-medium text-slate-700 dark:text-slate-300">
+                  Forma de assinatura
+                </legend>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {FORMAS_ASSINATURA_CONTRATO.map((forma) => (
+                    <label
+                      key={forma.id}
+                      className={`flex cursor-pointer gap-2 rounded-lg border px-3 py-2.5 transition ${
+                        formContrato.formaAssinatura === forma.id
+                          ? 'border-cyan-500 bg-cyan-50 dark:border-cyan-400 dark:bg-cyan-950/30'
+                          : 'border-slate-200 bg-white dark:border-slate-600 dark:bg-slate-900'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="formaAssinaturaContrato"
+                        className="mt-0.5"
+                        checked={formContrato.formaAssinatura === forma.id}
+                        onChange={() => {
+                          setFormContrato((f) => ({ ...f, formaAssinatura: forma.id }));
+                          setMensagemErro('');
+                        }}
+                      />
+                      <span>
+                        <span className="block font-medium text-slate-800 dark:text-slate-100">
+                          {forma.label}
+                        </span>
+                        <span className="block text-xs text-slate-500 dark:text-slate-400">
+                          {forma.descricao}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            </div>
+
+            {contratoHonorarios ? (
+              <>
+                <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
+                  Cláusulas fixas do escritório. Informe o contratante, o objeto (Cláusula 2ª) e a remuneração
+                  (Cláusula 3ª).
+                </p>
+                <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm dark:border-slate-700 dark:bg-slate-800/60">
+                  <span className="font-medium text-slate-700 dark:text-slate-200">Contratado (fixo): </span>
+                  <span className="text-slate-600 dark:text-slate-300">{CONTRATADO_HONORARIOS_NOME}</span>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">
+                      ID da pessoa (contratante) *
+                    </span>
+                    <input
+                      type="number"
+                      min="1"
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900"
+                      value={formContrato.pessoaId}
+                      onChange={(e) => {
+                        setFormContrato((f) => ({ ...f, pessoaId: e.target.value }));
+                        setErrors({});
+                        setMensagemErro('');
+                      }}
+                    />
+                    {errors.pessoaIdContrato ? (
+                      <span className="mt-1 text-xs text-red-600">{errors.pessoaIdContrato}</span>
+                    ) : null}
+                  </label>
+                  <label className="block text-sm sm:col-span-2">
+                    <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">
+                      Objeto do contrato (Cláusula 2ª)
+                    </span>
+                    <textarea
+                      rows={3}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900"
+                      placeholder="EM PEDIDO DE INDENIZAÇÃO POR DANO MORAL E MATERIAL, em face de XXXXXXXXXXXX"
+                      value={formContrato.objetoContrato}
+                      onChange={(e) => {
+                        setFormContrato((f) => ({ ...f, objetoContrato: e.target.value }));
+                        setMensagemErro('');
+                      }}
+                    />
+                  </label>
+                  <div className="block text-sm sm:col-span-2">
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-medium text-slate-700 dark:text-slate-300">
+                        Remuneração (Cláusula 3ª)
+                      </span>
+                      <button
+                        type="button"
+                        className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-800 hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200"
+                        onClick={() => setClausula3ModalOpen(true)}
+                      >
+                        Configurar remuneração…
+                      </button>
+                    </div>
+                    <textarea
+                      rows={4}
+                      readOnly={formContrato.clausula3Configurada}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900"
+                      value={formContrato.clausula3Remuneracao}
+                      onChange={(e) => {
+                        if (formContrato.clausula3Configurada) return;
+                        setFormContrato((f) => ({
+                          ...f,
+                          clausula3Remuneracao: e.target.value,
+                          clausula3Configurada: false,
+                          clausula3Dados: null,
+                        }));
+                        setMensagemErro('');
+                      }}
+                    />
+                    {formContrato.clausula3Configurada ? (
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        Texto estruturado
+                        {parcelamentoAtivo(formContrato.clausula3Form)
+                          ? ' — recebíveis serão gerados ao emitir o contrato.'
+                          : ' — dados salvos para relatório ao emitir o contrato.'}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        Use o botão acima para percentuais, valores por extenso e parcelamento no financeiro.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                {!processoApiId ? (
+                  <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
+                    Abra esta tela pelo botão <strong>Gerar Documento</strong> dentro de um processo.
+                    O locador e o locatário são montados a partir das partes autora e oposta do processo.
+                  </div>
+                ) : (
+                  <div className="mb-4 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm dark:border-slate-700 dark:bg-slate-800/60">
+                    <div>
+                      <span className="font-medium text-slate-700 dark:text-slate-200">Locador (autor): </span>
+                      <span className="text-slate-600 dark:text-slate-300">
+                        {formContrato.nomeLocador || '—'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="font-medium text-slate-700 dark:text-slate-200">
+                        Locatário (parte oposta):{' '}
+                      </span>
+                      <span className="text-slate-600 dark:text-slate-300">
+                        {formContrato.nomeLocatarios || '—'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+                <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
+                  Modelo em desenvolvimento — gera PDF esqueleto com preâmbulo e assinaturas locador/locatário.
+                </p>
+              </>
+            )}
+
+            <label className="mt-4 block text-sm sm:col-span-2">
+              <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">
+                Local e data (cidade/estado)
+              </span>
+              <input
+                type="text"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900"
+                value={formContrato.cidadeEstado}
+                onChange={(e) => setFormContrato((f) => ({ ...f, cidadeEstado: e.target.value }))}
+              />
+            </label>
+          </CollapsibleSection>
         ) : modoIA ? (
           <>
             <CollapsibleSection title="1. Dados do processo" defaultOpen>
@@ -799,12 +1155,18 @@ export function GerarDocumento() {
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                 {modoProcuracao
                   ? 'Gerando procuração…'
-                  : modoIA
-                    ? 'Gerando petição com IA…'
-                    : 'Gerando PDF…'}
+                  : modoContrato
+                    ? 'Gerando contrato…'
+                    : modoIA
+                      ? 'Gerando petição com IA…'
+                      : 'Gerando PDF…'}
               </>
+            ) : modoProcuracao ? (
+              'Gerar Procuração'
+            ) : modoContrato ? (
+              `Gerar ${rotuloModeloContrato(formContrato.modelo)}`
             ) : (
-              modoProcuracao ? 'Gerar Procuração' : 'Gerar PDF'
+              'Gerar PDF'
             )}
           </button>
 
@@ -843,6 +1205,23 @@ export function GerarDocumento() {
         onClose={() => setPreviewOpen(false)}
         onPreviewChange={setPreviewData}
         onGerarPdf={() => void handleGerarPdfFromPreview()}
+      />
+
+      <ContratoHonorariosClausula3Modal
+        open={clausula3ModalOpen && contratoHonorarios}
+        onClose={() => setClausula3ModalOpen(false)}
+        initialForm={formContrato.clausula3Form}
+        processoApiId={processoApiId}
+        onApply={({ form, dados, texto }) => {
+          setFormContrato((f) => ({
+            ...f,
+            clausula3Form: form,
+            clausula3Dados: dados,
+            clausula3Remuneracao: texto,
+            clausula3Configurada: true,
+          }));
+          setMensagemErro('');
+        }}
       />
     </div>
   );

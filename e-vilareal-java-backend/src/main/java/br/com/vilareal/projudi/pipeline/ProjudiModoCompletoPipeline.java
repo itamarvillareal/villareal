@@ -69,7 +69,7 @@ public class ProjudiModoCompletoPipeline {
         int arquivosBaixados = 0;
         int erros = 0;
         List<ProjudiTeorService.MovimentacaoProjudi> movs =
-                movimentacoesListagemService.listarComFallbackReduzido(credencialId, numeroCnj);
+                movimentacoesListagemService.listarMovimentacoesComFallbackReduzido(credencialId, numeroCnj);
 
         movimentacoesLidas = movs.size();
 

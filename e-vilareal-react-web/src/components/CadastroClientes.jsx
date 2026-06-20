@@ -1092,12 +1092,6 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   }
 
   function handleIncluirNovoProcesso() {
-    if (edicaoDesabilitada) {
-      window.alert(
-        'Desmarque "Edição Desabilitada" para incluir um novo processo, ou use o fluxo administrativo adequado.'
-      );
-      return;
-    }
     const codN = Number(normalizarCodigoCliente(codigo));
     if (!Number.isFinite(codN) || codN < 1) {
       window.alert('Informe um código de cliente válido antes de incluir um processo.');
@@ -2032,13 +2026,8 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                   <button
                     type="button"
                     onClick={handleIncluirNovoProcesso}
-                    disabled={edicaoDesabilitada}
                     className={`${btnPrimarioForte} min-h-11 w-full`}
-                    title={
-                      edicaoDesabilitada
-                        ? 'Habilite a edição para incluir um novo processo'
-                        : 'Inclui na lista e abre a tela Processos para este número de processo'
-                    }
+                    title="Inclui na lista e abre a tela Processos para este número de processo"
                   >
                     <PlusCircle className="h-5 w-5 shrink-0" aria-hidden />
                     Incluir processo
@@ -2065,13 +2054,8 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
               <button
                 type="button"
                 onClick={handleIncluirNovoProcesso}
-                disabled={edicaoDesabilitada}
                 className={btnPrimarioForte}
-                title={
-                  edicaoDesabilitada
-                    ? 'Habilite a edição para incluir um novo processo'
-                    : 'Inclui na lista e abre a tela Processos para este número de processo'
-                }
+                title="Inclui na lista e abre a tela Processos para este número de processo"
               >
                 <PlusCircle className="w-4 h-4 shrink-0" aria-hidden />
                 Incluir processo

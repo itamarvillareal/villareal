@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org" lang="pt-BR">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Contrato de Honorários Advocatícios</title>
+    <th:block th:replace="~{documentos/fragments-peca :: estiloContrato}"/>
+</head>
+<body>
+
+<th:block th:replace="~{documentos/fragments-peca :: cabecalho}"/>
+
+<th:block th:replace="~{documentos/fragments-peca :: rodape}"/>
+
+<div class="corpo-documento">
+    <p class="contrato-texto contrato-preambulo" th:utext="${preambuloHtml}">
+        Pelo presente instrumento particular...
+    </p>
+
+    <div class="contrato-texto contrato-clausula"
+         th:each="clausula : ${clausulas}"
+         th:utext="${clausula}">
+        Cláusula...
+    </div>
+
+    <p class="contrato-texto contrato-fecho" th:utext="${fechoHtml}">
+        Para firmar e como prova...
+    </p>
+
+    <p class="contrato-data" th:text="${localData}">Anápolis, estado de Goiás, data.</p>
+
+    <table class="contrato-assinaturas">
+        <tr>
+            <td>
+                <div class="linha"></div>
+                <p class="nome" th:text="${nomeContratante}">NOME DO CONTRATANTE</p>
+            </td>
+            <td>
+                <div class="linha"></div>
+                <p class="nome" th:text="${nomeContratado}">NOME DO CONTRATADO</p>
+            </td>
+        </tr>
+        <tr>
+            <td>
+                <div class="linha"></div>
+                <p class="nome rotulo-testemunha">Testemunha</p>
+            </td>
+            <td>
+                <div class="linha"></div>
+                <p class="nome rotulo-testemunha">Testemunha</p>
+            </td>
+        </tr>
+    </table>
+</div>
+
+</body>
+</html>

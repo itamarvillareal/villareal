@@ -91,7 +91,7 @@ class MonitoramentoMovimentacoesServiceTest {
 
         assertThat(r.getStatus()).isEqualTo(StatusExecucao.PULADA_OCUPADO);
         assertThat(r.getTotalListadas()).isZero();
-        verify(listagemService, org.mockito.Mockito.never()).listarComFallbackReduzido(any(), any());
+        verify(listagemService, org.mockito.Mockito.never()).listarMovimentacoesComFallbackReduzido(any(), any());
     }
 
     @Test
@@ -105,7 +105,7 @@ class MonitoramentoMovimentacoesServiceTest {
         });
         when(movimentacaoMonitoradaRepository.countByProcessoId(1076L)).thenReturn(0L);
         when(movimentacaoMonitoradaRepository.findByProcessoId(1076L)).thenReturn(List.of());
-        when(listagemService.listarComFallbackReduzido(1L, processo.getNumeroCnj()))
+        when(listagemService.listarMovimentacoesComFallbackReduzido(1L, processo.getNumeroCnj()))
                 .thenReturn(List.of(mov("1", "481112537"), mov("2", "481112538")));
         when(consultaProcessoExecucaoRepository.save(any())).thenAnswer(inv -> {
             ConsultaProcessoExecucaoEntity e = inv.getArgument(0);
@@ -137,7 +137,7 @@ class MonitoramentoMovimentacoesServiceTest {
         ProcessoEntity processo = processo(1076L);
         when(movimentacaoMonitoradaRepository.countByProcessoId(1076L)).thenReturn(1L);
         when(movimentacaoMonitoradaRepository.findByProcessoId(1076L)).thenReturn(List.of());
-        when(listagemService.listarComFallbackReduzido(1L, processo.getNumeroCnj()))
+        when(listagemService.listarMovimentacoesComFallbackReduzido(1L, processo.getNumeroCnj()))
                 .thenReturn(List.of(mov("1", "481112537")));
         when(consultaProcessoExecucaoRepository.save(any())).thenAnswer(inv -> {
             ConsultaProcessoExecucaoEntity e = inv.getArgument(0);
@@ -170,7 +170,7 @@ class MonitoramentoMovimentacoesServiceTest {
         });
         when(movimentacaoMonitoradaRepository.countByProcessoId(1076L)).thenReturn(1L);
         when(movimentacaoMonitoradaRepository.findByProcessoId(1076L)).thenReturn(List.of(existente));
-        when(listagemService.listarComFallbackReduzido(1L, processo.getNumeroCnj()))
+        when(listagemService.listarMovimentacoesComFallbackReduzido(1L, processo.getNumeroCnj()))
                 .thenReturn(List.of(mov("1", "481112537"), mov("2", "481112538")));
         when(consultaProcessoExecucaoRepository.save(any())).thenAnswer(inv -> {
             ConsultaProcessoExecucaoEntity e = inv.getArgument(0);
@@ -207,7 +207,7 @@ class MonitoramentoMovimentacoesServiceTest {
         ProcessoEntity processo = processo(1076L);
         when(movimentacaoMonitoradaRepository.countByProcessoId(1076L)).thenReturn(1L);
         when(movimentacaoMonitoradaRepository.findByProcessoId(1076L)).thenReturn(List.of());
-        when(listagemService.listarComFallbackReduzido(1L, processo.getNumeroCnj()))
+        when(listagemService.listarMovimentacoesComFallbackReduzido(1L, processo.getNumeroCnj()))
                 .thenReturn(List.of(mov("2", "481112538")));
         when(notificacaoMovimentacaoService.notificarNovidade(eq(processo), any()))
                 .thenReturn(NotificacaoResultado.falha("a@b.com", "gmail down"));
@@ -232,7 +232,7 @@ class MonitoramentoMovimentacoesServiceTest {
         ProcessoEntity processo = processo(1076L);
         when(movimentacaoMonitoradaRepository.countByProcessoId(1076L)).thenReturn(1L);
         when(movimentacaoMonitoradaRepository.findByProcessoId(1076L)).thenReturn(List.of());
-        when(listagemService.listarComFallbackReduzido(1L, processo.getNumeroCnj()))
+        when(listagemService.listarMovimentacoesComFallbackReduzido(1L, processo.getNumeroCnj()))
                 .thenReturn(List.of(mov("2", "481112538")));
         when(notificacaoMovimentacaoService.notificarNovidade(eq(processo), any()))
                 .thenReturn(NotificacaoResultado.semDestinatario());
@@ -260,7 +260,7 @@ class MonitoramentoMovimentacoesServiceTest {
         when(movimentacaoMonitoradaRepository.countByProcessoId(1076L)).thenReturn(2L);
         when(movimentacaoMonitoradaRepository.findByProcessoId(1076L))
                 .thenReturn(List.of(existente, existente2));
-        when(listagemService.listarComFallbackReduzido(1L, processo.getNumeroCnj()))
+        when(listagemService.listarMovimentacoesComFallbackReduzido(1L, processo.getNumeroCnj()))
                 .thenReturn(List.of(mov("1", "481112537"), mov("2", "481112538")));
         when(consultaProcessoExecucaoRepository.save(any())).thenAnswer(inv -> {
             ConsultaProcessoExecucaoEntity e = inv.getArgument(0);

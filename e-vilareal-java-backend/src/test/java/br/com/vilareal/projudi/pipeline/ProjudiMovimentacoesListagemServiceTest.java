@@ -2,6 +2,7 @@ package br.com.vilareal.projudi.pipeline;
 
 import br.com.vilareal.projudi.ProjudiNumeroReduzidoUtil;
 import br.com.vilareal.projudi.ProjudiTeorService;
+import br.com.vilareal.projudi.ProjudiTeorService.ConsultaProcessoProjudi;
 import br.com.vilareal.projudi.ProjudiTeorService.MovimentacaoProjudi;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -37,28 +39,33 @@ class ProjudiMovimentacoesListagemServiceTest {
     @Test
     void reduzidoComResultado_naoChamaCnjCompleto() {
         List<MovimentacaoProjudi> doReduzido = List.of(mov("1"));
-        when(teorService.listarMovimentacoes(CREDENCIAL_ID, REDUZIDO)).thenReturn(doReduzido);
+        when(teorService.consultarProcesso(CREDENCIAL_ID, REDUZIDO))
+                .thenReturn(new ConsultaProcessoProjudi(doReduzido, LocalDate.of(2024, 3, 20)));
 
-        List<MovimentacaoProjudi> resultado =
+        ProjudiMovimentacoesListagemService.ListagemMovimentacoes resultado =
                 listagemService.listarComFallbackReduzido(CREDENCIAL_ID, CNJ);
 
-        assertThat(resultado).isSameAs(doReduzido);
-        verify(teorService).listarMovimentacoes(CREDENCIAL_ID, REDUZIDO);
-        verify(teorService, never()).listarMovimentacoes(eq(CREDENCIAL_ID), eq(CNJ));
+        assertThat(resultado.movimentacoes()).isSameAs(doReduzido);
+        assertThat(resultado.dataDistribuicao()).isEqualTo(LocalDate.of(2024, 3, 20));
+        verify(teorService).consultarProcesso(CREDENCIAL_ID, REDUZIDO);
+        verify(teorService, never()).consultarProcesso(eq(CREDENCIAL_ID), eq(CNJ));
     }
 
     @Test
     void reduzidoVazio_reduzidoDiferenteDoCnj_chamaCompleto() {
         List<MovimentacaoProjudi> doCompleto = List.of(mov("26"), mov("25"));
-        when(teorService.listarMovimentacoes(CREDENCIAL_ID, REDUZIDO)).thenReturn(List.of());
-        when(teorService.listarMovimentacoes(CREDENCIAL_ID, CNJ)).thenReturn(doCompleto);
+        when(teorService.consultarProcesso(CREDENCIAL_ID, REDUZIDO))
+                .thenReturn(new ConsultaProcessoProjudi(List.of(), LocalDate.of(2024, 1, 1)));
+        when(teorService.consultarProcesso(CREDENCIAL_ID, CNJ))
+                .thenReturn(new ConsultaProcessoProjudi(doCompleto, LocalDate.of(2024, 2, 2)));
 
-        List<MovimentacaoProjudi> resultado =
+        ProjudiMovimentacoesListagemService.ListagemMovimentacoes resultado =
                 listagemService.listarComFallbackReduzido(CREDENCIAL_ID, CNJ);
 
-        assertThat(resultado).isSameAs(doCompleto);
-        verify(teorService).listarMovimentacoes(CREDENCIAL_ID, REDUZIDO);
-        verify(teorService).listarMovimentacoes(CREDENCIAL_ID, CNJ);
+        assertThat(resultado.movimentacoes()).isSameAs(doCompleto);
+        assertThat(resultado.dataDistribuicao()).isEqualTo(LocalDate.of(2024, 2, 2));
+        verify(teorService).consultarProcesso(CREDENCIAL_ID, REDUZIDO);
+        verify(teorService).consultarProcesso(CREDENCIAL_ID, CNJ);
     }
 
     @Test
@@ -66,18 +73,19 @@ class ProjudiMovimentacoesListagemServiceTest {
         String cnjCurto = "5717034.38";
         assertThat(ProjudiNumeroReduzidoUtil.cnjParaNumeroReduzido(cnjCurto)).isEqualTo(cnjCurto);
 
-        when(teorService.listarMovimentacoes(CREDENCIAL_ID, cnjCurto)).thenReturn(List.of());
+        when(teorService.consultarProcesso(CREDENCIAL_ID, cnjCurto))
+                .thenReturn(new ConsultaProcessoProjudi(List.of(), null));
 
-        List<MovimentacaoProjudi> resultado =
+        ProjudiMovimentacoesListagemService.ListagemMovimentacoes resultado =
                 listagemService.listarComFallbackReduzido(CREDENCIAL_ID, cnjCurto);
 
-        assertThat(resultado).isEmpty();
-        verify(teorService).listarMovimentacoes(CREDENCIAL_ID, cnjCurto);
-        verify(teorService, never()).listarMovimentacoes(eq(CREDENCIAL_ID), eq(CNJ));
+        assertThat(resultado.movimentacoes()).isEmpty();
+        verify(teorService).consultarProcesso(CREDENCIAL_ID, cnjCurto);
+        verify(teorService, never()).consultarProcesso(eq(CREDENCIAL_ID), eq(CNJ));
     }
 
     private static MovimentacaoProjudi mov(String numero) {
         return new MovimentacaoProjudi(
-                numero, "T", "D", "01/01/2026 10:00:00", "u", "c", "i", "tok", true);
+                numero, "", "", "", "", "", "", null, false);
     }
 }

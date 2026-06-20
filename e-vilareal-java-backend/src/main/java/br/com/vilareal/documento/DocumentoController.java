@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -26,6 +27,9 @@ public class DocumentoController {
     private final DocumentoPdfService pdfService;
     private final PeticaoAiService peticaoAiService;
     private final ProcuracaoService procuracaoService;
+    private final ContratoHonorariosService contratoHonorariosService;
+    private final ContratoHonorariosPersistenciaService contratoHonorariosPersistenciaService;
+    private final ContratoAluguelService contratoAluguelService;
     private final GoogleDriveService googleDriveService;
     private final DocumentoDrivePastaService documentoDrivePastaService;
     private final DocumentoArquivoImportacaoService arquivoImportacaoService;
@@ -37,6 +41,9 @@ public class DocumentoController {
             DocumentoPdfService pdfService,
             PeticaoAiService peticaoAiService,
             ProcuracaoService procuracaoService,
+            ContratoHonorariosService contratoHonorariosService,
+            ContratoHonorariosPersistenciaService contratoHonorariosPersistenciaService,
+            ContratoAluguelService contratoAluguelService,
             GoogleDriveService googleDriveService,
             DocumentoDrivePastaService documentoDrivePastaService,
             DocumentoArquivoImportacaoService arquivoImportacaoService,
@@ -46,6 +53,9 @@ public class DocumentoController {
         this.pdfService = pdfService;
         this.peticaoAiService = peticaoAiService;
         this.procuracaoService = procuracaoService;
+        this.contratoHonorariosService = contratoHonorariosService;
+        this.contratoHonorariosPersistenciaService = contratoHonorariosPersistenciaService;
+        this.contratoAluguelService = contratoAluguelService;
         this.googleDriveService = googleDriveService;
         this.documentoDrivePastaService = documentoDrivePastaService;
         this.arquivoImportacaoService = arquivoImportacaoService;
@@ -244,6 +254,53 @@ public class DocumentoController {
                 request.numeroInterno(),
                 request.pessoaId(),
                 TipoDocumento.PROCURACAO);
+        return respostaPdf(nomeArquivo, pdf);
+    }
+
+    @PostMapping("/contrato-honorarios/clausula3-texto")
+    public ContratoHonorariosClausula3TextoResponse montarClausula3Texto(
+            @RequestBody ContratoHonorariosClausula3Dados dados) {
+        return new ContratoHonorariosClausula3TextoResponse(contratoHonorariosService.montarClausula3Texto(dados));
+    }
+
+    @GetMapping("/contratos-honorarios")
+    public List<ContratoHonorariosResumoResponse> listarContratosHonorarios(
+            @RequestParam(required = false) Long processoId,
+            @RequestParam(required = false) Long pessoaId,
+            @RequestParam(required = false) LocalDate de,
+            @RequestParam(required = false) LocalDate ate) {
+        return contratoHonorariosPersistenciaService.listar(processoId, pessoaId, de, ate);
+    }
+
+    @PostMapping("/contrato-honorarios")
+    public ResponseEntity<byte[]> gerarContratoHonorarios(@RequestBody ContratoHonorariosRequest request) {
+        byte[] pdf = contratoHonorariosService.gerarContrato(request);
+        LocalDate data = request.data() != null ? request.data() : LocalDate.now();
+        String nomePessoa = documentoDrivePastaService.resolverNomePessoa(request.pessoaId());
+        String nomeArquivo = DocumentoDrivePastaService.formatarNomeArquivoContrato(nomePessoa, data);
+        salvarPdfNoDriveAsync(
+                pdf,
+                nomeArquivo,
+                request.codigoCliente(),
+                request.numeroInterno(),
+                request.pessoaId(),
+                TipoDocumento.CONTRATO);
+        return respostaPdf(nomeArquivo, pdf);
+    }
+
+    @PostMapping("/contrato-aluguel")
+    public ResponseEntity<byte[]> gerarContratoAluguel(@RequestBody ContratoAluguelRequest request) {
+        byte[] pdf = contratoAluguelService.gerarContrato(request);
+        LocalDate data = request.data() != null ? request.data() : LocalDate.now();
+        String nomeArquivo = DocumentoDrivePastaService.formatarNomeArquivoContrato(
+                "Contrato Aluguel", "Processo " + request.processoId(), data);
+        salvarPdfNoDriveAsync(
+                pdf,
+                nomeArquivo,
+                request.codigoCliente(),
+                request.numeroInterno(),
+                null,
+                TipoDocumento.CONTRATO);
         return respostaPdf(nomeArquivo, pdf);
     }
 

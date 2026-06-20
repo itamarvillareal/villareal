@@ -25,7 +25,7 @@ class ProjudiMovimentacoesAcervoIntegralEstadoTest {
     @Test
     void indicaAcervoIntegralCompleto_quandoTemMaisFalseETotaisBatem() {
         var resultado = new ProjudiOrquestradorService.ResultadoSomenteDriveProcesso(
-                "cnj", 0, 5, 5, 5, false, 10L, null, List.of(), null);
+                "cnj", 0, 5, 5, 5, false, 10L, null, List.of(), null, null);
         assertThat(ProjudiMovimentacoesAcervoIntegralEstado.indicaAcervoIntegralCompleto(resultado))
                 .isTrue();
     }
@@ -33,12 +33,12 @@ class ProjudiMovimentacoesAcervoIntegralEstadoTest {
     @Test
     void indicaAcervoIntegralCompleto_falseQuandoTemMaisOuErro() {
         var comMais = new ProjudiOrquestradorService.ResultadoSomenteDriveProcesso(
-                "cnj", 1, 3, 5, 4, true, 10L, null, List.of(), null);
+                "cnj", 1, 3, 5, 4, true, 10L, null, List.of(), null, null);
         assertThat(ProjudiMovimentacoesAcervoIntegralEstado.indicaAcervoIntegralCompleto(comMais))
                 .isFalse();
 
         var comErro = new ProjudiOrquestradorService.ResultadoSomenteDriveProcesso(
-                "cnj", 0, 0, 0, 0, false, 10L, "falha", List.of(), null);
+                "cnj", 0, 0, 0, 0, false, 10L, "falha", List.of(), null, null);
         assertThat(ProjudiMovimentacoesAcervoIntegralEstado.indicaAcervoIntegralCompleto(comErro))
                 .isFalse();
     }
