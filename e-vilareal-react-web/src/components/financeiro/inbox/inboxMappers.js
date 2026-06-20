@@ -1,5 +1,6 @@
 import { dataNoPeriodo } from '../shared/periodoFinanceiro.js';
-import { formatDataExtratoColuna, mapApiLancamentoToExtratoRow } from '../extrato/extratoMappers.js';
+import { formatDataBrCompleta } from '../shared/financeiroFormat.js';
+import { mapApiLancamentoToExtratoRow } from '../extrato/extratoMappers.js';
 
 /** Linha mínima de par de compensação ({@link ResumoLancamentoParResponse}). */
 export function mapResumoParToExtratoRow(l) {
@@ -8,7 +9,7 @@ export function mapResumoParToExtratoRow(l) {
   return {
     id: Number(l?.id),
     dataLancamento: dataIso,
-    dataExibicao: formatDataExtratoColuna(dataIso),
+    dataExibicao: formatDataBrCompleta(dataIso),
     descricao: String(l?.descricao ?? ''),
     bancoNome: String(l?.banco ?? l?.bancoNome ?? ''),
     numeroBanco: l?.numeroBanco ?? null,
@@ -21,7 +22,8 @@ export function mapLancamentoInbox(l) {
   if (l?.dataLancamento != null && l?.banco != null && l?.contaContabilNome == null) {
     return mapResumoParToExtratoRow(l);
   }
-  return mapApiLancamentoToExtratoRow(l);
+  const row = mapApiLancamentoToExtratoRow(l);
+  return { ...row, dataExibicao: formatDataBrCompleta(row.dataLancamento) };
 }
 
 export function textoOrigemSugestao(sug) {
