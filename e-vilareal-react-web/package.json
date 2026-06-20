@@ -35,6 +35,11 @@
     "import:extrato-bancos-itau": "node scripts/import-extrato-bancos-planilha.mjs --sheet=Itaú --banco=Itaú --layout=itau-pf --substituir --login=itamar",
     "import:extrato-bancos-todos": "node scripts/import-extrato-bancos-planilha.mjs --todos-bancos --substituir --login=itamar",
     "import:extrato-cartoes-todos": "node scripts/import-extrato-cartoes-planilha.mjs --todos-cartoes --substituir --login=itamar",
+    "import:extrato-cartao:mastercard": "node scripts/import-extrato-cartoes-planilha.mjs --cartao=Mastercard --substituir --login=itamar",
+    "import:extrato-cartao:visa": "node scripts/import-extrato-cartoes-planilha.mjs --cartao=Visa --substituir --login=itamar",
+    "import:extrato-cartao:mastercard-sicoob": "node scripts/import-extrato-cartoes-planilha.mjs --cartao=\"Mastercard Sicoob\" --substituir --login=itamar",
+    "import:extrato-cartao:mastercard-black": "node scripts/import-extrato-cartoes-planilha.mjs --cartao=\"Mastercard Black\" --substituir --login=itamar",
+    "import:extrato-cartao:btg": "node scripts/import-extrato-cartoes-planilha.mjs --cartao=\"BTG Cartão\" --substituir --login=itamar",
     "import:fatura-cartao": "node scripts/import-fatura-cartao.mjs"
   },
   "dependencies": {

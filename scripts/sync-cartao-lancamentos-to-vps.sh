@@ -38,6 +38,7 @@ VPS_CONTAINER="${VPS_CONTAINER:-vilareal-db}"
 DB_NAME="${DB_NAME:-vilareal}"
 DB_USER="${DB_USER:-root}"
 DB_PASS="${DB_PASS:-root}"
+MYSQL_CHARSET="${MYSQL_CHARSET:-utf8mb4}"
 VPS_DB_USER="${VPS_DB_USER:-$DB_USER}"
 VPS_DB_PASS="${VPS_DB_PASS:-$DB_PASS}"
 CARTAO_NOME="${CARTAO_NOME:-}"
@@ -85,11 +86,11 @@ VPS_BACKUP_LANC="/tmp/vilareal-backup-flc-$STAMP.sql"
 VPS_BACKUP_VINC="/tmp/vilareal-backup-fpfv-cartao-$STAMP.sql"
 
 mysql_local() {
-  docker exec "$LOCAL_CONTAINER" mysql -u "$DB_USER" -p"$DB_PASS" -N "$@"
+  docker exec "$LOCAL_CONTAINER" mysql --default-character-set="$MYSQL_CHARSET" -u "$DB_USER" -p"$DB_PASS" -N "$@"
 }
 
 mysql_local_batch() {
-  docker exec "$LOCAL_CONTAINER" mysql -u "$DB_USER" -p"$DB_PASS" -B "$@"
+  docker exec "$LOCAL_CONTAINER" mysql --default-character-set="$MYSQL_CHARSET" -u "$DB_USER" -p"$DB_PASS" -B "$@"
 }
 
 ssh_vps() {
@@ -106,9 +107,9 @@ mysql_vps() {
   local sql="$1" sql_q out rc=0
   sql_q="$(printf '%q' "$sql")"
   if [[ "$VPS_MYSQL_MODE" == docker ]]; then
-    out="$(ssh_vps "docker exec $VPS_CONTAINER mysql -u $VPS_DB_USER -p$VPS_DB_PASS -N -e $sql_q" 2>&1)" || rc=$?
+    out="$(ssh_vps "docker exec $VPS_CONTAINER mysql --default-character-set=$MYSQL_CHARSET -u $VPS_DB_USER -p$VPS_DB_PASS -N -e $sql_q" 2>&1)" || rc=$?
   else
-    out="$(ssh_vps "mysql -u $VPS_DB_USER -p$VPS_DB_PASS -N -e $sql_q" 2>&1)" || rc=$?
+    out="$(ssh_vps "mysql --default-character-set=$MYSQL_CHARSET -u $VPS_DB_USER -p$VPS_DB_PASS -N -e $sql_q" 2>&1)" || rc=$?
   fi
   out="$(printf '%s\n' "$out" | grep -v 'Using a password on the command line interface can be insecure.' || true)"
   out="${out//$'\n'/}"
@@ -127,22 +128,22 @@ mysql_vps_batch() {
   local sql="$1" sql_q
   sql_q="$(printf '%q' "$sql")"
   if [[ "$VPS_MYSQL_MODE" == docker ]]; then
-    ssh_vps "docker exec $VPS_CONTAINER mysql -u $VPS_DB_USER -p$VPS_DB_PASS -B -e $sql_q"
+    ssh_vps "docker exec $VPS_CONTAINER mysql --default-character-set=$MYSQL_CHARSET -u $VPS_DB_USER -p$VPS_DB_PASS -B -e $sql_q"
   else
-    ssh_vps "mysql -u $VPS_DB_USER -p$VPS_DB_PASS -B -e $sql_q"
+    ssh_vps "mysql --default-character-set=$MYSQL_CHARSET -u $VPS_DB_USER -p$VPS_DB_PASS -B -e $sql_q"
   fi
 }
 
 detect_vps_mysql_mode() {
   echo "Detectando MySQL na VPS..."
   if ssh_vps "docker ps --format '{{.Names}}' | grep -qx '$VPS_CONTAINER'" 2>/dev/null; then
-    if ssh_vps "docker exec $VPS_CONTAINER mysql -u $VPS_DB_USER -p$VPS_DB_PASS -N -e 'SELECT 1' $DB_NAME" >/dev/null 2>&1; then
+    if ssh_vps "docker exec $VPS_CONTAINER mysql --default-character-set=$MYSQL_CHARSET -u $VPS_DB_USER -p$VPS_DB_PASS -N -e 'SELECT 1' $DB_NAME" >/dev/null 2>&1; then
       VPS_MYSQL_MODE=docker
       echo "MySQL na VPS: docker exec $VPS_CONTAINER (user=$VPS_DB_USER)"
       return 0
     fi
   fi
-  if ssh_vps "mysql -u $VPS_DB_USER -p$VPS_DB_PASS -N -e 'SELECT 1' $DB_NAME" >/dev/null 2>&1; then
+  if ssh_vps "mysql --default-character-set=$MYSQL_CHARSET -u $VPS_DB_USER -p$VPS_DB_PASS -N -e 'SELECT 1' $DB_NAME" >/dev/null 2>&1; then
     VPS_MYSQL_MODE=host
     echo "MySQL na VPS: cliente no host (user=$VPS_DB_USER)"
     return 0
@@ -311,25 +312,28 @@ fi
 
 echo "Backup na VPS (lançamentos do cartão)..."
 if [[ "$VPS_MYSQL_MODE" == docker ]]; then
-  ssh_vps "docker exec $VPS_CONTAINER mysqldump -u $VPS_DB_USER -p$VPS_DB_PASS --no-create-info --complete-insert --skip-extended-insert \
+  ssh_vps "docker exec $VPS_CONTAINER mysqldump --default-character-set=$MYSQL_CHARSET -u $VPS_DB_USER -p$VPS_DB_PASS --no-create-info --complete-insert --skip-extended-insert \
     --where='cartao_id=$VPS_CARTAO_ID' $DB_NAME financeiro_lancamento_cartao > '$VPS_BACKUP_LANC' 2>/dev/null && echo 'Backup lançamentos: $VPS_BACKUP_LANC'"
 else
-  ssh_vps "mysqldump -u $VPS_DB_USER -p$VPS_DB_PASS --no-create-info --complete-insert --skip-extended-insert \
+  ssh_vps "mysqldump --default-character-set=$MYSQL_CHARSET -u $VPS_DB_USER -p$VPS_DB_PASS --no-create-info --complete-insert --skip-extended-insert \
     --where='cartao_id=$VPS_CARTAO_ID' $DB_NAME financeiro_lancamento_cartao > '$VPS_BACKUP_LANC' 2>/dev/null && echo 'Backup lançamentos: $VPS_BACKUP_LANC'"
 fi
 
 echo "Backup na VPS (vínculos pagamento-fatura do cartão)..."
-VPS_LANC_IDS="$(mysql_vps -e "
-  SELECT GROUP_CONCAT(id) FROM $DB_NAME.financeiro_lancamento_cartao WHERE cartao_id = $VPS_CARTAO_ID;
+VPS_VINC_COUNT="$(mysql_vps -e "
+  SELECT COUNT(*) FROM $DB_NAME.financeiro_pagamento_fatura_vinculo fpfv
+  INNER JOIN $DB_NAME.financeiro_lancamento_cartao flc ON flc.id = fpfv.lancamento_cartao_id
+  WHERE flc.cartao_id = $VPS_CARTAO_ID;
 ")"
-if [[ -n "$VPS_LANC_IDS" && "$VPS_LANC_IDS" != "NULL" ]]; then
+if [[ "$VPS_VINC_COUNT" -gt 0 ]]; then
+  VINC_WHERE="lancamento_cartao_id IN (SELECT id FROM financeiro_lancamento_cartao WHERE cartao_id = $VPS_CARTAO_ID)"
   if [[ "$VPS_MYSQL_MODE" == docker ]]; then
-    ssh_vps "docker exec $VPS_CONTAINER mysqldump -u $VPS_DB_USER -p$VPS_DB_PASS --no-create-info --complete-insert --skip-extended-insert \
-      --where='lancamento_cartao_id IN ($VPS_LANC_IDS)' $DB_NAME financeiro_pagamento_fatura_vinculo \
+    ssh_vps "docker exec $VPS_CONTAINER mysqldump --default-character-set=$MYSQL_CHARSET -u $VPS_DB_USER -p$VPS_DB_PASS --no-create-info --complete-insert --skip-extended-insert \
+      --where='$VINC_WHERE' $DB_NAME financeiro_pagamento_fatura_vinculo \
       > '$VPS_BACKUP_VINC' 2>/dev/null && echo 'Backup vínculos: $VPS_BACKUP_VINC'"
   else
-    ssh_vps "mysqldump -u $VPS_DB_USER -p$VPS_DB_PASS --no-create-info --complete-insert --skip-extended-insert \
-      --where='lancamento_cartao_id IN ($VPS_LANC_IDS)' $DB_NAME financeiro_pagamento_fatura_vinculo \
+    ssh_vps "mysqldump --default-character-set=$MYSQL_CHARSET -u $VPS_DB_USER -p$VPS_DB_PASS --no-create-info --complete-insert --skip-extended-insert \
+      --where='$VINC_WHERE' $DB_NAME financeiro_pagamento_fatura_vinculo \
       > '$VPS_BACKUP_VINC' 2>/dev/null && echo 'Backup vínculos: $VPS_BACKUP_VINC'"
   fi
 else
@@ -339,9 +343,9 @@ fi
 echo "Enviando e aplicando SQL na VPS..."
 scp_vps -q "$APPLY_SQL" "$VPS_HOST:/tmp/cartao-lancamentos-apply.sql"
 if [[ "$VPS_MYSQL_MODE" == docker ]]; then
-  ssh_vps "docker exec -i $VPS_CONTAINER mysql --binary-mode -u $VPS_DB_USER -p$VPS_DB_PASS $DB_NAME < /tmp/cartao-lancamentos-apply.sql && rm -f /tmp/cartao-lancamentos-apply.sql"
+  ssh_vps "docker exec -i $VPS_CONTAINER mysql --default-character-set=$MYSQL_CHARSET --binary-mode -u $VPS_DB_USER -p$VPS_DB_PASS $DB_NAME < /tmp/cartao-lancamentos-apply.sql && rm -f /tmp/cartao-lancamentos-apply.sql"
 else
-  ssh_vps "mysql --binary-mode -u $VPS_DB_USER -p$VPS_DB_PASS $DB_NAME < /tmp/cartao-lancamentos-apply.sql && rm -f /tmp/cartao-lancamentos-apply.sql"
+  ssh_vps "mysql --default-character-set=$MYSQL_CHARSET --binary-mode -u $VPS_DB_USER -p$VPS_DB_PASS $DB_NAME < /tmp/cartao-lancamentos-apply.sql && rm -f /tmp/cartao-lancamentos-apply.sql"
 fi
 
 VPS_AFTER="$(mysql_vps -e "SELECT COUNT(*) FROM $DB_NAME.financeiro_lancamento_cartao WHERE cartao_id = $VPS_CARTAO_ID;")"

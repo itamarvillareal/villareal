@@ -1,7 +1,22 @@
 #!/usr/bin/env node
 /**
- * Importa extratos de cartão (fatura) da planilha para /api/financeiro/cartoes/lancamentos.
+ * Importa extratos de cartão (fatura) da planilha Extratos Bancos para a API.
  * Valor com sinal da fatura (sem inversão). Inversão contábil só no consolidado (front).
+ *
+ * Cartões (aba = nome do cartão):
+ *   Mastercard | Visa | Mastercard Sicoob | Mastercard Black | BTG Cartão
+ *
+ * Uso:
+ *   cd e-vilareal-react-web
+ *   export VILAREAL_IMPORT_SENHA='…'
+ *
+ *   node scripts/import-extrato-cartoes-planilha.mjs --cartao="Visa" --dry-run
+ *   node scripts/import-extrato-cartoes-planilha.mjs --cartao="Mastercard Black" --substituir --login=itamar
+ *   node scripts/import-extrato-cartoes-planilha.mjs --todos-cartoes --substituir --login=itamar
+ *
+ * Atalho (repo root):
+ *   ./scripts/import-cartao-extrato-planilha.sh --cartao "Visa" --dry-run
+ *   ./scripts/import-cartao-extrato-planilha.sh --cartao "Mastercard Black" --substituir
  */
 
 import './lib/load-vilareal-import-env.mjs';
@@ -27,29 +42,63 @@ import {
 } from './lib/resolve-extrato-bancos-planilha-xls.mjs';
 import { anexarCodigoClienteTagDescricaoDetalhada } from '../src/data/financeiroData.js';
 
+function printHelp() {
+  console.log(`Importa extrato de cartão da planilha Extratos Bancos (.xls/.xlsx).
+
+Cartões disponíveis:
+  ${CARTOES_IMPORT_PLANILHA.join(' | ')}
+
+Opções:
+  --cartao=NOME       Cartão alvo (nome da aba; ex.: "Mastercard Black")
+  --todos-cartoes     Importa todos os cartões acima
+  --substituir        Limpa extrato do cartão na API antes de importar (padrão se não --dry-run)
+  --dry-run           Só conta linhas, não chama API
+  --login=USER        Login API (padrão: itamar)
+  --senha=…           Ou VILAREAL_IMPORT_SENHA
+  --base-url=URL      Padrão: VILAREAL_API_BASE ou http://localhost:8080
+  --limite=N          Máximo de linhas por cartão (debug)
+  --concurrency=N     Paralelismo POST (padrão 12)
+  [caminho-planilha]  Opcional; senão busca Extratos Bancos no Dropbox/paths conhecidos
+
+Exemplos:
+  node scripts/import-extrato-cartoes-planilha.mjs --cartao="Visa" --dry-run
+  node scripts/import-extrato-cartoes-planilha.mjs --cartao="Mastercard" --substituir --login=itamar
+  node scripts/import-extrato-cartoes-planilha.mjs --todos-cartoes --substituir --login=itamar
+`);
+}
+
 function parseArgs(argv) {
   const out = {
     file: null,
-    sheet: 'Visa',
-    cartao: 'Visa',
+    sheet: null,
+    cartao: null,
     login: 'itamar',
     senha: process.env.VILAREAL_IMPORT_SENHA || '',
     baseUrl: (process.env.VILAREAL_API_BASE || 'http://localhost:8080').replace(/\/$/, ''),
     dryRun: false,
     substituir: false,
     todosCartoes: false,
+    help: false,
     concurrency: Math.min(
       24,
       Math.max(1, Number(process.env.VILAREAL_IMPORT_CONCURRENCY || 12) || 12),
     ),
     limite: null,
   };
-  for (const a of argv) {
+  for (let i = 0; i < argv.length; i += 1) {
+    const a = argv[i];
     if (a === '--dry-run') out.dryRun = true;
     else if (a === '--substituir') out.substituir = true;
     else if (a === '--todos-cartoes') out.todosCartoes = true;
-    else if (a.startsWith('--sheet=')) out.sheet = a.slice(8).trim();
-    else if (a.startsWith('--cartao=')) out.cartao = a.slice(9).trim();
+    else if (a === '--help' || a === '-h') out.help = true;
+    else if (a === '--cartao' || a === '--cartao-nome') {
+      out.cartao = String(argv[i + 1] || '').trim();
+      i += 1;
+    } else if (a.startsWith('--cartao=')) out.cartao = a.slice(9).trim();
+    else if (a === '--sheet') {
+      out.sheet = String(argv[i + 1] || '').trim();
+      i += 1;
+    } else if (a.startsWith('--sheet=')) out.sheet = a.slice(8).trim();
     else if (a.startsWith('--login=')) out.login = a.slice(8);
     else if (a.startsWith('--senha=')) out.senha = a.slice(8);
     else if (a.startsWith('--concurrency=')) {
@@ -73,6 +122,28 @@ function parseArgs(argv) {
     out.file = resolved;
   }
   if (!argv.includes('--substituir') && !out.dryRun) out.substituir = true;
+  if (!out.todosCartoes) {
+    const nome =
+      out.cartao ||
+      (out.sheet ? NOME_ABA_PARA_CARTAO[out.sheet] || out.sheet : null);
+    if (!nome) {
+      console.error(
+        'Informe o cartão: --cartao "Visa"  ou  --todos-cartoes\n' +
+          `Cartões: ${CARTOES_IMPORT_PLANILHA.join(', ')}\n` +
+          'Use --help para mais opções.',
+      );
+      process.exit(2);
+    }
+    if (!CARTOES_IMPORT_PLANILHA.includes(nome)) {
+      console.error(
+        `Cartão desconhecido: «${nome}»\n` +
+          `Válidos: ${CARTOES_IMPORT_PLANILHA.join(', ')}`,
+      );
+      process.exit(2);
+    }
+    out.cartao = nome;
+    out.sheet = nome;
+  }
   return out;
 }
 
@@ -348,6 +419,10 @@ async function importarUmCartao(opts, token, wb, nomeCartao, cartaoIdPorNome, co
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
+  if (opts.help) {
+    printHelp();
+    return;
+  }
   const filePath = path.resolve(opts.file);
   if (!fs.existsSync(filePath)) {
     console.error(`Ficheiro não encontrado: ${filePath}`);
@@ -356,7 +431,7 @@ async function main() {
 
   const cartoesAlvo = opts.todosCartoes
     ? CARTOES_IMPORT_PLANILHA
-    : [opts.cartao || NOME_ABA_PARA_CARTAO[opts.sheet] || opts.sheet];
+    : [opts.cartao];
 
   console.log(`Ficheiro: ${filePath}`);
   console.log(`Cartões: ${cartoesAlvo.join(', ')}`);

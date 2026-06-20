@@ -49,7 +49,7 @@ def main() -> int:
     cartao_nome = sys.argv[2]
     out_path = sys.argv[3]
 
-    text = sys.stdin.read()
+    text = sys.stdin.buffer.read().decode("utf-8")
     if not text.strip():
         print("Erro: stdin vazio (nenhum lançamento local).", file=sys.stderr)
         return 1
