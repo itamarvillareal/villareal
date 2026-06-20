@@ -20,6 +20,14 @@ import { ClassificacaoCard } from './ClassificacaoCard.jsx';
 
 const AMOSTRA = 3;
 
+function badgeSecundario(children) {
+  return (
+    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 shrink-0 whitespace-nowrap">
+      {children}
+    </span>
+  );
+}
+
 export function ClassificacaoGroupCard({
   grupo,
   sugestoesMap = {},
@@ -36,18 +44,27 @@ export function ClassificacaoGroupCard({
 }) {
   const { sugestao, lancamentos, descricao, banco } = grupo;
   const n = lancamentos.length;
+  const [amostraAberta, setAmostraAberta] = useState(false);
   const [expandido, setExpandido] = useState(false);
   const [modoRevisar, setModoRevisar] = useState(false);
 
-  const conf = String(sugestao?.confianca ?? '').toUpperCase();
   const codigo = sugestao?.contaCodigo ?? '—';
   const estiloConta = codigo !== '—' ? varsCorConta(codigo) : undefined;
   const borderLeft =
     codigo !== '—' ? CLASSE_BORDA_CONTA : 'border-l-[3px] border-l-slate-300 dark:border-l-slate-600';
   const periodo = useMemo(() => resumoPeriodoGrupo(lancamentos), [lancamentos]);
   const valores = useMemo(() => resumoValoresGrupo(lancamentos), [lancamentos]);
-  const amostra = lancamentos.slice(0, AMOSTRA);
-  const listaExibida = expandido || modoRevisar ? lancamentos : amostra;
+  const datasDistintas = useMemo(() => {
+    const chaves = new Set(
+      lancamentos.map((l) => String(l.dataExibicao ?? l.dataLancamento ?? '').trim()).filter(Boolean),
+    );
+    return chaves.size > 1;
+  }, [lancamentos]);
+  const listaExibida = useMemo(() => {
+    if (!amostraAberta) return [];
+    if (expandido || modoRevisar) return lancamentos;
+    return lancamentos.slice(0, AMOSTRA);
+  }, [amostraAberta, expandido, modoRevisar, lancamentos]);
 
   const handleAprovarGrupo = () => {
     onAprovarGrupo?.(grupo);
@@ -69,22 +86,34 @@ export function ClassificacaoGroupCard({
     [navigate],
   );
 
+  const linhaMetadados = useMemo(() => {
+    const partes = [periodo];
+    if (valores.min !== valores.max) {
+      partes.push(`R$ ${formatMoeda(valores.min)}–${formatMoeda(valores.max)}`);
+    } else if (valores.min > 0) {
+      partes.push(`R$ ${formatMoeda(valores.min)}`);
+    }
+    partes.push(`total R$ ${formatMoeda(valores.total)}`);
+    return partes.join(' · ');
+  }, [periodo, valores]);
+
+  const cardBase =
+    'rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 mb-2 bg-white dark:bg-slate-900 hover:shadow-sm transition-all duration-300 leading-tight';
+
   if (modoRevisar) {
     return (
       <article
-        className={`rounded-lg border border-slate-200 dark:border-slate-700 px-4 py-3 mb-3 bg-white dark:bg-slate-900 ${borderLeft} ${
-          fading ? 'opacity-0 scale-[0.98]' : 'opacity-100'
-        } transition-all duration-300`}
+        className={`${cardBase} ${borderLeft} ${fading ? 'opacity-0 scale-[0.98]' : 'opacity-100'}`}
         style={estiloConta}
       >
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-          <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-            Revisar grupo: «{descricao}» — {banco || '—'}
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate min-w-0" title={descricao}>
+            Revisar: {descricao}
           </h3>
           <button
             type="button"
             onClick={() => setModoRevisar(false)}
-            className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+            className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline shrink-0"
           >
             Voltar ao resumo
           </button>
@@ -102,6 +131,8 @@ export function ClassificacaoGroupCard({
             isSelected={false}
             onSelect={() => {}}
             busy={busy}
+            dense
+            omitDescricao
           />
         ))}
       </article>
@@ -110,13 +141,11 @@ export function ClassificacaoGroupCard({
 
   return (
     <article
-      className={`rounded-lg border border-slate-200 dark:border-slate-700 px-4 py-3 mb-3 bg-white dark:bg-slate-900 hover:shadow-sm transition-all duration-300 ${borderLeft} ${
-        fading ? 'opacity-0 scale-[0.98]' : 'opacity-100'
-      }`}
+      className={`${cardBase} ${borderLeft} ${fading ? 'opacity-0 scale-[0.98]' : 'opacity-100'}`}
       style={estiloConta}
     >
-      <div className="flex flex-wrap items-start gap-2">
-        <label className="flex items-center pt-0.5 shrink-0 cursor-pointer">
+      <div className="flex items-start gap-2">
+        <label className="flex items-center shrink-0 cursor-pointer pt-0.5">
           <input
             type="checkbox"
             checked={isSelected}
@@ -124,93 +153,116 @@ export function ClassificacaoGroupCard({
             className="rounded border-slate-300"
           />
         </label>
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-              GRUPO: «{descricao}» — {banco || '—'}
+        <div className="flex-1 min-w-0 space-y-0.5">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <h3
+              className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate min-w-0 flex-1"
+              title={descricao}
+            >
+              {descricao}
             </h3>
-            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 shrink-0">
-              {n} lançamento{n !== 1 ? 's' : ''}
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 shrink-0">
+              {n} lanç.
             </span>
+            {banco ? badgeSecundario(banco) : null}
           </div>
-          <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">Período: {periodo}</p>
-          <p className="text-xs text-slate-600 dark:text-slate-400">
-            Valores: R$ {formatMoeda(valores.min)} a R$ {formatMoeda(valores.max)} (total: R${' '}
-            {formatMoeda(valores.total)})
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate" title={linhaMetadados}>
+            {linhaMetadados}
           </p>
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-        <span className="text-slate-500 dark:text-slate-400">Sugestão:</span>
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+        <span className="text-slate-500 dark:text-slate-400 shrink-0">Sugestão:</span>
         <ContaBadge codigo={sugestao.contaCodigo} title={sugestao.contaNome} />
-        <span className="text-slate-700 dark:text-slate-200">{sugestao.contaNome}</span>
+        <span className="text-slate-700 dark:text-slate-200 truncate">{sugestao.contaNome}</span>
         <ConfiancaDots nivel={sugestao.confianca} />
-        <span className="text-[12px] italic text-slate-400">{textoOrigemSugestao(sugestao)}</span>
+        <span className="text-[11px] italic text-slate-400 truncate">{textoOrigemSugestao(sugestao)}</span>
       </div>
 
-      <div className="mt-3 rounded-md border border-slate-200 dark:border-slate-700 overflow-hidden">
-        <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400 px-2 py-1 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
-          Amostra ({listaExibida.length} de {n})
-        </p>
-        <div className={expandido && n > 8 ? 'max-h-64 overflow-y-auto' : ''}>
-          <table className="w-full text-xs">
-            <tbody>
-              {listaExibida.map((l) => (
-                <tr
-                  key={l.id}
-                  className="border-b border-slate-100 dark:border-slate-800 last:border-0 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50"
-                  onDoubleClick={() => abrirExtrato(l)}
-                  title="Duplo clique: abrir extrato do banco neste lançamento"
-                >
-                  <td className="px-2 py-1.5 text-slate-600 dark:text-slate-300 tabular-nums whitespace-nowrap">
-                    {l.dataExibicao}
-                  </td>
-                  <td className="px-2 py-1.5 text-slate-800 dark:text-slate-100 truncate max-w-[140px]">
-                    {l.descricao}
-                  </td>
-                  <td className="px-2 py-1.5 text-slate-500 truncate max-w-[80px]">{l.bancoNome}</td>
-                  <td className="px-2 py-1.5 text-right">
-                    <ValorText valor={l.valor} natureza={l.natureza} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {n > AMOSTRA ? (
+      <div className="mt-1.5">
         <button
           type="button"
-          onClick={() => setExpandido((v) => !v)}
-          className="mt-2 inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+          onClick={() => {
+            setAmostraAberta((v) => {
+              const next = !v;
+              if (!next) setExpandido(false);
+              return next;
+            });
+          }}
+          className="inline-flex items-center gap-1 text-[11px] text-blue-600 dark:text-blue-400 hover:underline"
+          aria-expanded={amostraAberta}
         >
-          {expandido ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          {expandido ? 'Recolher lista' : `Ver todos os ${n}`}
+          {amostraAberta ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          {amostraAberta ? 'Ocultar lançamentos' : `Ver ${n} lançamento${n !== 1 ? 's' : ''}`}
         </button>
-      ) : null}
 
-      <div className="mt-3 flex flex-wrap gap-2 justify-end">
+        {amostraAberta && listaExibida.length > 0 ? (
+          <ul
+            className={`mt-1 rounded border border-slate-100 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800 text-[11px] ${
+              expandido && n > 8 ? 'max-h-40 overflow-y-auto' : ''
+            }`}
+          >
+            {listaExibida.map((l) => (
+              <li
+                key={l.id}
+                className="flex items-center gap-2 px-2 py-1 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                onDoubleClick={() => abrirExtrato(l)}
+                title="Duplo clique: abrir extrato do banco neste lançamento"
+              >
+                {datasDistintas ? (
+                  <span className="text-slate-500 dark:text-slate-400 tabular-nums shrink-0">
+                    {l.dataExibicao}
+                  </span>
+                ) : null}
+                <span className="flex-1" />
+                <ValorText valor={l.valor} natureza={l.natureza} />
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
+        {amostraAberta && n > AMOSTRA ? (
+          <button
+            type="button"
+            onClick={() => setExpandido((v) => !v)}
+            className="mt-1 inline-flex items-center gap-1 text-[11px] text-blue-600 dark:text-blue-400 hover:underline"
+          >
+            {expandido ? (
+              <>
+                <ChevronUp className="w-3 h-3" />
+                Mostrar menos
+              </>
+            ) : (
+              <>
+                <ChevronDown className="w-3 h-3" />
+                Ver todos os {n}
+              </>
+            )}
+          </button>
+        ) : null}
+      </div>
+
+      <div className="mt-2 flex flex-wrap gap-1.5 justify-end">
         <button
           type="button"
           disabled={busy}
           onClick={handleAprovarGrupo}
           style={codigo !== '—' ? varsCorConta(codigo) : undefined}
-          className={`inline-flex items-center gap-1.5 rounded-md font-medium text-sm px-4 py-2 disabled:opacity-50 ${
+          className={`inline-flex items-center gap-1 rounded-md font-medium text-xs px-3 py-1.5 disabled:opacity-50 ${
             codigo !== '—' ? CLASSE_BOTAO_APROVAR_CONTA : 'bg-slate-500 text-white'
           }`}
         >
-          <Check className="w-4 h-4" />
+          <Check className="w-3.5 h-3.5" />
           Aprovar {codigo} para os {n}
         </button>
         <button
           type="button"
           disabled={busy}
           onClick={() => setModoRevisar(true)}
-          className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800"
+          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800"
         >
-          <Pencil className="w-3.5 h-3.5" />
+          <Pencil className="w-3 h-3" />
           Revisar
         </button>
         <button
@@ -218,18 +270,18 @@ export function ClassificacaoGroupCard({
           disabled={busy || refatorando}
           onClick={handleRefatorar}
           title="Recalcula a sugestão com as regras de classificação atuais"
-          className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
+          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${refatorando ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`w-3 h-3 ${refatorando ? 'animate-spin' : ''}`} />
           {refatorando ? 'Refatorando…' : 'Refatorar'}
         </button>
         <button
           type="button"
           disabled={busy}
           onClick={handlePular}
-          className="inline-flex items-center gap-1 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 hover:underline"
+          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:underline"
         >
-          <SkipForward className="w-3.5 h-3.5" />
+          <SkipForward className="w-3 h-3" />
           Pular
         </button>
       </div>
