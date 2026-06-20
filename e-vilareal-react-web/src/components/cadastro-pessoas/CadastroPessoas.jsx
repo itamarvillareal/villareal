@@ -12,12 +12,14 @@ import {
   Loader2,
   Link2,
   Download,
+  Trash2,
 } from 'lucide-react';
 import {
   listarClientes,
   buscarCliente,
   criarCliente,
   atualizarCliente,
+  excluirCliente,
   obterProximoIdCadastroPessoas,
 } from '../../api/clientesService';
 import { analisarDocumentoPessoa } from '../../services/personAutoFillService.js';
@@ -39,6 +41,8 @@ import {
 } from '../../services/hjDateAliasService.js';
 import { esbocoQualificacaoComResponsavel, stripSuffixAdministradorPj } from '../../services/qualificacaoContratualHelper.js';
 import { SeletorResponsavelPessoa } from './SeletorResponsavelPessoa.jsx';
+import { ChaveEdicaoOnOff } from './ChaveEdicaoOnOff.jsx';
+import { StepperCodigoPessoa } from './StepperCodigoPessoa.jsx';
 import { getContextoAuditoriaUsuario, registrarAuditoria } from '../../services/auditoriaCliente.js';
 import { padCliente8Nav } from './cadastroPessoasNavUtils.js';
 import { buildRouterStateChaveClienteProcesso } from '../../domain/camposProcessoCliente.js';
@@ -170,6 +174,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
   const [form, setForm] = useState(emptyPessoa);
   const [editId, setEditId] = useState(null);
   const [salvando, setSalvando] = useState(false);
+  const [excluindo, setExcluindo] = useState(false);
   const [enderecos, setEnderecos] = useState([]);
   const [contatos, setContatos] = useState([]);
   const [modalEnderecos, setModalEnderecos] = useState(false);
@@ -187,6 +192,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
   const autosaveReagendarRef = useRef(false);
   const modoRef = useRef(modo);
   const editIdRef = useRef(editId);
+  const codigoSugeridoNovaRef = useRef('');
   const formRef = useRef(form);
   const enderecosRef = useRef(enderecos);
   const contatosRef = useRef(contatos);
@@ -566,28 +572,70 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
     setIndiceAtual((i) => Math.min(i, Math.max(0, listaExibida.length - 1)));
   }, [modo, listaExibida.length]);
 
-  async function localizarPorNumeroPessoa() {
-    const n = String(numeroPessoa ?? '').trim();
+  async function abrirPessoaPorCodigo(codigoRaw) {
+    const n = String(codigoRaw ?? '').trim();
     if (!n) {
-      setError('Digite o número da pessoa.');
+      setError('Digite o código da pessoa.');
       return;
     }
-    const id = Number.parseInt(n, 10);
+    const id = Number.parseInt(n.replace(/\D/g, ''), 10);
     if (!Number.isFinite(id) || id < 1) {
-      setError('Número da pessoa inválido.');
+      setError('Código da pessoa inválido.');
+      return;
+    }
+    if (modo === 'editar' && Number(editId) === id) {
+      setForm((f) => ({ ...f, codigo: String(id) }));
       return;
     }
     setError(null);
     try {
+      setCarregandoFicha(true);
       const c = await buscarCliente(id);
       if (!c) {
-        setError(`Nenhuma pessoa encontrada com o número ${id}.`);
+        setError(`Nenhuma pessoa encontrada com o código ${id}.`);
+        if (modo === 'editar' && editId != null) {
+          setForm((f) => ({ ...f, codigo: String(editId) }));
+        } else if (modo === 'criar') {
+          setForm((f) => ({ ...f, codigo: codigoSugeridoNovaRef.current || f.codigo }));
+        }
+        return;
+      }
+      if (isEmbedded) {
+        aplicarEdicaoPessoa({
+          id: c.id,
+          nome: c.nome,
+          genero: c.genero,
+          nacionalidade: c.nacionalidade,
+          cpf: c.cpf,
+          rg: c.rg,
+          orgaoExpedidor: c.orgaoExpedidor,
+          profissao: c.profissao,
+          email: c.email,
+          telefone: c.telefone,
+          dataNascimento: c.dataNascimento,
+          estadoCivil: c.estadoCivil,
+          ativo: c.ativo,
+          marcadoMonitoramento: c.marcadoMonitoramento,
+          responsavelId: c.responsavelId,
+          responsavel: c.responsavel,
+        });
         return;
       }
       navigate(`/clientes/editar/${id}`);
     } catch (err) {
       setError(err.message || 'Erro ao localizar.');
+      if (modo === 'editar' && editId != null) {
+        setForm((f) => ({ ...f, codigo: String(editId) }));
+      } else if (modo === 'criar') {
+        setForm((f) => ({ ...f, codigo: codigoSugeridoNovaRef.current || f.codigo }));
+      }
+    } finally {
+      setCarregandoFicha(false);
     }
+  }
+
+  async function localizarPorNumeroPessoa() {
+    await abrirPessoaPorCodigo(numeroPessoa);
   }
 
   /** Lista leve só para o seletor de responsável (nova/edição), sem abrir o relatório completo. */
@@ -759,6 +807,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
     } catch {
       codigoProximo = '1';
     }
+    codigoSugeridoNovaRef.current = codigoProximo;
     autosaveAtivoRef.current = true;
     setFichaProntaAutosave(true);
     ultimoSnapshotSalvoRef.current = null;
@@ -1424,6 +1473,73 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
     modo === 'criar' ||
     modo === 'editar' ||
     (modo === 'listar' && !form.edicaoDesabilitada && !isRotaListaTodasPessoas);
+  const podeBuscarPessoaPorCodigo = modo === 'criar' || modo === 'editar';
+
+  const tentarAbrirPessoaPorCodigoNoBlur = () => {
+    if (!podeBuscarPessoaPorCodigo) return;
+    const id = Number.parseInt(String(form.codigo).trim(), 10);
+    if (!Number.isFinite(id) || id < 1) {
+      if (modo === 'editar' && editId != null) {
+        setForm((f) => ({ ...f, codigo: String(editId) }));
+      } else if (modo === 'criar') {
+        setForm((f) => ({ ...f, codigo: codigoSugeridoNovaRef.current || f.codigo }));
+      }
+      return;
+    }
+    if (modo === 'editar' && editId != null && Number(editId) === id) return;
+    if (modo === 'criar' && String(form.codigo) === String(codigoSugeridoNovaRef.current)) return;
+    void abrirPessoaPorCodigo(form.codigo);
+  };
+
+  function resolverCodigoBaseNavegacao() {
+    const id = Number.parseInt(String(form.codigo).trim(), 10);
+    if (Number.isFinite(id) && id >= 1) return id;
+    if (modo === 'editar' && editId != null) return Number(editId);
+    const sugerido = Number.parseInt(String(codigoSugeridoNovaRef.current).trim(), 10);
+    if (Number.isFinite(sugerido) && sugerido >= 1) return sugerido;
+    return 1;
+  }
+
+  async function navegarCodigoPessoa(delta) {
+    if (!podeBuscarPessoaPorCodigo || carregandoFicha) return;
+    const base = resolverCodigoBaseNavegacao();
+    const novo = Math.max(1, base + delta);
+    if (novo === base && delta < 0) return;
+    await abrirPessoaPorCodigo(String(novo));
+  }
+
+  async function excluirPessoaAtual() {
+    if (modo !== 'editar' || editId == null || excluindo || salvando) return;
+    const nome = String(form.nome || '').trim() || `Pessoa nº ${editId}`;
+    const confirmacao = window.confirm(
+      `Excluir permanentemente "${nome}" (código ${editId})?\n\n` +
+        'Todos os dados serão apagados do banco: cadastro, processos vinculados, contratos, financeiro e pagamentos relacionados.\n\n' +
+        'Esta ação não pode ser desfeita.'
+    );
+    if (!confirmacao) return;
+
+    setExcluindo(true);
+    setError(null);
+    setErroComplementar(null);
+    try {
+      await excluirCliente(editId);
+      setMensagemSucesso(`Pessoa nº ${editId} excluída com sucesso.`);
+      if (isEmbedded && typeof onFecharEmbed === 'function') {
+        onFecharEmbed();
+        return;
+      }
+      setModo('listar');
+      setEditId(null);
+      setForm(emptyPessoa);
+      navigate('/clientes/lista', { replace: true });
+    } catch (err) {
+      const mensagem = err?.message || 'Erro ao excluir pessoa.';
+      setErroComplementar(mensagem);
+      window.alert(mensagem);
+    } finally {
+      setExcluindo(false);
+    }
+  }
 
   return (
     <div
@@ -1642,15 +1758,34 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                         }}
                       />
                     </div>
-                    <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={form.edicaoDesabilitada}
-                        onChange={(e) => setForm((f) => ({ ...f, edicaoDesabilitada: e.target.checked }))}
-                        className="rounded border-slate-300 text-blue-600"
+                    <div className="flex flex-col items-end gap-1.5">
+                      {modo === 'editar' && editId != null ? (
+                        <button
+                          type="button"
+                          onClick={() => void excluirPessoaAtual()}
+                          disabled={excluindo || salvando}
+                          className="inline-flex items-center justify-center rounded-lg border border-red-200 bg-red-50 p-2 text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          title="Excluir pessoa e todos os dados vinculados do banco"
+                          aria-label="Excluir pessoa"
+                        >
+                          {excluindo ? (
+                            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                          ) : (
+                            <Trash2 className="h-4 w-4" aria-hidden />
+                          )}
+                        </button>
+                      ) : null}
+                      <span className="text-xs font-medium text-slate-500">Edição</span>
+                      <ChaveEdicaoOnOff
+                        edicaoHabilitada={!form.edicaoDesabilitada}
+                        onChange={(habilitada) =>
+                          setForm((f) => ({ ...f, edicaoDesabilitada: !habilitada }))
+                        }
                       />
-                      Edição Desabilitada
-                    </label>
+                      <span className="text-[11px] text-slate-400">
+                        {form.edicaoDesabilitada ? 'Somente leitura' : 'Campos liberados'}
+                      </span>
+                    </div>
                   </div>
                 </div>
                 <div
@@ -1814,12 +1949,55 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">Código</label>
-                      <input
-                        type="text"
-                        value={form.codigo}
-                        readOnly
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-600 text-sm"
-                      />
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={form.codigo}
+                          readOnly={!podeBuscarPessoaPorCodigo}
+                          onChange={(e) => {
+                            if (!podeBuscarPessoaPorCodigo) return;
+                            setForm((f) => ({ ...f, codigo: e.target.value.replace(/\D/g, '') }));
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && podeBuscarPessoaPorCodigo) {
+                              e.preventDefault();
+                              void abrirPessoaPorCodigo(form.codigo);
+                            }
+                          }}
+                          onBlur={tentarAbrirPessoaPorCodigoNoBlur}
+                          className={`w-full px-3 py-2 border border-slate-200 rounded-lg text-sm ${
+                            podeBuscarPessoaPorCodigo
+                              ? 'border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
+                              : 'bg-slate-50 text-slate-600'
+                          }`}
+                        />
+                        {podeBuscarPessoaPorCodigo ? (
+                          <StepperCodigoPessoa
+                            disabled={carregandoFicha}
+                            onIncrement={() => void navegarCodigoPessoa(1)}
+                            onDecrement={() => void navegarCodigoPessoa(-1)}
+                          />
+                        ) : null}
+                        {podeBuscarPessoaPorCodigo ? (
+                          <button
+                            type="button"
+                            title="Abrir pessoa com este código"
+                            disabled={carregandoFicha}
+                            onClick={() => void abrirPessoaPorCodigo(form.codigo)}
+                            className="inline-flex shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                          >
+                            <Search className="h-4 w-4" aria-hidden />
+                          </button>
+                        ) : null}
+                      </div>
+                      {podeBuscarPessoaPorCodigo ? (
+                        <p className="mt-1 text-xs text-slate-500">
+                          {modo === 'criar'
+                            ? 'Digite o código, use ↑↓ ou busque para abrir a ficha de outra pessoa.'
+                            : 'Altere o código, use ↑↓ (+1/−1) ou pressione Enter para ver outra pessoa.'}
+                        </p>
+                      ) : null}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">Nome *</label>

@@ -77,6 +77,7 @@ export const LazyRelatorioResultadoProcessos = fromNamed(
   () => import('../components/RelatorioResultadoProcessos.jsx'),
   'RelatorioResultadoProcessos',
 );
+export const LazyRecebiveisConsolidados = lazy(() => import('../components/RecebiveisConsolidados.jsx'));
 export const LazyRelatorioCalculos = fromNamed(() => import('../components/RelatorioCalculos.jsx'), 'RelatorioCalculos');
 export const LazyCalculos = fromNamed(() => import('../components/Calculos.jsx'), 'Calculos');
 export const LazyDiagnosticos = fromNamed(() => import('../components/Diagnosticos.jsx'), 'Diagnosticos');
@@ -163,9 +164,9 @@ export const LazyModelosPeticao = fromNamed(
   () => import('../pages/documentos/ModelosPeticao.jsx'),
   'ModelosPeticao'
 );
-export const LazyContratosHonorariosRecebiveis = fromNamed(
-  () => import('../pages/documentos/ContratosHonorariosRecebiveis.jsx'),
-  'ContratosHonorariosRecebiveis'
+export const LazyProcessoRecebiveis = fromNamed(
+  () => import('../pages/processos/ProcessoRecebiveis.jsx'),
+  'ProcessoRecebiveis'
 );
 export const LazyWhatsAppLayout = fromNamed(
   () => import('../components/whatsapp/WhatsAppLayout.jsx'),

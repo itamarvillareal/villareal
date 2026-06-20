@@ -37,7 +37,7 @@ import {
   LazyGerenteTopicos,
   LazyGerarDocumento,
   LazyModelosPeticao,
-  LazyContratosHonorariosRecebiveis,
+  LazyProcessoRecebiveis,
   LazyIntegracoesTribunalScraperLab,
   LazyImoveis,
   LazyDemandas,
@@ -57,6 +57,7 @@ import {
   LazyPeticionamentoProjudi,
   LazyRelatorio,
   LazyRelatorioResultadoProcessos,
+  LazyRecebiveisConsolidados,
   LazyRelatorioCalculos,
   LazyRelatorioFinanceiroImoveis,
   LazyRelatorioPagamentos,
@@ -396,10 +397,8 @@ function App() {
                 path="/processos/manifestacoes-projudi"
                 element={<LazyManifestacoesProjudi />}
               />
-              <Route
-                path="/processos/peticionamento-projudi"
-                element={<LazyPeticionamentoProjudi />}
-              />
+              <Route path="/processos/recebiveis" element={<LazyProcessoRecebiveis />} />
+              <Route path="/processos/peticionamento-projudi" element={<LazyPeticionamentoProjudi />} />
               <Route path="/processos/monitoramento" element={<LazyMonitoringPeoplePage />} />
               <Route path="/imoveis" element={<LazyImoveis />} />
               <Route path="/imoveis/demandas" element={<LazyDemandas />} />
@@ -414,7 +413,17 @@ function App() {
               <Route path="/imoveis/relatorio-pagamentos" element={<LazyRelatorioPagamentos />} />
               <Route path="/relatorio-imoveis" element={<LazyRelatorioImoveis />} />
               <Route path="/relatorio" element={<LazyRelatorio />} />
-              <Route path="/relatorio-resultado-processos" element={<LazyRelatorioResultadoProcessos />} />
+              <Route path="/resultado-financeiro" element={<Navigate to="/resultado-financeiro/autos" replace />} />
+              <Route path="/resultado-financeiro/autos" element={<LazyRelatorioResultadoProcessos />} />
+              <Route path="/resultado-financeiro/cobranca" element={<LazyRecebiveisConsolidados />} />
+              <Route
+                path="/relatorio-resultado-processos"
+                element={<Navigate to="/resultado-financeiro/autos" replace />}
+              />
+              <Route
+                path="/relatorio-resultado-processos/recebiveis"
+                element={<Navigate to="/resultado-financeiro/cobranca" replace />}
+              />
               <Route path="/relatorio-calculos" element={<LazyRelatorioCalculos />} />
               <Route path="/calculos" element={<LazyCalculos />} />
               <Route path="/topicos" element={<LazyTopicos />} />
@@ -430,7 +439,7 @@ function App() {
               </Route>
               <Route path="/integracoes/scraper-lab" element={<LazyIntegracoesTribunalScraperLab />} />
               <Route path="/documentos/gerar" element={<LazyGerarDocumento />} />
-              <Route path="/documentos/recebiveis" element={<LazyContratosHonorariosRecebiveis />} />
+              <Route path="/documentos/recebiveis" element={<Navigate to="/resultado-financeiro/cobranca" replace />} />
               <Route path="/documentos/modelos" element={<LazyModelosPeticao />} />
               <Route path="/financeiro" element={<LazyFinanceiroLayout />}>
                 <Route index element={<LazyFinanceiroDashboard />} />

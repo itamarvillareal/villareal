@@ -389,14 +389,26 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
   useEffect(() => {
     const iid = searchParams.get('imovelId');
     const st = searchParams.get('status');
-    if (!iid && !st) return;
+    const pid = searchParams.get('processoId');
+    const tipo = searchParams.get('tipo');
+    if (!iid && !st && !pid && !tipo) return;
     setFiltros((f) => {
       const next = { ...f };
       if (iid) next.imovelId = iid;
       if (st) next.status = st;
-      if (f.imovelId === next.imovelId && f.status === next.status) return f;
+      if (pid) next.processoId = pid;
+      if (tipo) next.tipo = tipo;
+      if (
+        f.imovelId === next.imovelId &&
+        f.status === next.status &&
+        f.processoId === next.processoId &&
+        f.tipo === next.tipo
+      ) {
+        return f;
+      }
       return next;
     });
+    if (pid || tipo) setSecaoAtiva('lista');
   }, [searchParams]);
 
   const montarQueryLista = useCallback(() => {
@@ -482,6 +494,23 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
       setErro(e?.message || 'Não foi possível abrir o pagamento.');
     }
   }
+
+  const deepLinkPagamentoRef = useRef('');
+  useEffect(() => {
+    const pagIdRaw = searchParams.get('pagamentoId');
+    if (!pagIdRaw) {
+      deepLinkPagamentoRef.current = '';
+      return;
+    }
+    if (carregando) return;
+    if (deepLinkPagamentoRef.current === pagIdRaw) return;
+    deepLinkPagamentoRef.current = pagIdRaw;
+    const pagId = Number(pagIdRaw);
+    if (Number.isFinite(pagId) && pagId >= 1) {
+      setSecaoAtiva('lista');
+      void abrirEditar(pagId);
+    }
+  }, [searchParams, carregando]);
 
   async function salvarModal() {
     const payload = montarPayloadWrite(form);

@@ -734,6 +734,26 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             """)
     List<LancamentoFinanceiroEntity> findByProcessoId(@Param("processoId") Long processoId);
 
+    @Query("""
+            SELECT l FROM LancamentoFinanceiroEntity l
+            WHERE l.processo.id = :processoId
+              AND l.natureza = br.com.vilareal.financeiro.domain.NaturezaLancamento.CREDITO
+              AND NOT EXISTS (
+                  SELECT 1 FROM PagamentoEntity p
+                  WHERE p.financeiroLancamento = l
+              )
+            ORDER BY l.dataLancamento ASC, l.id ASC
+            """)
+    List<LancamentoFinanceiroEntity> findCreditosNaoVinculadosPorProcesso(@Param("processoId") Long processoId);
+
+    @Query("""
+            SELECT l FROM LancamentoFinanceiroEntity l
+            WHERE l.processo.id = :processoId
+              AND l.natureza = br.com.vilareal.financeiro.domain.NaturezaLancamento.CREDITO
+            ORDER BY l.dataLancamento ASC, l.id ASC
+            """)
+    List<LancamentoFinanceiroEntity> findCreditosPorProcesso(@Param("processoId") Long processoId);
+
     /**
      * Lançamentos ÓRFÃOS (sem processo) numa janela de datas — candidatos a adoção pela
      * reconciliação de locação. NUNCA traz lançamento que já pertença a um processo.

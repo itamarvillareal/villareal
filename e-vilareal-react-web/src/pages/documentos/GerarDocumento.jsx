@@ -192,13 +192,17 @@ export function GerarDocumento() {
   const location = useLocation();
   const navigate = useNavigate();
   const dadosProcesso = location.state?.dadosProcesso;
+  const modoInicial = location.state?.modoInicial;
   const formInicialIA = useMemo(
     () => (dadosProcesso ? mapearDadosProcessoParaFormIA(dadosProcesso) : estadoInicialIA()),
     [dadosProcesso]
   );
   const vindoDoProcesso = Boolean(dadosProcesso);
 
-  const [modo, setModo] = useState(() => (vindoDoProcesso ? MODO_IA : MODO_IA));
+  const [modo, setModo] = useState(() => {
+    if (modoInicial === 'contrato') return MODO_CONTRATO;
+    return MODO_IA;
+  });
   const modoIA = modo === MODO_IA;
   const modoProcuracao = modo === MODO_PROCURACAO;
   const modoContrato = modo === MODO_CONTRATO;
@@ -276,7 +280,7 @@ export function GerarDocumento() {
           nomeContratante: r.nomeContratante || f.nomeContratante,
           objetoContrato: r.objetoContrato ?? f.objetoContrato,
           formaAssinatura: salvo.formaAssinatura || f.formaAssinatura,
-          clausula3Form: clausula3DadosParaForm(salvo.clausula3Dados),
+          clausula3Form: clausula3DadosParaForm(salvo.clausula3Dados, r.dataContrato),
           clausula3Dados: salvo.clausula3Dados,
           clausula3Remuneracao: r.clausula3Texto || f.clausula3Remuneracao,
           clausula3Configurada: true,

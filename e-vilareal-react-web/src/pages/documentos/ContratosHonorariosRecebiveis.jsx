@@ -5,10 +5,33 @@ import { listarContratosHonorarios } from '../../repositories/documentosReposito
 import { DocumentosSubmenu } from './components/DocumentosSubmenu.jsx';
 import { btnSecondary, inputClass } from './documentosStyles.js';
 import {
+  calcularParcelasPreview,
   formatarDataBR,
   formatarMoedaBRL,
   TIPOS_REMUNERACAO,
 } from './contratoHonorariosClausula3.js';
+
+function resolverParcelasExibicao(contrato) {
+  const parcelas = contrato.parcelas ?? [];
+  if (parcelas.length > 0) return parcelas;
+
+  const qtd = Number(contrato.quantidadeParcelas);
+  const total = contrato.valorTotalParcelas ?? contrato.valorFixo;
+  if (!Number.isFinite(qtd) || qtd <= 0 || total == null) return [];
+
+  return calcularParcelasPreview({
+    temParcelamento: true,
+    quantidadeParcelas: String(qtd),
+    valorTotalParcelas: total,
+    valorFixo: total,
+    primeiroVencimento: contrato.dataContrato || new Date().toISOString().slice(0, 10),
+    intervaloParcelas: 'MENSAL',
+  }).map((p) => ({
+    numeroParcela: p.numero,
+    valor: p.valor,
+    dataVencimento: p.dataVencimento,
+  }));
+}
 
 function rotuloRemuneracao(contrato) {
   const tipo = TIPOS_REMUNERACAO.find((t) => t.id === contrato.tipoRemuneracao);
@@ -38,80 +61,71 @@ function resumoRecebiveis(contrato) {
 }
 
 function DetalheContrato({ contrato }) {
-  const parcelas = contrato.parcelas ?? [];
+  const parcelas = resolverParcelasExibicao(contrato);
 
-  return (
-    <div className="space-y-4 border-t border-slate-200 bg-slate-50/80 px-4 py-4 dark:border-slate-700 dark:bg-slate-800/40">
-      {contrato.objetoContrato ? (
-        <div>
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Objeto
-          </p>
-          <p className="whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-200">
-            {contrato.objetoContrato}
-          </p>
-        </div>
-      ) : null}
-
-      <div>
-        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-          Cláusula 3ª — Remuneração
-        </p>
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-200">
-          {contrato.clausula3Texto || '—'}
+  if (parcelas.length === 0) {
+    return (
+      <div className="border-t border-slate-200 bg-slate-50/80 px-4 py-4 dark:border-slate-700 dark:bg-slate-800/40">
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          {contrato.gerarRecebiveis
+            ? 'Nenhuma parcela registrada. Verifique se o contrato estava vinculado a um processo com parcelamento configurado.'
+            : 'Nenhuma parcela cadastrada neste contrato.'}
         </p>
       </div>
+    );
+  }
 
-      {contrato.gerarRecebiveis ? (
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Recebíveis gerados
-            {contrato.formaPagamentoParcelas ? ` (${contrato.formaPagamentoParcelas})` : ''}
-          </p>
-          {parcelas.length === 0 ? (
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              Nenhuma parcela registrada. Verifique se o contrato estava vinculado a um processo com
-              parcelamento configurado.
-            </p>
-          ) : (
-            <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
-              <table className="min-w-full text-left text-sm">
-                <thead className="bg-white text-slate-600 dark:bg-slate-900/60 dark:text-slate-300">
-                  <tr>
-                    <th className="px-3 py-2 font-medium">Parcela</th>
-                    <th className="px-3 py-2 font-medium">Valor</th>
-                    <th className="px-3 py-2 font-medium">Vencimento</th>
-                    <th className="px-3 py-2 font-medium">Pagamento</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {parcelas.map((p) => (
-                    <tr key={p.id ?? p.numeroParcela} className="border-t border-slate-200 dark:border-slate-700">
-                      <td className="px-3 py-2">
-                        {p.numeroParcela}/{parcelas.length}
-                      </td>
-                      <td className="px-3 py-2">{formatarMoedaBRL(p.valor)}</td>
-                      <td className="px-3 py-2">{formatarDataBR(p.dataVencimento)}</td>
-                      <td className="px-3 py-2">
-                        {p.pagamentoId ? (
-                          <Link
-                            to="/pagamentos"
-                            className="font-medium text-cyan-700 hover:underline dark:text-cyan-300"
-                          >
-                            #{p.pagamentoId}
-                          </Link>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      ) : null}
+  const mostraPagamento = contrato.gerarRecebiveis || parcelas.some((p) => p.pagamentoId);
+
+  return (
+    <div className="border-t border-slate-200 bg-slate-50/80 px-4 py-4 dark:border-slate-700 dark:bg-slate-800/40">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+        Parcelas
+        {contrato.formaPagamentoParcelas ? ` · ${contrato.formaPagamentoParcelas}` : ''}
+        {contrato.valorTotalParcelas != null ? (
+          <>
+            {' '}
+            · Total {formatarMoedaBRL(contrato.valorTotalParcelas)}
+          </>
+        ) : null}
+      </p>
+      <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
+        <table className="min-w-full text-left text-sm">
+          <thead className="bg-white text-slate-600 dark:bg-slate-900/60 dark:text-slate-300">
+            <tr>
+              <th className="px-3 py-2 font-medium">Parcela</th>
+              <th className="px-3 py-2 font-medium">Valor</th>
+              <th className="px-3 py-2 font-medium">Vencimento</th>
+              {mostraPagamento ? <th className="px-3 py-2 font-medium">Pagamento</th> : null}
+            </tr>
+          </thead>
+          <tbody>
+            {parcelas.map((p) => (
+              <tr key={p.id ?? p.numeroParcela} className="border-t border-slate-200 dark:border-slate-700">
+                <td className="px-3 py-2">
+                  {p.numeroParcela}/{parcelas.length}
+                </td>
+                <td className="px-3 py-2">{formatarMoedaBRL(p.valor)}</td>
+                <td className="px-3 py-2">{formatarDataBR(p.dataVencimento)}</td>
+                {mostraPagamento ? (
+                  <td className="px-3 py-2">
+                    {p.pagamentoId ? (
+                      <Link
+                        to="/pagamentos"
+                        className="font-medium text-cyan-700 hover:underline dark:text-cyan-300"
+                      >
+                        #{p.pagamentoId}
+                      </Link>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+                ) : null}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

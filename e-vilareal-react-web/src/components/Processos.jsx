@@ -106,6 +106,7 @@ import {
   CloudDownload,
   CalendarClock,
   Send,
+  Receipt,
 } from 'lucide-react';
 import { ContaCorrenteVinculoAssist } from './processos/ContaCorrenteVinculoAssist.jsx';
 import {
@@ -165,6 +166,7 @@ import {
   usuarioHistoricoParaExibicao,
   usuarioHistoricoAutorMeta,
   buscarProcessoPorChaveNatural,
+  buscarProcessoPorId,
   resolverProcessoId,
   mapApiProcessoToUiShape,
   salvarCabecalhoProcesso,
@@ -189,6 +191,8 @@ import {
   extrairIntentNavegacaoProcessos,
   gravarUltimaSelecaoProcessosArmazenamento,
   lerUltimaSelecaoProcessosArmazenamento,
+  resolverIntentNavegacaoProcessosDeRota,
+  resolverSelecaoInicialProcessos,
 } from '../domain/camposProcessoCliente.js';
 import { cnjEhTrt18 } from '../domain/cnjFuzzyBusca.js';
 import {
@@ -468,16 +472,14 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const intentRevisionForHydration = isEmbedded ? String(embedIntentRevision) : location.key;
 
   const [codigoCliente, setCodigoCliente] = useState(
-    () => (typeof window !== 'undefined' ? lerUltimaSelecaoProcessosArmazenamento()?.codigoCliente : null) ?? '00000001'
+    () => resolverSelecaoInicialProcessos(isEmbedded ? null : location).codigoCliente,
   );
   const [cliente, setCliente] = useState('');
   /** Re-dispara resolução do nome após salvar no cadastro de clientes (mesmo dado que «Nome / Razão Social»). */
   const [clienteNomeRefreshTick, setClienteNomeRefreshTick] = useState(0);
-  const [processo, setProcesso] = useState(() => {
-    if (typeof window === 'undefined') return 1;
-    const s = lerUltimaSelecaoProcessosArmazenamento();
-    return s?.numeroInterno ?? 1;
-  });
+  const [processo, setProcesso] = useState(
+    () => resolverSelecaoInicialProcessos(isEmbedded ? null : location).numeroInterno,
+  );
   /** Lançamento do duplo clique no extrato consolidado (Financeiro → Processos). */
   const [linhaOrigemContaCorrente, setLinhaOrigemContaCorrente] = useState(null);
   /** Abre Conta Corrente em modo Proc. 0 quando o Financeiro envia proc 0 (mensalista). Declarado cedo para o efeito abaixo. */
@@ -511,7 +513,9 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [modalTarefaContextual, setModalTarefaContextual] = useState(null);
 
   useLayoutEffect(() => {
-    const intent = extrairIntentNavegacaoProcessos(intentStateForHydration);
+    const intent = isEmbedded
+      ? extrairIntentNavegacaoProcessos(intentStateForHydration)
+      : resolverIntentNavegacaoProcessosDeRota(location);
     const saved = lerUltimaSelecaoProcessosArmazenamento();
     if (intent) {
       if (intent.hasCod) setCodigoCliente(padCliente(intent.codRaw));
@@ -528,7 +532,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       setCodigoCliente(saved.codigoCliente);
       setProcesso(saved.numeroInterno);
     }
-  }, [intentRevisionForHydration, intentStateForHydration, isEmbedded]);
+  }, [intentRevisionForHydration, intentStateForHydration, isEmbedded, location]);
 
   useEffect(() => {
     gravarUltimaSelecaoProcessosArmazenamento(codigoCliente, processo);
@@ -2541,7 +2545,23 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       setParteOpostaEntradas([]);
       setParteCliente('');
       setParteOposta('');
-      const procApi = await buscarProcessoPorChaveNatural(codigoCliente, processo);
+      const navIntent = isEmbedded ? null : resolverIntentNavegacaoProcessosDeRota(location);
+      let procApi = await buscarProcessoPorChaveNatural(codigoCliente, processo);
+      if (navIntent?.processoApiId) {
+        const esperado = Number(navIntent.processoApiId);
+        if (!procApi || Number(procApi.id) !== esperado) {
+          const byId = await buscarProcessoPorId(esperado);
+          if (byId) {
+            procApi = byId;
+            const codApi = byId.codigoCliente ?? byId.codigo_cliente;
+            const niApi = byId.numeroInterno ?? byId.numero_interno;
+            if (codApi) setCodigoCliente(padCliente(codApi));
+            if (niApi != null && Number.isFinite(Number(niApi))) {
+              setProcesso(Math.max(1, Math.floor(Number(niApi))));
+            }
+          }
+        }
+      }
       if (seq !== carregarProcessoApiSeqRef.current) return;
       if (!procApi) {
         setProcessoApiId(null);
@@ -3534,6 +3554,21 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                   <CircleDollarSign className="w-4 h-4" aria-hidden />
                   Conta Corrente
                 </button>
+                {processoApiId ? (
+                  <button
+                    type="button"
+                    className={processosBtnToolbarCyan}
+                    onClick={() =>
+                      navigate('/processos/recebiveis', {
+                        state: buildRouterStateChaveClienteProcesso(codigoCliente, processo, { processoApiId }),
+                      })
+                    }
+                    title="Parcelas de honorários e cobrança deste processo"
+                  >
+                    <Receipt className="w-4 h-4" aria-hidden />
+                    Recebíveis
+                  </button>
+                ) : null}
                 {podeGerarDocumento ? (
                   <>
                     <button
@@ -5543,7 +5578,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     <button
                       type="button"
                       className="text-[11px] text-indigo-700 hover:underline"
-                      onClick={() => navigate('/relatorio-resultado-processos')}
+                      onClick={() => navigate('/resultado-financeiro/autos')}
                     >
                       Relatório de resultados →
                     </button>

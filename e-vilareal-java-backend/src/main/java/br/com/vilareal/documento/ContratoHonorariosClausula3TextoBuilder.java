@@ -8,8 +8,10 @@ import java.text.NumberFormat;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 /** Monta o texto da Cláusula 3ª a partir de dados estruturados (com valores por extenso). */
 public final class ContratoHonorariosClausula3TextoBuilder {
@@ -49,6 +51,18 @@ public final class ContratoHonorariosClausula3TextoBuilder {
     public static List<ParcelaCalculada> calcularParcelas(ContratoHonorariosClausula3Dados dados) {
         if (dados == null || !parcelamentoAtivo(dados)) {
             return List.of();
+        }
+        if (dados.parcelas() != null && !dados.parcelas().isEmpty()) {
+            return dados.parcelas().stream()
+                    .filter(Objects::nonNull)
+                    .filter(p -> p.valor() != null && p.dataVencimento() != null)
+                    .sorted(Comparator.comparing(
+                            p -> p.numero() != null ? p.numero() : Integer.MAX_VALUE))
+                    .map(p -> new ParcelaCalculada(
+                            p.numero() != null && p.numero() > 0 ? p.numero() : 1,
+                            p.valor().setScale(2, RoundingMode.HALF_UP),
+                            p.dataVencimento()))
+                    .toList();
         }
         BigDecimal total = resolverValorTotalParcelas(dados);
         if (total == null || total.compareTo(BigDecimal.ZERO) <= 0) {
@@ -173,17 +187,37 @@ public final class ContratoHonorariosClausula3TextoBuilder {
                     .append(".");
             return;
         }
-        ParcelaCalculada primeira = parcelas.get(0);
+        boolean valoresUniformes = parcelas.stream().map(ParcelaCalculada::valor).distinct().count() <= 1;
+        if (valoresUniformes) {
+            ParcelaCalculada primeira = parcelas.get(0);
+            sb.append(" O pagamento será efetuado em ")
+                    .append(parcelas.size())
+                    .append(" parcelas mensais de ")
+                    .append(formatarMoeda(primeira.valor()))
+                    .append(" (")
+                    .append(ValorExtensoUtil.reaisPorExtenso(primeira.valor()))
+                    .append("), vencendo a primeira em ")
+                    .append(FMT_DATA.format(primeira.dataVencimento()))
+                    .append(sufixoForma)
+                    .append(".");
+            return;
+        }
         sb.append(" O pagamento será efetuado em ")
                 .append(parcelas.size())
-                .append(" parcelas mensais de ")
-                .append(formatarMoeda(primeira.valor()))
-                .append(" (")
-                .append(ValorExtensoUtil.reaisPorExtenso(primeira.valor()))
-                .append("), vencendo a primeira em ")
-                .append(FMT_DATA.format(primeira.dataVencimento()))
-                .append(sufixoForma)
-                .append(".");
+                .append(" parcelas, nos seguintes valores e vencimentos:");
+        for (ParcelaCalculada p : parcelas) {
+            sb.append(" ")
+                    .append(p.numero())
+                    .append("ª parcela de ")
+                    .append(formatarMoeda(p.valor()))
+                    .append(" (")
+                    .append(ValorExtensoUtil.reaisPorExtenso(p.valor()))
+                    .append("), vencimento em ")
+                    .append(FMT_DATA.format(p.dataVencimento()))
+                    .append(";");
+        }
+        sb.setLength(sb.length() - 1);
+        sb.append(sufixoForma).append(".");
     }
 
     /** Frase de forma de pagamento quando não há parcelamento explícito. */

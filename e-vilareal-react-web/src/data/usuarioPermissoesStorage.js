@@ -267,7 +267,22 @@ export function usuarioPodeAcessarModulo(userId, moduloId) {
     return usuarioPodeAcessarModulo(userId, 'processos');
   }
   if (moduloId === 'documentos/recebiveis') {
-    return usuarioPodeAcessarModulo(userId, 'documentos/gerar');
+    return usuarioPodeAcessarModulo(userId, 'resultado-financeiro');
+  }
+  if (moduloId === 'processos/recebiveis') {
+    return usuarioPodeAcessarModulo(userId, 'processos');
+  }
+  if (moduloId === 'relatorio-resultado-processos/recebiveis') {
+    return usuarioPodeAcessarModulo(userId, 'resultado-financeiro');
+  }
+  if (moduloId === 'relatorio-resultado-processos') {
+    return usuarioPodeAcessarModulo(userId, 'resultado-financeiro');
+  }
+  if (moduloId === 'resultado-financeiro') {
+    const p = getPermissoesUsuario(userId);
+    if (p.processos !== false) return true;
+    if (p['relatorio-resultado-processos'] === false) return false;
+    return p['resultado-financeiro'] !== false;
   }
   /** Modelos de petição: apenas perfil ADMIN (compartilhado — altera timbrado global). */
   if (moduloId === 'documentos/modelos') {
@@ -296,6 +311,15 @@ export function pathParaModuloId(pathname) {
   if (noLead === 'clientes') return 'clientes/lista';
   if (noLead.startsWith('clientes/editar/')) return 'clientes/lista';
   if (noLead === 'clientes/relatorio') return 'clientes/relatorio';
+  if (noLead === 'resultado-financeiro' || noLead.startsWith('resultado-financeiro/')) {
+    return 'resultado-financeiro';
+  }
+  if (noLead === 'relatorio-resultado-processos' || noLead.startsWith('relatorio-resultado-processos/')) {
+    return 'resultado-financeiro';
+  }
+  if (noLead === 'processos/recebiveis') {
+    return 'processos/recebiveis';
+  }
   if (IDS_MODULO.has(noLead)) return noLead;
   const parts = noLead.split('/');
   for (let i = parts.length; i >= 1; i--) {

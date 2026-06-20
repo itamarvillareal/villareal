@@ -23,7 +23,6 @@ import {
 const LUCIDE_POR_ID = {
   processos: Folder,
   'documentos/gerar': FileText,
-  'documentos/recebiveis': Receipt,
   'documentos/modelos': Layers,
   'processos/peticionamento-projudi': Gavel,
   'processos/publicacoes': Megaphone,
@@ -33,6 +32,7 @@ const LUCIDE_POR_ID = {
   'processos/monitoramento': UserSearch,
   relatorio: BarChart3,
   'relatorio-resultado-processos': CircleDollarSign,
+  'relatorio-resultado-processos/recebiveis': Receipt,
 };
 
 /**

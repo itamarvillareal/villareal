@@ -294,15 +294,24 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
           return (
             <NavLink
               key={item.id}
-              to={`/${item.id}`}
+              to={item.id === 'resultado-financeiro' ? '/resultado-financeiro/autos' : `/${item.id}`}
               onClick={closeMobileDrawer}
-              className={({ isActive }) =>
-                `flex items-center gap-2 px-2 py-1.5 rounded-md text-gray-700 dark:text-slate-200 text-xs font-medium transition-all duration-200 mb-0 ${
-                  isActive
+              className={({ isActive }) => {
+                const path = location.pathname.replace(/\/+$/, '') || '/';
+                let ativo = isActive;
+                if (item.id === 'resultado-financeiro') {
+                  ativo =
+                    path === '/resultado-financeiro' ||
+                    path.startsWith('/resultado-financeiro/') ||
+                    path === '/relatorio-resultado-processos' ||
+                    path.startsWith('/relatorio-resultado-processos/');
+                }
+                return `flex items-center gap-2 px-2 py-1.5 rounded-md text-gray-700 dark:text-slate-200 text-xs font-medium transition-all duration-200 mb-0 ${
+                  ativo
                     ? 'bg-blue-100 dark:bg-cyan-500/12 text-blue-800 dark:text-cyan-100 border-l-2 border-blue-500 dark:border-cyan-400'
                     : 'hover:bg-gray-100 dark:hover:bg-white/[0.05] border-l-2 border-transparent'
-                }`
-              }
+                }`;
+              }}
             >
               <SidebarMenuIcon id={item.id} className="w-4 h-4 shrink-0" />
               <span className="leading-snug flex items-center gap-1.5 min-w-0 flex-1">

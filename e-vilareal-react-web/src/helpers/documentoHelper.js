@@ -1,5 +1,9 @@
 import { request } from '../api/httpClient.js';
 import { ENDERECAMENTOS, TIPOS_PECA, CIDADE_ESTADO_PADRAO } from '../pages/documentos/constants.js';
+import {
+  primeiraPessoaIdParteCliente,
+  textosPartesFromListaPartesApi,
+} from '../data/partesLadoEscritorio.js';
 import { listarPartesProcesso, papelParteUiParaApi } from '../repositories/processosRepository.js';
 
 const ESTADOS_NOME = {
@@ -32,6 +36,7 @@ const ESTADOS_NOME = {
   RR: 'Roraima',
 };
 
+/** @deprecated Prefer {@link textosPartesFromListaPartesApi} com papel_cliente do processo. */
 export function poloEhLadoCliente(polo) {
   const poloNorm = String(polo ?? '')
     .normalize('NFD')
@@ -44,7 +49,6 @@ export function poloEhLadoCliente(polo) {
   );
 }
 
-/** Polo processual autor/requerente (locador no contrato de aluguel). */
 export function poloEhAutorProcesso(polo) {
   const p = String(polo ?? '')
     .normalize('NFD')
@@ -53,7 +57,6 @@ export function poloEhAutorProcesso(polo) {
   return p.includes('AUTOR') || p.includes('REQUERENTE');
 }
 
-/** Polo processual réu/requerido (locatário no contrato de aluguel). */
 export function poloEhReuProcesso(polo) {
   const p = String(polo ?? '')
     .normalize('NFD')
@@ -72,8 +75,6 @@ export function inferirEnderecamento(competencia, cidade, uf) {
     return `MERITÍSSIMO JUÍZO DA COMARCA DE ${cidUpper} - ${sigla}`;
   }
 
-  // Constrói o endereçamento preservando EXATAMENTE a competência do processo
-  // (incluindo o número/ordinal, ex.: "1º JUIZADO ESPECIAL CÍVEL").
   const ehJuizado = competenciaUpper.includes('JUIZADO');
   const ehTrabalho = competenciaUpper.includes('TRABALHO');
   const artigo = ehJuizado ? 'DO' : 'DA';
@@ -104,7 +105,6 @@ const MESES_PT = {
   dezembro: 12,
 };
 
-/** Extrai YYYY-MM-DD de «Anápolis, estado de Goiás, 01 de junho de 2026». */
 export function extrairDataIsoDeLocalData(texto) {
   const m = String(texto ?? '').match(/(\d{1,2})\s+de\s+([a-zç]+)\s+de\s+(\d{4})/i);
   if (!m) return null;
@@ -125,12 +125,6 @@ export function resolveSelectInicial(valor, opcoes) {
   return { select: '__outro__', outro: v };
 }
 
-/**
- * Resolve o valor inicial de um select aceitando apenas correspondência EXATA com
- * uma das opções pré-definidas; caso contrário usa o campo "Outro" com o texto original.
- * Usado no endereçamento, onde várias opções compartilham o mesmo prefixo e o match
- * parcial levaria à sugestão de uma comarca/juízo errados.
- */
 export function resolveSelectExato(valor, opcoes) {
   const v = String(valor ?? '').trim();
   if (!v) return { select: '', outro: '' };
@@ -152,7 +146,7 @@ export async function buscarQualificacaoCompleta(pessoaId) {
   }
 }
 
-async function montarParteAutorReu(parte, textoFallback) {
+async function montarNomeQualificacaoJuridica(parte, textoFallback) {
   const nome = String(parte?.nomeExibicao || parte?.nomeLivre || textoFallback || '').trim();
   const pessoaId = Number(parte?.pessoaId);
   let qualificacao = '';
@@ -165,14 +159,11 @@ async function montarParteAutorReu(parte, textoFallback) {
   };
 }
 
-function separarPartesApi(partes) {
-  const cliente = [];
-  const oposta = [];
-  for (const p of partes || []) {
-    if (poloEhLadoCliente(p.polo)) cliente.push(p);
-    else oposta.push(p);
-  }
-  return { partesCliente: cliente, partesOposta: oposta };
+function juntarNomesPartes(partes) {
+  return (partes || [])
+    .map((p) => String(p.nomeExibicao || p.nomeLivre || '').trim())
+    .filter(Boolean)
+    .join(' e ');
 }
 
 /**
@@ -190,8 +181,6 @@ export async function montarDadosParaDocumentoFromProcesso(ctx) {
   const valorCausa = String(ctx.valorCausa ?? '').trim();
   const observacao = String(ctx.observacao ?? '').trim();
   const papelUi = String(ctx.papelParte ?? 'requerente').toLowerCase();
-  const papelCliente = papelParteUiParaApi(papelUi) || 'REQUERENTE';
-  const clienteEhRequerente = papelCliente === 'REQUERENTE';
 
   let partes = ctx.partesApi;
   if (!Array.isArray(partes) && ctx.processoApiId) {
@@ -199,55 +188,33 @@ export async function montarDadosParaDocumentoFromProcesso(ctx) {
   }
   partes = Array.isArray(partes) ? partes : [];
 
-  const { partesCliente, partesOposta } = separarPartesApi(partes);
+  const textosPartes = textosPartesFromListaPartesApi(partes, papelUi);
+  const textoParteCliente = String(
+    ctx.textoParteCliente ?? ctx.parteCliente ?? textosPartes.parteCliente ?? '',
+  ).trim();
+  const textoParteOposta = String(
+    ctx.textoParteOposta ?? ctx.parteOposta ?? textosPartes.parteOposta ?? '',
+  ).trim();
 
-  const textoCliente = String(ctx.textoParteCliente ?? ctx.parteCliente ?? '').trim();
-  const textoOposta = String(ctx.textoParteOposta ?? ctx.parteOposta ?? '').trim();
+  const partesAutor = partes.filter((p) => poloEhAutorProcesso(p.polo));
+  const partesReu = partes.filter((p) => poloEhReuProcesso(p.polo));
 
-  const principalCliente = partesCliente[0] || null;
-  const principalOposta = partesOposta[0] || null;
+  const autor = await montarNomeQualificacaoJuridica(partesAutor[0], textoParteOposta);
+  const reu = await montarNomeQualificacaoJuridica(partesReu[0], textoParteCliente);
 
-  let nomeAutor = '';
-  let qualificacaoAutor = '';
-  let nomeReu = '';
-  let qualificacaoReu = '';
-
-  if (clienteEhRequerente) {
-    const autor = await montarParteAutorReu(principalCliente, textoCliente);
-    const reu = await montarParteAutorReu(principalOposta, textoOposta);
-    nomeAutor = autor.nome;
-    qualificacaoAutor = autor.qualificacao;
-    nomeReu = reu.nome;
-    qualificacaoReu = reu.qualificacao;
-  } else {
-    const autor = await montarParteAutorReu(principalOposta, textoOposta);
-    const reu = await montarParteAutorReu(principalCliente, textoCliente);
-    nomeAutor = autor.nome;
-    qualificacaoAutor = autor.qualificacao;
-    nomeReu = reu.nome;
-    qualificacaoReu = reu.qualificacao;
-  }
+  const nomeAutor = juntarNomesPartes(partesAutor).toUpperCase() || autor.nome;
+  const nomeReu = juntarNomesPartes(partesReu).toUpperCase() || reu.nome;
+  const qualificacaoAutor = autor.qualificacao;
+  const qualificacaoReu = reu.qualificacao;
 
   const enderecamento = inferirEnderecamento(competencia, cidade, uf);
   const cidadeEstado = formatarCidadeEstado(cidade, uf);
 
-  const pessoaIdOutorgante =
-    principalCliente?.pessoaId != null && Number(principalCliente.pessoaId) > 0
-      ? Number(principalCliente.pessoaId)
-      : null;
+  const pessoaIdOutorgante = primeiraPessoaIdParteCliente(partes, papelUi);
+  const nomeOutorgante = textoParteCliente.toUpperCase();
 
-  const partesAutor = partes.filter((p) => poloEhAutorProcesso(p.polo));
-  const partesReu = partes.filter((p) => poloEhReuProcesso(p.polo));
-  const nomeLocador =
-    partesAutor
-      .map((p) => String(p.nomeExibicao || p.nomeLivre || '').trim())
-      .filter(Boolean)
-      .join(' e ') || nomeAutor;
-  const nomeLocatarios =
-    partesReu
-      .map((p) => String(p.nomeExibicao || p.nomeLivre || '').trim())
-      .filter(Boolean)
-      .join(' e ') || nomeReu;
+  const nomeLocador = juntarNomesPartes(partesAutor).toUpperCase() || nomeAutor;
+  const nomeLocatarios = juntarNomesPartes(partesReu).toUpperCase() || nomeReu;
 
   return {
     enderecamento,
@@ -261,12 +228,15 @@ export async function montarDadosParaDocumentoFromProcesso(ctx) {
     valorCausa,
     cidadeEstado,
     pessoaIdOutorgante,
-    nomeOutorgante: clienteEhRequerente ? nomeAutor : nomeReu,
+    nomeOutorgante,
     nomeLocador,
     nomeLocatarios,
     codigoCliente: ctx.codigoCliente,
     numeroInterno: ctx.numeroInterno ?? ctx.processo,
     processoApiId: ctx.processoApiId ?? null,
+    parteCliente: textoParteCliente,
+    parteOposta: textoParteOposta,
+    papelParte: papelUi,
   };
 }
 
@@ -277,42 +247,32 @@ export function mapearDadosProcessoParaFormIA(dadosProcesso) {
   const tipo = resolveSelectInicial(dadosProcesso.tipoPeca, TIPOS_PECA);
 
   return {
-    enderecamentoSelect: end.select,
+    enderecamento: end.select,
     enderecamentoOutro: end.outro,
-    numeroProcesso: dadosProcesso.numeroProcesso || '',
+    tipoPeca: tipo.select,
+    tipoPecaOutro: tipo.outro,
     nomeAutor: dadosProcesso.nomeAutor || '',
     qualificacaoAutor: dadosProcesso.qualificacaoAutor || '',
     nomeReu: dadosProcesso.nomeReu || '',
     qualificacaoReu: dadosProcesso.qualificacaoReu || '',
-    tipoPecaSelect: tipo.select,
-    tipoPecaOutro: tipo.outro,
     fatos: dadosProcesso.fatos || '',
     valorCausa: dadosProcesso.valorCausa || '',
-    fundamentacaoAdicional: '',
-    modeloBase: '',
-    instrucoesAdicionais: '',
-    pedidosEspecificos: [''],
     cidadeEstado: dadosProcesso.cidadeEstado || CIDADE_ESTADO_PADRAO,
   };
 }
 
 function estadoInicialFormVazio() {
   return {
-    enderecamentoSelect: '',
+    enderecamento: '',
     enderecamentoOutro: '',
-    numeroProcesso: '',
+    tipoPeca: '',
+    tipoPecaOutro: '',
     nomeAutor: '',
     qualificacaoAutor: '',
     nomeReu: '',
     qualificacaoReu: '',
-    tipoPecaSelect: '',
-    tipoPecaOutro: '',
     fatos: '',
     valorCausa: '',
-    fundamentacaoAdicional: '',
-    modeloBase: '',
-    instrucoesAdicionais: '',
-    pedidosEspecificos: [''],
     cidadeEstado: CIDADE_ESTADO_PADRAO,
   };
 }

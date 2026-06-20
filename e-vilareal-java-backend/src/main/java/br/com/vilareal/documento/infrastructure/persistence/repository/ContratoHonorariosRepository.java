@@ -15,7 +15,9 @@ public interface ContratoHonorariosRepository extends JpaRepository<ContratoHono
             LEFT JOIN FETCH c.pessoa
             LEFT JOIN FETCH c.processo p
             LEFT JOIN FETCH p.cliente
-            LEFT JOIN FETCH c.parcelas
+            LEFT JOIN FETCH c.parcelas par
+            LEFT JOIN FETCH par.pagamento pag
+            LEFT JOIN FETCH pag.financeiroLancamento
             WHERE c.processo.id = :processoId
             """)
     java.util.Optional<ContratoHonorariosEntity> findByProcessoIdWithDetalhes(@Param("processoId") Long processoId);
@@ -25,7 +27,9 @@ public interface ContratoHonorariosRepository extends JpaRepository<ContratoHono
             LEFT JOIN FETCH c.pessoa
             LEFT JOIN FETCH c.processo p
             LEFT JOIN FETCH p.cliente
-            LEFT JOIN FETCH c.parcelas
+            LEFT JOIN FETCH c.parcelas par
+            LEFT JOIN FETCH par.pagamento pag
+            LEFT JOIN FETCH pag.financeiroLancamento
             WHERE (:processoId IS NULL OR c.processo.id = :processoId)
               AND (:pessoaId IS NULL OR c.pessoa.id = :pessoaId)
               AND (:de IS NULL OR c.dataContrato >= :de)

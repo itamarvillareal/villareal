@@ -76,6 +76,38 @@ class ProcessoPartesVinculoTextoResolverTest {
                 .isEqualTo("ADVERSARIO");
     }
 
+    @Test
+    void resolverPapelClienteEfetivo_usaCampoProcessoRequerido() {
+        ProcessoEntity processo = processoComPapel("REQUERIDO");
+        assertThat(ProcessoPartesVinculoTextoResolver.resolverPapelClienteEfetivo(processo, List.of()))
+                .isEqualTo("REQUERIDO");
+    }
+
+    @Test
+    void primeiraPessoaIdParteCliente_clienteRequeridoNoReu() {
+        ProcessoEntity processo = processoComPapel("REQUERIDO");
+        PessoaEntity pessoaCliente = new PessoaEntity();
+        pessoaCliente.setId(42L);
+        pessoaCliente.setNome("CONDOMINIO RESIDENCIAL TORRES DO MIRANTE");
+        PessoaEntity pessoaOposta = new PessoaEntity();
+        pessoaOposta.setId(99L);
+        pessoaOposta.setNome("ADVERSARIO");
+        List<ProcessoParteEntity> partes = List.of(
+                parteComPessoa("AUTOR", pessoaOposta, null),
+                parteComPessoa("REU", pessoaCliente, null));
+
+        assertThat(ProcessoPartesVinculoTextoResolver.primeiraPessoaIdParteCliente(processo, partes))
+                .isEqualTo(42L);
+    }
+
+    private static ProcessoParteEntity parteComPessoa(String polo, PessoaEntity pessoa, String qualificacao) {
+        ProcessoParteEntity parte = new ProcessoParteEntity();
+        parte.setPolo(polo);
+        parte.setQualificacao(qualificacao);
+        parte.setPessoa(pessoa);
+        return parte;
+    }
+
     private static ProcessoEntity processoComPapel(String papelCliente) {
         ProcessoEntity processo = new ProcessoEntity();
         processo.setPapelCliente(papelCliente);

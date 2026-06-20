@@ -13,7 +13,6 @@ export const processosMenuSections = [
     tone: 'blue',
     items: [
       { id: 'documentos/gerar', label: 'Gerar documento', icon: 'FileText' },
-      { id: 'documentos/recebiveis', label: 'Recebíveis', icon: 'Receipt' },
       { id: 'documentos/modelos', label: 'Modelos de petição', icon: 'Layers' },
       { id: 'processos/peticionamento-projudi', label: 'Peticionamento PROJUDI', icon: 'Gavel' },
     ],
@@ -43,7 +42,6 @@ export const processosMenuSections = [
     tone: 'purple',
     items: [
       { id: 'relatorio', label: 'Relatório de processos', icon: 'BarChart3' },
-      { id: 'relatorio-resultado-processos', label: 'Resultado financeiro', icon: 'CircleDollarSign' },
     ],
   },
 ];

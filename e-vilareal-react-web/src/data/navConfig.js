@@ -45,6 +45,7 @@ export const navItems = [
     menuSections: processosMenuSections,
     children: processosMenuChildrenFlat,
   },
+  { id: 'resultado-financeiro', label: 'Resultado financeiro', icon: 'CircleDollarSign' },
   {
     id: 'calcular-grupo',
     label: 'Calcular',

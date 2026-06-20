@@ -52,7 +52,67 @@ export function extrairIntentNavegacaoProcessos(state) {
   const hasProcKey = hasNumeroInterno || hasProc || hasProcesso;
 
   if (!hasCod && !hasProcKey) return null;
-  return { hasCod, codRaw, hasProcKey, procRaw };
+  return { hasCod, codRaw, hasProcKey, procRaw, processoApiId: null };
+}
+
+/**
+ * Intent de navegação unificando `location.state` e query string (`?codigoCliente=&numeroInterno=&processoId=`).
+ * Query string é fallback quando o state do React Router se perde (ex.: refresh, lazy route).
+ *
+ * @param {Pick<import('react-router-dom').Location, 'state'|'search'> | null | undefined} location
+ */
+export function resolverIntentNavegacaoProcessosDeRota(location) {
+  const fromState = extrairIntentNavegacaoProcessos(location?.state);
+  const params = new URLSearchParams(location?.search ?? '');
+
+  const codRaw =
+    (fromState?.hasCod ? fromState.codRaw : null) ??
+    params.get(CHAVE_API_CODIGO_CLIENTE) ??
+    params.get(CHAVE_HISTORICO_CODIGO_CLIENTE);
+  const procRaw =
+    (fromState?.hasProcKey ? fromState.procRaw : null) ??
+    params.get(CHAVE_API_NUMERO_INTERNO_PROCESSO) ??
+    params.get(CHAVE_HISTORICO_NUMERO_INTERNO) ??
+    params.get('processo');
+
+  const hasCod = codRaw != null && String(codRaw).trim() !== '';
+  const hasProcKey = procRaw != null && String(procRaw).trim() !== '';
+
+  const apiIdRaw =
+    location?.state?.processoApiId ??
+    location?.state?.processoId ??
+    params.get('processoId') ??
+    params.get('processoApiId');
+  const processoApiId =
+    apiIdRaw != null && Number.isFinite(Number(apiIdRaw)) && Number(apiIdRaw) > 0
+      ? Number(apiIdRaw)
+      : null;
+
+  if (!hasCod && !hasProcKey && processoApiId == null) return null;
+  return { hasCod, codRaw, hasProcKey, procRaw, processoApiId };
+}
+
+function numeroInternoFromIntentRaw(procRaw) {
+  if (procRaw == null || String(procRaw).trim() === '') return null;
+  const num = parseInt(String(procRaw), 10);
+  if (Number.isNaN(num) || num < 1) return null;
+  return num;
+}
+
+/** Valores iniciais de cliente/proc. ao montar Processos (prioriza rota sobre localStorage). */
+export function resolverSelecaoInicialProcessos(location) {
+  const intent = resolverIntentNavegacaoProcessosDeRota(location);
+  const saved = lerUltimaSelecaoProcessosArmazenamento();
+  if (intent?.hasCod) {
+    return {
+      codigoCliente: padCliente(intent.codRaw),
+      numeroInterno: numeroInternoFromIntentRaw(intent.procRaw) ?? saved?.numeroInterno ?? 1,
+    };
+  }
+  if (saved) {
+    return { codigoCliente: saved.codigoCliente, numeroInterno: saved.numeroInterno };
+  }
+  return { codigoCliente: padCliente('00000001'), numeroInterno: 1 };
 }
 
 /**
@@ -123,4 +183,50 @@ export function buildRouterStateChaveClienteProcesso(codigoClienteRaw, numeroInt
     }
   }
   return out;
+}
+
+/**
+ * Destino React Router para abrir Processos (ou sub-rota) com state + query string redundantes.
+ *
+ * @param {string} pathname
+ * @param {string|number|null|undefined} codigoClienteRaw
+ * @param {string|number|null|undefined} numeroInternoRaw
+ * @param {Record<string, unknown>} [extra]
+ */
+export function buildLinkDestinoProcesso(pathname, codigoClienteRaw, numeroInternoRaw, extra = {}) {
+  const hasCod = codigoClienteRaw != null && String(codigoClienteRaw).trim() !== '';
+  const hasProc = numeroInternoRaw != null && String(numeroInternoRaw).trim() !== '';
+  const state =
+    hasCod || hasProc
+      ? buildRouterStateChaveClienteProcesso(
+          hasCod ? codigoClienteRaw : '',
+          hasProc ? numeroInternoRaw : '',
+          extra,
+        )
+      : Object.keys(extra).length > 0
+        ? { ...extra }
+        : undefined;
+
+  const params = new URLSearchParams();
+  if (hasCod) {
+    const cod = padCliente(codigoClienteRaw);
+    params.set(CHAVE_API_CODIGO_CLIENTE, cod);
+    params.set(CHAVE_HISTORICO_CODIGO_CLIENTE, cod);
+  }
+  if (hasProc) {
+    const procStr = String(numeroInternoRaw).trim();
+    params.set(CHAVE_HISTORICO_NUMERO_INTERNO, procStr);
+    params.set(CHAVE_API_NUMERO_INTERNO_PROCESSO, procStr);
+  }
+  const apiId = extra.processoApiId ?? extra.processoId;
+  if (apiId != null && Number.isFinite(Number(apiId)) && Number(apiId) > 0) {
+    params.set('processoId', String(Number(apiId)));
+  }
+
+  const search = params.toString();
+  return {
+    pathname,
+    search: search ? `?${search}` : '',
+    state,
+  };
 }

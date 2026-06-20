@@ -73,4 +73,17 @@ public interface PagamentoRepository extends JpaRepository<PagamentoEntity, Long
             """)
     List<PagamentoEntity> findAbertosPorCliente(
             @Param("clienteId") Long clienteId, @Param("statusEncerrados") Collection<String> statusEncerrados);
+
+    @Query("""
+            SELECT DISTINCT p FROM PagamentoEntity p
+            LEFT JOIN FETCH p.financeiroLancamento fl
+            WHERE p.tipo = 'RECEBER'
+              AND p.status NOT IN ('CANCELADO', 'SUBSTITUIDO')
+              AND (
+                  p.processo.id = :processoId
+                  OR fl.processo.id = :processoId
+              )
+            ORDER BY p.dataVencimento ASC, p.id ASC
+            """)
+    List<PagamentoEntity> findReceberPorProcesso(@Param("processoId") Long processoId);
 }

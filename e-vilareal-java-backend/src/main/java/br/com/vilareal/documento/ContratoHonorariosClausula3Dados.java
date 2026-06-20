@@ -2,6 +2,7 @@ package br.com.vilareal.documento;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 /** Dados estruturados da Cláusula 3ª (remuneração) do contrato de honorários. */
 public record ContratoHonorariosClausula3Dados(
@@ -18,4 +19,6 @@ public record ContratoHonorariosClausula3Dados(
         LocalDate primeiroVencimento,
         /** {@code MENSAL} (padrão) ou {@code UNICA}. */
         String intervaloParcelas,
-        String formaPagamento) {}
+        String formaPagamento,
+        /** Quando informado, substitui o cálculo automático de parcelas. */
+        List<ContratoHonorariosParcelaClausula3> parcelas) {}

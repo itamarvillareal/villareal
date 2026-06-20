@@ -12,20 +12,23 @@ import {
   TIPOS_REMUNERACAO,
   INTERVALO_PARCELA_MENSAL,
   INTERVALO_PARCELA_UNICA,
-  calcularParcelasPreview,
   clausula3FormParaApi,
   estadoInicialClausula3,
-  formatarDataBR,
-  formatarMoedaBRL,
   formatarMoedaCampo,
   mostraDataPagamento,
   parseMoedaBR,
   parcelamentoAtivo,
+  recalcularParcelasForm,
+  resolverParcelasForm,
+  atualizarParcelaForm,
   valorParcelavelSugerido,
 } from '../contratoHonorariosClausula3.js';
 
 const inputClass =
   'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900';
+
+const inputTabelaClass =
+  'w-full min-w-[7rem] rounded-md border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900';
 
 export function ContratoHonorariosClausula3Modal({
   open,
@@ -48,14 +51,21 @@ export function ContratoHonorariosClausula3Modal({
     setErro('');
     setForm(
       initialForm
-        ? {
-            ...estadoInicialClausula3(),
-            ...initialForm,
-            valorFixo: initialForm.valorFixo ? formatarMoedaCampo(initialForm.valorFixo) : '',
-            valorTotalParcelas: initialForm.valorTotalParcelas
-              ? formatarMoedaCampo(initialForm.valorTotalParcelas)
-              : '',
-          }
+        ? (() => {
+            const base = {
+              ...estadoInicialClausula3(),
+              ...initialForm,
+              valorFixo: initialForm.valorFixo ? formatarMoedaCampo(initialForm.valorFixo) : '',
+              valorTotalParcelas: initialForm.valorTotalParcelas
+                ? formatarMoedaCampo(initialForm.valorTotalParcelas)
+                : '',
+              parcelas: Array.isArray(initialForm.parcelas) ? initialForm.parcelas : [],
+            };
+            if (parcelamentoAtivo(base) && base.parcelas.length === 0) {
+              return recalcularParcelasForm(base);
+            }
+            return base;
+          })()
         : estadoInicialClausula3(),
     );
   }, [open, initialForm]);
@@ -85,30 +95,44 @@ export function ContratoHonorariosClausula3Modal({
 
   const patch = (p) => setForm((f) => ({ ...f, ...p }));
 
+  const patchParcelamento = (p) => {
+    setForm((f) => {
+      const next = { ...f, ...p };
+      if (parcelamentoAtivo(next)) {
+        return recalcularParcelasForm(next);
+      }
+      return next;
+    });
+  };
+
+  const patchParcela = (indice, patchParc) => {
+    setForm((f) => atualizarParcelaForm(f, indice, patchParc));
+  };
+
   const handleToggleParcelamento = (checked) => {
     const next = { ...form, temParcelamento: checked };
-    if (!checked) {
-      next.gerarRecebiveis = false;
-    } else if (!next.valorTotalParcelas) {
+    if (checked && !next.valorTotalParcelas) {
       const sugerido = valorParcelavelSugerido(form);
       if (sugerido) next.valorTotalParcelas = formatarMoedaCampo(sugerido);
     }
     if (checked && Number(next.quantidadeParcelas) < 2) {
       next.quantidadeParcelas = '2';
     }
-    setForm(next);
+    setForm(recalcularParcelasForm(next));
   };
 
   const handleToggleRecebiveis = (checked) => {
-    setForm((f) => ({
-      ...f,
-      gerarRecebiveis: checked,
-      temParcelamento: checked ? true : f.temParcelamento,
-      valorTotalParcelas:
-        checked && !f.valorTotalParcelas
-          ? formatarMoedaCampo(valorParcelavelSugerido(f)) || f.valorTotalParcelas
-          : f.valorTotalParcelas,
-    }));
+    setForm((f) => {
+      const next = { ...f, gerarRecebiveis: checked };
+      if (checked && parcelamentoAtivo(f)) {
+        if (!f.valorTotalParcelas) {
+          next.valorTotalParcelas =
+            formatarMoedaCampo(valorParcelavelSugerido(f)) || f.valorTotalParcelas;
+        }
+        return recalcularParcelasForm(next);
+      }
+      return next;
+    });
   };
 
   const validar = () => {
@@ -144,8 +168,16 @@ export function ContratoHonorariosClausula3Modal({
       if (!processoApiId) {
         return 'Para gerar recebíveis, abra a tela a partir de um processo (conta corrente).';
       }
-      if (!parcelamentoAtivo(form)) {
-        return 'Ative o parcelamento para gerar recebíveis no financeiro.';
+      if (!parcelamentoAtivo(form) && mostraDataPagamento(form)) {
+        const v = parseMoedaBR(form.valorFixo);
+        if (v == null || v <= 0) {
+          return 'Informe o valor fixo para gerar recebíveis.';
+        }
+        if (!form.primeiroVencimento) {
+          return 'Informe a data do pagamento.';
+        }
+      } else if (!parcelamentoAtivo(form)) {
+        return 'Configure valor fixo com data de pagamento ou parcelamento para gerar recebíveis.';
       }
     }
     return '';
@@ -176,7 +208,15 @@ export function ContratoHonorariosClausula3Modal({
     form.tipoRemuneracao === TIPO_REMUNERACAO_PERCENTUAL || form.tipoRemuneracao === TIPO_REMUNERACAO_MISTO;
   const mostraValorFixo =
     form.tipoRemuneracao === TIPO_REMUNERACAO_VALOR_FIXO || form.tipoRemuneracao === TIPO_REMUNERACAO_MISTO;
-  const parcelasPreview = calcularParcelasPreview(form);
+  const parcelasPreview = resolverParcelasForm(form);
+  const podeGerarRecebiveisFinanceiro =
+    Boolean(processoApiId) && (parcelamentoAtivo(form) || mostraDataPagamento(form));
+
+  function valorParcelaExibicao(parcela, idx) {
+    const custom = form.parcelas?.[idx]?.valorDisplay;
+    if (custom != null && String(custom).trim() !== '') return custom;
+    return formatarMoedaCampo(parcela.valor);
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -325,8 +365,10 @@ export function ContratoHonorariosClausula3Modal({
                       inputMode="decimal"
                       className={inputClass}
                       value={form.valorTotalParcelas}
-                      onChange={(e) => patch({ valorTotalParcelas: e.target.value })}
-                      onBlur={(e) => patch({ valorTotalParcelas: formatarMoedaCampo(e.target.value) })}
+                      onChange={(e) => patchParcelamento({ valorTotalParcelas: e.target.value })}
+                      onBlur={(e) =>
+                        patchParcelamento({ valorTotalParcelas: formatarMoedaCampo(e.target.value) })
+                      }
                       placeholder={formatarMoedaCampo(valorParcelavelSugerido(form)) || '0,00'}
                     />
                     {mostraValorFixo && form.valorFixo ? (
@@ -342,7 +384,7 @@ export function ContratoHonorariosClausula3Modal({
                       min={1}
                       className={inputClass}
                       value={form.quantidadeParcelas}
-                      onChange={(e) => patch({ quantidadeParcelas: e.target.value })}
+                      onChange={(e) => patchParcelamento({ quantidadeParcelas: e.target.value })}
                     />
                   </label>
                   <label className="block text-sm">
@@ -351,7 +393,7 @@ export function ContratoHonorariosClausula3Modal({
                       type="date"
                       className={inputClass}
                       value={form.primeiroVencimento}
-                      onChange={(e) => patch({ primeiroVencimento: e.target.value })}
+                      onChange={(e) => patchParcelamento({ primeiroVencimento: e.target.value })}
                     />
                   </label>
                   <label className="block text-sm">
@@ -359,7 +401,7 @@ export function ContratoHonorariosClausula3Modal({
                     <select
                       className={inputClass}
                       value={form.intervaloParcelas}
-                      onChange={(e) => patch({ intervaloParcelas: e.target.value })}
+                      onChange={(e) => patchParcelamento({ intervaloParcelas: e.target.value })}
                     >
                       <option value={INTERVALO_PARCELA_MENSAL}>Mensal</option>
                       <option value={INTERVALO_PARCELA_UNICA}>Parcela única</option>
@@ -378,38 +420,67 @@ export function ContratoHonorariosClausula3Modal({
                         </tr>
                       </thead>
                       <tbody>
-                        {parcelasPreview.map((p) => (
+                        {parcelasPreview.map((p, idx) => (
                           <tr key={p.numero} className="border-t border-slate-200 dark:border-slate-700">
-                            <td className="px-3 py-2">{p.numero}/{parcelasPreview.length}</td>
-                            <td className="px-3 py-2">{formatarMoedaBRL(p.valor)}</td>
-                            <td className="px-3 py-2">{formatarDataBR(p.dataVencimento)}</td>
+                            <td className="px-3 py-2 align-middle">
+                              {p.numero}/{parcelasPreview.length}
+                            </td>
+                            <td className="px-3 py-2 align-middle">
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                className={inputTabelaClass}
+                                value={valorParcelaExibicao(p, idx)}
+                                onChange={(e) => patchParcela(idx, { valorDisplay: e.target.value })}
+                                onBlur={(e) => {
+                                  const valor = parseMoedaBR(formatarMoedaCampo(e.target.value));
+                                  patchParcela(idx, {
+                                    valor: valor != null && valor >= 0 ? valor : p.valor,
+                                    valorDisplay: undefined,
+                                  });
+                                }}
+                                aria-label={`Valor da parcela ${p.numero}`}
+                              />
+                            </td>
+                            <td className="px-3 py-2 align-middle">
+                              <input
+                                type="date"
+                                className={inputTabelaClass}
+                                value={p.dataVencimento || ''}
+                                onChange={(e) =>
+                                  patchParcela(idx, { dataVencimento: e.target.value || p.dataVencimento })
+                                }
+                                aria-label={`Vencimento da parcela ${p.numero}`}
+                              />
+                            </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
                 ) : null}
-
-                <label className="flex cursor-pointer items-start gap-3 border-t border-slate-200 pt-4 text-sm dark:border-slate-700">
-                  <input
-                    type="checkbox"
-                    className="mt-1"
-                    checked={form.gerarRecebiveis}
-                    disabled={!processoApiId}
-                    onChange={(e) => handleToggleRecebiveis(e.target.checked)}
-                  />
-                  <span>
-                    <span className="block font-medium">Gerar recebíveis no financeiro do processo</span>
-                    <span className="text-slate-600 dark:text-slate-400">
-                      {processoApiId
-                        ? 'Cria as parcelas a receber na conta corrente do processo.'
-                        : 'Disponível ao abrir esta tela a partir de um processo.'}
-                    </span>
-                  </span>
-                </label>
               </div>
             ) : null}
           </div>
+
+          {podeGerarRecebiveisFinanceiro ? (
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 p-4 text-sm dark:border-slate-700">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={form.gerarRecebiveis}
+                onChange={(e) => handleToggleRecebiveis(e.target.checked)}
+              />
+              <span>
+                <span className="block font-medium">Gerar recebíveis no financeiro do processo</span>
+                <span className="text-slate-600 dark:text-slate-400">
+                  {parcelamentoAtivo(form)
+                    ? 'Cria as parcelas a receber na conta corrente do processo.'
+                    : 'Cria o lançamento a receber (pagamento único) na conta corrente do processo.'}
+                </span>
+              </span>
+            </label>
+          ) : null}
 
           <label className="block text-sm">
             <span className="mb-1 flex items-center gap-2 font-medium">

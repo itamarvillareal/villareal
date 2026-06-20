@@ -24,7 +24,8 @@ class ContratoHonorariosClausula3TextoBuilderTest {
                 null,
                 null,
                 null,
-                ContratoHonorariosClausula3TextoBuilder.FORMA_PAGAMENTO_PIX);
+                ContratoHonorariosClausula3TextoBuilder.FORMA_PAGAMENTO_PIX,
+                null);
     }
 
     @Test
@@ -67,6 +68,7 @@ class ContratoHonorariosClausula3TextoBuilderTest {
                 null,
                 null,
                 null,
+                null,
                 null);
 
         String texto = ContratoHonorariosClausula3TextoBuilder.montarTexto(dados);
@@ -88,7 +90,8 @@ class ContratoHonorariosClausula3TextoBuilderTest {
                 new BigDecimal("5000.00"),
                 LocalDate.of(2026, 7, 10),
                 "MENSAL",
-                "PIX");
+                "PIX",
+                null);
 
         String texto = ContratoHonorariosClausula3TextoBuilder.montarTexto(dados);
 
@@ -115,7 +118,8 @@ class ContratoHonorariosClausula3TextoBuilderTest {
                 null,
                 null,
                 null,
-                ContratoHonorariosClausula3TextoBuilder.FORMA_PAGAMENTO_PIX);
+                ContratoHonorariosClausula3TextoBuilder.FORMA_PAGAMENTO_PIX,
+                null);
 
         String texto = ContratoHonorariosClausula3TextoBuilder.montarTexto(dados);
 
@@ -134,7 +138,8 @@ class ContratoHonorariosClausula3TextoBuilderTest {
                 null,
                 LocalDate.of(2026, 6, 20),
                 null,
-                ContratoHonorariosClausula3TextoBuilder.FORMA_PAGAMENTO_PIX);
+                ContratoHonorariosClausula3TextoBuilder.FORMA_PAGAMENTO_PIX,
+                null);
 
         String texto = ContratoHonorariosClausula3TextoBuilder.montarTexto(dados);
 
@@ -153,7 +158,8 @@ class ContratoHonorariosClausula3TextoBuilderTest {
                 null,
                 null,
                 null,
-                ContratoHonorariosClausula3TextoBuilder.FORMA_PAGAMENTO_BOLETO);
+                ContratoHonorariosClausula3TextoBuilder.FORMA_PAGAMENTO_BOLETO,
+                null);
 
         String texto = ContratoHonorariosClausula3TextoBuilder.montarTexto(dados);
 
@@ -172,7 +178,8 @@ class ContratoHonorariosClausula3TextoBuilderTest {
                 new BigDecimal("1000.00"),
                 LocalDate.of(2026, 7, 10),
                 "MENSAL",
-                "PIX");
+                "PIX",
+                null);
 
         String texto = ContratoHonorariosClausula3TextoBuilder.montarTexto(dados);
 

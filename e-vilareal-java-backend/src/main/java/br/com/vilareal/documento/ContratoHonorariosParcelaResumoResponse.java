@@ -8,4 +8,18 @@ public record ContratoHonorariosParcelaResumoResponse(
         Integer numeroParcela,
         BigDecimal valor,
         LocalDate dataVencimento,
-        Long pagamentoId) {}
+        Long pagamentoId,
+        /** Status do pagamento RECEBER vinculado (ex.: EMITIDO, RECEBIDO, VENCIDO). */
+        String pagamentoStatus,
+        /** Data em que o cliente pagou (quando informada no recebível). */
+        LocalDate pagamentoDataRecebimento,
+        /** Lançamento na Conta Corrente / financeiro vinculado ao recebível. */
+        Long pagamentoFinanceiroLancamentoId,
+        /** Data efetiva do pagamento (recebível ou data do lançamento financeiro). */
+        LocalDate pagamentoDataPagamento,
+        /** Nº da conta bancária no financeiro (quando conciliado). */
+        Integer pagamentoBancoNumero,
+        /** Nome do banco no financeiro (quando conciliado). */
+        String pagamentoBancoNome,
+        /** Indica recebimento confirmado (RECEBIDO ou CONCILIADO). */
+        Boolean pagamentoPago) {}

@@ -1,9 +1,10 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, FileSpreadsheet, RefreshCw } from 'lucide-react';
+import { CircleDollarSign, FileSpreadsheet, RefreshCw } from 'lucide-react';
 import { featureFlags } from '../config/featureFlags.js';
 import { carregarRelatorioResultadoProcessos } from '../data/relatorioResultadoProcessosDados.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
+import { ResultadoFinanceiroSubmenu } from './resultado-financeiro/ResultadoFinanceiroSubmenu.jsx';
 
 function fmtReais(n) {
   const x = Number(n) || 0;
@@ -59,26 +60,30 @@ export function RelatorioResultadoProcessos() {
   return (
     <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/30 to-emerald-50/40 dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] p-4 sm:p-6">
       <div className="max-w-[1400px] mx-auto space-y-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Voltar
-          </button>
-          <h1 className="text-lg font-semibold text-slate-900 dark:text-white flex-1 min-w-0">
-            Resultado financeiro dos processos
-          </h1>
-        </div>
+        <ResultadoFinanceiroSubmenu />
+
+        <header className="flex flex-wrap items-start gap-3">
+          <div className="rounded-xl bg-gradient-to-br from-indigo-600 to-violet-700 p-2.5 text-white shadow-lg shadow-indigo-500/25">
+            <CircleDollarSign className="h-7 w-7" aria-hidden />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl font-bold text-slate-900 dark:text-white">Resultado financeiro</h1>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Visão consolidada de <strong>todos os processos</strong> — lucro nos autos (Conta Corrente por Cod. cliente + Proc.).
+            </p>
+          </div>
+        </header>
 
         <div className="bg-white/95 dark:bg-slate-900/95 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-4 space-y-3">
+          <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Resultado nos autos</h2>
           <p className="text-sm text-slate-600 dark:text-slate-400">
             Consolida lançamentos da Conta Corrente (mesmo Cod. cliente + Proc.) classificados como entrada,
             pagamento/repasse e despesa. O <strong>lucro do processo</strong> é a soma algébrica desses lançamentos
-            (ex.: depósito judicial menos PIX de repasse). Classifique os papéis na Conta Corrente em Processos ou
-            use tags <code className="text-xs">[CC_PROC:ENTRADA]</code> / <code className="text-xs">[CC_PROC:PAGAMENTO]</code> no
+            (ex.: depósito judicial menos PIX de repasse). Quando a remuneração é percentual sobre proveito, este
+            resultado depende do que entra nos autos e é <strong>imprevisível</strong> — use a aba{' '}
+            <strong>Cobrança de honorários</strong> para acompanhar parcelas fixas contratadas. Classifique os papéis
+            na Conta Corrente em Processos ou use tags{' '}
+            <code className="text-xs">[CC_PROC:ENTRADA]</code> / <code className="text-xs">[CC_PROC:PAGAMENTO]</code> no
             Financeiro.
           </p>
           <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">

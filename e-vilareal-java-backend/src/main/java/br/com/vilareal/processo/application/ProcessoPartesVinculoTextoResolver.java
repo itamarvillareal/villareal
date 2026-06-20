@@ -61,6 +61,34 @@ public final class ProcessoPartesVinculoTextoResolver {
         return resolverTextos(processo, partes).getParteOposta();
     }
 
+    /** Primeira pessoa cadastrada no lado «parte cliente» do processo (contratante de honorários). */
+    public static Long primeiraPessoaIdParteCliente(ProcessoEntity processo, List<ProcessoParteEntity> partes) {
+        if (partes == null || partes.isEmpty()) {
+            return null;
+        }
+        for (ProcessoParteEntity p : partes) {
+            String q = normalizarQualificacaoParte(p.getQualificacao());
+            if (q.contains("PARTE CLIENTE") && p.getPessoa() != null) {
+                return p.getPessoa().getId();
+            }
+        }
+        if (importPoloJuridicoInvertidoParteCliente(processo, partes)) {
+            for (ProcessoParteEntity p : partes) {
+                if (temMarcadorParteClienteImport(p) && p.getPessoa() != null) {
+                    return p.getPessoa().getId();
+                }
+            }
+        }
+        boolean ladoAutor = poloJuridicoEscritorioEhAutor(processo, partes);
+        for (ProcessoParteEntity p : partes) {
+            String poloNorm = normalizarPoloParaComparacao(p.getPolo());
+            if (poloEhLadoEscritorio(poloNorm, ladoAutor) && p.getPessoa() != null) {
+                return p.getPessoa().getId();
+            }
+        }
+        return null;
+    }
+
     /**
      * Nome da subpasta Drive após {@code Proc. NN}: primeiro nome da parte oposta;
      * se houver mais de um, sufixo {@code e outros} (evita nomes longos demais).
@@ -130,12 +158,17 @@ public final class ProcessoPartesVinculoTextoResolver {
      * REQUERIDO → parte cliente no polo REU; REQUERENTE → parte cliente no polo AUTOR.
      */
     static boolean poloJuridicoEscritorioEhAutor(ProcessoEntity processo, List<ProcessoParteEntity> partes) {
+        return "REQUERENTE".equals(resolverPapelClienteEfetivo(processo, partes));
+    }
+
+    /**
+     * REQUERENTE → parte cliente no polo jurídico AUTOR; REQUERIDO → parte cliente no polo REU.
+     * Usa {@code processo.papel_cliente} do cadastro; se ausente, infere pela qualificação das partes.
+     */
+    public static String resolverPapelClienteEfetivo(ProcessoEntity processo, List<ProcessoParteEntity> partes) {
         String papel = normalizarPapelCliente(processo != null ? processo.getPapelCliente() : null);
-        if ("REQUERIDO".equals(papel)) {
-            return false;
-        }
-        if ("REQUERENTE".equals(papel)) {
-            return true;
+        if (papel != null) {
+            return papel;
         }
         if (partes != null) {
             for (ProcessoParteEntity p : partes) {
@@ -145,19 +178,19 @@ public final class ProcessoPartesVinculoTextoResolver {
                 }
                 String polo = normalizarPoloParaComparacao(p.getPolo());
                 if (polo.contains("REU") || polo.contains("REQUERIDO")) {
-                    return false;
+                    return "REQUERIDO";
                 }
                 if (polo.contains("AUTOR") || polo.contains("REQUERENTE") || polo.contains("CLIENTE")) {
-                    return true;
+                    return "REQUERENTE";
                 }
             }
         }
-        return true;
+        return "REQUERENTE";
     }
 
     private static boolean importPoloJuridicoInvertidoParteCliente(
             ProcessoEntity processo, List<ProcessoParteEntity> partes) {
-        if (!"REQUERIDO".equals(normalizarPapelCliente(processo != null ? processo.getPapelCliente() : null))) {
+        if (!"REQUERIDO".equals(resolverPapelClienteEfetivo(processo, partes))) {
             return false;
         }
         if (partes == null || partes.isEmpty()) {

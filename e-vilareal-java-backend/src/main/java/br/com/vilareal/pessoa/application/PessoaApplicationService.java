@@ -7,16 +7,22 @@ import br.com.vilareal.pessoa.api.dto.*;
 import br.com.vilareal.pessoa.infrastructure.persistence.PessoaSpecifications;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.*;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.*;
+import br.com.vilareal.processo.application.ProcessoExclusaoService;
+import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
+import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.usuario.infrastructure.persistence.repository.UsuarioRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.Instant;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -28,6 +34,9 @@ public class PessoaApplicationService {
     private final PessoaContatoRepository contatoRepository;
     private final UsuarioRepository usuarioRepository;
     private final ClienteRepository clienteRepository;
+    private final ProcessoRepository processoRepository;
+    private final ProcessoExclusaoService processoExclusaoService;
+    private final JdbcTemplate jdbcTemplate;
 
     public PessoaApplicationService(
             PessoaRepository pessoaRepository,
@@ -35,13 +44,19 @@ public class PessoaApplicationService {
             PessoaEnderecoRepository enderecoRepository,
             PessoaContatoRepository contatoRepository,
             UsuarioRepository usuarioRepository,
-            ClienteRepository clienteRepository) {
+            ClienteRepository clienteRepository,
+            ProcessoRepository processoRepository,
+            ProcessoExclusaoService processoExclusaoService,
+            JdbcTemplate jdbcTemplate) {
         this.pessoaRepository = pessoaRepository;
         this.complementarRepository = complementarRepository;
         this.enderecoRepository = enderecoRepository;
         this.contatoRepository = contatoRepository;
         this.usuarioRepository = usuarioRepository;
         this.clienteRepository = clienteRepository;
+        this.processoRepository = processoRepository;
+        this.processoExclusaoService = processoExclusaoService;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Transactional(readOnly = true)
@@ -137,6 +152,45 @@ public class PessoaApplicationService {
         }
         PessoaEntity p = pessoaRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Pessoa não encontrada: " + id));
+
+        Long imoveis = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM imovel WHERE pessoa_id = ?", Long.class, id);
+        if (imoveis != null && imoveis > 0) {
+            throw new BusinessRuleException(
+                    "Não é possível excluir: existem " + imoveis + " imóvel(is) vinculado(s) a esta pessoa.");
+        }
+
+        Set<Long> processoIds = new LinkedHashSet<>();
+        for (ProcessoEntity processo : processoRepository.findAllDistinctVinculadosPessoa(id)) {
+            processoIds.add(processo.getId());
+        }
+        processoExclusaoService.excluirPorIds(processoIds);
+
+        jdbcTemplate.update(
+                """
+                DELETE chp FROM contrato_honorarios_parcela chp
+                INNER JOIN contrato_honorarios ch ON ch.id = chp.contrato_honorarios_id
+                WHERE ch.pessoa_id = ?
+                """,
+                id);
+        jdbcTemplate.update("DELETE FROM contrato_honorarios WHERE pessoa_id = ?", id);
+        jdbcTemplate.update("DELETE FROM processo_parte_advogado WHERE advogado_pessoa_id = ?", id);
+
+        jdbcTemplate.update("DELETE FROM financeiro_lancamento WHERE cliente_id = ?", id);
+        jdbcTemplate.update("DELETE FROM financeiro_lancamento_cartao WHERE cliente_id = ?", id);
+        jdbcTemplate.update("DELETE FROM financeiro_regra_classificacao WHERE cliente_id = ?", id);
+
+        for (ClienteEntity cliente : clienteRepository.findByPessoa_IdOrderByCodigoClienteAsc(id)) {
+            jdbcTemplate.update("DELETE FROM calculo_rodada WHERE TRIM(codigo_cliente) = TRIM(?)", cliente.getCodigoCliente());
+            jdbcTemplate.update("DELETE FROM tarefa_operacional WHERE cliente_id = ?", cliente.getId());
+            processoExclusaoService.excluirPagamentosPorClienteId(cliente.getId());
+            jdbcTemplate.update("DELETE FROM whatsapp_messages WHERE cliente_id = ?", cliente.getId());
+            jdbcTemplate.update("DELETE FROM scheduled_whatsapp_messages WHERE cliente_id = ?", cliente.getId());
+        }
+
+        jdbcTemplate.update("DELETE FROM planilha_pasta1_cliente WHERE pessoa_id = ?", id);
+        jdbcTemplate.update("DELETE FROM cliente_whatsapp WHERE pessoa_id = ?", id);
+
         pessoaRepository.delete(p);
     }
 
