@@ -147,6 +147,14 @@ function parseArgs(argv) {
   return out;
 }
 
+function avisarSenhaInvalida(senha) {
+  const s = String(senha || '').trim();
+  if (s === '…' || s === '...' || s === 'senha' || s === 'sua-senha-real') {
+    return 'VILAREAL_IMPORT_SENHA parece placeholder — use a senha real (ver .env.import.local)';
+  }
+  return null;
+}
+
 async function login(opts) {
   const res = await fetch(`${opts.baseUrl}/api/auth/login`, {
     method: 'POST',
@@ -449,7 +457,12 @@ async function main() {
   }
 
   if (!opts.senha) {
-    console.error('Defina VILAREAL_IMPORT_SENHA ou --senha=');
+    console.error('Defina VILAREAL_IMPORT_SENHA ou crie e-vilareal-react-web/.env.import.local');
+    process.exit(1);
+  }
+  const avisoSenha = avisarSenhaInvalida(opts.senha);
+  if (avisoSenha) {
+    console.error(avisoSenha);
     process.exit(1);
   }
 
