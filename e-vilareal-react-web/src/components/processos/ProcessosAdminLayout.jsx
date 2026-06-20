@@ -80,7 +80,7 @@ export const processosInputDenseClass =
 export const processosInputDenseReadOnlyClass = `${processosInputDenseClass} bg-slate-50 cursor-default focus:ring-0 focus:border-gray-200`;
 
 export const processosBtnPrimary =
-  'inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-emerald-700 to-green-800 hover:from-emerald-600 hover:to-green-700 shadow-md shadow-emerald-500/25 ring-1 ring-white/15 transition-all duration-150 disabled:opacity-50 disabled:pointer-events-none';
+  'inline-flex w-full shrink-0 items-center justify-center gap-1.5 whitespace-nowrap px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-emerald-700 to-green-800 hover:from-emerald-600 hover:to-green-700 shadow-md shadow-emerald-500/25 ring-1 ring-white/15 transition-all duration-150 disabled:opacity-50 disabled:pointer-events-none';
 
 export const processosBtnIndigo =
   'inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-colors duration-150 disabled:opacity-50 disabled:pointer-events-none';
@@ -95,7 +95,7 @@ export const processosBtnGhost =
   'inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 bg-white hover:bg-gray-50 transition-colors duration-150';
 
 const processosToolbarBtnBase =
-  'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-2 rounded-xl text-sm font-semibold text-white shadow-md ring-1 ring-white/15 transition-all duration-150 disabled:opacity-50 disabled:pointer-events-none';
+  'inline-flex w-full shrink-0 items-center justify-center gap-1.5 whitespace-nowrap px-3 py-2 rounded-xl text-sm font-semibold text-white shadow-md ring-1 ring-white/15 transition-all duration-150 disabled:opacity-50 disabled:pointer-events-none';
 
 /** Barra de ações do processo — botões sólidos com gradiente (modelo portal). */
 export const processosBtnToolbarPurple =
@@ -557,11 +557,8 @@ export function ProcessosStickyHeader({
                 </button>
               </div>
               {bannerExpandido ? (
-                <div
-                  id="processos-acoes-toolbar"
-                  className="min-w-0 flex-1 overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]"
-                >
-                  <div className="flex w-max min-w-full flex-nowrap items-center gap-2 pb-0.5">
+                <div id="processos-acoes-toolbar" className="min-w-0 flex-1">
+                  <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
                     {actions}
                   </div>
                 </div>

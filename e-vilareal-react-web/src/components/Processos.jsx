@@ -3437,7 +3437,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
             else window.history.back();
           }}
           actions={
-            <div className="flex flex-nowrap items-center gap-2">
+            <div className="contents">
               <button
                   type="button"
                   onClick={() =>
@@ -4049,10 +4049,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
               {/* Coluna direita: Papel, Fase processual, Observação de Fase — primeiro no mobile */}
               <div className="order-1 flex flex-col gap-3 rounded-xl border border-slate-200/90 bg-white/95 p-3 shadow-sm text-slate-900 md:order-none">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0 shrink-0">
-                  <span className="text-sm font-medium text-slate-700 shrink-0">
-                    Cliente é Requerente ou Requerido?
-                  </span>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0 shrink-0">
+                  <span className="text-sm font-medium text-slate-700 shrink-0">Cliente é</span>
                   {camposBloqueados ? (
                     <input
                       type="text"
