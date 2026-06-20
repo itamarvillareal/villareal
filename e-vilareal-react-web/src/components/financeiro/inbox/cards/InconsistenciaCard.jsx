@@ -1,11 +1,13 @@
 import { AlertTriangle, SkipForward } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ValorText } from '../../shared/ValorText.jsx';
+import { navegarExtratoLancamento } from '../../extrato/extratoDeepLink.js';
 import { acaoInconsistencia, mapLancamentoInbox } from '../inboxMappers.js';
 
 const fmt = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function InconsistenciaCard({ grupo, onIgnorar, fading }) {
+  const navigate = useNavigate();
   const soma = Number(grupo.soma ?? 0);
   const acao = acaoInconsistencia(grupo.sugestao, soma);
   const idGrupo = grupo.grupoCompensacao ?? '—';
@@ -44,7 +46,12 @@ export function InconsistenciaCard({ grupo, onIgnorar, fading }) {
             {(grupo.lancamentos ?? []).map((l) => {
               const row = mapLancamentoInbox(l);
               return (
-                <tr key={row.id} className="border-b border-slate-50 dark:border-slate-800 last:border-0">
+                <tr
+                  key={row.id}
+                  className="border-b border-slate-50 dark:border-slate-800 last:border-0 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                  onDoubleClick={() => navegarExtratoLancamento(navigate, row)}
+                  title="Duplo clique: abrir lançamento no extrato"
+                >
                   <td className="px-2 py-1.5 tabular-nums whitespace-nowrap">{row.dataExibicao}</td>
                   <td className="px-2 py-1.5 text-slate-500">{row.bancoNome || '—'}</td>
                   <td className="px-2 py-1.5 max-w-[200px] truncate">{row.descricao}</td>
