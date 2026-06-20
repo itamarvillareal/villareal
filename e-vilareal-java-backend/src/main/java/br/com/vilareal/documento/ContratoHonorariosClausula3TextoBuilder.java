@@ -18,28 +18,40 @@ public final class ContratoHonorariosClausula3TextoBuilder {
     public static final String TIPO_VALOR_FIXO = "VALOR_FIXO";
     public static final String TIPO_MISTO = "MISTO";
 
+    public static final String FORMA_PAGAMENTO_PIX = "PIX";
+    public static final String FORMA_PAGAMENTO_BOLETO = "BOLETO";
+    /** CNPJ do escritório para recebimento via PIX nos honorários contratuais. */
+    public static final String PIX_CNPJ_ESCRITORIO = "39.720.563/0001-90";
+
     private static final Locale PT_BR = Locale.forLanguageTag("pt-BR");
     private static final DateTimeFormatter FMT_DATA = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private ContratoHonorariosClausula3TextoBuilder() {}
 
     public static String montarTexto(ContratoHonorariosClausula3Dados dados) {
+        return montarTexto(dados, ContratoContratanteFlexao.padrao());
+    }
+
+    public static String montarTexto(ContratoHonorariosClausula3Dados dados, ContratoContratanteFlexao flexaoContratante) {
         if (dados == null) {
             return ContratoHonorariosClausulas.CLAUSULA_3_PADRAO;
         }
+        ContratoContratanteFlexao flexao =
+                flexaoContratante != null ? flexaoContratante : ContratoContratanteFlexao.padrao();
         String tipo = normalizarTipo(dados.tipoRemuneracao());
         return switch (tipo) {
-            case TIPO_VALOR_FIXO -> montarValorFixo(dados);
-            case TIPO_MISTO -> montarMisto(dados);
-            default -> montarPercentualProveito(dados);
+            case TIPO_VALOR_FIXO -> montarValorFixo(dados, flexao);
+            case TIPO_MISTO -> montarMisto(dados, flexao);
+            default -> montarPercentualProveito(dados, flexao);
         };
     }
 
     public static List<ParcelaCalculada> calcularParcelas(ContratoHonorariosClausula3Dados dados) {
-        if (dados == null
-                || !Boolean.TRUE.equals(dados.gerarRecebiveis())
-                || dados.valorTotalParcelas() == null
-                || dados.valorTotalParcelas().compareTo(BigDecimal.ZERO) <= 0) {
+        if (dados == null || !parcelamentoAtivo(dados)) {
+            return List.of();
+        }
+        BigDecimal total = resolverValorTotalParcelas(dados);
+        if (total == null || total.compareTo(BigDecimal.ZERO) <= 0) {
             return List.of();
         }
         int quantidade = dados.quantidadeParcelas() != null && dados.quantidadeParcelas() > 0
@@ -49,7 +61,7 @@ public final class ContratoHonorariosClausula3TextoBuilder {
         boolean unica = "UNICA".equalsIgnoreCase(StringUtils.trimWhitespace(dados.intervaloParcelas()))
                 || quantidade == 1;
 
-        BigDecimal total = dados.valorTotalParcelas().setScale(2, RoundingMode.HALF_UP);
+        total = total.setScale(2, RoundingMode.HALF_UP);
         BigDecimal base = total.divide(BigDecimal.valueOf(quantidade), 2, RoundingMode.DOWN);
         BigDecimal acumulado = BigDecimal.ZERO;
 
@@ -63,45 +75,65 @@ public final class ContratoHonorariosClausula3TextoBuilder {
         return parcelas;
     }
 
-    private static String montarPercentualProveito(ContratoHonorariosClausula3Dados dados) {
+    static boolean parcelamentoAtivo(ContratoHonorariosClausula3Dados dados) {
+        if (Boolean.TRUE.equals(dados.temParcelamento())) {
+            return true;
+        }
+        // Compatibilidade: parcelamento ligado só ao financeiro (versão anterior).
+        return Boolean.TRUE.equals(dados.gerarRecebiveis());
+    }
+
+    static BigDecimal resolverValorTotalParcelas(ContratoHonorariosClausula3Dados dados) {
+        if (dados.valorTotalParcelas() != null && dados.valorTotalParcelas().compareTo(BigDecimal.ZERO) > 0) {
+            return dados.valorTotalParcelas();
+        }
+        if (dados.valorFixo() != null && dados.valorFixo().compareTo(BigDecimal.ZERO) > 0) {
+            return dados.valorFixo();
+        }
+        return null;
+    }
+
+    private static String montarPercentualProveito(ContratoHonorariosClausula3Dados dados, ContratoContratanteFlexao flexao) {
         BigDecimal pct = dados.percentualProveito() != null ? dados.percentualProveito() : new BigDecimal("35");
         String pctFmt = formatarPercentual(pct);
         String pctExt = percentualPorExtenso(pct);
         StringBuilder sb = new StringBuilder();
-        sb.append("Em REMUNERAÇÃO desses serviços, o advogado Contratado receberá da Contratante os ")
-                .append("honorários líquidos e certos na importância de ")
-                .append(pctFmt)
+        appendIntroRemuneracao(sb, flexao);
+        sb.append(pctFmt)
                 .append(" (")
                 .append(pctExt)
                 .append(") calculados sobre o montante proveito econômico da demanda (inclusive extrajudicial);");
         appendTextoParcelamento(sb, dados);
+        appendTextoFormaPagamento(sb, dados);
         return sb.toString();
     }
 
-    private static String montarValorFixo(ContratoHonorariosClausula3Dados dados) {
+    private static String montarValorFixo(ContratoHonorariosClausula3Dados dados, ContratoContratanteFlexao flexao) {
         BigDecimal valor = dados.valorFixo() != null ? dados.valorFixo() : BigDecimal.ZERO;
         if (valor.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Informe o valor fixo dos honorários.");
         }
         StringBuilder sb = new StringBuilder();
-        sb.append("Em REMUNERAÇÃO desses serviços, o advogado Contratado receberá da Contratante os ")
-                .append("honorários líquidos e certos na importância de ")
-                .append(formatarMoeda(valor))
+        appendIntroRemuneracao(sb, flexao);
+        sb.append(formatarMoeda(valor))
                 .append(" (")
                 .append(ValorExtensoUtil.reaisPorExtenso(valor))
                 .append(");");
         appendTextoParcelamento(sb, dados);
+        appendTextoFormaPagamento(sb, dados);
         return sb.toString();
     }
 
-    private static String montarMisto(ContratoHonorariosClausula3Dados dados) {
+    private static String montarMisto(ContratoHonorariosClausula3Dados dados, ContratoContratanteFlexao flexao) {
         BigDecimal pct = dados.percentualProveito() != null ? dados.percentualProveito() : new BigDecimal("35");
         BigDecimal valor = dados.valorFixo() != null ? dados.valorFixo() : BigDecimal.ZERO;
         if (valor.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Informe o valor fixo complementar dos honorários.");
         }
         StringBuilder sb = new StringBuilder();
-        sb.append("Em REMUNERAÇÃO desses serviços, o advogado Contratado receberá da Contratante: ")
+        sb.append("Em REMUNERAÇÃO desses serviços, o advogado Contratado ")
+                .append(flexao.receberaDeContratante())
+                .append(": ")
                 .append("(a) honorários líquidos e certos na importância de ")
                 .append(formatarPercentual(pct))
                 .append(" (")
@@ -113,7 +145,14 @@ public final class ContratoHonorariosClausula3TextoBuilder {
                 .append(ValorExtensoUtil.reaisPorExtenso(valor))
                 .append(");");
         appendTextoParcelamento(sb, dados);
+        appendTextoFormaPagamento(sb, dados);
         return sb.toString();
+    }
+
+    private static void appendIntroRemuneracao(StringBuilder sb, ContratoContratanteFlexao flexao) {
+        sb.append("Em REMUNERAÇÃO desses serviços, o advogado Contratado ")
+                .append(flexao.receberaDeContratante())
+                .append(" os honorários líquidos e certos na importância de ");
     }
 
     private static void appendTextoParcelamento(StringBuilder sb, ContratoHonorariosClausula3Dados dados) {
@@ -121,6 +160,7 @@ public final class ContratoHonorariosClausula3TextoBuilder {
         if (parcelas.isEmpty()) {
             return;
         }
+        String sufixoForma = sufixoFormaPagamentoInline(dados);
         if (parcelas.size() == 1) {
             ParcelaCalculada p = parcelas.get(0);
             sb.append(" O pagamento será efetuado em parcela única de ")
@@ -129,6 +169,7 @@ public final class ContratoHonorariosClausula3TextoBuilder {
                     .append(ValorExtensoUtil.reaisPorExtenso(p.valor()))
                     .append("), com vencimento em ")
                     .append(FMT_DATA.format(p.dataVencimento()))
+                    .append(sufixoForma)
                     .append(".");
             return;
         }
@@ -141,7 +182,52 @@ public final class ContratoHonorariosClausula3TextoBuilder {
                 .append(ValorExtensoUtil.reaisPorExtenso(primeira.valor()))
                 .append("), vencendo a primeira em ")
                 .append(FMT_DATA.format(primeira.dataVencimento()))
+                .append(sufixoForma)
                 .append(".");
+    }
+
+    /** Frase de forma de pagamento quando não há parcelamento explícito. */
+    private static void appendTextoFormaPagamento(StringBuilder sb, ContratoHonorariosClausula3Dados dados) {
+        if (!calcularParcelas(dados).isEmpty()) {
+            return;
+        }
+        String forma = normalizarFormaPagamento(dados.formaPagamento());
+        String sufixoData = sufixoDataVencimento(dados.primeiroVencimento());
+        if (FORMA_PAGAMENTO_PIX.equals(forma)) {
+            sb.append(" O pagamento será efetuado via PIX, chave CNPJ ")
+                    .append(PIX_CNPJ_ESCRITORIO)
+                    .append(sufixoData)
+                    .append(".");
+        } else if (FORMA_PAGAMENTO_BOLETO.equals(forma)) {
+            sb.append(" O pagamento será efetuado mediante boleto bancário emitido pelo Contratado")
+                    .append(sufixoData)
+                    .append(".");
+        }
+    }
+
+    private static String sufixoDataVencimento(LocalDate data) {
+        if (data == null) {
+            return "";
+        }
+        return ", com vencimento em " + FMT_DATA.format(data);
+    }
+
+    private static String sufixoFormaPagamentoInline(ContratoHonorariosClausula3Dados dados) {
+        String forma = normalizarFormaPagamento(dados.formaPagamento());
+        if (FORMA_PAGAMENTO_PIX.equals(forma)) {
+            return ", via PIX (chave CNPJ " + PIX_CNPJ_ESCRITORIO + ")";
+        }
+        if (FORMA_PAGAMENTO_BOLETO.equals(forma)) {
+            return ", mediante boleto bancário emitido pelo Contratado";
+        }
+        return "";
+    }
+
+    private static String normalizarFormaPagamento(String forma) {
+        if (!StringUtils.hasText(forma)) {
+            return FORMA_PAGAMENTO_PIX;
+        }
+        return forma.trim().toUpperCase(Locale.ROOT);
     }
 
     static String percentualPorExtenso(BigDecimal percentual) {

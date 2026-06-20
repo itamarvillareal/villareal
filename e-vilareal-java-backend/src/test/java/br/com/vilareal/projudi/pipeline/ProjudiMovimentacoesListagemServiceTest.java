@@ -84,6 +84,22 @@ class ProjudiMovimentacoesListagemServiceTest {
         verify(teorService, never()).consultarProcesso(eq(CREDENCIAL_ID), eq(CNJ));
     }
 
+    @Test
+    void reduzidoComResultado_buscaDataNoCnjCompletoQuandoReduzidoNaoTem() {
+        List<MovimentacaoProjudi> doReduzido = List.of(mov("1"));
+        when(teorService.consultarProcesso(CREDENCIAL_ID, REDUZIDO))
+                .thenReturn(new ConsultaProcessoProjudi(doReduzido, null));
+        when(teorService.consultarProcesso(CREDENCIAL_ID, CNJ))
+                .thenReturn(new ConsultaProcessoProjudi(List.of(), LocalDate.of(2024, 3, 20)));
+
+        ProjudiMovimentacoesListagemService.ListagemMovimentacoes resultado =
+                listagemService.listarComFallbackReduzido(CREDENCIAL_ID, CNJ);
+
+        assertThat(resultado.movimentacoes()).isSameAs(doReduzido);
+        assertThat(resultado.dataDistribuicao()).isEqualTo(LocalDate.of(2024, 3, 20));
+        verify(teorService).consultarProcesso(CREDENCIAL_ID, CNJ);
+    }
+
     private static MovimentacaoProjudi mov(String numero) {
         return new MovimentacaoProjudi(
                 numero, "", "", "", "", "", "", null, false);

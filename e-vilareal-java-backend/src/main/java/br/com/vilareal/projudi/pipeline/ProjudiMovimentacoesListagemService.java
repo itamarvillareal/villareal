@@ -31,14 +31,23 @@ public class ProjudiMovimentacoesListagemService {
         String reduzido = ProjudiNumeroReduzidoUtil.cnjParaNumeroReduzido(numeroCnj);
         ConsultaProcessoProjudi consultaReduzida = teorService.consultarProcesso(credencialId, reduzido);
         if (!consultaReduzida.movimentacoes().isEmpty() || reduzido.equals(numeroCnj)) {
-            return new ListagemMovimentacoes(
-                    consultaReduzida.movimentacoes(), consultaReduzida.dataDistribuicao());
+            LocalDate dataDistribuicao = resolverDataDistribuicao(
+                    credencialId, numeroCnj, reduzido, consultaReduzida.dataDistribuicao());
+            return new ListagemMovimentacoes(consultaReduzida.movimentacoes(), dataDistribuicao);
         }
         ConsultaProcessoProjudi consultaCompleta = teorService.consultarProcesso(credencialId, numeroCnj);
         LocalDate dataDistribuicao = consultaCompleta.dataDistribuicao() != null
                 ? consultaCompleta.dataDistribuicao()
                 : consultaReduzida.dataDistribuicao();
         return new ListagemMovimentacoes(consultaCompleta.movimentacoes(), dataDistribuicao);
+    }
+
+    private LocalDate resolverDataDistribuicao(
+            Long credencialId, String numeroCnj, String reduzido, LocalDate dataAtual) {
+        if (dataAtual != null || reduzido.equals(numeroCnj)) {
+            return dataAtual;
+        }
+        return teorService.consultarProcesso(credencialId, numeroCnj).dataDistribuicao();
     }
 
     /** Compatibilidade com chamadas que só precisam das movimentações. */

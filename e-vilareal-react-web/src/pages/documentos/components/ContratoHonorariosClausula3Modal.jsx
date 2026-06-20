@@ -1,20 +1,28 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, Settings2, X } from 'lucide-react';
-import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
-import { montarClausula3TextoContratoHonorarios } from '../../repositories/documentosRepository.js';
+import { useCloseOnEscape } from '../../../hooks/useCloseOnEscape.js';
+import { montarClausula3TextoContratoHonorarios } from '../../../repositories/documentosRepository.js';
 import {
   FORMAS_PAGAMENTO_HONORARIOS,
-  INTERVALO_PARCELA_MENSAL,
-  INTERVALO_PARCELA_UNICA,
+  FORMA_PAGAMENTO_PIX,
+  PIX_CNPJ_ESCRITORIO,
   TIPO_REMUNERACAO_MISTO,
   TIPO_REMUNERACAO_PERCENTUAL,
   TIPO_REMUNERACAO_VALOR_FIXO,
   TIPOS_REMUNERACAO,
+  INTERVALO_PARCELA_MENSAL,
+  INTERVALO_PARCELA_UNICA,
+  calcularParcelasPreview,
   clausula3FormParaApi,
   estadoInicialClausula3,
+  formatarDataBR,
+  formatarMoedaBRL,
+  formatarMoedaCampo,
+  mostraDataPagamento,
+  parseMoedaBR,
   parcelamentoAtivo,
   valorParcelavelSugerido,
-} from './contratoHonorariosClausula3.js';
+} from '../contratoHonorariosClausula3.js';
 
 const inputClass =
   'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900';
@@ -24,6 +32,7 @@ export function ContratoHonorariosClausula3Modal({
   onClose,
   initialForm,
   processoApiId,
+  pessoaId,
   onApply,
 }) {
   const [form, setForm] = useState(estadoInicialClausula3);
@@ -36,7 +45,18 @@ export function ContratoHonorariosClausula3Modal({
   useEffect(() => {
     if (!open) return;
     setErro('');
-    setForm(initialForm ? { ...estadoInicialClausula3(), ...initialForm } : estadoInicialClausula3());
+    setForm(
+      initialForm
+        ? {
+            ...estadoInicialClausula3(),
+            ...initialForm,
+            valorFixo: initialForm.valorFixo ? formatarMoedaCampo(initialForm.valorFixo) : '',
+            valorTotalParcelas: initialForm.valorTotalParcelas
+              ? formatarMoedaCampo(initialForm.valorTotalParcelas)
+              : '',
+          }
+        : estadoInicialClausula3(),
+    );
   }, [open, initialForm]);
 
   const atualizarPreview = useCallback(async (formAtual) => {
@@ -44,7 +64,7 @@ export function ContratoHonorariosClausula3Modal({
     setErro('');
     try {
       const dados = clausula3FormParaApi(formAtual);
-      const resp = await montarClausula3TextoContratoHonorarios(dados);
+      const resp = await montarClausula3TextoContratoHonorarios(dados, { pessoaId });
       setPreview(resp?.texto || '');
     } catch (e) {
       setErro(e?.message || 'Falha ao montar texto da cláusula.');
@@ -52,7 +72,7 @@ export function ContratoHonorariosClausula3Modal({
     } finally {
       setCarregandoPreview(false);
     }
-  }, []);
+  }, [pessoaId]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -64,22 +84,36 @@ export function ContratoHonorariosClausula3Modal({
 
   const patch = (p) => setForm((f) => ({ ...f, ...p }));
 
-  const handleToggleRecebiveis = (checked) => {
-    const next = { ...form, gerarRecebiveis: checked };
-    if (checked && !next.valorTotalParcelas) {
+  const handleToggleParcelamento = (checked) => {
+    const next = { ...form, temParcelamento: checked };
+    if (!checked) {
+      next.gerarRecebiveis = false;
+    } else if (!next.valorTotalParcelas) {
       const sugerido = valorParcelavelSugerido(form);
-      if (sugerido) next.valorTotalParcelas = sugerido;
+      if (sugerido) next.valorTotalParcelas = formatarMoedaCampo(sugerido);
     }
-    if (checked && processoApiId && Number(next.quantidadeParcelas) <= 1) {
-      next.quantidadeParcelas = '1';
+    if (checked && Number(next.quantidadeParcelas) < 2) {
+      next.quantidadeParcelas = '2';
     }
     setForm(next);
   };
 
+  const handleToggleRecebiveis = (checked) => {
+    setForm((f) => ({
+      ...f,
+      gerarRecebiveis: checked,
+      temParcelamento: checked ? true : f.temParcelamento,
+      valorTotalParcelas:
+        checked && !f.valorTotalParcelas
+          ? formatarMoedaCampo(valorParcelavelSugerido(f)) || f.valorTotalParcelas
+          : f.valorTotalParcelas,
+    }));
+  };
+
   const validar = () => {
     if (form.tipoRemuneracao === TIPO_REMUNERACAO_VALOR_FIXO || form.tipoRemuneracao === TIPO_REMUNERACAO_MISTO) {
-      const v = Number(String(form.valorFixo).replace(/\./g, '').replace(',', '.'));
-      if (!Number.isFinite(v) || v <= 0) {
+      const v = parseMoedaBR(form.valorFixo);
+      if (v == null || v <= 0) {
         return 'Informe o valor fixo dos honorários.';
       }
     }
@@ -89,13 +123,13 @@ export function ContratoHonorariosClausula3Modal({
         return 'Informe o percentual sobre o proveito econômico.';
       }
     }
+    if (mostraDataPagamento(form) && !form.primeiroVencimento) {
+      return 'Informe a data do pagamento.';
+    }
     if (parcelamentoAtivo(form)) {
-      if (!processoApiId) {
-        return 'Para gerar recebíveis, abra a tela a partir de um processo (conta corrente).';
-      }
-      const total = Number(String(form.valorTotalParcelas).replace(/\./g, '').replace(',', '.'));
+      const total = parseMoedaBR(form.valorTotalParcelas) ?? parseMoedaBR(form.valorFixo);
       const qtd = Number(form.quantidadeParcelas);
-      if (!Number.isFinite(total) || total <= 0) {
+      if (total == null || total <= 0) {
         return 'Informe o valor total a parcelar.';
       }
       if (!Number.isFinite(qtd) || qtd <= 0) {
@@ -103,6 +137,14 @@ export function ContratoHonorariosClausula3Modal({
       }
       if (!form.primeiroVencimento) {
         return 'Informe o vencimento da primeira parcela.';
+      }
+    }
+    if (form.gerarRecebiveis) {
+      if (!processoApiId) {
+        return 'Para gerar recebíveis, abra a tela a partir de um processo (conta corrente).';
+      }
+      if (!parcelamentoAtivo(form)) {
+        return 'Ative o parcelamento para gerar recebíveis no financeiro.';
       }
     }
     return '';
@@ -125,6 +167,7 @@ export function ContratoHonorariosClausula3Modal({
     form.tipoRemuneracao === TIPO_REMUNERACAO_PERCENTUAL || form.tipoRemuneracao === TIPO_REMUNERACAO_MISTO;
   const mostraValorFixo =
     form.tipoRemuneracao === TIPO_REMUNERACAO_VALOR_FIXO || form.tipoRemuneracao === TIPO_REMUNERACAO_MISTO;
+  const parcelasPreview = calcularParcelasPreview(form);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -196,83 +239,164 @@ export function ContratoHonorariosClausula3Modal({
                   className={inputClass}
                   value={form.valorFixo}
                   onChange={(e) => patch({ valorFixo: e.target.value })}
+                  onBlur={(e) => patch({ valorFixo: formatarMoedaCampo(e.target.value) })}
                   placeholder="0,00"
                 />
               </label>
             ) : null}
           </div>
 
+          <fieldset className="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+            <legend className="px-1 text-sm font-medium">Forma de pagamento</legend>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {FORMAS_PAGAMENTO_HONORARIOS.map((f) => (
+                <label
+                  key={f.id}
+                  className={`flex cursor-pointer gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors ${
+                    form.formaPagamento === f.id
+                      ? 'border-indigo-400 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-950/40'
+                      : 'border-slate-200 hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-800/60'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="formaPagamentoClausula3"
+                    className="mt-0.5"
+                    checked={form.formaPagamento === f.id}
+                    onChange={() => patch({ formaPagamento: f.id })}
+                  />
+                  <span>
+                    <span className="block font-medium">{f.label}</span>
+                    <span className="text-slate-600 dark:text-slate-400">{f.descricao}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            {form.formaPagamento === FORMA_PAGAMENTO_PIX ? (
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                O contrato incluirá pagamento via PIX — CNPJ {PIX_CNPJ_ESCRITORIO}.
+              </p>
+            ) : null}
+            {mostraDataPagamento(form) ? (
+              <label className="mt-3 block text-sm">
+                <span className="mb-1 block font-medium">Data do pagamento</span>
+                <input
+                  type="date"
+                  className={inputClass}
+                  value={form.primeiroVencimento}
+                  onChange={(e) => patch({ primeiroVencimento: e.target.value })}
+                />
+              </label>
+            ) : null}
+          </fieldset>
+
           <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
             <label className="flex cursor-pointer items-start gap-3 text-sm">
               <input
                 type="checkbox"
                 className="mt-1"
-                checked={form.gerarRecebiveis}
-                onChange={(e) => handleToggleRecebiveis(e.target.checked)}
+                checked={form.temParcelamento}
+                onChange={(e) => handleToggleParcelamento(e.target.checked)}
               />
               <span>
-                <span className="block font-medium">Gerar recebíveis no financeiro do processo</span>
+                <span className="block font-medium">Parcelar valores no contrato</span>
                 <span className="text-slate-600 dark:text-slate-400">
-                  Cria parcelas a receber vinculadas à conta corrente do processo (honorários contratuais).
+                  Divide o valor fixo/entrada em parcelas com vencimentos — o texto entra na Cláusula 3ª.
                 </span>
               </span>
             </label>
 
             {parcelamentoAtivo(form) ? (
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <label className="block text-sm sm:col-span-2">
-                  <span className="mb-1 block font-medium">Valor total a parcelar (R$)</span>
+              <div className="mt-4 space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block text-sm sm:col-span-2">
+                    <span className="mb-1 block font-medium">Valor total a parcelar (R$)</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      className={inputClass}
+                      value={form.valorTotalParcelas}
+                      onChange={(e) => patch({ valorTotalParcelas: e.target.value })}
+                      onBlur={(e) => patch({ valorTotalParcelas: formatarMoedaCampo(e.target.value) })}
+                      placeholder={formatarMoedaCampo(valorParcelavelSugerido(form)) || '0,00'}
+                    />
+                    {mostraValorFixo && form.valorFixo ? (
+                      <span className="mt-1 block text-xs text-slate-500">
+                        Sugestão: usar o valor fixo informado ({formatarMoedaCampo(form.valorFixo)}).
+                      </span>
+                    ) : null}
+                  </label>
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium">Quantidade de parcelas</span>
+                    <input
+                      type="number"
+                      min={1}
+                      className={inputClass}
+                      value={form.quantidadeParcelas}
+                      onChange={(e) => patch({ quantidadeParcelas: e.target.value })}
+                    />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium">Primeiro vencimento</span>
+                    <input
+                      type="date"
+                      className={inputClass}
+                      value={form.primeiroVencimento}
+                      onChange={(e) => patch({ primeiroVencimento: e.target.value })}
+                    />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium">Intervalo</span>
+                    <select
+                      className={inputClass}
+                      value={form.intervaloParcelas}
+                      onChange={(e) => patch({ intervaloParcelas: e.target.value })}
+                    >
+                      <option value={INTERVALO_PARCELA_MENSAL}>Mensal</option>
+                      <option value={INTERVALO_PARCELA_UNICA}>Parcela única</option>
+                    </select>
+                  </label>
+                </div>
+
+                {parcelasPreview.length > 0 ? (
+                  <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
+                    <table className="min-w-full text-left text-sm">
+                      <thead className="bg-slate-50 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
+                        <tr>
+                          <th className="px-3 py-2 font-medium">Parcela</th>
+                          <th className="px-3 py-2 font-medium">Valor</th>
+                          <th className="px-3 py-2 font-medium">Vencimento</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {parcelasPreview.map((p) => (
+                          <tr key={p.numero} className="border-t border-slate-200 dark:border-slate-700">
+                            <td className="px-3 py-2">{p.numero}/{parcelasPreview.length}</td>
+                            <td className="px-3 py-2">{formatarMoedaBRL(p.valor)}</td>
+                            <td className="px-3 py-2">{formatarDataBR(p.dataVencimento)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+
+                <label className="flex cursor-pointer items-start gap-3 border-t border-slate-200 pt-4 text-sm dark:border-slate-700">
                   <input
-                    type="text"
-                    inputMode="decimal"
-                    className={inputClass}
-                    value={form.valorTotalParcelas}
-                    onChange={(e) => patch({ valorTotalParcelas: e.target.value })}
+                    type="checkbox"
+                    className="mt-1"
+                    checked={form.gerarRecebiveis}
+                    disabled={!processoApiId}
+                    onChange={(e) => handleToggleRecebiveis(e.target.checked)}
                   />
-                </label>
-                <label className="block text-sm">
-                  <span className="mb-1 block font-medium">Quantidade de parcelas</span>
-                  <input
-                    type="number"
-                    min={1}
-                    className={inputClass}
-                    value={form.quantidadeParcelas}
-                    onChange={(e) => patch({ quantidadeParcelas: e.target.value })}
-                  />
-                </label>
-                <label className="block text-sm">
-                  <span className="mb-1 block font-medium">Primeiro vencimento</span>
-                  <input
-                    type="date"
-                    className={inputClass}
-                    value={form.primeiroVencimento}
-                    onChange={(e) => patch({ primeiroVencimento: e.target.value })}
-                  />
-                </label>
-                <label className="block text-sm">
-                  <span className="mb-1 block font-medium">Intervalo</span>
-                  <select
-                    className={inputClass}
-                    value={form.intervaloParcelas}
-                    onChange={(e) => patch({ intervaloParcelas: e.target.value })}
-                  >
-                    <option value={INTERVALO_PARCELA_MENSAL}>Mensal</option>
-                    <option value={INTERVALO_PARCELA_UNICA}>Parcela única</option>
-                  </select>
-                </label>
-                <label className="block text-sm">
-                  <span className="mb-1 block font-medium">Forma de pagamento</span>
-                  <select
-                    className={inputClass}
-                    value={form.formaPagamento}
-                    onChange={(e) => patch({ formaPagamento: e.target.value })}
-                  >
-                    {FORMAS_PAGAMENTO_HONORARIOS.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.label}
-                      </option>
-                    ))}
-                  </select>
+                  <span>
+                    <span className="block font-medium">Gerar recebíveis no financeiro do processo</span>
+                    <span className="text-slate-600 dark:text-slate-400">
+                      {processoApiId
+                        ? 'Cria as parcelas a receber na conta corrente do processo.'
+                        : 'Disponível ao abrir esta tela a partir de um processo.'}
+                    </span>
+                  </span>
                 </label>
               </div>
             ) : null}

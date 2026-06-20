@@ -253,7 +253,11 @@ export async function gerarContratoHonorarios(
 export async function montarClausula3TextoContratoHonorarios(clausula3Dados, opts = {}) {
   return request('/api/documentos/contrato-honorarios/clausula3-texto', {
     method: 'POST',
-    body: clausula3Dados,
+    body: {
+      dados: clausula3Dados,
+      pessoaId: opts.pessoaId != null && opts.pessoaId !== '' ? Number(opts.pessoaId) : null,
+      contratantePessoaIds: opts.contratantePessoaIds,
+    },
     signal: opts.signal,
   });
 }

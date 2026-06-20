@@ -1,9 +1,12 @@
 package br.com.vilareal.documento;
 
 import java.time.LocalDate;
+import java.util.List;
 
 public record ContratoHonorariosRequest(
         Long pessoaId,
+        /** IDs adicionais quando há mais de um contratante (flexão plural na Cláusula 3ª). */
+        List<Long> contratantePessoaIds,
         String codigoCliente,
         Integer numeroInterno,
         String cidadeEstado,

@@ -94,6 +94,15 @@ public class QualificacaoPessoaUtil {
         return base + montarSufixoRepresentantePj(pessoaId, dados, false);
     }
 
+    /** Gênero gramatical do contratante (para concordância no contrato de honorários). */
+    @Transactional(readOnly = true)
+    public FlexaoUtil.Genero generoFlexaoPorPessoaId(Long pessoaId) {
+        DadosQualificacao dados = carregarDadosQualificacao(pessoaId);
+        return determinarFeminino(dados.nome(), dados.sexo())
+                ? FlexaoUtil.Genero.FEMININO
+                : FlexaoUtil.Genero.MASCULINO;
+    }
+
     static String montarQualificacaoContratoContratado(String advogadoNome, String advogadoOab) {
         String nome = advogadoNome != null ? advogadoNome.trim() : "";
         if (nome.regionMatches(true, 0, "Dr. ", 0, 4)) {

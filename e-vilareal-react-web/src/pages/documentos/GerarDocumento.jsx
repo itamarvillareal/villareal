@@ -447,8 +447,10 @@ export function GerarDocumento() {
         blob,
         nomeArquivoContratoPdf(formContrato.nomeContratante, 'honorarios'),
       );
-      if (formContrato.clausula3Configurada && parcelamentoAtivo(formContrato.clausula3Form)) {
+      if (formContrato.clausula3Configurada && formContrato.clausula3Form?.gerarRecebiveis) {
         setMensagemSucesso('Contrato gerado. Recebíveis de honorários criados no financeiro do processo.');
+      } else if (formContrato.clausula3Configurada && parcelamentoAtivo(formContrato.clausula3Form)) {
+        setMensagemSucesso('Contrato gerado com parcelamento registrado na Cláusula 3ª.');
       } else if (formContrato.clausula3Configurada) {
         setMensagemSucesso('Contrato gerado e dados de remuneração registrados para relatório.');
       }
@@ -1060,9 +1062,11 @@ export function GerarDocumento() {
                     {formContrato.clausula3Configurada ? (
                       <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                         Texto estruturado
-                        {parcelamentoAtivo(formContrato.clausula3Form)
+                        {formContrato.clausula3Form?.gerarRecebiveis
                           ? ' — recebíveis serão gerados ao emitir o contrato.'
-                          : ' — dados salvos para relatório ao emitir o contrato.'}
+                          : parcelamentoAtivo(formContrato.clausula3Form)
+                            ? ' — parcelamento incluído na cláusula ao emitir o contrato.'
+                            : ' — dados salvos para relatório ao emitir o contrato.'}
                       </p>
                     ) : (
                       <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
@@ -1212,6 +1216,7 @@ export function GerarDocumento() {
         onClose={() => setClausula3ModalOpen(false)}
         initialForm={formContrato.clausula3Form}
         processoApiId={processoApiId}
+        pessoaId={formContrato.pessoaId}
         onApply={({ form, dados, texto }) => {
           setFormContrato((f) => ({
             ...f,

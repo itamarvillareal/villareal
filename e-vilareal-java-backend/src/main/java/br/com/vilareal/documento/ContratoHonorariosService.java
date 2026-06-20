@@ -25,18 +25,21 @@ public class ContratoHonorariosService {
     private final QualificacaoPessoaUtil qualificacaoPessoaUtil;
     private final DocumentoTemaResolver temaResolver;
     private final ContratoHonorariosPersistenciaService persistenciaService;
+    private final ContratoContratanteFlexaoResolver flexaoContratanteResolver;
 
     public ContratoHonorariosService(
             DocumentoPdfService pdfService,
             PessoaRepository pessoaRepository,
             QualificacaoPessoaUtil qualificacaoPessoaUtil,
             DocumentoTemaResolver temaResolver,
-            ContratoHonorariosPersistenciaService persistenciaService) {
+            ContratoHonorariosPersistenciaService persistenciaService,
+            ContratoContratanteFlexaoResolver flexaoContratanteResolver) {
         this.pdfService = pdfService;
         this.pessoaRepository = pessoaRepository;
         this.qualificacaoPessoaUtil = qualificacaoPessoaUtil;
         this.temaResolver = temaResolver;
         this.persistenciaService = persistenciaService;
+        this.flexaoContratanteResolver = flexaoContratanteResolver;
     }
 
     @Transactional
@@ -48,7 +51,8 @@ public class ContratoHonorariosService {
         PessoaEntity pessoa = pessoaRepository.findById(pessoaId)
                 .orElseThrow(() -> new ResourceNotFoundException("Pessoa não encontrada: " + pessoaId));
 
-        String clausula3Texto = resolverClausula3Texto(request);
+        String clausula3Texto = resolverClausula3Texto(
+                request, flexaoContratanteResolver.resolver(pessoaId, request.contratantePessoaIds()));
 
         TemaDocumento tema = temaResolver.resolverPorProcessoId(request.processoId());
         String qualificacaoContratante = qualificacaoPessoaUtil.gerarQualificacaoContratoContratantePorPessoaId(pessoaId);
@@ -88,8 +92,13 @@ public class ContratoHonorariosService {
     }
 
     @Transactional(readOnly = true)
-    public String montarClausula3Texto(ContratoHonorariosClausula3Dados dados) {
-        return ContratoHonorariosClausula3TextoBuilder.montarTexto(dados);
+    public String montarClausula3Texto(ContratoHonorariosClausula3TextoRequest request) {
+        if (request == null) {
+            return ContratoHonorariosClausulas.CLAUSULA_3_PADRAO;
+        }
+        ContratoContratanteFlexao flexao =
+                flexaoContratanteResolver.resolver(request.pessoaId(), request.contratantePessoaIds());
+        return ContratoHonorariosClausula3TextoBuilder.montarTexto(request.dados(), flexao);
     }
 
     private static boolean devePersistir(ContratoHonorariosRequest request) {
@@ -102,9 +111,10 @@ public class ContratoHonorariosService {
         return true;
     }
 
-    private static String resolverClausula3Texto(ContratoHonorariosRequest request) {
+    private static String resolverClausula3Texto(
+            ContratoHonorariosRequest request, ContratoContratanteFlexao flexaoContratante) {
         if (request.clausula3Dados() != null) {
-            return ContratoHonorariosClausula3TextoBuilder.montarTexto(request.clausula3Dados());
+            return ContratoHonorariosClausula3TextoBuilder.montarTexto(request.clausula3Dados(), flexaoContratante);
         }
         if (StringUtils.hasText(request.clausula3Remuneracao())) {
             return request.clausula3Remuneracao().trim();

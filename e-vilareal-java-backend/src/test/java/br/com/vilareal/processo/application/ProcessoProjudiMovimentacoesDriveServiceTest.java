@@ -5,6 +5,7 @@ import br.com.vilareal.processo.api.dto.ProcessoProjudiMovimentacoesDriveRespons
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.projudi.ProjudiOrquestradorService;
+import br.com.vilareal.projudi.ProjudiTeorService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -19,6 +20,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -30,6 +32,9 @@ class ProcessoProjudiMovimentacoesDriveServiceTest {
 
     @Mock
     private ProjudiOrquestradorService orquestradorService;
+
+    @Mock
+    private ProjudiTeorService teorService;
 
     @Mock
     private ProjudiMovimentacoesAcervoIntegralEstado acervoIntegralEstado;
@@ -55,9 +60,12 @@ class ProcessoProjudiMovimentacoesDriveServiceTest {
                 null);
         when(orquestradorService.executarSomenteDriveProgressivo(eq(1L), eq(processo), any()))
                 .thenReturn(resultado);
+        when(teorService.consultarProcesso(1L, processo.getNumeroCnj()))
+                .thenReturn(new ProjudiTeorService.ConsultaProcessoProjudi(List.of(), null));
 
         ProcessoProjudiMovimentacoesDriveService svc =
-                new ProcessoProjudiMovimentacoesDriveService(processoRepository, orquestradorService, acervoIntegralEstado, 1L);
+                new ProcessoProjudiMovimentacoesDriveService(
+                        processoRepository, orquestradorService, teorService, acervoIntegralEstado, 1L);
         ProcessoProjudiMovimentacoesDriveResponse resp = svc.executar(42L);
 
         verify(orquestradorService).executarSomenteDriveProgressivo(eq(1L), eq(processo), any(ArrayList.class));
@@ -90,7 +98,8 @@ class ProcessoProjudiMovimentacoesDriveServiceTest {
                 .thenReturn(resultado);
 
         ProcessoProjudiMovimentacoesDriveService svc =
-                new ProcessoProjudiMovimentacoesDriveService(processoRepository, orquestradorService, acervoIntegralEstado, 1L);
+                new ProcessoProjudiMovimentacoesDriveService(
+                        processoRepository, orquestradorService, teorService, acervoIntegralEstado, 1L);
         ProcessoProjudiMovimentacoesDriveResponse resp = svc.executar(42L);
 
         ArgumentCaptor<ProcessoEntity> captor = ArgumentCaptor.forClass(ProcessoEntity.class);
@@ -98,5 +107,40 @@ class ProcessoProjudiMovimentacoesDriveServiceTest {
         assertThat(captor.getValue().getDataProtocolo()).isEqualTo(dataDistribuicao);
         assertThat(resp.dataProtocolo()).isEqualTo(dataDistribuicao);
         assertThat(resp.mensagem()).contains("Data do protocolo preenchida");
+        verify(teorService, never()).consultarProcesso(any(), any());
+    }
+
+    @Test
+    void executar_buscaDataDistribuicaoNoCnjCompletoQuandoPassadaNaoExtraiu() {
+        ProcessoEntity processo = new ProcessoEntity();
+        processo.setId(42L);
+        processo.setNumeroCnj("5196366-43.2024.8.09.0006");
+        when(processoRepository.findByIdWithClienteAndPessoa(42L)).thenReturn(Optional.of(processo));
+
+        LocalDate dataDistribuicao = LocalDate.of(2024, 3, 20);
+        var resultado = new ProjudiOrquestradorService.ResultadoSomenteDriveProcesso(
+                processo.getNumeroCnj(),
+                0,
+                5,
+                5,
+                5,
+                false,
+                100L,
+                null,
+                List.of(),
+                null,
+                null);
+        when(orquestradorService.executarSomenteDriveProgressivo(eq(1L), eq(processo), any()))
+                .thenReturn(resultado);
+        when(teorService.consultarProcesso(1L, processo.getNumeroCnj()))
+                .thenReturn(new ProjudiTeorService.ConsultaProcessoProjudi(List.of(), dataDistribuicao));
+
+        ProcessoProjudiMovimentacoesDriveService svc =
+                new ProcessoProjudiMovimentacoesDriveService(
+                        processoRepository, orquestradorService, teorService, acervoIntegralEstado, 1L);
+        ProcessoProjudiMovimentacoesDriveResponse resp = svc.executar(42L);
+
+        verify(teorService).consultarProcesso(1L, processo.getNumeroCnj());
+        assertThat(resp.dataProtocolo()).isEqualTo(dataDistribuicao);
     }
 }

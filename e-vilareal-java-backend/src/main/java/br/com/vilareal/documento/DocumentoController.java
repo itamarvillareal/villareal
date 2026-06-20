@@ -259,8 +259,8 @@ public class DocumentoController {
 
     @PostMapping("/contrato-honorarios/clausula3-texto")
     public ContratoHonorariosClausula3TextoResponse montarClausula3Texto(
-            @RequestBody ContratoHonorariosClausula3Dados dados) {
-        return new ContratoHonorariosClausula3TextoResponse(contratoHonorariosService.montarClausula3Texto(dados));
+            @RequestBody ContratoHonorariosClausula3TextoRequest request) {
+        return new ContratoHonorariosClausula3TextoResponse(contratoHonorariosService.montarClausula3Texto(request));
     }
 
     @GetMapping("/contratos-honorarios")

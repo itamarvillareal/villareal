@@ -7,6 +7,7 @@ import br.com.vilareal.processo.api.dto.ProcessoProjudiMovimentacoesDriveRespons
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.projudi.ProjudiOrquestradorService;
+import br.com.vilareal.projudi.ProjudiTeorService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -25,16 +26,19 @@ public class ProcessoProjudiMovimentacoesDriveService {
 
     private final ProcessoRepository processoRepository;
     private final ProjudiOrquestradorService orquestradorService;
+    private final ProjudiTeorService teorService;
     private final ProjudiMovimentacoesAcervoIntegralEstado acervoIntegralEstado;
     private final Long credencialIdPadrao;
 
     public ProcessoProjudiMovimentacoesDriveService(
             ProcessoRepository processoRepository,
             ProjudiOrquestradorService orquestradorService,
+            ProjudiTeorService teorService,
             @Autowired(required = false) ProjudiMovimentacoesAcervoIntegralEstado acervoIntegralEstado,
             @Value("${projudi.orquestrador.credencial-id-padrao:1}") Long credencialIdPadrao) {
         this.processoRepository = processoRepository;
         this.orquestradorService = orquestradorService;
+        this.teorService = teorService;
         this.acervoIntegralEstado = acervoIntegralEstado;
         this.credencialIdPadrao = credencialIdPadrao;
     }
@@ -52,7 +56,14 @@ public class ProcessoProjudiMovimentacoesDriveService {
                 orquestradorService.executarSomenteDriveProgressivo(
                         credencialIdPadrao, processo, new ArrayList<>());
 
-        LocalDate dataProtocolo = sincronizarDataProtocoloSeVazio(processo, resultado.dataDistribuicaoProjudi());
+        LocalDate dataDistribuicao = resultado.dataDistribuicaoProjudi();
+        if (dataDistribuicao == null) {
+            dataDistribuicao =
+                    teorService.consultarProcesso(credencialIdPadrao, processo.getNumeroCnj().trim())
+                            .dataDistribuicao();
+        }
+
+        LocalDate dataProtocolo = sincronizarDataProtocoloSeVazio(processo, dataDistribuicao);
         boolean dataProtocoloSincronizada = dataProtocoloAntes == null && dataProtocolo != null;
         LocalDate dataProtocoloResposta = dataProtocoloSincronizada ? dataProtocolo : null;
 
@@ -66,7 +77,7 @@ public class ProcessoProjudiMovimentacoesDriveService {
                     resultado.totalComDocumento(),
                     resultado.totalArquivadasDrive(),
                     false,
-                    null,
+                    montarMensagemErro(resultado, dataProtocoloSincronizada),
                     resumoSelecao(resultado),
                     resultado.erro(),
                     dataProtocoloResposta);
@@ -97,6 +108,16 @@ public class ProcessoProjudiMovimentacoesDriveService {
     private static String resumoSelecao(ProjudiOrquestradorService.ResultadoSomenteDriveProcesso resultado) {
         Object s = resultado.toRelatorioMap().get("selecao");
         return s != null ? String.valueOf(s) : null;
+    }
+
+    private static String montarMensagemErro(
+            ProjudiOrquestradorService.ResultadoSomenteDriveProcesso resultado,
+            boolean dataProtocoloSincronizada) {
+        String base = String.valueOf(resultado.erro());
+        if (dataProtocoloSincronizada) {
+            base += " Data do protocolo preenchida a partir do Projudi.";
+        }
+        return base;
     }
 
     private static String montarMensagem(

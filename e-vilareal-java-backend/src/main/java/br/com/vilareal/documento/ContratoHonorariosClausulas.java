@@ -13,7 +13,7 @@ final class ContratoHonorariosClausulas {
             "EM PEDIDO DE INDENIZAÇÃO POR DANO MORAL E MATERIAL, em face de XXXXXXXXXXXX";
 
     static final String CLAUSULA_3_PADRAO =
-            "Em REMUNERAÇÃO desses serviços, o advogado Contratado receberá da Contratante os "
+            "Em REMUNERAÇÃO desses serviços, o advogado Contratado receberá do Contratante os "
                     + "honorários líquidos e certos na importância de 35% (trinta e cinco por cento) calculados "
                     + "sobre o montante proveito econômico da demanda (inclusive extrajudicial);";
 

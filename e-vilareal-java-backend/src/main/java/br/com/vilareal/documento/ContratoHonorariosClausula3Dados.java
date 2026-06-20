@@ -9,6 +9,8 @@ public record ContratoHonorariosClausula3Dados(
         String tipoRemuneracao,
         BigDecimal percentualProveito,
         BigDecimal valorFixo,
+        /** Quando true, inclui texto de parcelamento na Cláusula 3ª. */
+        Boolean temParcelamento,
         /** Quando true, gera recebíveis (pagamento RECEBER) vinculados ao processo. */
         Boolean gerarRecebiveis,
         Integer quantidadeParcelas,

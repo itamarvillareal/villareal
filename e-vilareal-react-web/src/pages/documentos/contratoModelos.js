@@ -4,7 +4,7 @@ export const MODELO_CONTRATO_ALUGUEL = 'aluguel';
 export const CONTRATADO_HONORARIOS_NOME = 'Dr. ITAMAR ALEXANDRE FELIX VILLA REAL JUNIOR';
 
 export const CLAUSULA_3_REMUNERACAO_PADRAO =
-  'Em REMUNERAÇÃO desses serviços, o advogado Contratado receberá da Contratante os honorários líquidos e certos na importância de 35% (trinta e cinco por cento) calculados sobre o montante proveito econômico da demanda (inclusive extrajudicial);';
+  'Em REMUNERAÇÃO desses serviços, o advogado Contratado receberá do Contratante os honorários líquidos e certos na importância de 35% (trinta e cinco por cento) calculados sobre o montante proveito econômico da demanda (inclusive extrajudicial);';
 
 export const FORMA_ASSINATURA_DUAS_VIAS = 'duas_vias';
 export const FORMA_ASSINATURA_DIGITAL = 'via_digital';

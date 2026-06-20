@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, lazy, Suspense } from 'react';
+import { flushSync } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   desvincularLancamentoClienteProcessoLocal,
@@ -280,6 +281,27 @@ function buscarVinculoImovelMock() {
 function pickCampoStrSalvo(reg, key, mockVal) {
   if (!reg || !(key in reg)) return mockVal;
   return String(reg[key] ?? '');
+}
+
+/** Converte `dataProtocolo` da API (ISO ou objeto Jackson) para dd/mm/aaaa. */
+function dataProtocoloApiParaCampoBr(value) {
+  if (value == null || value === '') return '';
+  if (typeof value === 'string') {
+    const iso = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(value.trim())) return value.trim();
+    return value.trim();
+  }
+  if (typeof value === 'object' && value.year != null && value.month != null && value.day != null) {
+    const d = String(value.day).padStart(2, '0');
+    const m = String(value.month).padStart(2, '0');
+    return `${d}/${m}/${value.year}`;
+  }
+  return '';
+}
+
+function mensagemIndicaDataProtocoloSincronizada(mensagem) {
+  return String(mensagem ?? '').includes('Data do protocolo preenchida');
 }
 
 function pickCampoBoolSalvo(reg, key, mockVal) {
@@ -2185,6 +2207,36 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const obterMovimentacoesViaPje =
     tramitacaoNorm === 'PJe' || (!tramitacaoNorm && processoCnjTrt18);
 
+  /** Atualiza «Data do Protocolo» na UI assim que o backend sincroniza (formulário aberto). */
+  const aplicarDataProtocoloObterMovimentacoesNaUi = useCallback(
+    async (respostaObterMovimentacoes) => {
+      let dataProtocoloBr = dataProtocoloApiParaCampoBr(respostaObterMovimentacoes?.dataProtocolo);
+      const syncMsg = mensagemIndicaDataProtocoloSincronizada(respostaObterMovimentacoes?.mensagem);
+
+      if (!dataProtocoloBr && syncMsg && featureFlags.useApiProcessos) {
+        try {
+          const procApi = await buscarProcessoPorChaveNatural(codigoCliente, processo);
+          if (procApi) {
+            dataProtocoloBr = mapApiProcessoToUiShape(procApi).dataProtocolo ?? '';
+          }
+        } catch {
+          /* mantém vazio; toast da operação principal já informa */
+        }
+      }
+
+      if (!dataProtocoloBr) return false;
+
+      flushSync(() => {
+        setDataProtocolo(dataProtocoloBr);
+      });
+      salvarHistoricoDoProcesso(
+        montarPayloadRegistroProcesso({ dataProtocolo: dataProtocoloBr }),
+      );
+      return true;
+    },
+    [codigoCliente, processo],
+  );
+
   const executarObterMovimentacoesDrive = useCallback(async () => {
     const id = Number(processoApiId);
     if (!id || buscandoMovimentacoes) return;
@@ -2192,8 +2244,9 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     setApiError('');
     try {
       const r = await obterMovimentacoesDrive(id);
+      await aplicarDataProtocoloObterMovimentacoesNaUi(r);
       if (r?.erro) {
-        showProcessoToast(String(r.erro), 'error');
+        showProcessoToast(String(r.mensagem ?? r.erro), 'error');
         return;
       }
       const status = String(r?.status ?? '').toUpperCase();
@@ -2222,11 +2275,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       }
       const baixados = Number(r?.arquivosBaixados ?? 0);
       const msg = String(r?.mensagem ?? '').trim();
-      const dataProtocoloIso = String(r?.dataProtocolo ?? '').trim();
-      if (/^\d{4}-\d{2}-\d{2}$/.test(dataProtocoloIso)) {
-        const [y, m, d] = dataProtocoloIso.split('-');
-        setDataProtocolo(`${d}/${m}/${y}`);
-      }
       if (msg) {
         showProcessoToast(msg);
       } else if (baixados > 0) {
@@ -2239,7 +2287,12 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     } finally {
       setBuscandoMovimentacoes(false);
     }
-  }, [processoApiId, buscandoMovimentacoes, showProcessoToast]);
+  }, [
+    processoApiId,
+    buscandoMovimentacoes,
+    showProcessoToast,
+    aplicarDataProtocoloObterMovimentacoesNaUi,
+  ]);
 
   const handleObterMovimentacoes = useCallback(async () => {
     const id = Number(processoApiId);

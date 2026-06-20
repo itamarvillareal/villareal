@@ -34,6 +34,19 @@ class ProjudiProcessoMetadadosParserTest {
     }
 
     @Test
+    void extrairDataDistribuicao_comBrEntreLabelEValor() {
+        String html =
+                """
+                <div> Dt. Distribui&ccedil;&atilde;o</div>
+                <br />
+                <span class="span3">20/03/2024 00:00:00</span>
+                """;
+
+        assertThat(ProjudiProcessoMetadadosParser.extrairDataDistribuicao(html))
+                .contains(LocalDate.of(2024, 3, 20));
+    }
+
+    @Test
     void extrairDataDistribuicao_retornaVazioQuandoAusente() {
         assertThat(ProjudiProcessoMetadadosParser.extrairDataDistribuicao("<html><body></body></html>"))
                 .isEmpty();
