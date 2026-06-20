@@ -18,4 +18,4 @@ echo "Instalando em $HOST (vai pedir senha root uma vez)…"
 ssh-copy-id -i "$KEY" -o IdentitiesOnly=yes "$HOST"
 echo
 echo "Teste:"
-ssh -i "${HOME}/.ssh/villareal_vps" -o IdentitiesOnly=yes "$HOST" "echo OK — $(hostname)"
+ssh -i "${HOME}/.ssh/villareal_vps" -o IdentitiesOnly=yes "$HOST" 'echo OK — $(hostname)'

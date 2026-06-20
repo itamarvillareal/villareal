@@ -45,6 +45,12 @@ SERVICES="backend frontend"
 if [[ "$BACKEND_ONLY" -eq 1 ]]; then SERVICES="backend"; fi
 if [[ "$FRONTEND_ONLY" -eq 1 ]]; then SERVICES="frontend"; fi
 
+SSH_OPTS=()
+VPS_SSH_KEY="${VPS_SSH_KEY:-$HOME/.ssh/villareal_vps}"
+if [[ -f "$VPS_SSH_KEY" ]]; then
+  SSH_OPTS=(-i "$VPS_SSH_KEY" -o IdentitiesOnly=yes)
+fi
+
 REMOTE_CMD="cd '$VPS_REPO_DIR' && git pull && docker compose --env-file .env.docker build $SERVICES && docker compose --env-file .env.docker up -d $SERVICES"
 
 echo "VPS: $VPS_HOST"
@@ -73,5 +79,5 @@ if [[ "$YES" -ne 1 ]]; then
   esac
 fi
 
-ssh "$VPS_HOST" "$REMOTE_CMD"
+ssh "${SSH_OPTS[@]}" "$VPS_HOST" "$REMOTE_CMD"
 echo "Deploy concluído. Verifique: curl -s https://portal.villarealadvocacia.adv.br/actuator/health"
