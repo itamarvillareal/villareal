@@ -11,5 +11,7 @@ public enum OrigemSugestao {
     HISTORICO_POSTERIOR,
     RECORRENCIA,
     /** Recorrência inferida de lançamentos posteriores (fallback). */
-    RECORRENCIA_POSTERIOR
+    RECORRENCIA_POSTERIOR,
+    /** Mesmo estabelecimento (nome), valor divergente — preferir sugerir a omitir. */
+    RECORRENCIA_NOME
 }

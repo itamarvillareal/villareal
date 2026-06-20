@@ -22,6 +22,7 @@ import { INBOX_TIPOS, INBOX_FILTRO_TODAS_CONTAS, clampFinanceiroPageSize } from 
 import { isNumeroCartaoFinanceiro } from '../../../data/financeiroData.js';
 import { useFinanceiro } from '../FinanceiroContext.jsx';
 import { PeriodoSelector } from '../shared/PeriodoSelector.jsx';
+import { ConfiancaFiltroSelect } from '../shared/ConfiancaFiltroSelect.jsx';
 import {
   isPeriodoAnoInteiro,
   periodoParaAnoMesApi,
@@ -40,6 +41,7 @@ import {
   coletarIdsClassificacaoVisivel,
   contagemPorLetraSugestao,
   filtrarClassificacaoPorLetra,
+  filtrarClassificacaoPorConfianca,
   filtrarSugestoesClassificacao,
   LETRA_SUGESTAO_SEM,
   LETRA_SUGESTAO_TODAS,
@@ -98,7 +100,7 @@ function normalizeSugestoesMap(raw) {
 export function InboxPage() {
   const { tipo: tipoParam } = useParams();
   const tipo = TIPOS_VALIDOS.has(tipoParam) ? tipoParam : INBOX_TIPOS.classificar;
-  const { bancos, cartoes, bancoAtivo, filters, setBanco, setMes, setTipoPar, setTipoDia, setLetraSugestao } =
+  const { bancos, cartoes, bancoAtivo, filters, setBanco, setMes, setTipoPar, setTipoDia, setLetraSugestao, setConfianca } =
     useFinanceiro();
   const toast = useFinanceiroToast();
 
@@ -158,6 +160,7 @@ export function InboxPage() {
   const filtroTipoPar = filters.tipoPar ?? TIPO_PAR_TODOS;
   const filtroTipoDia = filters.tipoDia ?? TIPO_DIA_TODOS;
   const filtroLetraSugestao = filters.letraSugestao ?? LETRA_SUGESTAO_TODAS;
+  const filtroConfianca = filters.confianca ?? '';
   const queryTipoPar = useMemo(() => queryFiltroTipoPar(filtroTipoPar), [filtroTipoPar]);
   const queryTipoDia = useMemo(() => queryFiltroTipoDia(filtroTipoDia), [filtroTipoDia]);
   const queryCompensar = useMemo(
@@ -277,7 +280,7 @@ export function InboxPage() {
     if (tipo === INBOX_TIPOS.semelhantes) {
       setSemelhantesGrupos([]);
     }
-  }, [tipo, filters.mes, bancoAtivo, filtroTipoPar, filtroTipoDia, filtroLetraSugestao]);
+  }, [tipo, filters.mes, bancoAtivo, filtroTipoPar, filtroTipoDia, filtroLetraSugestao, filtroConfianca]);
 
   const contasClassificacao = useMemo(
     () =>
@@ -364,6 +367,7 @@ export function InboxPage() {
               size: pageSize,
               ...periodoAnoMes,
               numeroBanco: bancoFiltro,
+              confianca: filtroConfianca || undefined,
             },
             { signal: ac.signal },
           );
@@ -444,6 +448,7 @@ export function InboxPage() {
     chaveFiltrosCompensar,
     filtroTipoPar,
     filtroTipoDia,
+    filtroConfianca,
     filters.mes,
     reloadNonce,
     loadCounts,
@@ -783,11 +788,14 @@ export function InboxPage() {
     [lancamentosVisiveis, sugestoesMap],
   );
 
-  const classificacaoFiltrada = useMemo(
-    () =>
-      filtrarClassificacaoPorLetra(classificacaoAgrupada, filtroLetraSugestao, sugestoesMap),
-    [classificacaoAgrupada, filtroLetraSugestao, sugestoesMap],
-  );
+  const classificacaoFiltrada = useMemo(() => {
+    const porLetra = filtrarClassificacaoPorLetra(
+      classificacaoAgrupada,
+      filtroLetraSugestao,
+      sugestoesMap,
+    );
+    return filtrarClassificacaoPorConfianca(porLetra, filtroConfianca, sugestoesMap);
+  }, [classificacaoAgrupada, filtroLetraSugestao, filtroConfianca, sugestoesMap]);
 
   const idsClassificacaoFiltrados = useMemo(
     () => coletarIdsClassificacaoVisivel(classificacaoFiltrada),
@@ -796,6 +804,7 @@ export function InboxPage() {
 
   const totalClassificacaoFiltrada = idsClassificacaoFiltrados.length;
   const filtroLetraAtivo = filtroLetraSugestao !== LETRA_SUGESTAO_TODAS;
+  const filtroConfiancaAtivo = Boolean(filtroConfianca);
 
   const opcoesLetraSugestao = useMemo(() => {
     const letras = new Set(contasClassificacao.map((c) => String(c.codigo).trim().toUpperCase()));
@@ -1342,6 +1351,12 @@ export function InboxPage() {
             {paresVisiveis.length > 0 ? ` (${paresVisiveis.length})` : ''}
           </button>
         ) : null}
+        {tipo === INBOX_TIPOS.semelhantes || tipo === INBOX_TIPOS.classificar ? (
+          <ConfiancaFiltroSelect
+            value={filtroConfianca}
+            onChange={(v) => setConfianca(v || null)}
+          />
+        ) : null}
         {tipo === INBOX_TIPOS.classificar ? (
           <>
             <select
@@ -1467,11 +1482,24 @@ export function InboxPage() {
         ) : erro ? (
           <p className="text-sm text-red-600 dark:text-red-400 p-4">{erro}</p>
         ) : empty ? (
-          filtroLetraAtivo && lancamentosVisiveis.length > 0 ? (
+          tipo === INBOX_TIPOS.classificar &&
+          (filtroLetraAtivo || filtroConfiancaAtivo) &&
+          lancamentosVisiveis.length > 0 ? (
             <p className="text-sm text-slate-500 dark:text-slate-400 p-4">
-              Nenhum lançamento com sugestão{' '}
-              {filtroLetraSugestao === LETRA_SUGESTAO_SEM ? 'pendente' : filtroLetraSugestao} nesta
-              página. Tente outra letra ou aumente itens por página.
+              Nenhum lançamento com sugestão
+              {filtroLetraAtivo
+                ? filtroLetraSugestao === LETRA_SUGESTAO_SEM
+                  ? ' pendente'
+                  : ` ${filtroLetraSugestao}`
+                : ''}
+              {filtroLetraAtivo && filtroConfiancaAtivo ? ' e' : ''}
+              {filtroConfiancaAtivo ? ` confiança ${filtroConfianca.toLowerCase()}` : ''}{' '}
+              nesta página. Tente outro filtro ou aumente itens por página.
+            </p>
+          ) : tipo === INBOX_TIPOS.semelhantes && filtroConfiancaAtivo ? (
+            <p className="text-sm text-slate-500 dark:text-slate-400 p-4">
+              Nenhum grupo com confiança {filtroConfianca.toLowerCase()} neste período. Tente outro
+              nível ou remova o filtro.
             </p>
           ) : (
             <InboxEmptyState tipo={tipo} />

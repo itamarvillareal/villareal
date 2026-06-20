@@ -47,6 +47,14 @@ describe('lancamentoBateContaCorrenteProcesso', () => {
     );
     expect(ok).toBe(false);
   });
+
+  it('aceita proc 0 mensalista pelo marcador grupoCompensacao', () => {
+    const ok = lancamentoBateContaCorrenteProcesso(
+      { codigoCliente: '00000473', grupoCompensacao: '0', numeroInternoProcesso: null },
+      { codigoNorm: '473', procNorm: '0', resolvedProcessoId: null },
+    );
+    expect(ok).toBe(true);
+  });
 });
 
 describe('mergeUiLancamentoComRespostaApi', () => {

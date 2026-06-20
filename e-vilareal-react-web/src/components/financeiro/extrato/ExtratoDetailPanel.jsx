@@ -50,6 +50,74 @@ function lancamentoPodeAbrirProcesso(draft) {
   return Boolean(cod && proc !== '');
 }
 
+/** Resolve cliente/processo na API a partir dos campos digitados (sempre revalida, não reutiliza FK antiga). */
+async function resolverVinculoClienteProcNoDraft(draftBase) {
+  const codDigitado = normalizarCodigoClienteFinanceiro(draftBase.codCliente);
+  const procNorm = normalizarProcFinanceiro(draftBase.proc);
+
+  if (!codDigitado && procNorm === '') {
+    return {
+      ...draftBase,
+      codCliente: '',
+      proc: '',
+      clienteId: null,
+      pessoaRefId: null,
+      processoId: null,
+    };
+  }
+
+  if (!featureFlags.useApiFinanceiro || !featureFlags.useApiProcessos) {
+    return {
+      ...draftBase,
+      codCliente: codDigitado || String(draftBase.codCliente ?? '').trim(),
+      proc: procNorm,
+    };
+  }
+
+  let clienteId = null;
+  let pessoaRefId = null;
+  let processoId = null;
+  let codGravado = codDigitado || '';
+
+  if (codDigitado) {
+    const cliente = await buscarClientePorCodigo(codDigitado);
+    clienteId =
+      cliente?.clienteId != null
+        ? Number(cliente.clienteId)
+        : cliente?.id != null
+          ? Number(cliente.id)
+          : null;
+    pessoaRefId =
+      cliente?.pessoaId != null && Number.isFinite(Number(cliente.pessoaId))
+        ? Number(cliente.pessoaId)
+        : null;
+    const codResolucao = normalizarCodigoClienteFinanceiro(cliente?.codigoCliente);
+    if (codResolucao) codGravado = codResolucao;
+    if (!clienteId) {
+      throw new Error(`Cliente ${codDigitado} não encontrado.`);
+    }
+  }
+
+  if (codDigitado && procNorm !== '') {
+    const processo = await buscarProcessoPorChaveNatural(codGravado || codDigitado, procNorm);
+    processoId =
+      processo?.id != null && Number.isFinite(Number(processo.id)) ? Number(processo.id) : null;
+  }
+
+  if (pessoaRefId && codGravado) {
+    registrarCodigoClienteFinanceiroPorPessoaId(pessoaRefId, codGravado);
+  }
+
+  return {
+    ...draftBase,
+    codCliente: codGravado || codDigitado || '',
+    proc: procNorm,
+    clienteId,
+    pessoaRefId,
+    processoId,
+  };
+}
+
 function Field({ label, children }) {
   return (
     <div className="space-y-0.5">
@@ -131,39 +199,11 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
           contaContabilNome: contaEscolhida.nome ?? draftSalvar.contaContabilNome,
         };
       }
-      const codDigitado = normalizarCodigoClienteFinanceiro(draftSalvar.codCliente);
-      if (
-        codDigitado &&
-        !(Number(draftSalvar.clienteId) > 0) &&
-        featureFlags.useApiFinanceiro &&
-        featureFlags.useApiProcessos
-      ) {
-        try {
-          const cliente = await buscarClientePorCodigo(codDigitado);
-          const clientePk =
-            cliente?.clienteId != null
-              ? Number(cliente.clienteId)
-              : cliente?.id != null
-                ? Number(cliente.id)
-                : null;
-          const pessoaRefId =
-            cliente?.pessoaId != null && Number.isFinite(Number(cliente.pessoaId))
-              ? Number(cliente.pessoaId)
-              : null;
-          if (clientePk) {
-            const codResolucao = normalizarCodigoClienteFinanceiro(cliente?.codigoCliente);
-            const codGravado = codResolucao || codDigitado;
-            draftSalvar = {
-              ...draftSalvar,
-              clienteId: clientePk,
-              pessoaRefId,
-              codCliente: codGravado,
-            };
-            if (pessoaRefId) registrarCodigoClienteFinanceiroPorPessoaId(pessoaRefId, codGravado);
-          }
-        } catch {
-          /* mantém save sem clienteId se API de resolução falhar */
-        }
+      try {
+        draftSalvar = await resolverVinculoClienteProcNoDraft(draftSalvar);
+      } catch (e) {
+        toast.error(e?.message || 'Falha ao resolver cliente/processo.');
+        return;
       }
       if (draftSalvar.contaCodigo !== draft.contaCodigo) {
         setDraft(draftSalvar);
@@ -456,7 +496,14 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
             <input
               type="text"
               value={draft.codCliente}
-              onChange={(e) => patch({ codCliente: e.target.value })}
+              onChange={(e) =>
+                patch({
+                  codCliente: e.target.value,
+                  clienteId: null,
+                  pessoaRefId: null,
+                  processoId: null,
+                })
+              }
               className="w-full text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5"
               placeholder="Cód. cliente"
             />
@@ -465,7 +512,7 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
             <input
               type="text"
               value={draft.proc}
-              onChange={(e) => patch({ proc: e.target.value })}
+              onChange={(e) => patch({ proc: e.target.value, processoId: null })}
               className="w-full text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5"
               placeholder="Nº processo"
             />

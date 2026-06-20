@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   codigoClienteExtratoDesdeApiDto,
+  grupoCompensacaoParaSalvarLancamento,
   registrarCodigoClienteFinanceiroPorPessoaId,
 } from '../../../data/financeiroData.js';
 import {
+  extratoRowToUi,
   formatDataExtratoColuna,
   mapApiLancamentoToExtratoRow,
   mergeExtratoRowComRespostaApi,
@@ -84,6 +86,40 @@ describe('extratoMappers', () => {
     expect(merged.codCliente).toBe('938');
     expect(merged.proc).toBe('12');
     expect(merged.clienteId).toBe(100);
+  });
+
+  it('extratoRowToUi lê proc 0 mensalista de grupoCompensacao na conta A', () => {
+    const ui = extratoRowToUi({
+      id: 1,
+      contaCodigo: 'A',
+      grupoCompensacao: '0',
+      clienteId: 473,
+      proc: '',
+      numeroLancamento: '1',
+      dataLancamento: '2026-06-01',
+      descricao: 'Mensalista',
+      valor: 100,
+      natureza: 'CREDITO',
+    });
+    expect(ui.proc).toBe('0');
+    expect(ui._financeiroMeta.grupoCompensacao).toBe('0');
+  });
+
+  it('grupoCompensacaoParaSalvarLancamento persiste marcador mensalista na conta A', () => {
+    expect(
+      grupoCompensacaoParaSalvarLancamento({ letra: 'A', proc: '0', processoId: null }),
+    ).toBe('0');
+    expect(
+      grupoCompensacaoParaSalvarLancamento({ letra: 'A', proc: '12', processoId: 99 }),
+    ).toBe('');
+    expect(
+      grupoCompensacaoParaSalvarLancamento({
+        letra: 'A',
+        proc: '',
+        processoId: null,
+        grupoAtual: '0',
+      }),
+    ).toBe('');
   });
 
   it('codigoClienteExtrato prefere codigoCliente retornado pela API', () => {

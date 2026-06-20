@@ -321,8 +321,9 @@ public class FinanceiroController {
             @RequestParam(value = "numeroBanco", required = false) Integer numeroBanco,
             @RequestParam(value = "ano", required = false) Integer ano,
             @RequestParam(value = "mes", required = false) Integer mes,
+            @RequestParam(value = "confianca", required = false) String confianca,
             @PageableDefault(size = 50) Pageable pageable) {
-        return semelhantesEscritorioService.listarInbox(numeroBanco, ano, mes, pageable);
+        return semelhantesEscritorioService.listarInbox(numeroBanco, ano, mes, confianca, pageable);
     }
 
     @PostMapping("/lancamentos/inbox/semelhantes/descartar")

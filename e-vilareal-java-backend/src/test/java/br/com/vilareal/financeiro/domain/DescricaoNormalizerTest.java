@@ -43,6 +43,14 @@ class DescricaoNormalizerTest {
     }
 
     @Test
+    void normalizar_removeParcelaCartao() {
+        assertThat(DescricaoNormalizer.normalizar("Supermercado Jardins (2/2)"))
+                .isEqualTo("SUPERMERCADO JARDINS");
+        assertThat(DescricaoNormalizer.normalizar("Cartorio (2/3)"))
+                .isEqualTo("CARTORIO");
+    }
+
+    @Test
     void normalizar_vazio() {
         assertThat(DescricaoNormalizer.normalizar(null)).isEmpty();
         assertThat(DescricaoNormalizer.normalizar("")).isEmpty();

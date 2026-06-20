@@ -21,6 +21,8 @@ public final class DescricaoNormalizer {
     private static final Pattern DATE_GLUED_END = Pattern.compile("(?<=[A-Z])\\d{6,8}$");
     /** DDMM (4 dígitos) colados após letra no fim. */
     private static final Pattern DATE_GLUED_DDMM_END = Pattern.compile("(?<=[A-Z])\\d{4}$");
+    /** Parcela de cartão no fim, ex.: (2/3). */
+    private static final Pattern PARCEL_END = Pattern.compile("\\s*\\(\\d+/\\d+\\)$");
     private static final Pattern TIME_END = Pattern.compile("\\d{2}:\\d{2}(:\\d{2})?$");
     private static final Pattern TRAILING_SEPARATORS = Pattern.compile("[\\s\\-/\\.]+$");
 
@@ -39,6 +41,11 @@ public final class DescricaoNormalizer {
         return s;
     }
 
+    /** Nome do estabelecimento sem parcela/data — chave para histórico e recorrência por nome. */
+    public static String chaveEstabelecimento(String descricao) {
+        return normalizar(descricao);
+    }
+
     private static String removerTokensFinaisRepetidamente(String input) {
         String s = input;
         boolean changed;
@@ -51,6 +58,7 @@ public final class DescricaoNormalizer {
             s = stripEndIfMatches(s, DATE_SEPARATED_END);
             s = stripEndIfMatches(s, DATE_GLUED_END);
             s = stripEndIfMatches(s, DATE_GLUED_DDMM_END);
+            s = stripEndIfMatches(s, PARCEL_END);
             s = stripEndIfMatches(s, TIME_END);
             s = TRAILING_SEPARATORS.matcher(s).replaceAll("").trim();
             changed = !s.equals(prev);

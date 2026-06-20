@@ -5,6 +5,7 @@ import {
   coletarIdsClassificacaoVisivel,
   contagemPorLetraSugestao,
   filtrarClassificacaoPorLetra,
+  filtrarClassificacaoPorConfianca,
   filtrarSugestoesClassificacao,
   LETRA_SUGESTAO_SEM,
   LETRA_SUGESTAO_TODAS,
@@ -160,5 +161,21 @@ describe('coletarIdsClassificacaoVisivel', () => {
       semSugestao: [{ id: 4 }],
     };
     expect(coletarIdsClassificacaoVisivel(agrupada)).toEqual([1, 2, 3, 4]);
+  });
+});
+
+describe('filtrarClassificacaoPorConfianca', () => {
+  const sugAlta = { contaContabilId: 6, contaCodigo: 'F', confianca: 'ALTA' };
+  const sugBaixa = { contaContabilId: 5, contaCodigo: 'E', confianca: 'BAIXA' };
+  const lancAlta = { id: 1, descricao: 'Lucro', numeroBanco: 30, dataLancamento: '2026-05-17' };
+  const lancBaixa = { id: 2, descricao: 'Pix', numeroBanco: 30, dataLancamento: '2026-05-16' };
+  const sugestoes = { 1: [sugAlta], 2: [sugBaixa] };
+
+  it('filtra pela confiança da melhor sugestão', () => {
+    const agrupada = agruparLancamentosClassificacao([lancAlta, lancBaixa], sugestoes);
+    const out = filtrarClassificacaoPorConfianca(agrupada, 'ALTA', sugestoes);
+    expect(out.individuais).toHaveLength(1);
+    expect(out.individuais[0].id).toBe(1);
+    expect(out.grupos).toHaveLength(0);
   });
 });

@@ -87,6 +87,18 @@ export function navegarExtratoLancamento(navigate, row) {
   );
 }
 
+/** Navega para o extrato bancário a partir de um item da aba Escritório (semelhantes). */
+export function navegarExtratoSemelhanteItem(navigate, item, grupo) {
+  if (!item?.lancamentoId || typeof navigate !== 'function') return;
+  navigate(
+    buildExtratoUrlParaLancamento({
+      lancamentoId: item.lancamentoId,
+      numeroBanco: grupo?.numeroBanco ?? item?.numeroBanco,
+      data: item.dataLancamento,
+    }),
+  );
+}
+
 export function scrollExtratoParaLancamento(lancamentoId) {
   const id = Number(lancamentoId);
   if (!Number.isFinite(id)) return;

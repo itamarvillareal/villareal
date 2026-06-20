@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   buildCartaoUrlParaLancamento,
   buildExtratoUrlParaLancamento,
   mesAnoFromDataBr,
+  navegarExtratoSemelhanteItem,
   numeroCartaoFromRow,
   paginaDoLancamentoNaLista,
 } from './extratoDeepLink.js';
@@ -58,5 +59,17 @@ describe('extratoDeepLink', () => {
     const lista = [{ id: 1 }, { id: 2 }, { id: 3 }];
     expect(paginaDoLancamentoNaLista(lista, 3, 2)).toBe(1);
     expect(paginaDoLancamentoNaLista(lista, 99, 2)).toBeNull();
+  });
+
+  it('monta URL a partir de item semelhante do inbox Escritório', () => {
+    const navigate = vi.fn();
+    navegarExtratoSemelhanteItem(
+      navigate,
+      { lancamentoId: 42, dataLancamento: '2026-03-26' },
+      { numeroBanco: 26 },
+    );
+    expect(navigate).toHaveBeenCalledWith(
+      '/financeiro/extrato?lancamento=42&banco=26&mes=2026-03',
+    );
   });
 });

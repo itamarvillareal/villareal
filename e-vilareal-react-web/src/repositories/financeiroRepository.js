@@ -15,6 +15,7 @@ import {
   codigoClienteExtratoDesdeApiDto,
   normalizarCodigoClienteFinanceiro,
   normalizarProcFinanceiro,
+  grupoCompensacaoParaSalvarLancamento,
   savePersistedExtratosFinanceiro,
 } from '../data/financeiroData.js';
 import {
@@ -225,10 +226,12 @@ function mapUiLancamentoToApi(t, contaIdByNome, letraToConta) {
     refTipo: normalizarRef(t.ref),
     origem: String(t.origemImportacao ?? '').trim() || 'MANUAL',
     status: 'ATIVO',
-    grupoCompensacao:
-      String(t.letra ?? '').toUpperCase() === 'E'
-        ? String(t.proc ?? t._financeiroMeta?.grupoCompensacao ?? '').trim() || null
-        : null,
+    grupoCompensacao: grupoCompensacaoParaSalvarLancamento({
+      letra: t.letra,
+      proc: t.proc,
+      processoId: meta.processoId,
+      grupoAtual: meta.grupoCompensacao,
+    }),
   };
   return body;
 }
@@ -456,6 +459,7 @@ export async function listarInboxSemelhantesApi(filtros = {}, opts = {}) {
     numeroBanco: filtros.numeroBanco ?? undefined,
     ano: filtros.ano ?? undefined,
     mes: filtros.mes ?? undefined,
+    confianca: filtros.confianca ?? undefined,
   };
   return request('/api/financeiro/lancamentos/inbox/semelhantes', { query, signal });
 }
@@ -1032,6 +1036,7 @@ export function lancamentoBateContaCorrenteProcesso(l, { codigoNorm, procNorm, r
   if (codigoNorm && codApi !== codigoNorm) return false;
 
   if (procNorm === '0') {
+    if (String(l.grupoCompensacao ?? '').trim() === '0') return true;
     const ni = l.numeroInternoProcesso;
     return ni == null || ni === '' || Number(ni) === 0;
   }

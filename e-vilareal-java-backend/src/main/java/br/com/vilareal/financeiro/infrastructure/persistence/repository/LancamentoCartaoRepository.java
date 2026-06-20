@@ -90,4 +90,201 @@ public interface LancamentoCartaoRepository
             @Param("cartaoId") Long cartaoId,
             @Param("inicio") LocalDate inicio,
             @Param("fim") LocalDate fim);
+
+    @Query(value = """
+            SELECT l.conta_contabil_id, COUNT(*) AS total
+            FROM financeiro_lancamento_cartao l
+            INNER JOIN financeiro_cartao c ON c.id = l.cartao_id
+            WHERE l.etapa != 'IMPORTADO'
+              AND c.numero_cartao = :numeroCartao
+              AND l.descricao_norm = :descricaoNorm
+            GROUP BY l.conta_contabil_id
+            ORDER BY total DESC
+            LIMIT 3
+            """, nativeQuery = true)
+    List<Object[]> contarContaPorDescricaoHistoricoCartao(
+            @Param("numeroCartao") Integer numeroCartao,
+            @Param("descricaoNorm") String descricaoNorm);
+
+    @Query(value = """
+            SELECT l.conta_contabil_id, COUNT(*) AS total
+            FROM financeiro_lancamento_cartao l
+            INNER JOIN financeiro_cartao c ON c.id = l.cartao_id
+            WHERE l.etapa != 'IMPORTADO'
+              AND c.numero_cartao = :numeroCartao
+              AND l.descricao_norm = :descricaoNorm
+              AND (:excluirId IS NULL OR l.id <> :excluirId)
+              AND l.data_lancamento < :dataRef
+            GROUP BY l.conta_contabil_id
+            ORDER BY total DESC
+            LIMIT 3
+            """, nativeQuery = true)
+    List<Object[]> contarContaPorDescricaoHistoricoAnteriorCartao(
+            @Param("numeroCartao") Integer numeroCartao,
+            @Param("descricaoNorm") String descricaoNorm,
+            @Param("dataRef") LocalDate dataRef,
+            @Param("excluirId") Long excluirId);
+
+    @Query(value = """
+            SELECT l.conta_contabil_id, COUNT(*) AS total
+            FROM financeiro_lancamento_cartao l
+            INNER JOIN financeiro_cartao c ON c.id = l.cartao_id
+            WHERE l.etapa != 'IMPORTADO'
+              AND c.numero_cartao = :numeroCartao
+              AND l.descricao_norm = :descricaoNorm
+              AND (:excluirId IS NULL OR l.id <> :excluirId)
+              AND l.data_lancamento > :dataRef
+            GROUP BY l.conta_contabil_id
+            ORDER BY total DESC
+            LIMIT 3
+            """, nativeQuery = true)
+    List<Object[]> contarContaPorDescricaoHistoricoPosteriorCartao(
+            @Param("numeroCartao") Integer numeroCartao,
+            @Param("descricaoNorm") String descricaoNorm,
+            @Param("dataRef") LocalDate dataRef,
+            @Param("excluirId") Long excluirId);
+
+    @Query(value = """
+            SELECT l.conta_contabil_id, COUNT(*) AS total
+            FROM financeiro_lancamento_cartao l
+            INNER JOIN financeiro_cartao c ON c.id = l.cartao_id
+            WHERE l.etapa != 'IMPORTADO'
+              AND c.numero_cartao = :numeroCartao
+              AND (l.descricao_norm = :descricaoNorm OR l.descricao_norm LIKE CONCAT(:chaveEstabelecimento, '%'))
+              AND (:excluirId IS NULL OR l.id <> :excluirId)
+              AND l.data_lancamento < :dataRef
+            GROUP BY l.conta_contabil_id
+            ORDER BY total DESC
+            LIMIT 3
+            """, nativeQuery = true)
+    List<Object[]> contarContaPorChaveEstabelecimentoAnteriorCartao(
+            @Param("numeroCartao") Integer numeroCartao,
+            @Param("descricaoNorm") String descricaoNorm,
+            @Param("chaveEstabelecimento") String chaveEstabelecimento,
+            @Param("dataRef") LocalDate dataRef,
+            @Param("excluirId") Long excluirId);
+
+    @Query(value = """
+            SELECT l.conta_contabil_id, COUNT(*) AS total
+            FROM financeiro_lancamento_cartao l
+            INNER JOIN financeiro_cartao c ON c.id = l.cartao_id
+            WHERE l.etapa != 'IMPORTADO'
+              AND c.numero_cartao = :numeroCartao
+              AND (l.descricao_norm = :descricaoNorm OR l.descricao_norm LIKE CONCAT(:chaveEstabelecimento, '%'))
+              AND (:excluirId IS NULL OR l.id <> :excluirId)
+              AND l.data_lancamento > :dataRef
+            GROUP BY l.conta_contabil_id
+            ORDER BY total DESC
+            LIMIT 3
+            """, nativeQuery = true)
+    List<Object[]> contarContaPorChaveEstabelecimentoPosteriorCartao(
+            @Param("numeroCartao") Integer numeroCartao,
+            @Param("descricaoNorm") String descricaoNorm,
+            @Param("chaveEstabelecimento") String chaveEstabelecimento,
+            @Param("dataRef") LocalDate dataRef,
+            @Param("excluirId") Long excluirId);
+
+    @Query(value = """
+            SELECT l.conta_contabil_id, COUNT(*) AS total
+            FROM financeiro_lancamento_cartao l
+            INNER JOIN financeiro_cartao c ON c.id = l.cartao_id
+            WHERE l.etapa != 'IMPORTADO'
+              AND c.numero_cartao = :numeroCartao
+              AND (l.descricao_norm = :descricaoNorm OR l.descricao_norm LIKE CONCAT(:chaveEstabelecimento, '%'))
+            GROUP BY l.conta_contabil_id
+            ORDER BY total DESC
+            LIMIT 3
+            """, nativeQuery = true)
+    List<Object[]> contarContaPorChaveEstabelecimentoHistoricoCartao(
+            @Param("numeroCartao") Integer numeroCartao,
+            @Param("descricaoNorm") String descricaoNorm,
+            @Param("chaveEstabelecimento") String chaveEstabelecimento);
+
+    @Query("""
+            SELECT l FROM LancamentoCartaoEntity l
+            JOIN FETCH l.contaContabil c
+            LEFT JOIN FETCH l.pessoaRef
+            LEFT JOIN FETCH l.clienteEntidade
+            LEFT JOIN FETCH l.processo
+            WHERE l.etapa <> br.com.vilareal.financeiro.domain.EtapaLancamento.IMPORTADO
+              AND l.cartao.numeroCartao = :numeroCartao
+              AND l.descricaoNorm = :descricaoNorm
+              AND l.valor BETWEEN :valorMin AND :valorMax
+              AND (YEAR(l.dataLancamento) * 100 + MONTH(l.dataLancamento)) <> :anoMes
+              AND (:excluirId IS NULL OR l.id <> :excluirId)
+              AND l.dataLancamento < :dataRef
+            ORDER BY l.dataLancamento DESC
+            """)
+    List<LancamentoCartaoEntity> findRecorrenciaCandidatosAnterioresCartao(
+            @Param("numeroCartao") Integer numeroCartao,
+            @Param("descricaoNorm") String descricaoNorm,
+            @Param("valorMin") BigDecimal valorMin,
+            @Param("valorMax") BigDecimal valorMax,
+            @Param("anoMes") int anoMes,
+            @Param("dataRef") LocalDate dataRef,
+            @Param("excluirId") Long excluirId);
+
+    @Query("""
+            SELECT l FROM LancamentoCartaoEntity l
+            JOIN FETCH l.contaContabil c
+            LEFT JOIN FETCH l.pessoaRef
+            LEFT JOIN FETCH l.clienteEntidade
+            LEFT JOIN FETCH l.processo
+            WHERE l.etapa <> br.com.vilareal.financeiro.domain.EtapaLancamento.IMPORTADO
+              AND l.cartao.numeroCartao = :numeroCartao
+              AND l.descricaoNorm = :descricaoNorm
+              AND l.valor BETWEEN :valorMin AND :valorMax
+              AND (YEAR(l.dataLancamento) * 100 + MONTH(l.dataLancamento)) <> :anoMes
+              AND (:excluirId IS NULL OR l.id <> :excluirId)
+              AND l.dataLancamento > :dataRef
+            ORDER BY l.dataLancamento ASC
+            """)
+    List<LancamentoCartaoEntity> findRecorrenciaCandidatosPosterioresCartao(
+            @Param("numeroCartao") Integer numeroCartao,
+            @Param("descricaoNorm") String descricaoNorm,
+            @Param("valorMin") BigDecimal valorMin,
+            @Param("valorMax") BigDecimal valorMax,
+            @Param("anoMes") int anoMes,
+            @Param("dataRef") LocalDate dataRef,
+            @Param("excluirId") Long excluirId);
+
+    @Query("""
+            SELECT l FROM LancamentoCartaoEntity l
+            JOIN FETCH l.contaContabil c
+            LEFT JOIN FETCH l.pessoaRef
+            LEFT JOIN FETCH l.clienteEntidade
+            LEFT JOIN FETCH l.processo
+            WHERE l.etapa <> br.com.vilareal.financeiro.domain.EtapaLancamento.IMPORTADO
+              AND l.cartao.numeroCartao = :numeroCartao
+              AND (l.descricaoNorm = :descricaoNorm OR l.descricaoNorm LIKE CONCAT(:chaveEstabelecimento, '%'))
+              AND (:excluirId IS NULL OR l.id <> :excluirId)
+              AND l.dataLancamento < :dataRef
+            ORDER BY l.dataLancamento DESC
+            """)
+    List<LancamentoCartaoEntity> findRecorrenciaPorNomeAnterioresCartao(
+            @Param("numeroCartao") Integer numeroCartao,
+            @Param("descricaoNorm") String descricaoNorm,
+            @Param("chaveEstabelecimento") String chaveEstabelecimento,
+            @Param("dataRef") LocalDate dataRef,
+            @Param("excluirId") Long excluirId);
+
+    @Query("""
+            SELECT l FROM LancamentoCartaoEntity l
+            JOIN FETCH l.contaContabil c
+            LEFT JOIN FETCH l.pessoaRef
+            LEFT JOIN FETCH l.clienteEntidade
+            LEFT JOIN FETCH l.processo
+            WHERE l.etapa <> br.com.vilareal.financeiro.domain.EtapaLancamento.IMPORTADO
+              AND l.cartao.numeroCartao = :numeroCartao
+              AND (l.descricaoNorm = :descricaoNorm OR l.descricaoNorm LIKE CONCAT(:chaveEstabelecimento, '%'))
+              AND (:excluirId IS NULL OR l.id <> :excluirId)
+              AND l.dataLancamento > :dataRef
+            ORDER BY l.dataLancamento ASC
+            """)
+    List<LancamentoCartaoEntity> findRecorrenciaPorNomePosterioresCartao(
+            @Param("numeroCartao") Integer numeroCartao,
+            @Param("descricaoNorm") String descricaoNorm,
+            @Param("chaveEstabelecimento") String chaveEstabelecimento,
+            @Param("dataRef") LocalDate dataRef,
+            @Param("excluirId") Long excluirId);
 }

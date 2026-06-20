@@ -1555,6 +1555,48 @@ export function normalizarProcFinanceiro(val) {
   return String(n);
 }
 
+/** Proc. exibido/filtrado na Conta Corrente a partir de linha de extrato (local ou UI). */
+export function procContaCorrenteDeTransacao(t) {
+  const proc = normalizarProcFinanceiro(t?.proc);
+  if (proc) return proc;
+  const grupo = String(t?.grupoCompensacao ?? t?._financeiroMeta?.grupoCompensacao ?? '').trim();
+  if (grupo === '0') return '0';
+  return '';
+}
+
+/** Mesmo critério de {@code lancamentoBateContaCorrenteProcesso} para dados locais/UI. */
+export function transacaoBateProcContaCorrente(t, processo) {
+  const procNorm = normalizarProcFinanceiro(processo);
+  if (procNorm === '') return true;
+  const procLinha = procContaCorrenteDeTransacao(t);
+  if (procLinha) return procLinha === procNorm;
+  if (procNorm === '0') {
+    const explicit = normalizarProcFinanceiro(t?.proc);
+    if (explicit && explicit !== '0') return false;
+    const pid = Number(t?.processoId ?? t?._financeiroMeta?.processoId);
+    return !(Number.isFinite(pid) && pid > 0);
+  }
+  return false;
+}
+
+/**
+ * Valor de grupo_compensacao ao gravar lançamento na API.
+ * Conta Escritório (A): proc 0 mensalista sem processoId usa marcador '0' (legado Conta Corrente).
+ */
+export function grupoCompensacaoParaSalvarLancamento({ letra, proc, processoId, grupoAtual }) {
+  const cod = String(letra ?? '').trim().toUpperCase();
+  const procNorm = normalizarProcFinanceiro(proc);
+  const pid = Number(processoId) > 0 ? Number(processoId) : null;
+  if (cod === 'E') {
+    return procNorm || String(grupoAtual ?? '').trim() || null;
+  }
+  if (cod === 'A') {
+    if (procNorm === '0' && !pid) return '0';
+    if (String(grupoAtual ?? '').trim() === '0' || pid || procNorm !== '') return '';
+  }
+  return null;
+}
+
 function normalizarCodigoCliente(val) {
   return normalizarCodigoClienteFinanceiro(val);
 }
@@ -1685,7 +1727,7 @@ export function getTransacoesContaCorrenteCompleto(codigoCliente, processo, extr
     for (const t of transacoes) {
       if (normalizarCodigoCliente(t.codCliente) !== codigoNorm) continue;
       if (procNorm !== '') {
-        if (normalizarProc(t.proc) !== procNorm) continue;
+        if (!transacaoBateProcContaCorrente(t, procNorm)) continue;
       }
       const key = `${origemExtrato}|${nomeInst}|${String(t.numero ?? '')}|${String(t.data ?? '')}`;
       if (seen.has(key)) continue;

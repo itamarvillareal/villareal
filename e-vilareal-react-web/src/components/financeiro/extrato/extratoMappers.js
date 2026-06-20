@@ -138,10 +138,13 @@ export function extratoRowToUi(row) {
   const sinal = row.natureza === 'DEBITO' ? -1 : 1;
   const valorAssinado = isCartao ? (row.natureza === 'DEBITO' ? -row.valor : row.valor) : row.valor * sinal;
   const letra = String(row.contaCodigo ?? 'N').trim().toUpperCase() || 'N';
+  const grupoMarcador = String(
+    row.grupoCompensacao ?? row._financeiroMeta?.grupoCompensacao ?? '',
+  ).trim();
   const proc =
     letra === 'E'
-      ? String(row.proc ?? row.grupoCompensacao ?? row._financeiroMeta?.grupoCompensacao ?? '').trim()
-      : String(row.proc ?? '').trim();
+      ? String(row.proc ?? grupoMarcador).trim()
+      : String(row.proc ?? '').trim() || (grupoMarcador === '0' ? '0' : '');
   return {
     apiId: row.id,
     letra: row.contaCodigo,
@@ -169,8 +172,10 @@ export function extratoRowToUi(row) {
       cartaoId: row.cartaoId ?? null,
       grupoCompensacao:
         letra === 'E'
-          ? proc || row.grupoCompensacao || row._financeiroMeta?.grupoCompensacao || null
-          : row.grupoCompensacao ?? row._financeiroMeta?.grupoCompensacao ?? null,
+          ? proc || grupoMarcador || null
+          : proc === '0' && !(Number(row.processoId) > 0)
+            ? '0'
+            : grupoMarcador || null,
     },
   };
 }
@@ -190,18 +195,16 @@ export function mergeExtratoRowComRespostaApi(row, saved, contaToLetra) {
         ? row.processoId
         : null;
   const proc =
-    String(mapped.proc ?? '').trim() || String(row.proc ?? '').trim() || '';
+    String(row.proc ?? '').trim() || String(mapped.proc ?? '').trim() || '';
   const pessoaRef = Number(mapped.pessoaRefId ?? row.pessoaRefId) || 0;
-  let codEnviado =
+  const codEnviado =
     normalizarCodigoClienteFinanceiro(row.codCliente) ||
     (pessoaRef > 0 ? obterCodigoClienteFinanceiroPorPessoaId(pessoaRef) : '');
-  const temVinculo = Number(clienteId) > 0 || proc !== '';
   const base = { ...mapped, clienteId, processoId, proc: proc || mapped.proc };
-  if (codEnviado && temVinculo) {
+  if (codEnviado) {
     return { ...base, codCliente: codEnviado };
   }
   if (mapped.codCliente) return base;
-  if (codEnviado) return { ...base, codCliente: codEnviado };
   return base;
 }
 

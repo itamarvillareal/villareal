@@ -93,6 +93,11 @@ public class FinanceiroSugestaoService {
 
     @Transactional(readOnly = true)
     public List<SugestaoClassificacaoResponse> sugerir(LancamentoFinanceiroEntity lancamento) {
+        return sugerirInterno(lancamento, false);
+    }
+
+    private List<SugestaoClassificacaoResponse> sugerirInterno(
+            LancamentoFinanceiroEntity lancamento, boolean cartao) {
         List<SugestaoClassificacaoResponse> todas = new ArrayList<>();
         todas.addAll(camadaRendimentosAplicacoes(lancamento));
         boolean compensacaoInterna = FinanceiroDescricaoIndicaContaE.indica(
@@ -107,8 +112,8 @@ public class FinanceiroSugestaoService {
                 todas.addAll(camadaPessoaProcessos(lancamento));
             }
         }
-        todas.addAll(camadaHistorico(lancamento));
-        todas.addAll(camadaRecorrencia(lancamento));
+        todas.addAll(camadaHistorico(lancamento, cartao));
+        todas.addAll(camadaRecorrencia(lancamento, cartao));
         return deduplicarEOrdenar(todas);
     }
 
@@ -165,7 +170,7 @@ public class FinanceiroSugestaoService {
     }
 
     private List<SugestaoClassificacaoResponse> sugerirCartao(LancamentoCartaoEntity cartao) {
-        return sugerir(adaptarCartaoParaSugestao(cartao));
+        return sugerirInterno(adaptarCartaoParaSugestao(cartao), true);
     }
 
     private LancamentoFinanceiroEntity adaptarCartaoParaSugestao(LancamentoCartaoEntity cartao) {
@@ -477,34 +482,108 @@ public class FinanceiroSugestaoService {
         return n.replaceAll("\\p{M}+", "").replaceAll("[^a-z0-9\\s]", " ").replaceAll("\\s+", " ").trim();
     }
 
-    private List<SugestaoClassificacaoResponse> camadaHistorico(LancamentoFinanceiroEntity lancamento) {
+    private List<SugestaoClassificacaoResponse> camadaHistorico(
+            LancamentoFinanceiroEntity lancamento, boolean cartao) {
         String descricao = lancamento.getDescricao();
         if (!StringUtils.hasText(descricao)) {
             return List.of();
         }
         String descricaoNorm = DescricaoNormalizer.normalizar(descricao);
+        String chave = DescricaoNormalizer.chaveEstabelecimento(descricao);
         LocalDate dataRef = lancamento.getDataLancamento();
         Long excluirId = lancamento.getId();
+        Integer numeroConta = lancamento.getNumeroBanco();
 
-        List<Object[]> rows;
+        List<Object[]> rows = List.of();
         OrigemSugestao origem = OrigemSugestao.HISTORICO;
+        boolean prefixo = false;
+
         if (dataRef != null) {
-            rows = lancamentoRepository.contarContaPorDescricaoHistoricoAnterior(
-                    lancamento.getNumeroBanco(), descricaoNorm, dataRef, excluirId);
+            rows = buscarHistoricoRows(
+                    cartao, numeroConta, descricaoNorm, chave, dataRef, excluirId, false, false);
             if (rows.isEmpty()) {
-                rows = lancamentoRepository.contarContaPorDescricaoHistoricoPosterior(
-                        lancamento.getNumeroBanco(), descricaoNorm, dataRef, excluirId);
+                rows = buscarHistoricoRows(
+                        cartao, numeroConta, descricaoNorm, chave, dataRef, excluirId, true, false);
                 origem = OrigemSugestao.HISTORICO_POSTERIOR;
             }
+            if (rows.isEmpty()) {
+                rows = buscarHistoricoRows(
+                        cartao, numeroConta, descricaoNorm, chave, dataRef, excluirId, false, true);
+                prefixo = true;
+            }
+            if (rows.isEmpty()) {
+                rows = buscarHistoricoRows(
+                        cartao, numeroConta, descricaoNorm, chave, dataRef, excluirId, true, true);
+                origem = OrigemSugestao.HISTORICO_POSTERIOR;
+                prefixo = true;
+            }
         } else {
-            rows = lancamentoRepository.contarContaPorDescricaoHistorico(
-                    lancamento.getNumeroBanco(), descricaoNorm);
+            rows = buscarHistoricoRows(
+                    cartao, numeroConta, descricaoNorm, chave, null, excluirId, false, false);
+            if (rows.isEmpty()) {
+                rows = buscarHistoricoRows(
+                        cartao, numeroConta, descricaoNorm, chave, null, excluirId, false, true);
+                prefixo = true;
+            }
         }
-        return montarSugestoesHistorico(rows, origem);
+        return montarSugestoesHistorico(rows, origem, prefixo);
+    }
+
+    private List<Object[]> buscarHistoricoRows(
+            boolean cartao,
+            Integer numeroConta,
+            String descricaoNorm,
+            String chaveEstabelecimento,
+            LocalDate dataRef,
+            Long excluirId,
+            boolean posterior,
+            boolean prefixo) {
+        if (numeroConta == null) {
+            return List.of();
+        }
+        if (cartao) {
+            if (dataRef == null) {
+                return prefixo
+                        ? lancamentoCartaoRepository.contarContaPorChaveEstabelecimentoHistoricoCartao(
+                                numeroConta, descricaoNorm, chaveEstabelecimento)
+                        : lancamentoCartaoRepository.contarContaPorDescricaoHistoricoCartao(
+                                numeroConta, descricaoNorm);
+            }
+            if (prefixo) {
+                return posterior
+                        ? lancamentoCartaoRepository.contarContaPorChaveEstabelecimentoPosteriorCartao(
+                                numeroConta, descricaoNorm, chaveEstabelecimento, dataRef, excluirId)
+                        : lancamentoCartaoRepository.contarContaPorChaveEstabelecimentoAnteriorCartao(
+                                numeroConta, descricaoNorm, chaveEstabelecimento, dataRef, excluirId);
+            }
+            return posterior
+                    ? lancamentoCartaoRepository.contarContaPorDescricaoHistoricoPosteriorCartao(
+                            numeroConta, descricaoNorm, dataRef, excluirId)
+                    : lancamentoCartaoRepository.contarContaPorDescricaoHistoricoAnteriorCartao(
+                            numeroConta, descricaoNorm, dataRef, excluirId);
+        }
+        if (dataRef == null) {
+            return prefixo
+                    ? lancamentoRepository.contarContaPorChaveEstabelecimentoHistorico(
+                            numeroConta, descricaoNorm, chaveEstabelecimento)
+                    : lancamentoRepository.contarContaPorDescricaoHistorico(numeroConta, descricaoNorm);
+        }
+        if (prefixo) {
+            return posterior
+                    ? lancamentoRepository.contarContaPorChaveEstabelecimentoPosterior(
+                            numeroConta, descricaoNorm, chaveEstabelecimento, dataRef, excluirId)
+                    : lancamentoRepository.contarContaPorChaveEstabelecimentoAnterior(
+                            numeroConta, descricaoNorm, chaveEstabelecimento, dataRef, excluirId);
+        }
+        return posterior
+                ? lancamentoRepository.contarContaPorDescricaoHistoricoPosterior(
+                        numeroConta, descricaoNorm, dataRef, excluirId)
+                : lancamentoRepository.contarContaPorDescricaoHistoricoAnterior(
+                        numeroConta, descricaoNorm, dataRef, excluirId);
     }
 
     private List<SugestaoClassificacaoResponse> montarSugestoesHistorico(
-            List<Object[]> rows, OrigemSugestao origem) {
+            List<Object[]> rows, OrigemSugestao origem, boolean prefixo) {
         List<SugestaoClassificacaoResponse> out = new ArrayList<>();
         for (Object[] row : rows) {
             Long contaId = ((Number) row[0]).longValue();
@@ -518,6 +597,9 @@ public class FinanceiroSugestaoService {
             if (origem == OrigemSugestao.HISTORICO_POSTERIOR && conf == ConfiancaSugestao.MEDIA) {
                 conf = ConfiancaSugestao.BAIXA;
             }
+            if (prefixo) {
+                conf = ConfiancaSugestao.BAIXA;
+            }
             SugestaoClassificacaoResponse s = baseSugestao(conta, conf, origem);
             s.setOcorrencias(total);
             out.add(s);
@@ -525,7 +607,8 @@ public class FinanceiroSugestaoService {
         return out;
     }
 
-    private List<SugestaoClassificacaoResponse> camadaRecorrencia(LancamentoFinanceiroEntity lancamento) {
+    private List<SugestaoClassificacaoResponse> camadaRecorrencia(
+            LancamentoFinanceiroEntity lancamento, boolean cartao) {
         if (lancamento.getNumeroBanco() == null || !StringUtils.hasText(lancamento.getDescricao())) {
             return List.of();
         }
@@ -539,14 +622,25 @@ public class FinanceiroSugestaoService {
         LocalDate dataRef = lancamento.getDataLancamento();
         Long excluirId = lancamento.getId();
         String descricaoNorm = DescricaoNormalizer.normalizar(lancamento.getDescricao());
+        String chave = DescricaoNormalizer.chaveEstabelecimento(lancamento.getDescricao());
 
-        List<LancamentoFinanceiroEntity> candidatos = lancamentoRepository.findRecorrenciaCandidatosAnteriores(
-                lancamento.getNumeroBanco(), descricaoNorm, valorMin, valorMax, anoMes, dataRef, excluirId);
+        List<LancamentoFinanceiroEntity> candidatos =
+                buscarRecorrenciaComValor(cartao, lancamento, descricaoNorm, valorMin, valorMax, anoMes, dataRef, excluirId, false);
         OrigemSugestao origem = OrigemSugestao.RECORRENCIA;
         if (candidatos.isEmpty()) {
-            candidatos = lancamentoRepository.findRecorrenciaCandidatosPosteriores(
-                    lancamento.getNumeroBanco(), descricaoNorm, valorMin, valorMax, anoMes, dataRef, excluirId);
+            candidatos = buscarRecorrenciaComValor(
+                    cartao, lancamento, descricaoNorm, valorMin, valorMax, anoMes, dataRef, excluirId, true);
             origem = OrigemSugestao.RECORRENCIA_POSTERIOR;
+        }
+        if (candidatos.isEmpty()) {
+            candidatos = buscarRecorrenciaPorNome(
+                    cartao, lancamento.getNumeroBanco(), descricaoNorm, chave, dataRef, excluirId, false);
+            origem = OrigemSugestao.RECORRENCIA_NOME;
+        }
+        if (candidatos.isEmpty()) {
+            candidatos = buscarRecorrenciaPorNome(
+                    cartao, lancamento.getNumeroBanco(), descricaoNorm, chave, dataRef, excluirId, true);
+            origem = OrigemSugestao.RECORRENCIA_NOME;
         }
         if (candidatos.isEmpty()) {
             return List.of();
@@ -555,17 +649,83 @@ public class FinanceiroSugestaoService {
         return montarSugestaoRecorrencia(lancamento, candidatos, origem);
     }
 
+    private List<LancamentoFinanceiroEntity> buscarRecorrenciaComValor(
+            boolean cartao,
+            LancamentoFinanceiroEntity lancamento,
+            String descricaoNorm,
+            BigDecimal valorMin,
+            BigDecimal valorMax,
+            int anoMes,
+            LocalDate dataRef,
+            Long excluirId,
+            boolean posterior) {
+        Integer numeroConta = lancamento.getNumeroBanco();
+        if (numeroConta == null) {
+            return List.of();
+        }
+        if (cartao) {
+            List<LancamentoCartaoEntity> cartoes = posterior
+                    ? lancamentoCartaoRepository.findRecorrenciaCandidatosPosterioresCartao(
+                            numeroConta, descricaoNorm, valorMin, valorMax, anoMes, dataRef, excluirId)
+                    : lancamentoCartaoRepository.findRecorrenciaCandidatosAnterioresCartao(
+                            numeroConta, descricaoNorm, valorMin, valorMax, anoMes, dataRef, excluirId);
+            return cartoes.stream().map(this::adaptCartaoCandidatoRecorrencia).toList();
+        }
+        return posterior
+                ? lancamentoRepository.findRecorrenciaCandidatosPosteriores(
+                        numeroConta, descricaoNorm, valorMin, valorMax, anoMes, dataRef, excluirId)
+                : lancamentoRepository.findRecorrenciaCandidatosAnteriores(
+                        numeroConta, descricaoNorm, valorMin, valorMax, anoMes, dataRef, excluirId);
+    }
+
+    private List<LancamentoFinanceiroEntity> buscarRecorrenciaPorNome(
+            boolean cartao,
+            Integer numeroConta,
+            String descricaoNorm,
+            String chaveEstabelecimento,
+            LocalDate dataRef,
+            Long excluirId,
+            boolean posterior) {
+        if (numeroConta == null) {
+            return List.of();
+        }
+        if (cartao) {
+            List<LancamentoCartaoEntity> cartoes = posterior
+                    ? lancamentoCartaoRepository.findRecorrenciaPorNomePosterioresCartao(
+                            numeroConta, descricaoNorm, chaveEstabelecimento, dataRef, excluirId)
+                    : lancamentoCartaoRepository.findRecorrenciaPorNomeAnterioresCartao(
+                            numeroConta, descricaoNorm, chaveEstabelecimento, dataRef, excluirId);
+            return cartoes.stream().map(this::adaptCartaoCandidatoRecorrencia).toList();
+        }
+        return posterior
+                ? lancamentoRepository.findRecorrenciaPorNomePosteriores(
+                        numeroConta, descricaoNorm, chaveEstabelecimento, dataRef, excluirId)
+                : lancamentoRepository.findRecorrenciaPorNomeAnteriores(
+                        numeroConta, descricaoNorm, chaveEstabelecimento, dataRef, excluirId);
+    }
+
+    private LancamentoFinanceiroEntity adaptCartaoCandidatoRecorrencia(LancamentoCartaoEntity c) {
+        LancamentoFinanceiroEntity e = new LancamentoFinanceiroEntity();
+        e.setContaContabil(c.getContaContabil());
+        e.setDataLancamento(c.getDataLancamento());
+        e.setPessoaRef(c.getPessoaRef());
+        e.setClienteEntidade(c.getClienteEntidade());
+        e.setProcesso(c.getProcesso());
+        return e;
+    }
+
     private List<SugestaoClassificacaoResponse> montarSugestaoRecorrencia(
             LancamentoFinanceiroEntity lancamento,
             List<LancamentoFinanceiroEntity> candidatos,
             OrigemSugestao origem) {
         Map<Long, Long> freqPorConta = new LinkedHashMap<>();
         LancamentoFinanceiroEntity melhorA = null;
+        boolean posterior = origem == OrigemSugestao.RECORRENCIA_POSTERIOR;
         for (LancamentoFinanceiroEntity c : candidatos) {
             Long contaId = c.getContaContabil().getId();
             freqPorConta.merge(contaId, 1L, Long::sum);
             if ("A".equalsIgnoreCase(c.getContaContabil().getCodigo()) && c.getPessoaRef() != null) {
-                if (origem == OrigemSugestao.RECORRENCIA) {
+                if (!posterior) {
                     if (c.getDataLancamento() != null
                             && (melhorA == null
                                     || melhorA.getDataLancamento() == null
@@ -593,9 +753,7 @@ public class FinanceiroSugestaoService {
             return List.of();
         }
 
-        ConfiancaSugestao conf = origem == OrigemSugestao.RECORRENCIA_POSTERIOR
-                ? ConfiancaSugestao.BAIXA
-                : ConfiancaSugestao.MEDIA;
+        ConfiancaSugestao conf = origem == OrigemSugestao.RECORRENCIA ? ConfiancaSugestao.MEDIA : ConfiancaSugestao.BAIXA;
         SugestaoClassificacaoResponse s = baseSugestao(conta, conf, origem);
         s.setOcorrencias(freqPorConta.get(contaIdMaisFrequente));
         if (melhorA != null && "A".equalsIgnoreCase(conta.getCodigo())) {

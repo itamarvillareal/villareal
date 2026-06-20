@@ -181,6 +181,59 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             @Param("dataRef") java.time.LocalDate dataRef,
             @Param("excluirId") Long excluirId);
 
+    @Query(value = """
+            SELECT conta_contabil_id, COUNT(*) AS total
+            FROM financeiro_lancamento
+            WHERE etapa != 'IMPORTADO'
+              AND (:numeroBanco IS NULL OR numero_banco = :numeroBanco)
+              AND (descricao_norm = :descricaoNorm OR descricao_norm LIKE CONCAT(:chaveEstabelecimento, '%'))
+              AND (:excluirId IS NULL OR id <> :excluirId)
+              AND data_lancamento < :dataRef
+            GROUP BY conta_contabil_id
+            ORDER BY total DESC
+            LIMIT 3
+            """, nativeQuery = true)
+    List<Object[]> contarContaPorChaveEstabelecimentoAnterior(
+            @Param("numeroBanco") Integer numeroBanco,
+            @Param("descricaoNorm") String descricaoNorm,
+            @Param("chaveEstabelecimento") String chaveEstabelecimento,
+            @Param("dataRef") java.time.LocalDate dataRef,
+            @Param("excluirId") Long excluirId);
+
+    @Query(value = """
+            SELECT conta_contabil_id, COUNT(*) AS total
+            FROM financeiro_lancamento
+            WHERE etapa != 'IMPORTADO'
+              AND (:numeroBanco IS NULL OR numero_banco = :numeroBanco)
+              AND (descricao_norm = :descricaoNorm OR descricao_norm LIKE CONCAT(:chaveEstabelecimento, '%'))
+              AND (:excluirId IS NULL OR id <> :excluirId)
+              AND data_lancamento > :dataRef
+            GROUP BY conta_contabil_id
+            ORDER BY total DESC
+            LIMIT 3
+            """, nativeQuery = true)
+    List<Object[]> contarContaPorChaveEstabelecimentoPosterior(
+            @Param("numeroBanco") Integer numeroBanco,
+            @Param("descricaoNorm") String descricaoNorm,
+            @Param("chaveEstabelecimento") String chaveEstabelecimento,
+            @Param("dataRef") java.time.LocalDate dataRef,
+            @Param("excluirId") Long excluirId);
+
+    @Query(value = """
+            SELECT conta_contabil_id, COUNT(*) AS total
+            FROM financeiro_lancamento
+            WHERE etapa != 'IMPORTADO'
+              AND (:numeroBanco IS NULL OR numero_banco = :numeroBanco)
+              AND (descricao_norm = :descricaoNorm OR descricao_norm LIKE CONCAT(:chaveEstabelecimento, '%'))
+            GROUP BY conta_contabil_id
+            ORDER BY total DESC
+            LIMIT 3
+            """, nativeQuery = true)
+    List<Object[]> contarContaPorChaveEstabelecimentoHistorico(
+            @Param("numeroBanco") Integer numeroBanco,
+            @Param("descricaoNorm") String descricaoNorm,
+            @Param("chaveEstabelecimento") String chaveEstabelecimento);
+
     @Query("""
             SELECT l FROM LancamentoFinanceiroEntity l
             JOIN FETCH l.contaContabil c
@@ -226,6 +279,46 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             @Param("valorMin") java.math.BigDecimal valorMin,
             @Param("valorMax") java.math.BigDecimal valorMax,
             @Param("anoMes") int anoMes,
+            @Param("dataRef") java.time.LocalDate dataRef,
+            @Param("excluirId") Long excluirId);
+
+    @Query("""
+            SELECT l FROM LancamentoFinanceiroEntity l
+            JOIN FETCH l.contaContabil c
+            LEFT JOIN FETCH l.pessoaRef
+            LEFT JOIN FETCH l.clienteEntidade
+            LEFT JOIN FETCH l.processo
+            WHERE l.etapa <> br.com.vilareal.financeiro.domain.EtapaLancamento.IMPORTADO
+              AND l.numeroBanco = :numeroBanco
+              AND (l.descricaoNorm = :descricaoNorm OR l.descricaoNorm LIKE CONCAT(:chaveEstabelecimento, '%'))
+              AND (:excluirId IS NULL OR l.id <> :excluirId)
+              AND l.dataLancamento < :dataRef
+            ORDER BY l.dataLancamento DESC
+            """)
+    List<LancamentoFinanceiroEntity> findRecorrenciaPorNomeAnteriores(
+            @Param("numeroBanco") Integer numeroBanco,
+            @Param("descricaoNorm") String descricaoNorm,
+            @Param("chaveEstabelecimento") String chaveEstabelecimento,
+            @Param("dataRef") java.time.LocalDate dataRef,
+            @Param("excluirId") Long excluirId);
+
+    @Query("""
+            SELECT l FROM LancamentoFinanceiroEntity l
+            JOIN FETCH l.contaContabil c
+            LEFT JOIN FETCH l.pessoaRef
+            LEFT JOIN FETCH l.clienteEntidade
+            LEFT JOIN FETCH l.processo
+            WHERE l.etapa <> br.com.vilareal.financeiro.domain.EtapaLancamento.IMPORTADO
+              AND l.numeroBanco = :numeroBanco
+              AND (l.descricaoNorm = :descricaoNorm OR l.descricaoNorm LIKE CONCAT(:chaveEstabelecimento, '%'))
+              AND (:excluirId IS NULL OR l.id <> :excluirId)
+              AND l.dataLancamento > :dataRef
+            ORDER BY l.dataLancamento ASC
+            """)
+    List<LancamentoFinanceiroEntity> findRecorrenciaPorNomePosteriores(
+            @Param("numeroBanco") Integer numeroBanco,
+            @Param("descricaoNorm") String descricaoNorm,
+            @Param("chaveEstabelecimento") String chaveEstabelecimento,
             @Param("dataRef") java.time.LocalDate dataRef,
             @Param("excluirId") Long excluirId);
 

@@ -100,7 +100,7 @@ class FinanceiroSemelhantesEscritorioServiceTest {
                 .thenReturn(List.of(importado));
         when(lancamentoRepository.findHistoricoVinculadoContaA(null)).thenReturn(List.of());
 
-        var resp = service.listarInbox(null, null, null, PageRequest.of(0, 50));
+        var resp = service.listarInbox(null, null, null, null, PageRequest.of(0, 50));
 
         assertThat(resp.getTotalItensAcionaveis()).isZero();
         assertThat(resp.getContent()).isEmpty();

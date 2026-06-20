@@ -42,6 +42,12 @@ const TIPO_PAR_COMPENSAR_TODOS = 'TODOS';
 const TIPO_DIA_COMPENSAR_TODOS = 'TODOS';
 const LETRA_SUGESTAO_TODAS = 'TODAS';
 
+function readConfiancaParam(params) {
+  const raw = String(params.get('confianca') ?? '').trim().toUpperCase();
+  if (raw === 'ALTA' || raw === 'MEDIA' || raw === 'BAIXA') return raw;
+  return null;
+}
+
 function readLetraSugestaoParam(params) {
   const raw = String(params.get('letraSugestao') ?? '').trim().toUpperCase();
   if (!raw || raw === LETRA_SUGESTAO_TODAS) return LETRA_SUGESTAO_TODAS;
@@ -75,6 +81,7 @@ function readFilters(params) {
     letrasModo,
     cadastro: parseCadastroFiltroParam(params),
     etapa: params.get('etapa') || null,
+    confianca: readConfiancaParam(params),
     contaCodigo: null,
     busca: params.get('busca') || '',
     semClienteId: params.get('semCliente') === '1',
@@ -120,6 +127,7 @@ function writeFilters(params, f) {
     f.cadastro && f.cadastro !== CADASTRO_TODOS ? f.cadastro : null,
   );
   setOrDel('etapa', f.etapa);
+  setOrDel('confianca', f.confianca);
   setOrDel('busca', f.busca);
   setOrDel('semCliente', f.semClienteId ? '1' : null);
   setOrDel('semGrupo', f.semGrupoCompensacao ? '1' : null);
@@ -241,6 +249,10 @@ export function useExtratoFilters() {
     [syncUrl],
   );
   const setEtapa = useCallback((etapa) => syncUrl({ etapa, resetPage: true }), [syncUrl]);
+  const setConfianca = useCallback(
+    (confianca) => syncUrl({ confianca: confianca || null, resetPage: true }),
+    [syncUrl],
+  );
   const setCadastroFiltro = useCallback(
     (cadastro) => syncUrl({ cadastro: cadastro || CADASTRO_TODOS, resetPage: true }),
     [syncUrl],
@@ -291,6 +303,7 @@ export function useExtratoFilters() {
     setTipoDia,
     setLetraSugestao,
     setEtapa,
+    setConfianca,
     setContaCodigo,
     setLetrasFiltro,
     setCadastroFiltro,

@@ -44,6 +44,9 @@ export function textoOrigemSugestao(sug) {
   if (origem === 'RECORRENCIA_POSTERIOR') {
     return 'recorrência posterior';
   }
+  if (origem === 'RECORRENCIA_NOME') {
+    return 'mesmo estabelecimento (valor divergente)';
+  }
   if (origem === 'DEPOSITO_IDENTIFICADO' && sug.descricaoRegra) {
     return sug.descricaoRegra;
   }

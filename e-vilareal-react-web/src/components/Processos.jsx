@@ -788,16 +788,18 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   }, [processoApiId]);
 
   useEffect(() => {
-    if (!featureFlags.useApiFinanceiro || !Number(processoApiId) || !modalContaCorrente) {
+    if (!featureFlags.useApiFinanceiro || !modalContaCorrente) {
       if (!modalContaCorrente) {
         setResumoContaCorrenteApi(null);
         setResumoContaCorrenteApiErro('');
       }
       return;
     }
-    let ativo = true;
     const procResumo = contaCorrenteModo === 'proc0' ? 0 : Number(processo) || 0;
-    void carregarResumoContaCorrenteProcesso(processoApiId, {
+    const temChaveNatural = String(codigoCliente ?? '').trim() !== '';
+    if (!Number(processoApiId) && !temChaveNatural) return;
+    let ativo = true;
+    void carregarResumoContaCorrenteProcesso(Number(processoApiId) > 0 ? processoApiId : null, {
       codigoCliente,
       numeroInterno: procResumo,
     })
@@ -847,12 +849,13 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
           numeroInterno: procEfetivo,
         });
         if (!alive) return;
-        if (!resolved) {
+        const temCodigo = String(codigoCliente ?? '').trim() !== '';
+        if (!resolved && !temCodigo) {
           setContaCorrenteListaApi({ phase: 'local', data: null, error: '' });
           return;
         }
         const rows = await listarLancamentosProcessoApiFirst({
-          processoId: resolved,
+          processoId: resolved ?? null,
           codigoCliente,
           numeroInterno: procEfetivo,
         });

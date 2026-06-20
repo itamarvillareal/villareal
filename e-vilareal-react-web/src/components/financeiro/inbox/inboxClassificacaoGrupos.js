@@ -110,6 +110,26 @@ export function filtrarClassificacaoPorLetra(agrupada, letraFiltro, sugestoesMap
   return { grupos, individuais, semSugestao: [] };
 }
 
+export function confiancaSugestaoLancamento(lanc, sugestoesMap) {
+  const conf = String(melhorSugestao(sugestoesMap[lanc?.id])?.confianca ?? '').trim().toUpperCase();
+  return conf || null;
+}
+
+/** Filtra grupos/individuais pela confiança da melhor sugestão. */
+export function filtrarClassificacaoPorConfianca(agrupada, confiancaFiltro, sugestoesMap) {
+  const filtro = String(confiancaFiltro ?? '').trim().toUpperCase();
+  if (!filtro) {
+    return agrupada;
+  }
+  const grupos = (agrupada.grupos ?? []).filter(
+    (g) => String(g.sugestao?.confianca ?? '').trim().toUpperCase() === filtro,
+  );
+  const individuais = (agrupada.individuais ?? []).filter(
+    (l) => confiancaSugestaoLancamento(l, sugestoesMap) === filtro,
+  );
+  return { grupos, individuais, semSugestao: [] };
+}
+
 export function contagemPorLetraSugestao(lancamentos, sugestoesMap) {
   const porLetra = {};
   let sem = 0;

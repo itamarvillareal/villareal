@@ -85,7 +85,8 @@ public class FinanceiroSemelhantesEscritorioService {
     }
 
     @Transactional(readOnly = true)
-    public InboxSemelhantesPaginaResponse listarInbox(Integer numeroBanco, Integer ano, Integer mes, Pageable pageable) {
+    public InboxSemelhantesPaginaResponse listarInbox(
+            Integer numeroBanco, Integer ano, Integer mes, String confianca, Pageable pageable) {
         ContaContabilEntity contaA = contaContabilRepository
                 .findFirstByCodigoIgnoreCase(CONTA_ESCRITORIO)
                 .orElse(null);
@@ -108,6 +109,13 @@ public class FinanceiroSemelhantesEscritorioService {
         List<MatchResult> matches = filtrarRejeitados(parearEmCamadas(pendentes, historico), pendentes);
         List<SemelhanteEscritorioGrupoResponse> grupos = agruparMatches(matches, contaAId, contaACodigo);
         enriquecerPartesProcesso(grupos);
+
+        if (StringUtils.hasText(confianca)) {
+            String alvo = confianca.trim().toUpperCase();
+            grupos = grupos.stream()
+                    .filter(g -> alvo.equalsIgnoreCase(String.valueOf(g.getConfianca())))
+                    .toList();
+        }
 
         grupos.sort(Comparator.comparingInt((SemelhanteEscritorioGrupoResponse g) -> ordemConfianca(g.getConfianca()))
                 .thenComparingInt(SemelhanteEscritorioGrupoResponse::getQtdPendentes)
@@ -134,7 +142,7 @@ public class FinanceiroSemelhantesEscritorioService {
 
     @Transactional(readOnly = true)
     public long contarItensAcionaveis(Integer numeroBanco, Integer ano, Integer mes) {
-        return listarInbox(numeroBanco, ano, mes, Pageable.ofSize(1)).getTotalItensAcionaveis();
+        return listarInbox(numeroBanco, ano, mes, null, Pageable.ofSize(1)).getTotalItensAcionaveis();
     }
 
     @Transactional

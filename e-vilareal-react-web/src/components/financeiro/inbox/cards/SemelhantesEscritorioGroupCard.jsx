@@ -1,5 +1,7 @@
 import { Check, ChevronDown, ChevronUp, SkipForward } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { navegarExtratoSemelhanteItem } from '../../extrato/extratoDeepLink.js';
 import { ContaBadge } from '../../shared/ContaBadge.jsx';
 import { CLASSE_BORDA_CONTA, CLASSE_BOTAO_APROVAR_CONTA, varsCorConta } from '../../shared/contaCores.js';
 import { formatDataBrCompleta, formatMoeda } from '../../shared/financeiroFormat.js';
@@ -61,6 +63,14 @@ export function SemelhantesEscritorioGroupCard({
     const b = formatDataBrCompleta(datas[datas.length - 1]);
     return a === b ? a : `${a} – ${b}`;
   }, [itens]);
+
+  const navigate = useNavigate();
+  const abrirExtrato = useCallback(
+    (item) => {
+      navegarExtratoSemelhanteItem(navigate, item, grupo);
+    },
+    [navigate, grupo],
+  );
 
   return (
     <article
@@ -154,7 +164,9 @@ export function SemelhantesEscritorioGroupCard({
             {listaExibida.map((item) => (
               <tr
                 key={item.lancamentoId}
-                className="border-b border-slate-100 dark:border-slate-800 last:border-0"
+                className="border-b border-slate-100 dark:border-slate-800 last:border-0 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                onDoubleClick={() => abrirExtrato(item)}
+                title="Duplo clique: abrir extrato do banco neste lançamento"
               >
                 <td className="py-2 pr-2 whitespace-nowrap text-slate-700 dark:text-slate-300">
                   {item.dataLancamento ? formatDataBrCompleta(item.dataLancamento) : '—'}
@@ -193,7 +205,10 @@ export function SemelhantesEscritorioGroupCard({
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => onAprovarItem?.(item)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onAprovarItem?.(item);
+                      }}
                       className="text-[11px] px-2 py-1 rounded border border-emerald-600 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 disabled:opacity-50"
                     >
                       Aprovar
@@ -201,7 +216,10 @@ export function SemelhantesEscritorioGroupCard({
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => onRejeitarItem?.(item)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRejeitarItem?.(item);
+                      }}
                       className="text-[11px] px-2 py-1 rounded border border-red-200 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-50"
                     >
                       Rejeitar

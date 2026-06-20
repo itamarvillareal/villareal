@@ -7,10 +7,13 @@ import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.financeiro.domain.NaturezaLancamento;
 import br.com.vilareal.financeiro.domain.OrigemSugestao;
 import br.com.vilareal.financeiro.domain.TipoMatch;
+import br.com.vilareal.financeiro.infrastructure.persistence.entity.CartaoEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabilEntity;
+import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoCartaoEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.RegraClassificacaoEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaContabilRepository;
+import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoCartaoRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.RegraClassificacaoRepository;
 import br.com.vilareal.pessoa.application.ClienteResolverService;
@@ -57,6 +60,10 @@ class FinanceiroSugestaoServiceTest {
     @Mock
     private LancamentoFinanceiroRepository lancamentoRepository;
     @Mock
+    private LancamentoCartaoRepository lancamentoCartaoRepository;
+    @Mock
+    private FinanceiroCartaoApplicationService financeiroCartaoService;
+    @Mock
     private ContaContabilRepository contaContabilRepository;
     @Mock
     private PessoaRepository pessoaRepository;
@@ -80,6 +87,7 @@ class FinanceiroSugestaoServiceTest {
     private ContaContabilEntity contaE;
     private ContaContabilEntity contaI;
     private ContaContabilEntity contaN;
+    private ContaContabilEntity contaC;
     private LancamentoFinanceiroEntity lancamento;
 
     @BeforeEach
@@ -103,6 +111,11 @@ class FinanceiroSugestaoServiceTest {
         contaI.setId(8L);
         contaI.setCodigo("I");
         contaI.setNome("Conta Imóveis");
+
+        contaC = new ContaContabilEntity();
+        contaC.setId(9L);
+        contaC.setCodigo("C");
+        contaC.setNome("Conta Pessoal");
 
         lancamento = new LancamentoFinanceiroEntity();
         lancamento.setId(99L);
@@ -135,6 +148,60 @@ class FinanceiroSugestaoServiceTest {
         lenient()
                 .when(lancamentoRepository.findRecorrenciaCandidatosPosteriores(
                         any(), any(), any(), any(), anyInt(), any(), any()))
+                .thenReturn(List.of());
+        lenient()
+                .when(lancamentoRepository.findRecorrenciaPorNomePosteriores(
+                        any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+        lenient()
+                .when(lancamentoRepository.contarContaPorChaveEstabelecimentoAnterior(
+                        any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+        lenient()
+                .when(lancamentoRepository.contarContaPorChaveEstabelecimentoPosterior(
+                        any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+        lenient()
+                .when(lancamentoRepository.contarContaPorChaveEstabelecimentoHistorico(any(), any(), any()))
+                .thenReturn(List.of());
+        lenient()
+                .when(lancamentoCartaoRepository.contarContaPorDescricaoHistoricoAnteriorCartao(
+                        any(), any(), any(), any()))
+                .thenReturn(List.of());
+        lenient()
+                .when(lancamentoCartaoRepository.contarContaPorDescricaoHistoricoPosteriorCartao(
+                        any(), any(), any(), any()))
+                .thenReturn(List.of());
+        lenient()
+                .when(lancamentoCartaoRepository.contarContaPorDescricaoHistoricoCartao(any(), any()))
+                .thenReturn(List.of());
+        lenient()
+                .when(lancamentoCartaoRepository.contarContaPorChaveEstabelecimentoAnteriorCartao(
+                        any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+        lenient()
+                .when(lancamentoCartaoRepository.contarContaPorChaveEstabelecimentoPosteriorCartao(
+                        any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+        lenient()
+                .when(lancamentoCartaoRepository.contarContaPorChaveEstabelecimentoHistoricoCartao(
+                        any(), any(), any()))
+                .thenReturn(List.of());
+        lenient()
+                .when(lancamentoCartaoRepository.findRecorrenciaCandidatosAnterioresCartao(
+                        any(), any(), any(), any(), anyInt(), any(), any()))
+                .thenReturn(List.of());
+        lenient()
+                .when(lancamentoCartaoRepository.findRecorrenciaCandidatosPosterioresCartao(
+                        any(), any(), any(), any(), anyInt(), any(), any()))
+                .thenReturn(List.of());
+        lenient()
+                .when(lancamentoCartaoRepository.findRecorrenciaPorNomeAnterioresCartao(
+                        any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+        lenient()
+                .when(lancamentoCartaoRepository.findRecorrenciaPorNomePosterioresCartao(
+                        any(), any(), any(), any(), any()))
                 .thenReturn(List.of());
         lenient()
                 .when(lancamentoRepository.findDepositosIdentificadosPorCpfAnteriores(
@@ -548,6 +615,38 @@ class FinanceiroSugestaoServiceTest {
 
         assertThat(sugestoes).anyMatch(s ->
                 s.getOrigem() == OrigemSugestao.HISTORICO_POSTERIOR && s.getContaCodigo().equals("E"));
+    }
+
+    @Test
+    void sugerir_cartaoHistoricoContaPessoal() {
+        CartaoEntity cartao = new CartaoEntity();
+        cartao.setId(20L);
+        cartao.setNumeroCartao(20);
+        cartao.setNome("BTG Cartão");
+
+        LancamentoCartaoEntity lancCartao = new LancamentoCartaoEntity();
+        lancCartao.setId(500L);
+        lancCartao.setCartao(cartao);
+        lancCartao.setContaContabil(contaN);
+        lancCartao.setDescricao("Supermercado Jardins (2/2)");
+        lancCartao.setValor(new BigDecimal("117.40"));
+        lancCartao.setDataLancamento(LocalDate.of(2026, 12, 15));
+        lancCartao.setEtapa(EtapaLancamento.IMPORTADO);
+
+        String norm = DescricaoNormalizer.normalizar("Supermercado Jardins (2/2)");
+
+        when(lancamentoRepository.findById(500L)).thenReturn(Optional.empty());
+        when(lancamentoCartaoRepository.findById(500L)).thenReturn(Optional.of(lancCartao));
+        when(regraRepository.findByAtivoTrueOrderByPrioridadeAscIdAsc()).thenReturn(List.of());
+        when(lancamentoCartaoRepository.contarContaPorDescricaoHistoricoAnteriorCartao(
+                        eq(20), eq(norm), eq(lancCartao.getDataLancamento()), eq(500L)))
+                .thenReturn(List.<Object[]>of(new Object[] {9L, 4L}));
+        when(contaContabilRepository.findById(9L)).thenReturn(Optional.of(contaC));
+
+        List<SugestaoClassificacaoResponse> sugestoes = service.sugerir(500L);
+
+        assertThat(sugestoes).anyMatch(s ->
+                s.getOrigem() == OrigemSugestao.HISTORICO && s.getContaCodigo().equals("C"));
     }
 
     @Test
