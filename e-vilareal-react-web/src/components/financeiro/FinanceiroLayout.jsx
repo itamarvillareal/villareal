@@ -190,9 +190,13 @@ function FinanceiroShell({
                   <Link2 className="w-[15px] h-[15px] shrink-0" />
                   Compensação
                 </NavLink>
-                <NavLink to="/financeiro/fatura" className={navClass}>
+                <NavLink to="/financeiro/fatura/fechamentos" className={navClass}>
                   <Receipt className="w-[15px] h-[15px] shrink-0" />
-                  Faturas
+                  Fechamentos fatura
+                </NavLink>
+                <NavLink to="/financeiro/fatura" className={navClass}>
+                  <Receipt className="w-[15px] h-[15px] shrink-0 opacity-60" />
+                  Regras fatura
                 </NavLink>
                 <NavLink to="/financeiro/relatorios" className={navClass}>
                   <BarChart3 className="w-[15px] h-[15px] shrink-0" />

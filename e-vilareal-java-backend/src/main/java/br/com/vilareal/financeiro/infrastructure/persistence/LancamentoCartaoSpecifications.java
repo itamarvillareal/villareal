@@ -15,9 +15,13 @@ public final class LancamentoCartaoSpecifications {
             Long contaContabilId,
             Long cartaoId,
             LocalDate dataInicio,
-            LocalDate dataFim) {
+            LocalDate dataFim,
+            Boolean fechamentoAutomatico) {
         return (root, query, cb) -> {
             var preds = cb.conjunction();
+            if (Boolean.TRUE.equals(fechamentoAutomatico)) {
+                preds = cb.and(preds, cb.like(root.get("numeroLancamento"), "AUTO-FAT-%"));
+            }
             if (clienteId != null) {
                 preds = cb.and(preds, cb.equal(root.get("clienteEntidade").get("id"), clienteId));
             }

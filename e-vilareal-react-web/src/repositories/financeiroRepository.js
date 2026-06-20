@@ -617,6 +617,7 @@ export async function listarLancamentosCartaoFinanceiro(filtros = {}, opts = {})
       cartaoId: filtros.cartaoId ?? undefined,
       dataInicio: filtros.dataInicio ?? undefined,
       dataFim: filtros.dataFim ?? undefined,
+      fechamentoAutomatico: filtros.fechamentoAutomatico === true ? true : undefined,
     },
   });
 }

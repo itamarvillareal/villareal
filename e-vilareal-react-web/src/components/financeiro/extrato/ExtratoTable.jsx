@@ -22,6 +22,8 @@ function ExtratoTableInner({
   etapaModoEscritorio = false,
   /** Extrato de cartão: coluna extra de vencimento da fatura. */
   modoCartao = false,
+  /** Extrato consolidado AUTO-FAT: coluna cartão; data = vencimento (sem coluna venc. duplicada). */
+  modoFechamentoFatura = false,
 }) {
   const ids = useMemo(() => data.map((r) => r.id).filter((id) => id != null), [data]);
   const allSelected = useMemo(
@@ -30,7 +32,8 @@ function ExtratoTableInner({
   );
   const someSelected = useMemo(() => ids.some((id) => selectedIds.has(id)), [ids, selectedIds]);
 
-  const colSpan = modoCartao ? 8 : 7;
+  const mostrarVencFatura = modoCartao && !modoFechamentoFatura;
+  const colSpan = 7 + (mostrarVencFatura ? 1 : 0) + (modoFechamentoFatura ? 1 : 0);
 
   if (isLoading) {
     return <ExtratoSkeleton />;
@@ -43,7 +46,8 @@ function ExtratoTableInner({
           <col style={{ width: 36 }} />
           <col style={{ width: 48 }} />
           <col style={{ width: 108 }} />
-          {modoCartao ? <col style={{ width: 72 }} /> : null}
+          {modoFechamentoFatura ? <col style={{ width: 100 }} /> : null}
+          {mostrarVencFatura ? <col style={{ width: 72 }} /> : null}
           <col style={{ width: modoCartao ? 240 : 300 }} />
           <col style={{ width: 112 }} />
           <col />
@@ -67,6 +71,9 @@ function ExtratoTableInner({
               />
             </th>
             <th className="px-2 py-2 text-left whitespace-nowrap">Conta</th>
+            {modoFechamentoFatura ? (
+              <th className="px-2 py-2 text-left whitespace-nowrap">Cartão</th>
+            ) : null}
             <th
               className="px-2 py-2 text-left whitespace-nowrap cursor-pointer select-none hover:text-slate-700 dark:hover:text-slate-200"
               onDoubleClick={(e) => {
@@ -79,12 +86,12 @@ function ExtratoTableInner({
                   : 'Duplo clique: ordenar do mais antigo para o mais novo'
               }
             >
-              {modoCartao ? 'Data compra' : 'Data'}
+              {modoFechamentoFatura ? 'Vencimento' : modoCartao ? 'Data compra' : 'Data'}
               <span className="ml-1 text-[10px] opacity-70" aria-hidden>
                 {sortDataAsc ? '↑' : '↓'}
               </span>
             </th>
-            {modoCartao ? (
+            {mostrarVencFatura ? (
               <th className="px-2 py-2 text-left whitespace-nowrap">Venc. fatura</th>
             ) : null}
             <th className="px-2 py-2 text-left min-w-0">Descrição</th>
@@ -144,10 +151,15 @@ function ExtratoTableInner({
                   <td className="px-2 py-2 align-middle overflow-hidden">
                     <ContaBadge codigo={contaCodigoExtratoExibicao(item)} />
                   </td>
+                  {modoFechamentoFatura ? (
+                    <td className="px-2 py-2 align-middle text-slate-700 dark:text-slate-300 text-xs truncate" title={item.cartaoNome}>
+                      {item.cartaoNome || '—'}
+                    </td>
+                  ) : null}
                   <td className="px-2 py-2 align-middle text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap overflow-hidden text-ellipsis">
                     {item.dataExibicao}
                   </td>
-                  {modoCartao ? (
+                  {mostrarVencFatura ? (
                     <td className="px-2 py-2 align-middle text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap overflow-hidden text-ellipsis">
                       {item.vencimentoFaturaExibicao || '—'}
                     </td>

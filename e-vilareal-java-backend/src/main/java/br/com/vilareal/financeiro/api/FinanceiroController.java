@@ -558,9 +558,10 @@ public class FinanceiroController {
             @RequestParam(value = "contaContabilId", required = false) Long contaContabilId,
             @RequestParam(value = "cartaoId", required = false) Long cartaoId,
             @RequestParam(value = "dataInicio", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataInicio,
-            @RequestParam(value = "dataFim", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataFim) {
+            @RequestParam(value = "dataFim", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataFim,
+            @RequestParam(value = "fechamentoAutomatico", required = false) Boolean fechamentoAutomatico) {
         return financeiroCartaoService.listarLancamentos(
-                clienteId, processoId, contaContabilId, cartaoId, dataInicio, dataFim);
+                clienteId, processoId, contaContabilId, cartaoId, dataInicio, dataFim, fechamentoAutomatico);
     }
 
     @GetMapping("/cartoes/lancamentos/{id}")

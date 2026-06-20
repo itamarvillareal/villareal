@@ -71,11 +71,12 @@ public class FinanceiroCartaoApplicationService {
             Long contaContabilId,
             Long cartaoId,
             java.time.LocalDate dataInicio,
-            java.time.LocalDate dataFim) {
+            java.time.LocalDate dataFim,
+            Boolean fechamentoAutomatico) {
         Long clientePk =
                 clienteId != null ? clienteResolverService.buscarPorId(clienteId).getId() : null;
         var spec = LancamentoCartaoSpecifications.comFiltros(
-                clientePk, processoId, contaContabilId, cartaoId, dataInicio, dataFim);
+                clientePk, processoId, contaContabilId, cartaoId, dataInicio, dataFim, fechamentoAutomatico);
         return lancamentoCartaoRepository.findAll(spec, ORDEM).stream()
                 .map(this::toLancamentoResponse)
                 .collect(Collectors.toList());

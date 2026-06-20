@@ -275,7 +275,14 @@ export function FaturaPage() {
             <Plus className="w-3.5 h-3.5" />
             Nova regra
           </button>
-        ) : null}
+        ) : (
+          <Link
+            to="/financeiro/fatura/fechamentos"
+            className="text-xs text-blue-600 hover:underline mb-2 mr-1"
+          >
+            Ver extrato AUTO-FAT (todos os cartões)
+          </Link>
+        )}
       </div>
 
       <div className="flex-1 min-h-0 overflow-auto">
