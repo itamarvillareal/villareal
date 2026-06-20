@@ -748,7 +748,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
     return typeof v === 'string' ? v.split('T')[0] : v;
   }
 
-  async function aplicarFormNovaPessoa() {
+  async function aplicarFormNovaPessoa({ preservarColagem = false, preservarCamposForm = false } = {}) {
     let codigoProximo = '';
     try {
       codigoProximo = await resolverProximoCodigoNovaPessoa();
@@ -758,15 +758,34 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
     autosaveAtivoRef.current = true;
     setFichaProntaAutosave(true);
     ultimoSnapshotSalvoRef.current = null;
-    setForm({
-      ...emptyPessoa,
-      codigo: codigoProximo,
-      nacionalidade: NACIONALIDADE_PADRAO_BR,
-      responsavelId: null,
-      responsavel: null,
-      edicaoDesabilitada: true,
+    complementaresAplicadosParaIdRef.current = null;
+    setForm((f) => {
+      if (!preservarCamposForm) {
+        return {
+          ...emptyPessoa,
+          codigo: codigoProximo,
+          nacionalidade: NACIONALIDADE_PADRAO_BR,
+          responsavelId: null,
+          responsavel: null,
+          edicaoDesabilitada: preservarColagem ? false : true,
+        };
+      }
+      const {
+        codigo: _codigo,
+        edicaoDesabilitada: _edicao,
+        ...dadosForm
+      } = f;
+      return {
+        ...emptyPessoa,
+        ...dadosForm,
+        codigo: codigoProximo,
+        nacionalidade: String(f.nacionalidade ?? '').trim() || NACIONALIDADE_PADRAO_BR,
+        responsavelId: f.responsavelId ?? null,
+        responsavel: f.responsavel ?? null,
+        edicaoDesabilitada: false,
+      };
     });
-    setNacionalidadeSugestaoNaoValidada(true);
+    setNacionalidadeSugestaoNaoValidada(!preservarCamposForm);
     setEditId(null);
     setEnderecos([]);
     setContatos([]);
@@ -781,26 +800,42 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
       });
     }
     setError(null);
-    setTextoColagemPessoa('');
-    setExtracaoAvisos([]);
-    setExtracaoResumo('');
-    setExtracaoDebug(null);
-    setCamposPreenchidosPorTexto({
-      nome: false,
-      cpf: false,
-      rg: false,
-      dataNascimento: false,
-      nacionalidade: false,
-      profissao: false,
-      estadoCivil: false,
-      email: false,
-    });
+    setDocPreview(null);
+    if (!preservarColagem) {
+      setTextoColagemPessoa('');
+      setExtracaoAvisos([]);
+      setExtracaoResumo('');
+      setExtracaoDebug(null);
+      setExtracaoEndereco(null);
+      setCamposPreenchidosPorTexto({
+        nome: false,
+        cpf: false,
+        rg: false,
+        dataNascimento: false,
+        nacionalidade: false,
+        profissao: false,
+        estadoCivil: false,
+        email: false,
+      });
+    }
   }
+
+  const iniciarNovaPessoaDesdeFormulario = async () => {
+    autosaveAtivoRef.current = false;
+    setFichaProntaAutosave(false);
+    ultimoSnapshotSalvoRef.current = null;
+    await aplicarFormNovaPessoa({ preservarColagem: true, preservarCamposForm: true });
+    if (!isEmbedded) {
+      navigate('/clientes/nova');
+    }
+  };
 
   const abrirNovo = () => {
     if (modo === 'editar') {
-      cancelarForm();
+      void iniciarNovaPessoaDesdeFormulario();
+      return;
     }
+    if (modo === 'criar') return;
     navigate('/clientes/nova');
   };
 
@@ -1504,6 +1539,17 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2">
+                      {modo === 'editar' ? (
+                        <button
+                          type="button"
+                          onClick={() => void iniciarNovaPessoaDesdeFormulario()}
+                          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-blue-300 bg-blue-50 text-blue-800 text-sm font-medium hover:bg-blue-100"
+                          title="Incluir nova pessoa mantendo o texto colado e os dados já extraídos no formulário"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Incluir nova pessoa
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         onClick={handleClickUploadDocumento}
