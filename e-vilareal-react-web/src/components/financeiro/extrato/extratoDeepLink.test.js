@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { buildExtratoUrlParaLancamento, mesAnoFromDataBr } from './extratoDeepLink.js';
+import {
+  buildCartaoUrlParaLancamento,
+  buildExtratoUrlParaLancamento,
+  mesAnoFromDataBr,
+  numeroCartaoFromRow,
+  paginaDoLancamentoNaLista,
+} from './extratoDeepLink.js';
 
 describe('extratoDeepLink', () => {
   it('monta URL com banco, mês e id do lançamento', () => {
@@ -21,5 +27,36 @@ describe('extratoDeepLink', () => {
         data: '2024-11-22',
       }),
     ).toBe('/financeiro/extrato?lancamento=100&banco=30&mes=2024-11');
+  });
+
+  it('redireciona número de cartão para URL do cartão', () => {
+    expect(
+      buildExtratoUrlParaLancamento({
+        lancamentoId: 17302,
+        numeroBanco: 19,
+        data: '2026-06-12',
+      }),
+    ).toBe('/financeiro/cartao/19?lancamento=17302&mes=2026-06');
+  });
+
+  it('monta URL do cartão', () => {
+    expect(
+      buildCartaoUrlParaLancamento({
+        lancamentoId: 17302,
+        numeroCartao: 19,
+        mes: '2026-06',
+      }),
+    ).toBe('/financeiro/cartao/19?lancamento=17302&mes=2026-06');
+  });
+
+  it('detecta cartão na linha do inbox', () => {
+    expect(numeroCartaoFromRow({ numeroBanco: 19, id: 1 })).toBe(19);
+    expect(numeroCartaoFromRow({ numeroBanco: 26, id: 1 })).toBeNull();
+  });
+
+  it('calcula página do lançamento', () => {
+    const lista = [{ id: 1 }, { id: 2 }, { id: 3 }];
+    expect(paginaDoLancamentoNaLista(lista, 3, 2)).toBe(1);
+    expect(paginaDoLancamentoNaLista(lista, 99, 2)).toBeNull();
   });
 });

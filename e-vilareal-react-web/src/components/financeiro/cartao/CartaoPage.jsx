@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { CreditCard, Trash2, Upload } from 'lucide-react';
 import { featureFlags } from '../../../config/featureFlags.js';
 import {
@@ -11,6 +11,7 @@ import {
   listarCartoesFinanceiro,
   listarContasFinanceiro,
   listarLancamentosCartaoFinanceiro,
+  buscarLancamentoCartaoFinanceiroApi,
   removerLancamentosCartaoFinanceiroApiEmLote,
   salvarOuAtualizarLancamentoCartaoFinanceiroApi,
 } from '../../../repositories/financeiroRepository.js';
@@ -38,9 +39,16 @@ import {
   mergeExtratoRowComRespostaApiCartao,
 } from '../extrato/extratoMappers.js';
 import { dispatchRefreshPendentes } from '../hooks/useKeyboardShortcuts.js';
+import {
+  paginaDoLancamentoNaLista,
+  scrollExtratoParaLancamento,
+} from '../extrato/extratoDeepLink.js';
 
 export function CartaoPage() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
+  const lancamentoFocusId = searchParams.get('lancamento');
+  const lancamentoFocusRef = useRef(null);
   const numeroParam = id != null && id !== '' ? Number(id) : null;
   const toast = useFinanceiroToast();
 
@@ -195,6 +203,83 @@ export function CartaoPage() {
   const total = rowsFiltradas.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const pageRows = rowsFiltradas.slice(page * pageSize, page * pageSize + pageSize);
+
+  const focarLancamentoNaLista = useCallback(
+    (row) => {
+      if (!row?.id) return;
+      let lista = rowsFiltradas;
+      if (!lista.some((r) => Number(r.id) === Number(row.id))) {
+        setVencimentoFiltro('');
+        lista = rows;
+      }
+      const pagina = paginaDoLancamentoNaLista(lista, row.id, pageSize);
+      if (pagina != null) setPage(pagina);
+      setDetailItem(row);
+      lancamentoFocusRef.current = String(row.id);
+      requestAnimationFrame(() => scrollExtratoParaLancamento(row.id));
+    },
+    [rows, rowsFiltradas, pageSize],
+  );
+
+  useEffect(() => {
+    const idFocus = Number(lancamentoFocusId);
+    if (!idFocus || !featureFlags.useApiFinanceiro || loading) return undefined;
+    if (lancamentoFocusRef.current === String(idFocus)) return undefined;
+
+    const naLista = rows.find((r) => Number(r.id) === idFocus);
+    if (naLista) {
+      focarLancamentoNaLista(naLista);
+      return undefined;
+    }
+
+    if (rows.length === 0) return undefined;
+
+    const ac = new AbortController();
+    let cancelled = false;
+    (async () => {
+      try {
+        const api = await buscarLancamentoCartaoFinanceiroApi(idFocus, { signal: ac.signal });
+        if (cancelled || !api) return;
+        const mapped = mapApiLancamentoCartaoToExtratoRow(api, contaToLetra);
+        if (Number(api.numeroCartao) !== Number(cartaoAtivo?.numeroCartao)) {
+          setErro(
+            `Lançamento ${idFocus} pertence ao cartão ${api.cartaoNome ?? api.numeroCartao}, não a este extrato.`,
+          );
+          return;
+        }
+        setDetailItem(mapped);
+        lancamentoFocusRef.current = String(idFocus);
+      } catch (e) {
+        if (!cancelled && e?.name !== 'AbortError') {
+          setErro(e?.message || 'Não foi possível abrir o lançamento solicitado.');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+      ac.abort();
+    };
+  }, [
+    lancamentoFocusId,
+    rows,
+    loading,
+    cartaoAtivo?.numeroCartao,
+    contaToLetra,
+    focarLancamentoNaLista,
+  ]);
+
+  useEffect(() => {
+    if (!lancamentoFocusId) lancamentoFocusRef.current = null;
+  }, [lancamentoFocusId]);
+
+  useEffect(() => {
+    const idFocus = Number(lancamentoFocusId);
+    if (!idFocus || loading) return undefined;
+    const naPagina = pageRows.find((r) => Number(r.id) === idFocus);
+    if (!naPagina) return undefined;
+    requestAnimationFrame(() => scrollExtratoParaLancamento(idFocus));
+    return undefined;
+  }, [lancamentoFocusId, pageRows, loading]);
 
   const toggleSelect = useCallback((rowId) => {
     setSelectedIds((prev) => {
@@ -512,6 +597,7 @@ export function CartaoPage() {
             sortDataAsc={sortDataAsc}
             onSortDataDoubleClick={() => setSortDataAsc((v) => !v)}
             modoCartao
+            highlightLancamentoId={lancamentoFocusId ? Number(lancamentoFocusId) : null}
           />
         )}
       </div>

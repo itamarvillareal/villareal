@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { featureFlags } from '../../../config/featureFlags.js';
+import { isNumeroCartaoFinanceiro } from '../../../data/financeiroData.js';
 import {
   buildContaToLetraMerge,
   loadPersistedContasContabeisExtrasFinanceiro,
@@ -26,10 +28,11 @@ import { ExtratoTable } from './ExtratoTable.jsx';
 import { ExtratoDetailPanel } from './ExtratoDetailPanel.jsx';
 import { ExtratoBatchBar } from './ExtratoBatchBar.jsx';
 import { mesAnoFromDataLancamento } from './extratoMesUtils.js';
-import { scrollExtratoParaLancamento } from './extratoDeepLink.js';
+import { scrollExtratoParaLancamento, buildCartaoUrlParaLancamento } from './extratoDeepLink.js';
 import { mapApiLancamentoToExtratoRow } from './extratoMappers.js';
 
 export function ExtratoPage() {
+  const navigate = useNavigate();
   const { apiQuery, filters, setPage, setSize, setMes, setBanco, bancoAtivo, toggleSortData } = useFinanceiro();
   const toast = useFinanceiroToast();
 
@@ -212,6 +215,19 @@ export function ExtratoPage() {
   useEffect(() => {
     limparCachePaginas();
   }, [filters.busca, limparCachePaginas]);
+
+  useEffect(() => {
+    const id = filters.lancamento;
+    if (!id || !isNumeroCartaoFinanceiro(filters.banco)) return;
+    navigate(
+      buildCartaoUrlParaLancamento({
+        lancamentoId: id,
+        numeroCartao: filters.banco,
+        mes: filters.mes,
+      }),
+      { replace: true },
+    );
+  }, [filters.lancamento, filters.banco, filters.mes, navigate]);
 
   useEffect(() => {
     const id = filters.lancamento;
