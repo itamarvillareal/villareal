@@ -190,15 +190,22 @@ class QualificacaoPessoaUtilTest {
                 "75040060",
                 null);
 
-        assertThat(resultado).startsWith("CARLOS HENRIQUE DE OLIVEIRA SAMPAIO, brasileiro, motorista");
+        assertThat(resultado).startsWith("<strong>CARLOS HENRIQUE DE OLIVEIRA SAMPAIO</strong>, brasileiro, motorista");
         assertThat(resultado).doesNotContain("estado civil desconhecido");
-        assertThat(resultado).doesNotContain("<strong>");
+        assertThat(resultado).contains("<strong>CARLOS HENRIQUE DE OLIVEIRA SAMPAIO</strong>");
         assertThat(resultado).contains("Rua Geni Ribeiro nº 710 Qd 35 Lt 04");
         assertThat(resultado).contains("Bairro Maracanã");
         assertThat(resultado).contains("CEP n° 75040060");
         assertThat(resultado).contains("não utiliza endereço eletrônico");
         assertThat(resultado).doesNotContain("Quadra");
         assertThat(resultado).doesNotContain("75.040-060");
+    }
+
+    @Test
+    void formatarNomeAdvogadoProcuracaoEmNegrito_mantemTituloEUppercaseNoNome() {
+        assertThat(QualificacaoPessoaUtil.formatarNomeAdvogadoProcuracaoEmNegrito(
+                "Dr. Itamar Alexandre Felix Villa Real Junior"))
+                .isEqualTo("<strong>Dr. ITAMAR ALEXANDRE FELIX VILLA REAL JUNIOR</strong>");
     }
 
     @Test

@@ -18,14 +18,14 @@ public final class TemaDocumento {
             """
             <p class="rodape-linha1">Av. Pinheiro Chagas, nº 232, Bairro Jundiaí, Anápolis-GO, CEP n 75.110-580.</p>
             <p class="rodape-linha2">Telefones: 62-3321-2374 (fixo), 62-98129-6212 (tim)</p>
-            <p class="rodape-linha3">E-mail: villareal@villarealadvocacia.adv.br</p>
+            <p class="rodape-linha3">E-mail: <span class="rodape-email">villareal@villarealadvocacia.adv.br</span></p>
             <p class="rodape-linha4">www.villarealadvocacia.adv.br</p>
             """;
 
     private static final String RODAPE_CORRIDO_PADRAO =
             """
             <p class="rodape-linha1">Av. Pinheiro Chagas, nº 232, Bairro Jundiaí, Anápolis-GO, CEP n 75.110-580.</p>
-            <p class="rodape-linha3">E-mail: villareal@villarealadvocacia.adv.br</p>
+            <p class="rodape-linha3">E-mail: <span class="rodape-email">villareal@villarealadvocacia.adv.br</span></p>
             <p class="rodape-linha4">www.villarealadvocacia.adv.br</p>
             """;
 

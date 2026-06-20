@@ -428,7 +428,7 @@ public class QualificacaoPessoaUtil {
 
         StringBuilder sb = new StringBuilder();
         String nomeExibicao = nome != null ? nome.trim().toUpperCase(Locale.ROOT) : "OUTORGANTE";
-        sb.append(escapeHtml(nomeExibicao));
+        sb.append("<strong>").append(escapeHtml(nomeExibicao)).append("</strong>");
 
         if (cnpj != null && !cnpj.isBlank()) {
             sb.append(", pessoa jurídica de direito privado");
@@ -500,6 +500,21 @@ public class QualificacaoPessoaUtil {
         }
 
         return sb.toString();
+    }
+
+    static String formatarNomeAdvogadoProcuracaoEmNegrito(String advogadoNome) {
+        String nome = advogadoNome != null ? advogadoNome.trim() : "";
+        String exibicao;
+        if (nome.regionMatches(true, 0, "Dr. ", 0, 4)) {
+            exibicao = "Dr. " + nome.substring(4).trim().toUpperCase(Locale.ROOT);
+        } else if (nome.regionMatches(true, 0, "Dra. ", 0, 5)) {
+            exibicao = "Dra. " + nome.substring(5).trim().toUpperCase(Locale.ROOT);
+        } else if (nome.isEmpty()) {
+            exibicao = "";
+        } else {
+            exibicao = nome.toUpperCase(Locale.ROOT);
+        }
+        return "<strong>" + escapeHtml(exibicao) + "</strong>";
     }
 
     static String montarLinhaEnderecoLegadoProcuracao(String logradouro, String numero, String complemento) {

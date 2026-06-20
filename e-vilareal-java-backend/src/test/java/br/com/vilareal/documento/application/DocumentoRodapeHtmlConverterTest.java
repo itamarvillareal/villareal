@@ -20,7 +20,7 @@ class DocumentoRodapeHtmlConverterTest {
 
         assertThat(html).contains("rodape-linha1").contains("Pinheiro Chagas");
         assertThat(html).contains("rodape-linha2").contains("Telefones");
-        assertThat(html).contains("rodape-linha3").contains("E-mail");
+        assertThat(html).contains("rodape-linha3").contains("E-mail").contains("rodape-email");
         assertThat(html).contains("rodape-linha4").contains("www.villarealadvocacia");
     }
 

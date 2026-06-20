@@ -784,6 +784,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
         ...dadosForm,
         codigo: codigoProximo,
         nacionalidade: String(f.nacionalidade ?? '').trim() || NACIONALIDADE_PADRAO_BR,
+        dataNascimento: dataNascimentoParaExibicaoBr(f.dataNascimento),
         responsavelId: f.responsavelId ?? null,
         responsavel: f.responsavel ?? null,
         edicaoDesabilitada: false,
@@ -1003,6 +1004,16 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fluxo da rota de edição
   }, [lista, pathPessoasNorm, modo, editId, navigate]);
+
+  useEffect(() => {
+    if (modo !== 'criar' && modo !== 'editar') return;
+    const v = String(form.dataNascimento ?? '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}/.test(v)) return;
+    const br = dataNascimentoParaExibicaoBr(v);
+    if (br && br !== v) {
+      setForm((f) => ({ ...f, dataNascimento: br }));
+    }
+  }, [modo, form.dataNascimento]);
 
   useEffect(() => {
     if (modo !== 'editar' || !editId) return;
@@ -1974,9 +1985,14 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                         value={form.dataNascimento}
                         onChange={(e) => {
                           setCamposPreenchidosPorTexto((c) => ({ ...c, dataNascimento: false }));
+                          const raw = e.target.value;
+                          const isoColado = /^\d{4}-\d{2}-\d{2}/.test(String(raw).trim());
+                          const next = isoColado
+                            ? dataNascimentoParaExibicaoBr(raw)
+                            : formatarDataBrInput(raw);
                           setForm((f) => ({
                             ...f,
-                            dataNascimento: formatarDataBrInput(e.target.value),
+                            dataNascimento: next,
                           }));
                         }}
                         onBlur={() => {

@@ -2,6 +2,7 @@ import { API_BASE_URL } from './config';
 import { buildDefaultApiHeaders } from './apiAuthHeaders.js';
 import { parseApiJsonResponse } from './parseApiResponse.js';
 import { corrigirMojibakeUtf8, corrigirNomePessoaExibicao } from '../utils/utf8MojibakeUtil.js';
+import { dataNascimentoParaExibicaoBr } from '../services/hjDateAliasService.js';
 
 const BASE = `${API_BASE_URL}/api/cadastro-pessoas`;
 
@@ -129,6 +130,10 @@ function normalizarPessoaApiResponse(data) {
     nome: data.nome != null ? corrigirNomePessoaExibicao(data.nome) : data.nome,
     email: data.email != null ? corrigirMojibakeUtf8(data.email) : data.email,
     telefone: data.telefone != null ? corrigirMojibakeUtf8(data.telefone) : data.telefone,
+    dataNascimento:
+      data.dataNascimento != null && String(data.dataNascimento).trim()
+        ? dataNascimentoParaExibicaoBr(data.dataNascimento)
+        : data.dataNascimento,
   };
 }
 

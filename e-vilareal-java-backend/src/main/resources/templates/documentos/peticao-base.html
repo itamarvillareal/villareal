@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8"/>
     <title>Petição</title>
+    <th:block th:replace="~{documentos/fragments-peca :: estiloTimbrado}"/>
+    <th:block th:replace="~{documentos/fragments-peca :: estiloCorpoPadrao}"/>
     <style type="text/css">
         @page {
             size: A4;
@@ -37,100 +39,17 @@
             padding: 0;
             font-family: "Arial Unicode MS", Arial, sans-serif;
             font-size: 12pt;
-            line-height: 1.0;
+            line-height: 1.21;
             color: #000;
         }
 
-        .cabecalho-primeira {
-            width: 100%;
-            padding-top: 3mm;
-            margin-bottom: 15pt;
-            margin-left: 0;
-        }
-
-        .cabecalho-padrao {
-            position: running(cabecalho-padrao);
-            width: 100%;
-        }
-
-        .cabecalho-layout {
-            width: 100%;
-            border-collapse: collapse;
-            border: none;
-        }
-
-        .cabecalho-layout td {
-            border: none;
-            padding: 0;
-            vertical-align: middle;
-        }
-
-        .cabecalho-logo {
-            width: 35%;
-            text-align: left;
-        }
-
-        .cabecalho-advogado {
-            width: 65%;
-            text-align: right;
-        }
-
-        .cabecalho-logo img {
-            height: 2.3cm;
-            width: 5.9cm;
-            object-fit: contain;
-        }
-
-        .advogado-nome {
-            font-family: "Lucida Calligraphy", "Lucida Handwriting", cursive;
-            font-style: italic;
-            font-weight: bold;
-            font-size: 11pt;
-            text-align: right;
+        p {
             margin: 0;
-            line-height: 1.2;
-        }
-
-        .advogado-oab {
-            font-weight: bold;
-            text-align: right;
-            margin: 2pt 0 0 0;
-            line-height: 1.0;
-            font-size: 11pt;
-        }
-
-        .paginacao-direita {
-            font-family: "Aldine401 BT", serif;
-            text-align: right;
-            margin: 0 0 4pt 0;
-            font-size: 10pt;
-            line-height: 1.0;
-        }
-
-        .pag-num-atual::before {
-            content: counter(page);
-            font-weight: bold;
-        }
-
-        .pag-num-total::before {
-            content: counter(pages);
-            font-weight: bold;
-        }
-
-        .rodape-primeira-running {
-            position: running(rodape-primeira);
-            width: 100%;
-            text-align: center;
-        }
-
-        .rodape-running {
-            position: running(rodape);
-            width: 100%;
-            text-align: center;
+            padding: 0;
         }
 
         .corpo-documento {
-            line-height: 1.0;
+            line-height: 1.21;
             margin-left: 15mm;
         }
 
@@ -140,7 +59,7 @@
             text-align: justify;
             text-indent: 0;
             font-weight: normal;
-            line-height: 1.0;
+            line-height: 1.21;
             margin: 16pt 0 12pt 0;
         }
 
@@ -149,7 +68,7 @@
             font-size: 12pt;
             font-weight: bold;
             text-indent: 0;
-            line-height: 1.0;
+            line-height: 1.21;
             margin: 0 0 42pt 0;
         }
 
@@ -161,7 +80,7 @@
             margin-left: 2.0cm;
             margin-top: 0;
             margin-bottom: 18pt;
-            line-height: 1.0;
+            line-height: 1.21;
         }
 
         .corpo,
@@ -170,7 +89,7 @@
             font-family: "Arial Unicode MS", Arial, sans-serif;
             font-size: 12pt;
             text-align: justify;
-            line-height: 1.0;
+            line-height: 1.21;
             margin-top: 18pt;
             margin-bottom: 18pt;
             text-indent: 4.0cm;
@@ -183,7 +102,7 @@
             text-transform: uppercase;
             text-align: left;
             text-indent: 0;
-            line-height: 1.0;
+            line-height: 1.21;
             margin-top: 24pt;
             margin-bottom: 12pt;
         }
@@ -192,7 +111,7 @@
             font-family: "Arial Unicode MS", Arial, sans-serif;
             font-size: 12pt;
             text-align: justify;
-            line-height: 1.0;
+            line-height: 1.21;
             margin-top: 18pt;
             margin-bottom: 18pt;
             text-indent: 4.0cm;
@@ -205,7 +124,7 @@
             text-align: justify;
             margin-left: 3.5cm;
             text-indent: 0;
-            line-height: 1.0;
+            line-height: 1.21;
             margin-top: 0;
             margin-bottom: 0;
         }
@@ -229,7 +148,7 @@
             vertical-align: top;
             font-family: "Arial Unicode MS", Arial, sans-serif;
             font-size: 12pt;
-            line-height: 1.0;
+            line-height: 1.21;
         }
 
         .pedido-letra {
@@ -247,7 +166,7 @@
             font-size: 12pt;
             text-align: center;
             text-indent: 0;
-            line-height: 1.0;
+            line-height: 1.21;
             margin-top: 18pt;
             margin-bottom: 36pt;
         }
@@ -255,37 +174,17 @@
         .assinatura {
             text-align: center;
             margin-top: 36pt;
-            line-height: 1.0;
+            line-height: 1.21;
         }
 
         .assinatura p {
             margin: 0;
-            line-height: 1.0;
+            line-height: 1.21;
             text-indent: 0;
         }
 
         .assinatura-nome {
             font-weight: bold;
-        }
-
-        .rodape-linha1,
-        .rodape-linha2 {
-            font-family: "Courier New", Courier, monospace;
-            font-size: 8pt;
-            font-weight: bold;
-            text-align: center;
-            margin: 0;
-            line-height: 1.0;
-        }
-
-        .rodape-linha3,
-        .rodape-linha4 {
-            font-family: Arial, sans-serif;
-            font-size: 8pt;
-            font-weight: normal;
-            text-align: center;
-            margin: 1pt 0 0 0;
-            line-height: 1.0;
         }
 
         .nome-peca {
@@ -296,7 +195,7 @@
             text-align: center;
             text-indent: 0;
             margin: 18pt 0 18pt 0;
-            line-height: 1.0;
+            line-height: 1.21;
         }
 
         .titulo-principal {
@@ -308,7 +207,7 @@
             margin-top: 18pt;
             margin-bottom: 12pt;
             text-indent: 0;
-            line-height: 1.0;
+            line-height: 1.21;
         }
 
         .subtitulo {
@@ -319,7 +218,7 @@
             margin-top: 15pt;
             margin-bottom: 10pt;
             text-indent: 0;
-            line-height: 1.0;
+            line-height: 1.21;
         }
 
         .enumeracao {
@@ -327,7 +226,7 @@
             font-size: 12pt;
             font-family: "Arial Unicode MS", Arial, sans-serif;
             text-indent: 4.0cm;
-            line-height: 1.0;
+            line-height: 1.21;
             margin-top: 9pt;
             margin-bottom: 9pt;
         }
@@ -337,7 +236,7 @@
             font-size: 12pt;
             font-family: "Arial Unicode MS", Arial, sans-serif;
             text-indent: 2.5cm;
-            line-height: 1.0;
+            line-height: 1.21;
             margin-top: 4pt;
             margin-bottom: 4pt;
         }
@@ -347,71 +246,13 @@
             text-indent: 2.0cm;
             margin-left: 2.0cm;
         }
-
-        /* Espaçamento entre linhas do texto da peça (um pouco acima do simples) */
-        .corpo-documento {
-            line-height: 1.15;
-        }
-
-        .corpo-documento .enderecamento,
-        .corpo-documento .numero-processo,
-        .corpo-documento .preambulo,
-        .corpo-documento .corpo,
-        .corpo-documento p.corpo,
-        .corpo-documento .secao-conteudo p,
-        .corpo-documento .citacao,
-        .corpo-documento .citacao p,
-        .corpo-documento .enumeracao,
-        .corpo-documento .fecho,
-        .corpo-documento .pedido-layout td,
-        .corpo-documento .data,
-        .corpo-documento .titulo-secao,
-        .corpo-documento .nome-peca,
-        .corpo-documento .titulo-principal,
-        .corpo-documento .subtitulo,
-        .corpo-documento .preambulo-rich p {
-            line-height: 1.15;
-        }
     </style>
 </head>
 <body>
 
-<div class="cabecalho-primeira">
-    <table class="cabecalho-layout">
-        <tr>
-            <td class="cabecalho-logo">
-                <img th:if="${logoCabecalhoBase64 != null and !logoCabecalhoBase64.isEmpty()}"
-                     th:src="${logoCabecalhoBase64}" alt="Villa Real e Advogados"/>
-            </td>
-            <td class="cabecalho-advogado">
-                <p class="advogado-nome" th:text="${advogadoNome}">Dr. Itamar Alexandre Felix Villa Real Junior</p>
-                <p class="advogado-oab" th:text="${advogadoOab}">OAB/GO 33.329</p>
-            </td>
-        </tr>
-    </table>
-</div>
+<th:block th:replace="~{documentos/fragments-peca :: cabecalho}"/>
 
-<div class="cabecalho-padrao">
-    <p class="paginacao-direita">
-        <span class="pag-num-atual"></span> de <span class="pag-num-total"></span>
-    </p>
-    <table class="cabecalho-layout">
-        <tr>
-            <td class="cabecalho-logo">
-                <img th:if="${logoCabecalhoBase64 != null and !logoCabecalhoBase64.isEmpty()}"
-                     th:src="${logoCabecalhoBase64}" alt="Villa Real e Advogados"/>
-            </td>
-            <td class="cabecalho-advogado">
-                <p class="advogado-nome" th:text="${advogadoNome}">Dr. Itamar Alexandre Felix Villa Real Junior</p>
-                <p class="advogado-oab" th:text="${advogadoOab}">OAB/GO 33.329</p>
-            </td>
-        </tr>
-    </table>
-</div>
-
-<div class="rodape-primeira-running" th:utext="${rodapePrimeiraHtml}"></div>
-
-<div class="rodape-running" th:utext="${rodapeCorridoHtml}"></div>
+<th:block th:replace="~{documentos/fragments-peca :: rodape}"/>
 
 <div class="corpo-documento">
     <th:block th:if="${modoCorpoUnico}">
@@ -457,8 +298,8 @@
                 </th:block>
             </th:block>
             <th:block th:unless="${omitirFechoPadrao}">
-                <p style="margin-top: 42pt; margin-bottom: 0; text-align: left; font-family: 'Arial Unicode MS', Arial, sans-serif; font-size: 12pt; line-height: 1.15; padding-left: 2.5cm;">Nestes termos,</p>
-                <p style="margin-top: 4pt; margin-bottom: 18pt; text-align: left; font-family: 'Arial Unicode MS', Arial, sans-serif; font-size: 12pt; line-height: 1.15; padding-left: 2.5cm;">pede deferimento.</p>
+                <p style="margin-top: 42pt; margin-bottom: 0; text-align: left; font-family: 'Arial Unicode MS', Arial, sans-serif; font-size: 12pt; line-height: 1.21; padding-left: 2.5cm;">Nestes termos,</p>
+                <p style="margin-top: 4pt; margin-bottom: 18pt; text-align: left; font-family: 'Arial Unicode MS', Arial, sans-serif; font-size: 12pt; line-height: 1.21; padding-left: 2.5cm;">pede deferimento.</p>
             </th:block>
             <p class="data" th:text="${localData}">Anápolis, estado de Goiás, data.</p>
             <div class="assinatura">
@@ -493,8 +334,8 @@
         </th:block>
 
         <div class="bloco-fecho">
-            <p style="margin-top: 42pt; margin-bottom: 0; text-align: left; font-family: 'Arial Unicode MS', Arial, sans-serif; font-size: 12pt; line-height: 1.15; padding-left: 2.5cm;">Nestes termos,</p>
-            <p style="margin-top: 4pt; margin-bottom: 18pt; text-align: left; font-family: 'Arial Unicode MS', Arial, sans-serif; font-size: 12pt; line-height: 1.15; padding-left: 2.5cm;">pede deferimento.</p>
+            <p style="margin-top: 42pt; margin-bottom: 0; text-align: left; font-family: 'Arial Unicode MS', Arial, sans-serif; font-size: 12pt; line-height: 1.21; padding-left: 2.5cm;">Nestes termos,</p>
+            <p style="margin-top: 4pt; margin-bottom: 18pt; text-align: left; font-family: 'Arial Unicode MS', Arial, sans-serif; font-size: 12pt; line-height: 1.21; padding-left: 2.5cm;">pede deferimento.</p>
             <p class="data" th:text="${localData}">Anápolis, estado de Goiás, data.</p>
             <div class="assinatura">
                 <p class="assinatura-nome" th:text="${advogadoNome}">Dr. Itamar Alexandre Felix Villa Real Junior</p>

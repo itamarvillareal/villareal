@@ -61,6 +61,9 @@ public class ProcuracaoService {
         variables.put("localData", localData);
 
         TemaDocumento tema = temaResolver.resolverPorProcessoId(request.processoId());
+        variables.put(
+                "nomeAdvogadoNegrito",
+                QualificacaoPessoaUtil.formatarNomeAdvogadoProcuracaoEmNegrito(tema.advogadoNomeEfetivo()));
         return pdfService.gerarPdfDeTemplate(TEMPLATE_PROCURACAO, variables, tema);
     }
 }

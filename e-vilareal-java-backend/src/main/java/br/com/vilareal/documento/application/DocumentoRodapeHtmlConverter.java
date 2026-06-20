@@ -54,11 +54,19 @@ public final class DocumentoRodapeHtmlConverter {
         int classe = indiceInicialClasse;
         for (String linha : linhas) {
             sb.append("<p class=\"rodape-linha").append(classe).append("\">")
-                    .append(escapeHtml(linha))
+                    .append(formatarConteudoLinha(linha))
                     .append("</p>");
             classe++;
         }
         return sb.toString();
+    }
+
+    private static String formatarConteudoLinha(String linha) {
+        if (linha.regionMatches(true, 0, "E-mail:", 0, 7)) {
+            String email = linha.substring(7).trim();
+            return "E-mail: <span class=\"rodape-email\">" + escapeHtml(email) + "</span>";
+        }
+        return escapeHtml(linha);
     }
 
     private static String escapeHtml(String texto) {

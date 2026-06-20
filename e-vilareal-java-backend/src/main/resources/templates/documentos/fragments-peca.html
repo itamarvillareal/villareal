@@ -7,14 +7,197 @@
 <body>
 
 <!--
-  Fragmentos reutilizáveis copiados do peticao-base.html para manter aparência idêntica:
-  cabeçalho institucional (logo + advogado + OAB), rodapé (endereço/telefones/e-mail) e o
-  bloco de estilo base (A4, margens, fonte, cabeçalho na 1ª página, numeração a partir da 2ª).
+  Fragmentos reutilizáveis: timbrado (cabeçalho/rodapé), estilo de página e blocos HTML.
   Variáveis injetadas por DocumentoPdfService.gerarPdfDeTemplate: logoCabecalhoBase64,
   rodapePrimeiraHtml, rodapeCorridoHtml, advogadoNome, advogadoOab.
 -->
 
+<th:block th:fragment="estiloTimbrado">
+    <style type="text/css">
+        .cabecalho-primeira {
+            width: 100%;
+            padding-top: 3mm;
+            margin-bottom: 15pt;
+            margin-left: 0;
+        }
+
+        .cabecalho-padrao {
+            position: running(cabecalho-padrao);
+            width: 100%;
+        }
+
+        .cabecalho-layout {
+            width: 100%;
+            border-collapse: collapse;
+            border: none;
+        }
+
+        .cabecalho-layout td {
+            border: none;
+            padding: 0;
+            vertical-align: middle;
+        }
+
+        .cabecalho-logo {
+            width: 35%;
+            text-align: left;
+        }
+
+        .cabecalho-advogado {
+            width: 65%;
+            text-align: right;
+            overflow: visible;
+        }
+
+        .advogado-bloco {
+            display: inline-block;
+            max-width: 100%;
+            text-align: center;
+            overflow: visible;
+            padding-right: 3pt;
+        }
+
+        .cabecalho-logo img {
+            height: 2.3cm;
+            width: 5.9cm;
+            object-fit: contain;
+        }
+
+        .advogado-nome {
+            font-family: "Lucida Calligraphy", "Lucida Handwriting", cursive;
+            font-style: italic;
+            font-weight: bold;
+            font-size: 11pt;
+            text-align: right;
+            margin: 0;
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: visible;
+            padding-right: 2pt;
+        }
+
+        .advogado-oab {
+            font-weight: bold;
+            text-align: center;
+            margin: 2pt 0 0 0;
+            line-height: 1.21;
+            font-size: 9.9pt;
+            white-space: nowrap;
+        }
+
+        .paginacao-direita {
+            font-family: "Aldine401 BT", serif;
+            text-align: right;
+            margin: 0 0 4pt 0;
+            font-size: 10pt;
+            line-height: 1.21;
+        }
+
+        .pag-num-atual::before {
+            content: counter(page);
+            font-weight: bold;
+        }
+
+        .pag-num-total::before {
+            content: counter(pages);
+            font-weight: bold;
+        }
+
+        .rodape-primeira-running {
+            position: running(rodape-primeira);
+            width: 100%;
+            text-align: center;
+        }
+
+        .rodape-running {
+            position: running(rodape);
+            width: 100%;
+            text-align: center;
+        }
+
+        .rodape-linha1,
+        .rodape-linha2 {
+            font-family: "Courier New", Courier, monospace;
+            font-size: 8pt;
+            font-weight: bold;
+            text-align: center;
+            margin: 0;
+            line-height: 1.21;
+        }
+
+        .rodape-linha3,
+        .rodape-linha4 {
+            font-family: Arial, sans-serif;
+            font-size: 8pt;
+            font-weight: normal;
+            text-align: center;
+            margin: 1pt 0 0 0;
+            line-height: 1.21;
+        }
+
+        .rodape-email {
+            color: #0000ff;
+            text-decoration: underline;
+        }
+    </style>
+</th:block>
+
+<th:block th:fragment="estiloCorpoPadrao">
+    <style type="text/css">
+        body {
+            line-height: 1.21;
+        }
+
+        .corpo-documento,
+        .corpo-documento .enderecamento,
+        .corpo-documento .numero-processo,
+        .corpo-documento .preambulo,
+        .corpo-documento .corpo,
+        .corpo-documento p.corpo,
+        .corpo-documento .secao-conteudo p,
+        .corpo-documento .citacao,
+        .corpo-documento .citacao p,
+        .corpo-documento .enumeracao,
+        .corpo-documento .fecho,
+        .corpo-documento .pedido-layout td,
+        .corpo-documento .data,
+        .corpo-documento .titulo-secao,
+        .corpo-documento .nome-peca,
+        .corpo-documento .titulo-principal,
+        .corpo-documento .subtitulo,
+        .corpo-documento .preambulo-rich p,
+        .corpo-documento .qualificacao,
+        .corpo-documento .qualificacao-parte,
+        .corpo-documento p.qualificacao-parte,
+        .corpo-documento .natureza-acao,
+        .corpo-documento p.natureza-acao,
+        .corpo-documento .titulo,
+        .corpo-documento p.titulo,
+        .corpo-documento p.subtitulo,
+        .corpo-documento .alinea-debito,
+        .corpo-documento p.alinea-debito,
+        .corpo-documento .paragrafo,
+        .corpo-documento p.paragrafo,
+        .corpo-documento .recuado,
+        .corpo-documento p.recuado,
+        .corpo-documento .pedido,
+        .corpo-documento p.pedido,
+        .corpo-documento .fecho-termos,
+        .corpo-documento p.fecho-termos,
+        .corpo-documento .assinatura,
+        .corpo-documento .assinatura p,
+        .corpo-procuracao,
+        .data-procuracao,
+        .titulo-procuracao,
+        .assinatura-outorgante {
+            line-height: 1.21;
+        }
+    </style>
+</th:block>
+
 <th:block th:fragment="estiloBase">
+    <th:block th:replace="~{documentos/fragments-peca :: estiloTimbrado}"/>
+    <th:block th:replace="~{documentos/fragments-peca :: estiloCorpoPadrao}"/>
     <style type="text/css">
         @page {
             size: A4;
@@ -49,116 +232,13 @@
             padding: 0;
             font-family: "Arial Unicode MS", Arial, sans-serif;
             font-size: 12pt;
-            line-height: 1.0;
+            line-height: 1.21;
             color: #000;
         }
 
-        .cabecalho-primeira {
-            width: 100%;
-            padding-top: 3mm;
-            margin-bottom: 15pt;
-            margin-left: 0;
-        }
-
-        .cabecalho-padrao {
-            position: running(cabecalho-padrao);
-            width: 100%;
-        }
-
-        .cabecalho-layout {
-            width: 100%;
-            border-collapse: collapse;
-            border: none;
-        }
-
-        .cabecalho-layout td {
-            border: none;
+        p {
+            margin: 0;
             padding: 0;
-            vertical-align: middle;
-        }
-
-        .cabecalho-logo {
-            width: 35%;
-            text-align: left;
-        }
-
-        .cabecalho-advogado {
-            width: 65%;
-            text-align: right;
-        }
-
-        .cabecalho-logo img {
-            height: 2.3cm;
-            width: 5.9cm;
-            object-fit: contain;
-        }
-
-        .advogado-nome {
-            font-family: "Lucida Calligraphy", "Lucida Handwriting", cursive;
-            font-style: italic;
-            font-weight: bold;
-            font-size: 11pt;
-            text-align: right;
-            margin: 0;
-            line-height: 1.2;
-        }
-
-        .advogado-oab {
-            font-weight: bold;
-            text-align: right;
-            margin: 2pt 0 0 0;
-            line-height: 1.0;
-            font-size: 11pt;
-        }
-
-        .paginacao-direita {
-            font-family: "Aldine401 BT", serif;
-            text-align: right;
-            margin: 0 0 4pt 0;
-            font-size: 10pt;
-            line-height: 1.0;
-        }
-
-        .pag-num-atual::before {
-            content: counter(page);
-            font-weight: bold;
-        }
-
-        .pag-num-total::before {
-            content: counter(pages);
-            font-weight: bold;
-        }
-
-        .rodape-primeira-running {
-            position: running(rodape-primeira);
-            width: 100%;
-            text-align: center;
-        }
-
-        .rodape-running {
-            position: running(rodape);
-            width: 100%;
-            text-align: center;
-        }
-
-        .rodape-linha1,
-        .rodape-linha2 {
-            font-family: "Courier New", Courier, monospace;
-            font-size: 8pt;
-            font-weight: bold;
-            text-align: center;
-            margin: 0;
-            line-height: 1.0;
-        }
-
-        .rodape-linha3,
-        .rodape-linha4 {
-            font-family: Arial, sans-serif;
-            font-size: 8pt;
-            font-weight: normal;
-            text-align: center;
-            margin: 1pt 0 0 0;
-            line-height: 1.0;
         }
     </style>
 </th:block>
@@ -172,8 +252,10 @@
                          th:src="${logoCabecalhoBase64}" alt="Villa Real e Advogados"/>
                 </td>
                 <td class="cabecalho-advogado">
-                    <p class="advogado-nome" th:text="${advogadoNome}">Dr. Itamar Alexandre Felix Villa Real Junior</p>
-                    <p class="advogado-oab" th:text="${advogadoOab}">OAB/GO 33.329</p>
+                    <div class="advogado-bloco">
+                        <p class="advogado-nome" th:text="${advogadoNome}">Dr. Itamar Alexandre Felix Villa Real Junior</p>
+                        <p class="advogado-oab" th:text="${advogadoOab}">OAB/GO 33.329</p>
+                    </div>
                 </td>
             </tr>
         </table>
@@ -190,8 +272,10 @@
                          th:src="${logoCabecalhoBase64}" alt="Villa Real e Advogados"/>
                 </td>
                 <td class="cabecalho-advogado">
-                    <p class="advogado-nome" th:text="${advogadoNome}">Dr. Itamar Alexandre Felix Villa Real Junior</p>
-                    <p class="advogado-oab" th:text="${advogadoOab}">OAB/GO 33.329</p>
+                    <div class="advogado-bloco">
+                        <p class="advogado-nome" th:text="${advogadoNome}">Dr. Itamar Alexandre Felix Villa Real Junior</p>
+                        <p class="advogado-oab" th:text="${advogadoOab}">OAB/GO 33.329</p>
+                    </div>
                 </td>
             </tr>
         </table>
