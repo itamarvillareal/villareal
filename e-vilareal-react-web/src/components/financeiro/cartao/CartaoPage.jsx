@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { CreditCard, Trash2, Upload } from 'lucide-react';
+import { CreditCard, Search, Trash2, Upload } from 'lucide-react';
 import { featureFlags } from '../../../config/featureFlags.js';
 import {
   buildContaToLetraMerge,
@@ -45,6 +45,20 @@ import {
   scrollExtratoParaLancamento,
 } from '../extrato/extratoDeepLink.js';
 
+function linhaBateBuscaNome(row, termo) {
+  const t = String(termo ?? '').trim().toLowerCase();
+  if (!t) return true;
+  const texto = [
+    row.descricao,
+    row.descricaoDetalhada,
+    row.observacao,
+    row.contaContabilNome,
+  ]
+    .map((c) => String(c ?? '').toLowerCase())
+    .join(' ');
+  return texto.includes(t);
+}
+
 export function CartaoPage() {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
@@ -65,6 +79,7 @@ export function CartaoPage() {
   const [reloadKey, setReloadKey] = useState(0);
   const [vencimentoFiltro, setVencimentoFiltro] = useState('');
   const [etapaFiltro, setEtapaFiltro] = useState('');
+  const [buscaNome, setBuscaNome] = useState('');
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [detailItem, setDetailItem] = useState(null);
   const [contasApi, setContasApi] = useState([]);
@@ -157,6 +172,7 @@ export function CartaoPage() {
     setPage(0);
     setVencimentoFiltro('');
     setEtapaFiltro('');
+    setBuscaNome('');
     setSelectedIds(new Set());
     setDetailItem(null);
   }, [cartaoAtivo?.id]);
@@ -193,6 +209,9 @@ export function CartaoPage() {
     if (vencimentoFiltro) {
       list = list.filter((row) => vencimentoFaturaDeLancamento(row) === vencimentoFiltro);
     }
+    if (buscaNome.trim()) {
+      list = list.filter((row) => linhaBateBuscaNome(row, buscaNome));
+    }
     list = [...list].sort((a, b) => {
       const da = String(a.dataLancamento ?? '');
       const db = String(b.dataLancamento ?? '');
@@ -200,7 +219,7 @@ export function CartaoPage() {
       return sortDataAsc ? cmp : -cmp;
     });
     return list;
-  }, [rows, vencimentoFiltro, etapaFiltro, sortDataAsc]);
+  }, [rows, vencimentoFiltro, etapaFiltro, buscaNome, sortDataAsc]);
 
   const somaFatura = useMemo(
     () => rowsFiltradas.reduce((s, row) => s + valorAssinadoLinhaCartao(row), 0),
@@ -217,6 +236,7 @@ export function CartaoPage() {
       let lista = rowsFiltradas;
       if (!lista.some((r) => Number(r.id) === Number(row.id))) {
         setVencimentoFiltro('');
+        setBuscaNome('');
         lista = rows;
       }
       const pagina = paginaDoLancamentoNaLista(lista, row.id, pageSize);
@@ -518,9 +538,29 @@ export function CartaoPage() {
               </select>
             </label>
           ) : null}
-          {rowsFiltradas.length > 0 ? (
+          <label className="inline-flex items-center gap-1.5 min-w-[10rem] max-w-[14rem] flex-1 px-2 py-1 rounded-md bg-slate-100 dark:bg-slate-800">
+            <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden />
+            <input
+              type="search"
+              value={buscaNome}
+              onChange={(e) => {
+                setBuscaNome(e.target.value);
+                setPage(0);
+              }}
+              placeholder="Buscar por nome..."
+              className="flex-1 min-w-0 bg-transparent border-0 text-xs text-slate-900 dark:text-slate-100 focus:outline-none"
+              aria-label="Buscar lançamento por nome na descrição"
+            />
+          </label>
+          {(rowsFiltradas.length > 0 || buscaNome.trim()) ? (
             <span className="text-xs font-medium text-slate-700 dark:text-slate-300 tabular-nums whitespace-nowrap">
-              {vencimentoFiltro ? (
+              {buscaNome.trim() ? (
+                <>
+                  {rowsFiltradas.length.toLocaleString('pt-BR')} encontrado
+                  {rowsFiltradas.length === 1 ? '' : 's'}
+                  {vencimentoFiltro ? ` · venc. ${formatDataCurta(vencimentoFiltro)}` : ''}
+                </>
+              ) : vencimentoFiltro ? (
                 <>
                   Fatura venc. {formatDataCurta(vencimentoFiltro)}: {formatMoeda(somaFatura)}
                   {' · '}
