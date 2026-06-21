@@ -293,6 +293,24 @@ export async function listarContratosHonorarios(params = {}, opts = {}) {
   return request(`/api/documentos/contratos-honorarios${suffix}`, { signal: opts.signal });
 }
 
+export async function listarSugestoesFinanceiroHonorarios(params = {}, opts = {}) {
+  const q = new URLSearchParams();
+  if (params.processoId != null) q.set('processoId', String(params.processoId));
+  if (params.pessoaId != null) q.set('pessoaId', String(params.pessoaId));
+  if (params.de) q.set('de', params.de);
+  if (params.ate) q.set('ate', params.ate);
+  const suffix = q.toString() ? `?${q.toString()}` : '';
+  return request(`/api/documentos/contratos-honorarios/sugestoes-financeiro${suffix}`, { signal: opts.signal });
+}
+
+export async function aprovarSugestaoFinanceiroHonorarios(payload, opts = {}) {
+  return request('/api/documentos/contratos-honorarios/sugestoes-financeiro/aprovar', {
+    method: 'POST',
+    body: payload,
+    signal: opts.signal,
+  });
+}
+
 export async function buscarContratoHonorariosProcesso(processoId, opts = {}) {
   return request(`/api/documentos/contrato-honorarios/processo/${Number(processoId)}`, {
     signal: opts.signal,

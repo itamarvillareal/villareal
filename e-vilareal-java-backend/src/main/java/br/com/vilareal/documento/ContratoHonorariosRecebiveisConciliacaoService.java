@@ -3,8 +3,14 @@ package br.com.vilareal.documento;
 import br.com.vilareal.documento.infrastructure.persistence.entity.ContratoHonorariosEntity;
 import br.com.vilareal.documento.infrastructure.persistence.entity.ContratoHonorariosParcelaEntity;
 import br.com.vilareal.documento.infrastructure.persistence.repository.ContratoHonorariosRepository;
+import br.com.vilareal.common.exception.BusinessRuleException;
+import br.com.vilareal.common.exception.ResourceNotFoundException;
+import br.com.vilareal.financeiro.api.dto.AplicarSugestaoRequest;
+import br.com.vilareal.financeiro.application.FinanceiroSugestaoService;
 import br.com.vilareal.financeiro.domain.NaturezaLancamento;
+import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabilEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
+import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaContabilRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
 import br.com.vilareal.pagamento.api.dto.PagamentoConciliacaoVincularRequest;
 import br.com.vilareal.pagamento.api.dto.PagamentoMarcarRecebidoRequest;
@@ -14,7 +20,10 @@ import br.com.vilareal.pagamento.application.PagamentoConciliacaoApplicationServ
 import br.com.vilareal.pagamento.domain.PagamentoDominio;
 import br.com.vilareal.pagamento.infrastructure.persistence.entity.PagamentoEntity;
 import br.com.vilareal.pagamento.infrastructure.persistence.repository.PagamentoRepository;
+import br.com.vilareal.processo.application.ProcessoPartesVinculoTextoResolver;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
+import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoParteEntity;
+import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoParteRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -44,6 +53,9 @@ public class ContratoHonorariosRecebiveisConciliacaoService {
 
     static final BigDecimal TOLERANCIA_VALOR = new BigDecimal("1.00");
     static final int MAX_DIAS_DATA = 30;
+    static final int MIN_SCORE_SUGESTAO = 3;
+    static final int JANELA_DIAS_ORFAO = 45;
+    static final String CONTA_ESCRITORIO_CODIGO = "A";
 
     private static final Set<String> STATUS_PAGAMENTO_ENCERRADO =
             Set.of(PagamentoDominio.ST_CANCELADO, PagamentoDominio.ST_SUBSTITUIDO);
@@ -56,18 +68,27 @@ public class ContratoHonorariosRecebiveisConciliacaoService {
     private final LancamentoFinanceiroRepository lancamentoFinanceiroRepository;
     private final PagamentoApplicationService pagamentoApplicationService;
     private final PagamentoConciliacaoApplicationService pagamentoConciliacaoApplicationService;
+    private final ProcessoParteRepository processoParteRepository;
+    private final ContaContabilRepository contaContabilRepository;
+    private final FinanceiroSugestaoService financeiroSugestaoService;
 
     public ContratoHonorariosRecebiveisConciliacaoService(
             ContratoHonorariosRepository contratoRepository,
             PagamentoRepository pagamentoRepository,
             LancamentoFinanceiroRepository lancamentoFinanceiroRepository,
             PagamentoApplicationService pagamentoApplicationService,
-            PagamentoConciliacaoApplicationService pagamentoConciliacaoApplicationService) {
+            PagamentoConciliacaoApplicationService pagamentoConciliacaoApplicationService,
+            ProcessoParteRepository processoParteRepository,
+            ContaContabilRepository contaContabilRepository,
+            FinanceiroSugestaoService financeiroSugestaoService) {
         this.contratoRepository = contratoRepository;
         this.pagamentoRepository = pagamentoRepository;
         this.lancamentoFinanceiroRepository = lancamentoFinanceiroRepository;
         this.pagamentoApplicationService = pagamentoApplicationService;
         this.pagamentoConciliacaoApplicationService = pagamentoConciliacaoApplicationService;
+        this.processoParteRepository = processoParteRepository;
+        this.contaContabilRepository = contaContabilRepository;
+        this.financeiroSugestaoService = financeiroSugestaoService;
     }
 
     @Transactional
@@ -204,6 +225,375 @@ public class ContratoHonorariosRecebiveisConciliacaoService {
             contratoRepository.save(contrato);
         }
     }
+
+    @Transactional(readOnly = true)
+    public List<ContratoHonorariosSugestaoFinanceiroResponse> listarSugestoesFinanceiro(
+            Long processoId, Long pessoaId, LocalDate de, LocalDate ate) {
+        List<ContratoHonorariosEntity> contratos = contratoRepository.listarComFiltros(processoId, pessoaId, de, ate);
+        Set<Long> lancamentosUsados = new HashSet<>();
+        List<ContratoHonorariosSugestaoFinanceiroResponse> sugestoes = new ArrayList<>();
+
+        for (ContratoHonorariosEntity contrato : contratos) {
+            if (contrato.getProcesso() == null || contrato.getProcesso().getId() == null) {
+                continue;
+            }
+            Long pid = contrato.getProcesso().getId();
+            List<ProcessoParteEntity> partes =
+                    processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(pid);
+            List<LancamentoFinanceiroEntity> creditosProcesso =
+                    lancamentoFinanceiroRepository.findCreditosNaoVinculadosPorProcesso(pid);
+
+            for (ParcelaConciliacao parcela : resolverParcelasConciliacao(contrato)) {
+                if (parcelaJaQuitada(parcela)) {
+                    continue;
+                }
+                LocalDate ref = parcela.dataVencimento() != null ? parcela.dataVencimento() : contrato.getDataContrato();
+                LocalDate inicio = ref != null ? ref.minusDays(JANELA_DIAS_ORFAO) : LocalDate.now().minusMonths(3);
+                LocalDate fim = ref != null ? ref.plusDays(JANELA_DIAS_ORFAO) : LocalDate.now().plusDays(JANELA_DIAS_ORFAO);
+                BigDecimal valorMin = parcela.valor().subtract(TOLERANCIA_VALOR);
+                BigDecimal valorMax = parcela.valor().add(TOLERANCIA_VALOR);
+
+                List<LancamentoFinanceiroEntity> candidatos = new ArrayList<>(creditosProcesso);
+                candidatos.addAll(lancamentoFinanceiroRepository.findCreditosOrfaosCandidatosHonorarios(
+                        valorMin.max(BigDecimal.ZERO), valorMax, inicio, fim));
+
+                Optional<Scored<LancamentoFinanceiroEntity>> melhor = candidatos.stream()
+                        .filter(l -> l.getId() != null && !lancamentosUsados.contains(l.getId()))
+                        .map(l -> new Scored<>(
+                                l,
+                                scoreLancamentoSugestao(contrato, parcela, l, partes)))
+                        .filter(s -> s.score() >= MIN_SCORE_SUGESTAO)
+                        .max(Comparator.comparingInt(Scored<LancamentoFinanceiroEntity>::score));
+
+                if (melhor.isEmpty()) {
+                    continue;
+                }
+
+                LancamentoFinanceiroEntity lanc = melhor.get().value();
+                lancamentosUsados.add(lanc.getId());
+                ProcessoEntity processo = contrato.getProcesso();
+                String nome = resolverNomeExibicao(contrato, partes);
+                sugestoes.add(new ContratoHonorariosSugestaoFinanceiroResponse(
+                        contrato.getId(),
+                        pid,
+                        processo.getCliente() != null ? processo.getCliente().getCodigoCliente() : null,
+                        processo.getNumeroInterno(),
+                        nome,
+                        parcela.parcelaId(),
+                        parcela.numeroParcela(),
+                        parcela.valor(),
+                        parcela.dataVencimento(),
+                        lanc.getId(),
+                        lanc.getValor() != null ? lanc.getValor().abs() : null,
+                        lanc.getDataLancamento(),
+                        lanc.getDescricao(),
+                        lanc.getNumeroBanco(),
+                        lanc.getBancoNome(),
+                        lanc.getProcesso() == null,
+                        melhor.get().score(),
+                        montarMotivoSugestao(parcela, lanc, melhor.get().score())));
+            }
+        }
+
+        sugestoes.sort(Comparator.comparingInt(ContratoHonorariosSugestaoFinanceiroResponse::score).reversed());
+        return sugestoes;
+    }
+
+    @Transactional
+    public ContratoHonorariosAprovarSugestaoResponse aprovarSugestaoFinanceiro(
+            ContratoHonorariosAprovarSugestaoRequest req) {
+        ContratoHonorariosEntity contrato = contratoRepository
+                .findById(req.contratoId())
+                .orElseThrow(() -> new ResourceNotFoundException("Contrato não encontrado: " + req.contratoId()));
+        if (contrato.getProcesso() == null || contrato.getProcesso().getId() == null) {
+            throw new BusinessRuleException("Contrato sem processo vinculado.");
+        }
+        contrato = contratoRepository
+                .findByProcessoIdWithDetalhes(contrato.getProcesso().getId())
+                .orElse(contrato);
+
+        ContratoHonorariosParcelaEntity parcela = ensureParcelaContrato(contrato, req.numeroParcela());
+        LancamentoFinanceiroEntity lancamento = lancamentoFinanceiroRepository
+                .findById(req.financeiroLancamentoId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Lançamento financeiro não encontrado: " + req.financeiroLancamentoId()));
+
+        validarLancamentoCandidato(contrato, parcela, lancamento);
+
+        ProcessoEntity processo = contrato.getProcesso();
+        if (lancamento.getProcesso() == null) {
+            classificarLancamentoNoProcesso(lancamento, processo);
+            lancamento = lancamentoFinanceiroRepository.findById(lancamento.getId()).orElse(lancamento);
+        } else if (!Objects.equals(lancamento.getProcesso().getId(), processo.getId())) {
+            throw new BusinessRuleException("Lançamento já classificado em outro processo.");
+        }
+
+        PagamentoEntity pagamento;
+        if (parcela.getPagamento() == null || parcela.getPagamento().getId() == null) {
+            pagamento = registrarRecebivelDeFinanceiro(contrato, parcela, lancamento);
+        } else {
+            pagamento = recarregarPagamento(parcela.getPagamento().getId());
+            if (pagamento == null) {
+                throw new BusinessRuleException("Pagamento da parcela não encontrado.");
+            }
+            if (precisaMarcarRecebido(pagamento)) {
+                PagamentoMarcarRecebidoRequest recebido = new PagamentoMarcarRecebidoRequest();
+                recebido.setDataRecebimento(lancamento.getDataLancamento());
+                recebido.setValorRecebido(lancamento.getValor().abs());
+                pagamentoApplicationService.marcarRecebido(pagamento.getId(), recebido);
+                pagamento = recarregarPagamento(pagamento.getId());
+            }
+            if (pagamento != null && precisaConciliar(pagamento)) {
+                PagamentoConciliacaoVincularRequest conc = new PagamentoConciliacaoVincularRequest();
+                conc.setPagamentoId(pagamento.getId());
+                conc.setFinanceiroLancamentoId(lancamento.getId());
+                pagamentoConciliacaoApplicationService.vincularConciliacao(conc);
+                pagamento = recarregarPagamento(pagamento.getId());
+            }
+        }
+
+        contratoRepository.save(contrato);
+        return new ContratoHonorariosAprovarSugestaoResponse(
+                pagamento != null ? pagamento.getId() : null,
+                pagamento != null ? pagamento.getStatus() : null,
+                lancamento.getId(),
+                "Recebível vinculado ao financeiro com sucesso.");
+    }
+
+    static boolean parcelaJaQuitada(ParcelaConciliacao parcela) {
+        if (parcela.pagamentoFinanceiroLancamentoId() != null) {
+            return true;
+        }
+        String st = parcela.pagamentoStatus();
+        return st != null && STATUS_RECEBER_RECEBIDO.contains(st);
+    }
+
+    static List<ParcelaConciliacao> resolverParcelasConciliacao(ContratoHonorariosEntity contrato) {
+        if (contrato.getParcelas() != null && !contrato.getParcelas().isEmpty()) {
+            return contrato.getParcelas().stream()
+                    .sorted(Comparator.comparing(
+                            ContratoHonorariosParcelaEntity::getNumeroParcela, Comparator.nullsLast(Integer::compareTo)))
+                    .map(p -> {
+                        PagamentoEntity pag = p.getPagamento();
+                        Long finId = null;
+                        String status = null;
+                        if (pag != null) {
+                            status = pag.getStatus();
+                            if (pag.getFinanceiroLancamento() != null) {
+                                finId = pag.getFinanceiroLancamento().getId();
+                            }
+                        }
+                        return new ParcelaConciliacao(
+                                p.getId(),
+                                p.getNumeroParcela(),
+                                p.getValor(),
+                                p.getDataVencimento(),
+                                pag != null ? pag.getId() : null,
+                                status,
+                                finId);
+                    })
+                    .toList();
+        }
+        if (!parcelamentoAtivoContrato(contrato)
+                && contrato.getValorFixo() != null
+                && contrato.getValorFixo().compareTo(BigDecimal.ZERO) > 0) {
+            LocalDate venc = contrato.getDataContrato() != null ? contrato.getDataContrato() : LocalDate.now();
+            return List.of(new ParcelaConciliacao(null, 1, contrato.getValorFixo(), venc, null, null, null));
+        }
+        if (parcelamentoAtivoContrato(contrato)) {
+            ContratoHonorariosClausula3Dados dados = ContratoHonorariosPersistenciaService.montarClausula3Dados(contrato);
+            return ContratoHonorariosClausula3TextoBuilder.calcularParcelas(dados).stream()
+                    .map(p -> new ParcelaConciliacao(
+                            null, p.numero(), p.valor(), p.dataVencimento(), null, null, null))
+                    .toList();
+        }
+        return List.of();
+    }
+
+    static boolean parcelamentoAtivoContrato(ContratoHonorariosEntity contrato) {
+        if (Boolean.TRUE.equals(contrato.getGerarRecebiveis())) {
+            return true;
+        }
+        return contrato.getValorTotalParcelas() != null
+                && contrato.getQuantidadeParcelas() != null
+                && contrato.getQuantidadeParcelas() > 0;
+    }
+
+    private ContratoHonorariosParcelaEntity ensureParcelaContrato(
+            ContratoHonorariosEntity contrato, Integer numeroParcela) {
+        if (contrato.getParcelas() == null) {
+            contrato.setParcelas(new ArrayList<>());
+        }
+        for (ContratoHonorariosParcelaEntity p : contrato.getParcelas()) {
+            if (Objects.equals(p.getNumeroParcela(), numeroParcela)) {
+                return p;
+            }
+        }
+        ParcelaConciliacao ref = resolverParcelasConciliacao(contrato).stream()
+                .filter(p -> Objects.equals(p.numeroParcela(), numeroParcela))
+                .findFirst()
+                .orElseThrow(() -> new BusinessRuleException("Parcela " + numeroParcela + " não encontrada no contrato."));
+
+        ContratoHonorariosParcelaEntity pe = new ContratoHonorariosParcelaEntity();
+        pe.setContrato(contrato);
+        pe.setNumeroParcela(numeroParcela);
+        pe.setValor(ref.valor());
+        pe.setDataVencimento(ref.dataVencimento());
+        contrato.getParcelas().add(pe);
+        return contratoRepository.save(contrato).getParcelas().stream()
+                .filter(p -> Objects.equals(p.getNumeroParcela(), numeroParcela))
+                .findFirst()
+                .orElse(pe);
+    }
+
+    private void validarLancamentoCandidato(
+            ContratoHonorariosEntity contrato,
+            ContratoHonorariosParcelaEntity parcela,
+            LancamentoFinanceiroEntity lancamento) {
+        if (lancamento.getNatureza() != NaturezaLancamento.CREDITO) {
+            throw new BusinessRuleException("Somente créditos podem ser vinculados a honorários.");
+        }
+        ParcelaConciliacao ref = new ParcelaConciliacao(
+                parcela.getId(),
+                parcela.getNumeroParcela(),
+                parcela.getValor(),
+                parcela.getDataVencimento(),
+                parcela.getPagamento() != null ? parcela.getPagamento().getId() : null,
+                parcela.getPagamento() != null ? parcela.getPagamento().getStatus() : null,
+                null);
+        List<ProcessoParteEntity> partes = processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(
+                contrato.getProcesso().getId());
+        int score = scoreLancamentoSugestao(contrato, ref, lancamento, partes);
+        if (score < MIN_SCORE_SUGESTAO) {
+            throw new BusinessRuleException("Lançamento não é compatível com a parcela (score " + score + ").");
+        }
+        if (pagamentoRepository.existsByFinanceiroLancamento_Id(lancamento.getId())) {
+            Long pagParcelaId = parcela.getPagamento() != null ? parcela.getPagamento().getId() : null;
+            if (pagParcelaId == null
+                    || pagamentoRepository.existsByFinanceiroLancamento_IdAndIdNot(lancamento.getId(), pagParcelaId)) {
+                throw new BusinessRuleException("Lançamento já vinculado a outro recebível.");
+            }
+        }
+    }
+
+    private void classificarLancamentoNoProcesso(LancamentoFinanceiroEntity lancamento, ProcessoEntity processo) {
+        ContaContabilEntity contaA = contaContabilRepository
+                .findFirstByCodigoIgnoreCase(CONTA_ESCRITORIO_CODIGO)
+                .orElseThrow(() -> new BusinessRuleException(
+                        "Conta contábil «" + CONTA_ESCRITORIO_CODIGO + "» (Escritório) não cadastrada."));
+        AplicarSugestaoRequest req = new AplicarSugestaoRequest();
+        req.setLancamentoId(lancamento.getId());
+        req.setContaContabilId(contaA.getId());
+        req.setProcessoId(processo.getId());
+        if (processo.getCliente() != null) {
+            req.setClienteId(processo.getCliente().getId());
+        }
+        financeiroSugestaoService.aplicarSugestao(req);
+    }
+
+    static int scoreLancamentoSugestao(
+            ContratoHonorariosEntity contrato,
+            ParcelaConciliacao parcela,
+            LancamentoFinanceiroEntity lancamento,
+            List<ProcessoParteEntity> partes) {
+        ContratoHonorariosParcelaEntity pe = new ContratoHonorariosParcelaEntity();
+        pe.setNumeroParcela(parcela.numeroParcela());
+        pe.setValor(parcela.valor());
+        pe.setDataVencimento(parcela.dataVencimento());
+        int score = scoreLancamentoParcela(pe, lancamento);
+        score += bonusNomeNaDescricao(contrato, partes, lancamento);
+        if (lancamento.getProcesso() != null
+                && contrato.getProcesso() != null
+                && Objects.equals(lancamento.getProcesso().getId(), contrato.getProcesso().getId())) {
+            score += 2;
+        }
+        return score;
+    }
+
+    static int bonusNomeNaDescricao(
+            ContratoHonorariosEntity contrato,
+            List<ProcessoParteEntity> partes,
+            LancamentoFinanceiroEntity lancamento) {
+        String desc = normalizarTextoBusca(lancamento.getDescricao());
+        if (!StringUtils.hasText(desc)) {
+            return 0;
+        }
+        int bonus = 0;
+        if (contrato.getPessoa() != null && nomeAparece(desc, contrato.getPessoa().getNome())) {
+            bonus += 2;
+        }
+        if (contrato.getProcesso() != null && partes != null) {
+            String parteCliente = ProcessoPartesVinculoTextoResolver.parteCliente(contrato.getProcesso(), partes);
+            if (nomeAparece(desc, parteCliente)) {
+                bonus += 3;
+            }
+            if (contrato.getProcesso().getPessoa() != null
+                    && nomeAparece(desc, contrato.getProcesso().getPessoa().getNome())) {
+                bonus += 2;
+            }
+        }
+        return bonus;
+    }
+
+    static boolean nomeAparece(String descNorm, String nome) {
+        if (!StringUtils.hasText(nome) || !StringUtils.hasText(descNorm)) {
+            return false;
+        }
+        String n = normalizarTextoBusca(nome);
+        if (n.length() < 4) {
+            return false;
+        }
+        if (descNorm.contains(n)) {
+            return true;
+        }
+        String[] tokens = n.split(" ");
+        if (tokens.length >= 2) {
+            String primeiroUltimo = tokens[0] + " " + tokens[tokens.length - 1];
+            return descNorm.contains(primeiroUltimo);
+        }
+        return false;
+    }
+
+    static String normalizarTextoBusca(String s) {
+        if (!StringUtils.hasText(s)) {
+            return "";
+        }
+        return java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .toLowerCase()
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    static String montarMotivoSugestao(ParcelaConciliacao parcela, LancamentoFinanceiroEntity lanc, int score) {
+        String valor = parcela.valor() != null ? parcela.valor().toPlainString() : "?";
+        String data = lanc.getDataLancamento() != null ? lanc.getDataLancamento().toString() : "?";
+        String banco = StringUtils.hasText(lanc.getBancoNome()) ? lanc.getBancoNome().trim() : "banco";
+        String base = "Crédito de R$ " + valor + " em " + data + " (" + banco + ")";
+        if (lanc.getProcesso() == null) {
+            return base + " — ainda na Conta N; ao aprovar, classifica no processo e concilia.";
+        }
+        return base + " — compatível com a parcela (score " + score + ").";
+    }
+
+    private String resolverNomeExibicao(ContratoHonorariosEntity contrato, List<ProcessoParteEntity> partes) {
+        if (contrato.getProcesso() != null && partes != null && !partes.isEmpty()) {
+            String parte = ProcessoPartesVinculoTextoResolver.parteCliente(contrato.getProcesso(), partes);
+            if (StringUtils.hasText(parte)) {
+                return parte;
+            }
+        }
+        return contrato.getPessoa() != null ? contrato.getPessoa().getNome() : "";
+    }
+
+    record ParcelaConciliacao(
+            Long parcelaId,
+            Integer numeroParcela,
+            BigDecimal valor,
+            LocalDate dataVencimento,
+            Long pagamentoId,
+            String pagamentoStatus,
+            Long pagamentoFinanceiroLancamentoId) {}
 
     static boolean materializarParcelasDeFinanceiro(
             ContratoHonorariosEntity contrato, List<LancamentoFinanceiroEntity> todosCreditos) {

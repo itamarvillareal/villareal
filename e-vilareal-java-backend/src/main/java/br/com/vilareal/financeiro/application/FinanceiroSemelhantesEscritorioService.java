@@ -11,6 +11,7 @@ import br.com.vilareal.financeiro.api.dto.SemelhanteEscritorioGrupoResponse;
 import br.com.vilareal.financeiro.api.dto.SemelhanteEscritorioItemResponse;
 import br.com.vilareal.financeiro.domain.ConfiancaSugestao;
 import br.com.vilareal.financeiro.domain.FinanceiroDescricaoNomeUtil;
+import br.com.vilareal.financeiro.domain.ProcessoVinculoSugestaoPrioridadeUtil;
 import br.com.vilareal.financeiro.domain.SemelhanteEscritorioCalculoMatcher;
 import br.com.vilareal.financeiro.domain.SemelhanteEscritorioMatcher;
 import br.com.vilareal.financeiro.domain.SemelhanteEscritorioMatcher.HistoricoSlot;
@@ -321,7 +322,14 @@ public class FinanceiroSemelhantesEscritorioService {
 
         List<PessoaProcessoRef> refs =
                 SemelhanteEscritorioNomeMatcher.refsFromQueryRows(todasRows, nomesPorPessoaId, clienteIdPorProcessoId);
-        return SemelhanteEscritorioNomeMatcher.parear(pendentes, refs, nomesPorPessoaId);
+        Set<Long> processoIds =
+                refs.stream().map(PessoaProcessoRef::processoId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, ProcessoVinculoSugestaoPrioridadeUtil.AtividadeProcesso> atividade = Map.of();
+        if (!processoIds.isEmpty()) {
+            atividade = ProcessoVinculoSugestaoPrioridadeUtil.indexarLinhasAtividade(
+                    lancamentoRepository.findAtividadeClassificadaPorProcessoIds(processoIds));
+        }
+        return SemelhanteEscritorioNomeMatcher.parear(pendentes, refs, nomesPorPessoaId, atividade);
     }
 
     private List<SemelhanteEscritorioGrupoResponse> agruparMatches(

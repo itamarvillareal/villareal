@@ -145,9 +145,16 @@ export function ExtratoImportModal({
           `${res.importados} importados com ${res.erros.length} erro(s). ${res.erros.slice(0, 2).join(' · ')}`,
         );
       } else if (res.ignorados > 0) {
-        toast.success(
-          `${res.importados} lançamento(s) importados. ${res.ignorados} ignorado(s) (já constavam no banco, comparados por data/valor/descrição).`,
-        );
+        const partes = [`${res.importados} lançamento(s) importados.`];
+        if (res.ignoradosPorCorte > 0 && res.dataCorteBr) {
+          partes.push(
+            `${res.ignoradosPorCorte} ignorado(s) por proteção (extrato anterior a ${res.dataCorteBr}).`,
+          );
+        }
+        if (res.ignoradosDedupe > 0) {
+          partes.push(`${res.ignoradosDedupe} ignorado(s) como duplicados.`);
+        }
+        toast.success(partes.join(' '));
       } else {
         toast.success(`${res.importados} lançamento(s) importados.`);
       }
@@ -265,11 +272,26 @@ export function ExtratoImportModal({
                   ).
                 </p>
                 {preview.resumoMesclar ? (
-                  <p>
-                    No banco: <strong>{preview.resumoMesclar.noBanco.toLocaleString('pt-BR')}</strong> · a importar:{' '}
-                    <strong>{preview.resumoMesclar.novos.toLocaleString('pt-BR')}</strong> · ignorados (duplicados):{' '}
-                    <strong>{preview.resumoMesclar.ignorados.toLocaleString('pt-BR')}</strong>
-                  </p>
+                  <>
+                    <p>
+                      No banco: <strong>{preview.resumoMesclar.noBanco.toLocaleString('pt-BR')}</strong> · a
+                      importar: <strong>{preview.resumoMesclar.novos.toLocaleString('pt-BR')}</strong> · ignorados
+                      (duplicados): <strong>{preview.resumoMesclar.ignorados.toLocaleString('pt-BR')}</strong>
+                    </p>
+                    {preview.resumoMesclar.dataCorteBr ? (
+                      <p className="text-indigo-800 dark:text-indigo-200 rounded-lg border border-indigo-200 bg-indigo-50/80 px-3 py-2 dark:border-indigo-900/50 dark:bg-indigo-950/30">
+                        Proteção do histórico: só entram lançamentos a partir de{' '}
+                        <strong>{preview.resumoMesclar.dataCorteBr}</strong> (penúltima data já importada).
+                        {preview.resumoMesclar.ignoradosPorCorte > 0 ? (
+                          <>
+                            {' '}
+                            <strong>{preview.resumoMesclar.ignoradosPorCorte.toLocaleString('pt-BR')}</strong>{' '}
+                            linha(s) mais antigas do arquivo serão ignoradas.
+                          </>
+                        ) : null}
+                      </p>
+                    ) : null}
+                  </>
                 ) : null}
                 {modo === 'substituir' ? (
                   <p className="text-amber-700 dark:text-amber-300">
@@ -426,6 +448,12 @@ export function ExtratoImportModal({
                     />
                     Substituir extrato
                   </label>
+                  {modo === 'mesclar' ? (
+                    <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
+                      Proteção automática: em mesclagem, só entram lançamentos a partir da penúltima data já
+                      importada no banco (evita duplicar meses fechados se o extrato vier completo de novo).
+                    </p>
+                  ) : null}
                 </fieldset>
 
                 {!featureFlags.useApiFinanceiro ? (

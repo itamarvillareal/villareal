@@ -416,7 +416,7 @@ public class FinanceiroSugestaoService {
             return List.of();
         }
 
-        List<SugestaoClassificacaoResponse> out = new ArrayList<>();
+        Map<Long, List<ProcessoEntity>> processosPorPessoa = new LinkedHashMap<>();
         for (Object[] row : vinculos) {
             if (row == null || row.length < 2 || row[0] == null || row[1] == null) {
                 continue;
@@ -431,45 +431,91 @@ public class FinanceiroSugestaoService {
             if (proc == null || proc.getPessoa() == null || proc.getNumeroInterno() == null) {
                 continue;
             }
-            SugestaoClassificacaoResponse s =
-                    baseSugestao(contaA, ConfiancaSugestao.MEDIA, OrigemSugestao.PESSOA_PROCESSO);
-            preencherClienteIdSugestaoProcesso(s, proc);
-            s.setProcessoId(proc.getId());
-            s.setPagadorPessoaId(pessoa.getId());
-            s.setRotuloVinculo(montarRotuloVinculo(proc.getPessoa().getId(), proc));
-            s.setDescricaoRegra("nome na descrição: " + resumirNome(pessoa.getNome()) + " → " + s.getRotuloVinculo());
-            out.add(s);
+            List<ProcessoEntity> lista =
+                    processosPorPessoa.computeIfAbsent(pessoaId, ignored -> new ArrayList<>());
+            if (lista.stream().noneMatch(p -> Objects.equals(p.getId(), proc.getId()))) {
+                lista.add(proc);
+            }
+        }
+
+        List<SugestaoClassificacaoResponse> out = new ArrayList<>();
+        for (Map.Entry<Long, List<ProcessoEntity>> entry : processosPorPessoa.entrySet()) {
+            PessoaEntity pessoa = pessoasPorId.get(entry.getKey());
+            if (pessoa == null) {
+                continue;
+            }
+            out.addAll(montarSugestoesProcessosPriorizados(
+                    entry.getValue(), pessoa.getId(), pessoa.getNome(), "nome na descrição"));
         }
         return out;
     }
 
     private List<SugestaoClassificacaoResponse> montarSugestoesPessoaProcessos(PessoaEntity pessoa) {
+        List<ProcessoEntity> processos = processoRepository.findAllDistinctVinculadosPessoa(pessoa.getId());
+        return montarSugestoesProcessosPriorizados(processos, pessoa.getId(), pessoa.getNome(), "cliente");
+    }
+
+    private List<SugestaoClassificacaoResponse> montarSugestoesProcessosPriorizados(
+            List<ProcessoEntity> processosBrutos,
+            Long pagadorPessoaId,
+            String pagadorNome,
+            String prefixoRegra) {
         ContaContabilEntity contaA =
                 contaContabilRepository.findFirstByCodigoIgnoreCase("A").orElse(null);
         if (contaA == null) {
             return List.of();
         }
 
-        List<ProcessoEntity> processos = processoRepository.findAllDistinctVinculadosPessoa(pessoa.getId());
+        List<ProcessoEntity> processos = processosBrutos.stream()
+                .filter(p -> p.getPessoa() != null && p.getNumeroInterno() != null)
+                .collect(Collectors.toCollection(ArrayList::new));
         if (processos.isEmpty()) {
             return List.of();
         }
 
+        Map<Long, ProcessoVinculoSugestaoPrioridadeUtil.AtividadeProcesso> atividade =
+                carregarAtividadeProcessos(processos);
+        processos.sort(ProcessoVinculoSugestaoPrioridadeUtil.comparadorProcessos(atividade));
+
+        LocalDate hoje = LocalDate.now();
         List<SugestaoClassificacaoResponse> out = new ArrayList<>();
-        for (ProcessoEntity proc : processos) {
-            if (proc.getPessoa() == null || proc.getNumeroInterno() == null) {
-                continue;
-            }
+        for (int i = 0; i < processos.size(); i++) {
+            ProcessoEntity proc = processos.get(i);
+            ProcessoVinculoSugestaoPrioridadeUtil.AtividadeProcesso act = atividade.get(proc.getId());
+            ConfiancaSugestao conf =
+                    i == 0
+                            ? ProcessoVinculoSugestaoPrioridadeUtil.confiancaPrincipalPessoaProcesso(act, hoje)
+                            : ConfiancaSugestao.MEDIA;
             SugestaoClassificacaoResponse s =
-                    baseSugestao(contaA, ConfiancaSugestao.MEDIA, OrigemSugestao.PESSOA_PROCESSO);
+                    baseSugestao(contaA, conf, OrigemSugestao.PESSOA_PROCESSO);
             preencherClienteIdSugestaoProcesso(s, proc);
             s.setProcessoId(proc.getId());
-            s.setPagadorPessoaId(pessoa.getId());
+            s.setPagadorPessoaId(pagadorPessoaId);
             s.setRotuloVinculo(montarRotuloVinculo(proc.getPessoa().getId(), proc));
-            s.setDescricaoRegra("cliente: " + resumirNome(pessoa.getNome()) + " → " + s.getRotuloVinculo());
+            s.setDescricaoRegra(
+                    prefixoRegra
+                            + ": "
+                            + resumirNome(pagadorNome)
+                            + ProcessoVinculoSugestaoPrioridadeUtil.sufixoAtividadeRegra(act)
+                            + " → "
+                            + s.getRotuloVinculo());
             out.add(s);
         }
         return out;
+    }
+
+    private Map<Long, ProcessoVinculoSugestaoPrioridadeUtil.AtividadeProcesso> carregarAtividadeProcessos(
+            List<ProcessoEntity> processos) {
+        List<Long> ids = processos.stream()
+                .map(ProcessoEntity::getId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        return ProcessoVinculoSugestaoPrioridadeUtil.indexarLinhasAtividade(
+                lancamentoRepository.findAtividadeClassificadaPorProcessoIds(ids));
     }
 
     private static String normalizarTextoDescricaoBuscaPessoa(String descricao, String descricaoDetalhada) {

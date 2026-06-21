@@ -211,6 +211,9 @@ class FinanceiroSugestaoServiceTest {
                 .when(lancamentoRepository.findDepositosIdentificadosPorCpfPosteriores(
                         any(), any(), any(), any(), any(Pageable.class)))
                 .thenReturn(List.of());
+        lenient()
+                .when(lancamentoRepository.findAtividadeClassificadaPorProcessoIds(anySet()))
+                .thenReturn(List.of());
     }
 
     @Test
@@ -469,6 +472,68 @@ class FinanceiroSugestaoServiceTest {
                         && s.getClienteId().equals(99L)
                         && s.getPagadorPessoaId().equals(501L)
                         && s.getDescricaoRegra().contains("nome na descrição"));
+    }
+
+    @Test
+    void sugerir_camadaPessoaProcessos_priorizaProcessoComAtividadeRecente() {
+        lancamento.setDescricao("PIX recebido - Wender Aquila Silva - 123.456.789-00");
+
+        PessoaEntity pagador = new PessoaEntity();
+        pagador.setId(800L);
+        pagador.setNome("Wender Aquila Silva");
+        pagador.setCpf("12345678900");
+
+        PessoaEntity titular = new PessoaEntity();
+        titular.setId(728L);
+
+        ClienteEntity cliente728 = new ClienteEntity();
+        cliente728.setId(99L);
+        cliente728.setCodigoCliente("00000728");
+        cliente728.setPessoa(titular);
+
+        ProcessoEntity procAntigo = new ProcessoEntity();
+        procAntigo.setId(1L);
+        procAntigo.setPessoa(titular);
+        procAntigo.setCliente(cliente728);
+        procAntigo.setNumeroInterno(1);
+
+        ProcessoEntity procRecente = new ProcessoEntity();
+        procRecente.setId(4L);
+        procRecente.setPessoa(titular);
+        procRecente.setCliente(cliente728);
+        procRecente.setNumeroInterno(4);
+
+        when(regraRepository.findByAtivoTrueOrderByPrioridadeAscIdAsc()).thenReturn(List.of());
+        when(pessoaRepository.findByCpf("12345678900")).thenReturn(Optional.of(pagador));
+        when(clienteResolverService.resolverClienteParaTitular(728L)).thenReturn(cliente728);
+        when(lancamentoRepository.findDepositosIdentificadosPorCpfNoTexto(any(), any(), any(), any()))
+                .thenReturn(List.of());
+        when(contaContabilRepository.findFirstByCodigoIgnoreCase("A")).thenReturn(Optional.of(contaA));
+        when(processoRepository.findAllDistinctVinculadosPessoa(800L))
+                .thenReturn(List.of(procAntigo, procRecente));
+        when(lancamentoRepository.findAtividadeClassificadaPorProcessoIds(any()))
+                .thenReturn(List.of(
+                        new Object[] {1L, LocalDate.of(2018, 5, 1), 12L},
+                        new Object[] {4L, LocalDate.of(2025, 11, 20), 3L}));
+        when(processoApplicationService.resolverTextosPartesVinculoEmLote(Set.of(4L, 1L)))
+                .thenReturn(
+                        Map.of(
+                                1L, new ProcessoPartesVinculoTexto("Cliente A", "Réu A"),
+                                4L, new ProcessoPartesVinculoTexto("Thaisa", "Fabricio")));
+        when(lancamentoRepository.contarContaPorDescricaoHistoricoAnterior(any(), any(), any(), any())).thenReturn(List.of());
+        when(lancamentoRepository.findRecorrenciaCandidatosAnteriores(any(), any(), any(), any(), anyInt(), any(), any()))
+                .thenReturn(List.of());
+
+        List<SugestaoClassificacaoResponse> sugestoes = service.sugerir(lancamento);
+
+        assertThat(sugestoes).isNotEmpty();
+        SugestaoClassificacaoResponse principal = sugestoes.stream()
+                .filter(s -> s.getOrigem() == OrigemSugestao.PESSOA_PROCESSO)
+                .findFirst()
+                .orElseThrow();
+        assertThat(principal.getProcessoId()).isEqualTo(4L);
+        assertThat(principal.getConfianca()).isEqualTo(ConfiancaSugestao.ALTA);
+        assertThat(principal.getDescricaoRegra()).contains("2025-11-20");
     }
 
     @Test

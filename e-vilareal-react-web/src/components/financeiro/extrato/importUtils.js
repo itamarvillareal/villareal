@@ -17,6 +17,10 @@ import {
   readOfxFileAsText,
   sanitizarLancamentoImportacaoExtrato,
 } from '../../../utils/ofx.js';
+import {
+  aplicarProtecaoDataCorteImportacao,
+  formatarDataCorteBr,
+} from '../../../utils/extratoImportProtecao.js';
 import { listarLancamentosFinanceiroPaginados, persistirImportacaoOfxFinanceiroApi } from '../../../repositories/financeiroRepository.js';
 import { extratoRowToUi, mapApiLancamentoToExtratoRow } from './extratoMappers.js';
 
@@ -114,14 +118,19 @@ async function carregarLancamentosExistentesBanco(numeroBanco, signal) {
  */
 export async function resumirNovosImportacaoMesclar(rows, numeroBanco, signal, origemImportacao = '') {
   const existente = await carregarLancamentosExistentesBanco(numeroBanco, signal);
-  const { novos, ignorados } = analisarLancamentosNovosDedupe(existente, rows, {
+  const protecao = aplicarProtecaoDataCorteImportacao(rows, existente, { modo: 'mesclar' });
+  const { novos, ignorados } = analisarLancamentosNovosDedupe(existente, protecao.rows, {
     respeitarExtratoComoMestre: /^PDF$/i.test(String(origemImportacao ?? '').trim()),
   });
   return {
-    totalArquivo: rows?.length ?? 0,
+    totalArquivo: protecao.totalArquivo,
     noBanco: existente.length,
     novos: novos.length,
     ignorados,
+    ignoradosPorCorte: protecao.ignoradosPorCorte,
+    dataCorte: protecao.dataCorte,
+    dataCorteBr: formatarDataCorteBr(protecao.dataCorte),
+    linhasAposCorte: protecao.rows.length,
   };
 }
 
@@ -142,23 +151,30 @@ export async function executarImportacaoExtrato({
   const transacoesAntesNoBanco =
     modo === 'mesclar' ? await carregarLancamentosExistentesBanco(nb, signal) : [];
 
+  const protecao = aplicarProtecaoDataCorteImportacao(rows, transacoesAntesNoBanco, { modo });
+
   const result = await persistirImportacaoOfxFinanceiroApi({
     nomeBanco: normBanco,
     numeroBanco: nb,
     modo,
-    transacoesOfx: rows,
+    transacoesOfx: protecao.rows,
     transacoesAntesNoBanco,
     origemImportacao: origem,
+    dataCorteImportacao: protecao.dataCorte,
   });
 
-  const totalArquivo = rows?.length ?? 0;
-  const ignorados = result.ignorados ?? Math.max(0, totalArquivo - (result.criados ?? 0));
+  const totalArquivo = protecao.totalArquivo;
+  const ignoradosDedupe = result.ignorados ?? Math.max(0, protecao.rows.length - (result.criados ?? 0));
 
   return {
     ...result,
     importados: result.criados ?? 0,
     pendentes: result.criados ?? 0,
-    ignorados,
+    ignorados: ignoradosDedupe + (protecao.ignoradosPorCorte ?? 0),
+    ignoradosDedupe,
+    ignoradosPorCorte: protecao.ignoradosPorCorte ?? 0,
+    dataCorte: protecao.dataCorte,
+    dataCorteBr: formatarDataCorteBr(protecao.dataCorte),
     totalArquivo,
     porDiaDedupe: result.porDiaDedupe ?? {},
   };

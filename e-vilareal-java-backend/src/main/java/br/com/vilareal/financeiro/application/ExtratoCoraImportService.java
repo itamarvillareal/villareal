@@ -15,6 +15,7 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -32,12 +33,15 @@ public class ExtratoCoraImportService {
 
     private final FinanceiroApplicationService financeiroApplicationService;
     private final ContaContabilRepository contaContabilRepository;
+    private final ExtratoImportProtecaoService extratoImportProtecaoService;
 
     public ExtratoCoraImportService(
             FinanceiroApplicationService financeiroApplicationService,
-            ContaContabilRepository contaContabilRepository) {
+            ContaContabilRepository contaContabilRepository,
+            ExtratoImportProtecaoService extratoImportProtecaoService) {
         this.financeiroApplicationService = financeiroApplicationService;
         this.contaContabilRepository = contaContabilRepository;
+        this.extratoImportProtecaoService = extratoImportProtecaoService;
     }
 
     public ExtratoCoraImportResult importar(byte[] ofx) {
@@ -55,7 +59,14 @@ public class ExtratoCoraImportService {
         List<OfxParser.OfxTransacao> transacoes = OfxParser.parseTransacoes(texto);
         resumo.setTotalNoArquivo(transacoes.size());
 
+        LocalDate dataCorte = extratoImportProtecaoService.calcularDataCorteMesclagem(NUMERO_BANCO_CORA);
+        resumo.setDataCorte(dataCorte);
+
         for (OfxParser.OfxTransacao tx : transacoes) {
+            if (!extratoImportProtecaoService.aceitarLinhaImportacaoMesclagem(tx.dataLancamento(), dataCorte)) {
+                resumo.setIgnoradosPorCorte(resumo.getIgnoradosPorCorte() + 1);
+                continue;
+            }
             try {
                 LancamentoFinanceiroWriteRequest req = montarRequest(tx, contaN.getId());
                 if (req == null) {

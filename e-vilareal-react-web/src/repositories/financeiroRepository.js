@@ -27,6 +27,7 @@ import {
   analisarLancamentosNovosDedupe,
   sanitizarLancamentoImportacaoExtrato,
 } from '../utils/ofx.js';
+import { aplicarProtecaoDataCorteImportacao } from '../utils/extratoImportProtecao.js';
 
 function parseBrDateToIso(v) {
   const s = String(v ?? '').trim();
@@ -865,6 +866,7 @@ export async function persistirImportacaoOfxFinanceiroApi({
   transacoesOfx,
   transacoesAntesNoBanco,
   origemImportacao = 'OFX',
+  dataCorteImportacao = null,
 }) {
   if (!featureFlags.useApiFinanceiro) {
     return { ok: true, criados: 0, removidos: 0, erros: [], savedPairs: [] };
@@ -892,14 +894,26 @@ export async function persistirImportacaoOfxFinanceiroApi({
     }
   }
 
+  const protecao =
+    modo === 'mesclar'
+      ? aplicarProtecaoDataCorteImportacao(transacoesOfx, transacoesAntesNoBanco, { modo })
+      : {
+          rows: transacoesOfx || [],
+          dataCorte: null,
+          ignoradosPorCorte: 0,
+          totalArquivo: transacoesOfx?.length ?? 0,
+        };
+  const linhasImportaveis = protecao.rows;
+  const dataCorteEfetiva = dataCorteImportacao ?? protecao.dataCorte;
+
   const analiseDedupe =
     modo === 'substituir'
       ? {
-          novos: transacoesOfx || [],
+          novos: linhasImportaveis,
           ignorados: 0,
           porDia: new Map(),
         }
-      : analisarLancamentosNovosDedupe(transacoesAntesNoBanco, transacoesOfx, {
+      : analisarLancamentosNovosDedupe(transacoesAntesNoBanco, linhasImportaveis, {
           respeitarExtratoComoMestre: /^PDF$/i.test(String(origemImportacao ?? '').trim()),
         });
   const paraCriar = analiseDedupe.novos;
@@ -935,7 +949,9 @@ export async function persistirImportacaoOfxFinanceiroApi({
     erros,
     savedPairs,
     ignorados: analiseDedupe.ignorados,
-    totalOfx: (transacoesOfx || []).length,
+    ignoradosPorCorte: protecao.ignoradosPorCorte ?? 0,
+    dataCorte: dataCorteEfetiva,
+    totalOfx: protecao.totalArquivo ?? (transacoesOfx || []).length,
     porDiaDedupe: Object.fromEntries(analiseDedupe.porDia),
   };
 }

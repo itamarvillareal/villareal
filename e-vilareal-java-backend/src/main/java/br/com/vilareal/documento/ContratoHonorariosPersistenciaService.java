@@ -180,6 +180,18 @@ public class ContratoHonorariosPersistenciaService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<ContratoHonorariosSugestaoFinanceiroResponse> listarSugestoesFinanceiro(
+            Long processoId, Long pessoaId, LocalDate de, LocalDate ate) {
+        return recebiveisConciliacaoService.listarSugestoesFinanceiro(processoId, pessoaId, de, ate);
+    }
+
+    @Transactional
+    public ContratoHonorariosAprovarSugestaoResponse aprovarSugestaoFinanceiro(
+            ContratoHonorariosAprovarSugestaoRequest request) {
+        return recebiveisConciliacaoService.aprovarSugestaoFinanceiro(request);
+    }
+
     private void sincronizarParcelasERecebiveis(ContratoHonorariosEntity contrato, ContratoHonorariosClausula3Dados dados) {
         removerRecebiveisPendentes(contrato);
         if (!ContratoHonorariosClausula3TextoBuilder.parcelamentoAtivo(dados)) {

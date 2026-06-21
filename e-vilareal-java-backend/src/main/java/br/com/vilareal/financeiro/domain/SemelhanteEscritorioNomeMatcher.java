@@ -23,6 +23,14 @@ public final class SemelhanteEscritorioNomeMatcher {
             List<SemelhanteEscritorioMatcher.PendenteItem> pendentes,
             List<PessoaProcessoRef> vinculos,
             Map<Long, String> nomesPorPessoaId) {
+        return parear(pendentes, vinculos, nomesPorPessoaId, Map.of());
+    }
+
+    public static List<SemelhanteEscritorioMatcher.MatchResult> parear(
+            List<SemelhanteEscritorioMatcher.PendenteItem> pendentes,
+            List<PessoaProcessoRef> vinculos,
+            Map<Long, String> nomesPorPessoaId,
+            Map<Long, ProcessoVinculoSugestaoPrioridadeUtil.AtividadeProcesso> atividadePorProcesso) {
         if (pendentes == null || pendentes.isEmpty() || vinculos == null || vinculos.isEmpty()) {
             return List.of();
         }
@@ -36,7 +44,7 @@ public final class SemelhanteEscritorioNomeMatcher {
             if (!StringUtils.hasText(descNorm)) {
                 continue;
             }
-            PessoaProcessoRef hit = escolherMelhor(descNorm, vinculos, nomesPorPessoaId);
+            PessoaProcessoRef hit = escolherMelhor(descNorm, vinculos, nomesPorPessoaId, atividadePorProcesso);
             if (hit == null) {
                 continue;
             }
@@ -95,8 +103,9 @@ public final class SemelhanteEscritorioNomeMatcher {
     private static PessoaProcessoRef escolherMelhor(
             String descNorm,
             List<PessoaProcessoRef> vinculos,
-            Map<Long, String> nomesPorPessoaId) {
-        PessoaProcessoRef melhor = null;
+            Map<Long, String> nomesPorPessoaId,
+            Map<Long, ProcessoVinculoSugestaoPrioridadeUtil.AtividadeProcesso> atividadePorProcesso) {
+        List<PessoaProcessoRef> candidatos = new ArrayList<>();
         for (PessoaProcessoRef ref : vinculos) {
             String nome = nomesPorPessoaId.get(ref.pessoaId());
             if (!StringUtils.hasText(nome)) {
@@ -105,11 +114,17 @@ public final class SemelhanteEscritorioNomeMatcher {
             if (!FinanceiroDescricaoNomeUtil.nomesCompativeis(descNorm, nome)) {
                 continue;
             }
-            if (melhor == null || ref.processoId() < melhor.processoId()) {
-                melhor = ref;
-            }
+            candidatos.add(ref);
         }
-        return melhor;
+        if (candidatos.isEmpty()) {
+            return null;
+        }
+        Map<Long, ProcessoVinculoSugestaoPrioridadeUtil.AtividadeProcesso> atividade =
+                atividadePorProcesso != null ? atividadePorProcesso : Map.of();
+        candidatos.sort(
+                (a, b) -> ProcessoVinculoSugestaoPrioridadeUtil.comparadorProcessoIds(atividade)
+                        .compare(a.processoId(), b.processoId()));
+        return candidatos.get(0);
     }
 
     private static String resumirNome(String nome) {

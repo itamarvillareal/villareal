@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { AlertTriangle, Check, ExternalLink, Info, Loader2, Receipt, RefreshCw, ScrollText } from 'lucide-react';
-import { listarContratosHonorarios } from '../repositories/documentosRepository.js';
+import { AlertTriangle, Check, ExternalLink, Info, Link2, Loader2, Receipt, RefreshCw, ScrollText } from 'lucide-react';
+import { listarContratosHonorarios, listarSugestoesFinanceiroHonorarios, aprovarSugestaoFinanceiroHonorarios } from '../repositories/documentosRepository.js';
 import { buildRouterStateChaveClienteProcesso, buildLinkDestinoProcesso } from '../domain/camposProcessoCliente.js';
 import { montarDadosParaDocumentoFromProcesso } from '../helpers/documentoHelper.js';
 import { ResultadoFinanceiroSubmenu } from './resultado-financeiro/ResultadoFinanceiroSubmenu.jsx';
@@ -74,6 +74,10 @@ function linkProcessoRecebiveis(linha) {
   return linkProcesso(linha, '/processos/recebiveis');
 }
 
+function chaveSugestaoHonorarios(linha) {
+  return `${linha.contratoId}-${linha.numeroParcela}`;
+}
+
 /**
  * @param {object} [props]
  * @param {number} [props.processoId] — filtra parcelas de um processo (modo dentro do proc.)
@@ -83,8 +87,11 @@ function linkProcessoRecebiveis(linha) {
 export function RecebiveisConsolidados({ processoId = null, contextoProcesso = null, modoProcesso = false } = {}) {
   const navigate = useNavigate();
   const [contratos, setContratos] = useState([]);
+  const [sugestoesFinanceiro, setSugestoesFinanceiro] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [abrindoContrato, setAbrindoContrato] = useState(false);
+  const [aprovandoChave, setAprovandoChave] = useState('');
+  const [msgOk, setMsgOk] = useState('');
   const [erro, setErro] = useState('');
   const [filtros, setFiltros] = useState({
     de: '',
@@ -99,15 +106,21 @@ export function RecebiveisConsolidados({ processoId = null, contextoProcesso = n
   const recarregar = useCallback(async () => {
     setCarregando(true);
     setErro('');
+    setMsgOk('');
     try {
       const params = {};
       if (processoId != null) params.processoId = processoId;
       if (filtros.de) params.de = filtros.de;
       if (filtros.ate) params.ate = filtros.ate;
-      const lista = await listarContratosHonorarios(params);
+      const [lista, sugestoes] = await Promise.all([
+        listarContratosHonorarios(params),
+        listarSugestoesFinanceiroHonorarios(params),
+      ]);
       setContratos(Array.isArray(lista) ? lista : []);
+      setSugestoesFinanceiro(Array.isArray(sugestoes) ? sugestoes : []);
     } catch (e) {
       setContratos([]);
+      setSugestoesFinanceiro([]);
       setErro(e?.message || 'Falha ao carregar parcelas de honorários.');
     } finally {
       setCarregando(false);
@@ -145,6 +158,38 @@ export function RecebiveisConsolidados({ processoId = null, contextoProcesso = n
   );
 
   const linhas = useMemo(() => consolidarRecebiveisContratos(contratos), [contratos]);
+
+  const sugestoesPorChave = useMemo(() => {
+    const map = new Map();
+    for (const s of sugestoesFinanceiro) {
+      if (s?.contratoId == null || s?.numeroParcela == null) continue;
+      map.set(`${s.contratoId}-${s.numeroParcela}`, s);
+    }
+    return map;
+  }, [sugestoesFinanceiro]);
+
+  const aprovarSugestao = useCallback(
+    async (linha, sugestao) => {
+      const chave = chaveSugestaoHonorarios(linha);
+      setAprovandoChave(chave);
+      setErro('');
+      setMsgOk('');
+      try {
+        const resp = await aprovarSugestaoFinanceiroHonorarios({
+          contratoId: sugestao.contratoId,
+          numeroParcela: sugestao.numeroParcela,
+          financeiroLancamentoId: sugestao.financeiroLancamentoId,
+        });
+        setMsgOk(resp?.mensagem || 'Vínculo confirmado.');
+        await recarregar();
+      } catch (e) {
+        setErro(e?.message || 'Falha ao vincular com o financeiro.');
+      } finally {
+        setAprovandoChave('');
+      }
+    },
+    [recarregar],
+  );
 
   const linhasFiltradas = useMemo(() => {
     let r = linhas;
@@ -407,6 +452,21 @@ export function RecebiveisConsolidados({ processoId = null, contextoProcesso = n
           </div>
         ) : null}
 
+        {msgOk ? (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-100">
+            {msgOk}
+          </div>
+        ) : null}
+
+        {sugestoesFinanceiro.length > 0 ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/40 dark:bg-amber-950/25 dark:text-amber-100">
+            <p className="font-medium">
+              {sugestoesFinanceiro.length} provável{sugestoesFinanceiro.length === 1 ? '' : 'is'} no financeiro — use{' '}
+              <strong>Vincular</strong> na linha para classificar (se necessário) e conciliar em um clique.
+            </p>
+          </div>
+        ) : null}
+
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900/60">
           {carregando ? (
             <p className="flex items-center gap-2 p-6 text-sm text-slate-500">
@@ -448,7 +508,11 @@ export function RecebiveisConsolidados({ processoId = null, contextoProcesso = n
                 </tr>
               </thead>
               <tbody>
-                {linhasFiltradas.map((linha) => (
+                {linhasFiltradas.map((linha) => {
+                  const sugestao = sugestoesPorChave.get(chaveSugestaoHonorarios(linha));
+                  const chave = chaveSugestaoHonorarios(linha);
+                  const aprovando = aprovandoChave === chave;
+                  return (
                   <tr key={linha.chave} className="border-t border-slate-200 dark:border-slate-700">
                       {!modoProcesso ? (
                         <td className="px-3 py-2 text-slate-700 dark:text-slate-200">
@@ -515,7 +579,38 @@ export function RecebiveisConsolidados({ processoId = null, contextoProcesso = n
                         ) : null}
                       </td>
                       <td className="px-3 py-2">
-                        <div className="flex flex-wrap justify-end gap-2">
+                        <div className="flex flex-col items-end gap-2">
+                          {sugestao &&
+                          linha.cumprimento !== CUMPRIMENTO_NO_FINANCEIRO &&
+                          !linha.pagamentoFinanceiroLancamentoId ? (
+                            <div className="w-full max-w-xs rounded-lg border border-amber-300 bg-amber-50/90 p-2 text-left text-xs text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+                              <p className="font-medium">Provável no financeiro</p>
+                              <p className="mt-0.5 text-amber-900 dark:text-amber-200">
+                                {formatarMoedaBRL(sugestao.financeiroValor)} ·{' '}
+                                {formatarDataBR(sugestao.financeiroData)} ·{' '}
+                                {formatarRotuloBanco(sugestao.financeiroBancoNumero, sugestao.financeiroBancoNome)}
+                              </p>
+                              {sugestao.financeiroDescricao ? (
+                                <p className="mt-0.5 line-clamp-2 text-amber-800 dark:text-amber-300">
+                                  {sugestao.financeiroDescricao}
+                                </p>
+                              ) : null}
+                              <button
+                                type="button"
+                                className={`${btnPrimary} mt-2 w-full justify-center py-1.5 text-xs`}
+                                disabled={aprovando || carregando}
+                                onClick={() => void aprovarSugestao(linha, sugestao)}
+                              >
+                                {aprovando ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                                ) : (
+                                  <Link2 className="h-3.5 w-3.5" aria-hidden />
+                                )}
+                                Vincular
+                              </button>
+                            </div>
+                          ) : null}
+                          <div className="flex flex-wrap justify-end gap-2">
                           {!modoProcesso ? (
                             <Link
                               to={linkProcessoRecebiveis(linha)}
@@ -559,10 +654,12 @@ export function RecebiveisConsolidados({ processoId = null, contextoProcesso = n
                               </Link>
                             </>
                           )}
+                          </div>
                         </div>
                       </td>
                     </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           )}

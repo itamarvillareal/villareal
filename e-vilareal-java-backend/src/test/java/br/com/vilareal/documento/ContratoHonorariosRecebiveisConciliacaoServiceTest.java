@@ -98,6 +98,42 @@ class ContratoHonorariosRecebiveisConciliacaoServiceTest {
         assertThat(contrato.getParcelas().get(0).getDataVencimento()).isEqualTo(LocalDate.of(2025, 10, 20));
     }
 
+    @Test
+    void resolverParcelasConciliacao_pagamentoUnico_semParcelasDb() {
+        ContratoHonorariosEntity contrato = new ContratoHonorariosEntity();
+        contrato.setId(2L);
+        contrato.setValorFixo(new BigDecimal("1000.00"));
+        contrato.setGerarRecebiveis(false);
+        contrato.setQuantidadeParcelas(2);
+        contrato.setDataContrato(LocalDate.of(2026, 6, 20));
+        contrato.setParcelas(new ArrayList<>());
+
+        List<ContratoHonorariosRecebiveisConciliacaoService.ParcelaConciliacao> parcelas =
+                ContratoHonorariosRecebiveisConciliacaoService.resolverParcelasConciliacao(contrato);
+
+        assertThat(parcelas).hasSize(1);
+        assertThat(parcelas.get(0).valor()).isEqualByComparingTo("1000.00");
+        assertThat(parcelas.get(0).numeroParcela()).isEqualTo(1);
+    }
+
+    @Test
+    void scoreLancamentoSugestao_valorEDataCompativel_pontua() {
+        ContratoHonorariosEntity contrato = new ContratoHonorariosEntity();
+        contrato.setId(2L);
+        contrato.setDataContrato(LocalDate.of(2026, 6, 20));
+
+        ContratoHonorariosRecebiveisConciliacaoService.ParcelaConciliacao parcela =
+                new ContratoHonorariosRecebiveisConciliacaoService.ParcelaConciliacao(
+                        null, 1, new BigDecimal("1000.00"), LocalDate.of(2026, 6, 20), null, null, null);
+
+        LancamentoFinanceiroEntity lanc = lanc(223807L, LocalDate.of(2026, 6, 22), "1000.00");
+        lanc.setDescricao("PIX RECEB.OUTRA IF");
+
+        int score = ContratoHonorariosRecebiveisConciliacaoService.scoreLancamentoSugestao(
+                contrato, parcela, lanc, List.of());
+        assertThat(score).isGreaterThanOrEqualTo(ContratoHonorariosRecebiveisConciliacaoService.MIN_SCORE_SUGESTAO);
+    }
+
     private static LancamentoFinanceiroEntity lanc(Long id, LocalDate data, String valor) {
         LancamentoFinanceiroEntity l = new LancamentoFinanceiroEntity();
         l.setId(id);

@@ -36,6 +36,31 @@ class SemelhanteEscritorioNomeMatcherTest {
     }
 
     @Test
+    void parear_multiplosProcessosDaMesmaPessoa_priorizaAtividadeRecente() {
+        var pend = List.of(new SemelhanteEscritorioMatcher.PendenteItem(
+                10L,
+                LocalDate.of(2026, 6, 17),
+                "PIX TRANSF WENDER AQUILA SILVA",
+                "pix transf wender aquila silva",
+                new BigDecimal("500.00"),
+                756,
+                "Sicoob"));
+
+        var refs = List.of(
+                new SemelhanteEscritorioNomeMatcher.PessoaProcessoRef(800L, "Wender Aquila Silva", 99L, 1L),
+                new SemelhanteEscritorioNomeMatcher.PessoaProcessoRef(800L, "Wender Aquila Silva", 99L, 4L));
+        var nomes = Map.of(800L, "Wender Aquila Silva");
+        var atividade = Map.of(
+                1L, new ProcessoVinculoSugestaoPrioridadeUtil.AtividadeProcesso(LocalDate.of(2018, 5, 1), 12L),
+                4L, new ProcessoVinculoSugestaoPrioridadeUtil.AtividadeProcesso(LocalDate.of(2025, 11, 20), 3L));
+
+        var matches = SemelhanteEscritorioNomeMatcher.parear(pend, refs, nomes, atividade);
+
+        assertThat(matches).hasSize(1);
+        assertThat(matches.get(0).sugestaoProcessoId()).isEqualTo(4L);
+    }
+
+    @Test
     void parear_nomeAusente_naoSugere() {
         var pend = List.of(new SemelhanteEscritorioMatcher.PendenteItem(
                 11L,

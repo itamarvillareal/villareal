@@ -35,6 +35,17 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
 
     boolean existsByNumeroBancoAndNumeroLancamento(Integer numeroBanco, String numeroLancamento);
 
+    @Query(
+            value =
+                    """
+            SELECT DISTINCT data_lancamento FROM financeiro_lancamento
+            WHERE numero_banco = :numeroBanco
+            ORDER BY data_lancamento DESC
+            LIMIT 2
+            """,
+            nativeQuery = true)
+    List<LocalDate> findDuasUltimasDatasDistintasPorNumeroBanco(@Param("numeroBanco") Integer numeroBanco);
+
     @Query("""
             SELECT l.numeroLancamento FROM LancamentoFinanceiroEntity l
             WHERE l.numeroBanco = :numeroBanco AND l.numeroLancamento IN :numerosLancamento
@@ -767,4 +778,52 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             """)
     List<LancamentoFinanceiroEntity> findOrfaosNoIntervalo(
             @Param("inicio") LocalDate inicio, @Param("fim") LocalDate fim);
+
+    /** Créditos órfãos (sem processo) compatíveis com valor e janela — candidatos a honorários. */
+    @Query("""
+            SELECT l FROM LancamentoFinanceiroEntity l
+            WHERE l.processo IS NULL
+              AND l.natureza = br.com.vilareal.financeiro.domain.NaturezaLancamento.CREDITO
+              AND l.valor >= :valorMin
+              AND l.valor <= :valorMax
+              AND l.dataLancamento >= :dataInicio
+              AND l.dataLancamento <= :dataFim
+              AND NOT EXISTS (
+                  SELECT 1 FROM PagamentoEntity p
+                  WHERE p.financeiroLancamento = l
+              )
+            ORDER BY l.dataLancamento DESC, l.id DESC
+            """)
+    List<LancamentoFinanceiroEntity> findCreditosOrfaosCandidatosHonorarios(
+            @Param("valorMin") BigDecimal valorMin,
+            @Param("valorMax") BigDecimal valorMax,
+            @Param("dataInicio") LocalDate dataInicio,
+            @Param("dataFim") LocalDate dataFim);
+
+    /** Última data e quantidade de lançamentos classificados (banco + cartão) por processo. */
+    @Query(
+            value =
+                    """
+                    SELECT t.processo_id, MAX(t.ultima_data), SUM(t.qtd)
+                    FROM (
+                        SELECT l.processo_id,
+                               MAX(l.data_lancamento) AS ultima_data,
+                               COUNT(*) AS qtd
+                        FROM financeiro_lancamento l
+                        WHERE l.processo_id IN (:ids)
+                          AND l.etapa <> 'IMPORTADO'
+                        GROUP BY l.processo_id
+                        UNION ALL
+                        SELECT c.processo_id,
+                               MAX(c.data_lancamento),
+                               COUNT(*)
+                        FROM financeiro_lancamento_cartao c
+                        WHERE c.processo_id IN (:ids)
+                          AND c.etapa <> 'IMPORTADO'
+                        GROUP BY c.processo_id
+                    ) t
+                    GROUP BY t.processo_id
+                    """,
+            nativeQuery = true)
+    List<Object[]> findAtividadeClassificadaPorProcessoIds(@Param("ids") Collection<Long> ids);
 }

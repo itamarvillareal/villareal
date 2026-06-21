@@ -11,4 +11,8 @@ public class ExtratoCoraImportResult {
     private int criados;
     private int jaExistia;
     private int falhas;
+    /** Linhas do arquivo anteriores à data de corte (histórico protegido). */
+    private int ignoradosPorCorte;
+    /** Penúltima data distinta já importada (inclusive). */
+    private java.time.LocalDate dataCorte;
 }

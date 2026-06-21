@@ -1,5 +1,6 @@
 package br.com.vilareal.documento;
 
+import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Profile;
@@ -285,6 +286,21 @@ public class DocumentoController {
             @RequestParam(required = false) LocalDate de,
             @RequestParam(required = false) LocalDate ate) {
         return contratoHonorariosPersistenciaService.listar(processoId, pessoaId, de, ate);
+    }
+
+    @GetMapping("/contratos-honorarios/sugestoes-financeiro")
+    public List<ContratoHonorariosSugestaoFinanceiroResponse> listarSugestoesFinanceiroHonorarios(
+            @RequestParam(required = false) Long processoId,
+            @RequestParam(required = false) Long pessoaId,
+            @RequestParam(required = false) LocalDate de,
+            @RequestParam(required = false) LocalDate ate) {
+        return contratoHonorariosPersistenciaService.listarSugestoesFinanceiro(processoId, pessoaId, de, ate);
+    }
+
+    @PostMapping("/contratos-honorarios/sugestoes-financeiro/aprovar")
+    public ContratoHonorariosAprovarSugestaoResponse aprovarSugestaoFinanceiroHonorarios(
+            @Valid @RequestBody ContratoHonorariosAprovarSugestaoRequest request) {
+        return contratoHonorariosPersistenciaService.aprovarSugestaoFinanceiro(request);
     }
 
     @GetMapping("/contrato-honorarios/processo/{processoId}")
