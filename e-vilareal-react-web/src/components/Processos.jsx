@@ -28,6 +28,11 @@ import {
   listarLancamentosProcessoApiFirst,
   salvarOuAtualizarLancamentoFinanceiroApi,
 } from '../repositories/financeiroRepository.js';
+import {
+  classificarAlvaraHonorarioApi,
+  listarRepassesPendentesHonorarioApi,
+  vincularRepasseHonorarioApi,
+} from '../repositories/honorariosRepository.js';
 import { EVENT_FINANCEIRO_PERSISTENCIA_EXTERNA } from '../services/crossTabLocalStorageSync.js';
 import {
   UFS,
@@ -503,6 +508,12 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [ccPendenteChave, setCcPendenteChave] = useState(null);
   const [ccFiltroSemVinculo, setCcFiltroSemVinculo] = useState(false);
   const [ccMensagem, setCcMensagem] = useState('');
+  /** Alvarás classificados / pendentes de repasse neste processo (API honorários). */
+  const [ccHonorarioAlvaras, setCcHonorarioAlvaras] = useState({});
+  const [ccHonorarioPendentes, setCcHonorarioPendentes] = useState([]);
+  const [ccHonorarioTick, setCcHonorarioTick] = useState(0);
+  const [ccHonorarioSalvando, setCcHonorarioSalvando] = useState(null);
+  const [ccAlvaraRepasseAlvo, setCcAlvaraRepasseAlvo] = useState('');
   const [modalRelatorioPublicacoes, setModalRelatorioPublicacoes] = useState(false);
   const [modalConsultaPeriodica, setModalConsultaPeriodica] = useState(false);
   const [modalPeticionamentoProjudi, setModalPeticionamentoProjudi] = useState(false);
@@ -857,6 +868,9 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       setCcPendenteChave(null);
       setCcFiltroSemVinculo(false);
       setCcMensagem('');
+      setCcHonorarioAlvaras({});
+      setCcHonorarioPendentes([]);
+      setCcAlvaraRepasseAlvo('');
       return;
     }
     if (!featureFlags.useApiFinanceiro) {
@@ -910,6 +924,88 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     processo,
     contaCorrenteModo,
   ]);
+
+  useEffect(() => {
+    if (!modalContaCorrente || !featureFlags.useApiFinanceiro || contaCorrenteModo === 'proc0') {
+      return undefined;
+    }
+    const procId = Number(processoApiId);
+    if (!Number.isFinite(procId) || procId <= 0) {
+      return undefined;
+    }
+    let ativo = true;
+    void listarRepassesPendentesHonorarioApi()
+      .then((data) => {
+        if (!ativo) return;
+        const itens = (data?.itens ?? []).filter((i) => Number(i.processoId) === procId);
+        setCcHonorarioPendentes(itens);
+        const mapa = {};
+        for (const item of itens) {
+          if (item.alvaraLancamentoId != null) {
+            mapa[item.alvaraLancamentoId] = {
+              retencao: item.retencao,
+              repasseEsperado: item.repasseEsperado,
+              percentualProveito: item.percentualProveito,
+            };
+          }
+        }
+        setCcHonorarioAlvaras(mapa);
+        if (itens.length === 1 && itens[0].alvaraLancamentoId != null) {
+          setCcAlvaraRepasseAlvo(String(itens[0].alvaraLancamentoId));
+        }
+      })
+      .catch(() => {
+        if (!ativo) return;
+        setCcHonorarioPendentes([]);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [modalContaCorrente, processoApiId, contaCorrenteModo, ccHonorarioTick]);
+
+  const recarregarHonorarioCc = useCallback(() => setCcHonorarioTick((t) => t + 1), []);
+
+  async function handleClassificarAlvaraCc(lancamentoId) {
+    if (!lancamentoId) return;
+    setCcHonorarioSalvando(`alvara-${lancamentoId}`);
+    setCcMensagem('');
+    try {
+      const resp = await classificarAlvaraHonorarioApi(lancamentoId);
+      setCcHonorarioAlvaras((prev) => ({
+        ...prev,
+        [lancamentoId]: {
+          retencao: resp.retencao,
+          repasseEsperado: resp.repasseEsperado,
+          percentualProveito: resp.percentualProveito,
+        },
+      }));
+      setCcMensagem(
+        resp.repasseEsperado != null && resp.retencao != null
+          ? `Alvará classificado — retenção ${formatValorContaCorrente(resp.retencao)} · repasse ${formatValorContaCorrente(resp.repasseEsperado)}`
+          : 'Alvará classificado.',
+      );
+      recarregarHonorarioCc();
+    } catch (e) {
+      setCcMensagem(e?.message || 'Falha ao classificar alvará.');
+    } finally {
+      setCcHonorarioSalvando(null);
+    }
+  }
+
+  async function handleVincularRepasseAlvaraCc(lancamentoDebitoId, alvaraLancamentoId) {
+    if (!lancamentoDebitoId) return;
+    setCcHonorarioSalvando(`repasse-${lancamentoDebitoId}`);
+    setCcMensagem('');
+    try {
+      await vincularRepasseHonorarioApi(lancamentoDebitoId, alvaraLancamentoId || null);
+      setCcMensagem('Repasse vinculado ao alvará.');
+      recarregarHonorarioCc();
+    } catch (e) {
+      setCcMensagem(e?.message || 'Falha ao vincular repasse.');
+    } finally {
+      setCcHonorarioSalvando(null);
+    }
+  }
 
   const confirmarAcaoRedacaoPorIndice = useCallback(
     (idx) => {
@@ -5798,6 +5894,75 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                                 <option value={PAPEL_DESPESA}>Despesa</option>
                                 <option value={PAPEL_OUTRO}>Outro</option>
                               </select>
+                              {featureFlags.useApiFinanceiro &&
+                              contaCorrenteModo !== 'proc0' &&
+                              Number(processoApiId) > 0 &&
+                              linha.transacaoUi?.apiId ? (
+                                <div className="mt-1 space-y-1" onClick={(e) => e.stopPropagation()}>
+                                  {linha.valor > 0 ? (
+                                    ccHonorarioAlvaras[linha.transacaoUi.apiId] ? (
+                                      <p className="text-[10px] leading-snug text-emerald-800 bg-emerald-50 rounded px-1 py-0.5">
+                                        Alvará · ret.{' '}
+                                        {formatValorContaCorrente(
+                                          ccHonorarioAlvaras[linha.transacaoUi.apiId].retencao,
+                                        )}{' '}
+                                        / rep.{' '}
+                                        {formatValorContaCorrente(
+                                          ccHonorarioAlvaras[linha.transacaoUi.apiId].repasseEsperado,
+                                        )}
+                                      </p>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        disabled={Boolean(ccHonorarioSalvando)}
+                                        onClick={() => void handleClassificarAlvaraCc(linha.transacaoUi.apiId)}
+                                        className="w-full text-[10px] font-semibold rounded border border-teal-300 bg-teal-50 text-teal-900 px-1 py-0.5 hover:bg-teal-100 disabled:opacity-50"
+                                      >
+                                        {ccHonorarioSalvando === `alvara-${linha.transacaoUi.apiId}`
+                                          ? 'Marcando…'
+                                          : 'Marcar como alvará'}
+                                      </button>
+                                    )
+                                  ) : linha.valor < 0 && ccHonorarioPendentes.length > 0 ? (
+                                    <div className="space-y-1">
+                                      {ccHonorarioPendentes.length > 1 ? (
+                                        <select
+                                          value={ccAlvaraRepasseAlvo}
+                                          onChange={(e) => setCcAlvaraRepasseAlvo(e.target.value)}
+                                          className="w-full text-[10px] border border-slate-300 rounded px-1 py-0.5 bg-white"
+                                          title="Alvará pendente de repasse"
+                                        >
+                                          {ccHonorarioPendentes.map((p) => (
+                                            <option
+                                              key={p.alvaraLancamentoId}
+                                              value={String(p.alvaraLancamentoId)}
+                                            >
+                                              Alvará {formatValorContaCorrente(p.valorAlvara)} (
+                                              {p.dataReferencia?.slice(0, 10) || '—'})
+                                            </option>
+                                          ))}
+                                        </select>
+                                      ) : null}
+                                      <button
+                                        type="button"
+                                        disabled={Boolean(ccHonorarioSalvando)}
+                                        onClick={() =>
+                                          void handleVincularRepasseAlvaraCc(
+                                            linha.transacaoUi.apiId,
+                                            ccAlvaraRepasseAlvo ||
+                                              ccHonorarioPendentes[0]?.alvaraLancamentoId,
+                                          )
+                                        }
+                                        className="w-full text-[10px] font-semibold rounded border border-amber-300 bg-amber-50 text-amber-950 px-1 py-0.5 hover:bg-amber-100 disabled:opacity-50"
+                                      >
+                                        {ccHonorarioSalvando === `repasse-${linha.transacaoUi.apiId}`
+                                          ? 'Vinculando…'
+                                          : 'Vincular repasse do alvará'}
+                                      </button>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ) : null}
                             </td>
                             <td className="border border-slate-200 px-1 py-0.5 text-center">
                               <button

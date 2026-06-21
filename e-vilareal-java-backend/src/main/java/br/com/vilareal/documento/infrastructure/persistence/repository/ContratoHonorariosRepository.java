@@ -41,4 +41,19 @@ public interface ContratoHonorariosRepository extends JpaRepository<ContratoHono
             @Param("pessoaId") Long pessoaId,
             @Param("de") LocalDate de,
             @Param("ate") LocalDate ate);
+
+    @Query("""
+            SELECT DISTINCT c FROM ContratoHonorariosEntity c
+            LEFT JOIN FETCH c.pessoa
+            LEFT JOIN FETCH c.processo p
+            LEFT JOIN FETCH p.cliente
+            WHERE c.percentualProveito IS NOT NULL
+              AND c.processo IS NOT NULL
+              AND (
+                  c.tipoRemuneracao IS NULL
+                  OR UPPER(TRIM(c.tipoRemuneracao)) = 'PERCENTUAL_PROVEITO'
+              )
+            ORDER BY c.id ASC
+            """)
+    List<ContratoHonorariosEntity> findAllPercentualProveitoComProcesso();
 }

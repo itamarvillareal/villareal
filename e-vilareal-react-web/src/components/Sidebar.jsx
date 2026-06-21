@@ -42,6 +42,8 @@ function rotaPadraoGrupo(grupoId, subs) {
       const dest = subs.find((ch) => ch.id === 'clientes/lista')?.id || subs[0]?.id;
       return dest ? `/${dest}` : null;
     }
+    case 'imoveis-grupo':
+      return '/imoveis';
     default:
       return subs[0] ? `/${subs[0].id}` : null;
   }
@@ -112,7 +114,7 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
       p === '/relatorio-imoveis' ||
       p.startsWith('/relatorio-imoveis/')
     ) {
-      setGruposAbertos((prev) => new Set(prev).add('admin-imoveis-grupo'));
+      setGruposAbertos((prev) => new Set(prev).add('imoveis-grupo'));
     }
     if (p === '/clientes' || p.startsWith('/clientes/') || p === '/pessoas') {
       setGruposAbertos((prev) => new Set(prev).add('pessoas-grupo'));

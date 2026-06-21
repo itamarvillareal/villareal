@@ -1,9 +1,12 @@
 package br.com.vilareal.acoes.application;
 
+import br.com.vilareal.documento.api.dto.RepassePendenteHonorarioCarteiraResponse;
+import br.com.vilareal.documento.application.HonorarioRepasseService;
 import br.com.vilareal.imovel.api.dto.CreditoCandidatoAluguelItem;
 import br.com.vilareal.imovel.api.dto.RepassePendenteCarteiraResponse;
 import br.com.vilareal.imovel.api.dto.RepassePendenteItemResponse;
 import br.com.vilareal.imovel.application.LocacaoReconciliacaoService;
+import br.com.vilareal.documento.domain.StatusRepasseHonorario;
 import br.com.vilareal.imovel.domain.StatusRepasse;
 import br.com.vilareal.imovel.infrastructure.persistence.entity.ContratoLocacaoEntity;
 import br.com.vilareal.imovel.infrastructure.persistence.entity.ImovelEntity;
@@ -44,6 +47,8 @@ class AcoesDoDiaApplicationServiceTest {
     @Mock
     private LocacaoReconciliacaoService locacaoReconciliacaoService;
     @Mock
+    private HonorarioRepasseService honorarioRepasseService;
+    @Mock
     private ContratoLocacaoRepository contratoLocacaoRepository;
 
     @InjectMocks
@@ -54,7 +59,7 @@ class AcoesDoDiaApplicationServiceTest {
     @BeforeEach
     void setUp() {
         service = new AcoesDoDiaApplicationService(
-                quadroService, locacaoReconciliacaoService, contratoLocacaoRepository, CLOCK);
+                quadroService, locacaoReconciliacaoService, honorarioRepasseService, contratoLocacaoRepository, CLOCK);
         contrato = new ContratoLocacaoEntity();
         contrato.setId(10L);
         contrato.setValorAluguel(new BigDecimal("1700.00"));
@@ -76,6 +81,7 @@ class AcoesDoDiaApplicationServiceTest {
         when(locacaoReconciliacaoService.creditosCandidatosAluguelSemClassificar(10L, "2026-06"))
                 .thenReturn(List.of(new CreditoCandidatoAluguelItem(
                         99L, LocalDate.of(2026, 6, 10), new BigDecimal("1700.00"), "PIX MARIA")));
+        when(honorarioRepasseService.candidatosAlvara()).thenReturn(List.of());
         when(quadroService.quadro(any(), any(), any()))
                 .thenReturn(new RecebivelQuadroResponse(
                         LocalDate.of(2026, 6, 1),
@@ -101,6 +107,27 @@ class AcoesDoDiaApplicationServiceTest {
                                 BigDecimal.ZERO,
                                 new BigDecimal("2070"),
                                 StatusRepasse.PENDENTE))));
+        when(honorarioRepasseService.repassesPendentesHonorario())
+                .thenReturn(new RepassePendenteHonorarioCarteiraResponse(
+                        new BigDecimal("6500.00"),
+                        List.of(new br.com.vilareal.documento.api.dto.RepassePendenteHonorarioItemResponse(
+                                1L,
+                                9L,
+                                500L,
+                                "00000966",
+                                12,
+                                100L,
+                                LocalDate.of(2026, 6, 12),
+                                1L,
+                                "Cliente Contratante",
+                                new BigDecimal("10000.00"),
+                                new BigDecimal("35.00"),
+                                new BigDecimal("3500.00"),
+                                new BigDecimal("6500.00"),
+                                BigDecimal.ZERO,
+                                new BigDecimal("6500.00"),
+                                StatusRepasseHonorario.PENDENTE,
+                                false))));
         when(contratoLocacaoRepository.findVigentesComDataFimEntre(any(), any())).thenReturn(List.of());
 
         var resp = service.obter("2026-06");
@@ -108,6 +135,10 @@ class AcoesDoDiaApplicationServiceTest {
         assertThat(resp.conciliar().quantidade()).isEqualTo(1);
         assertThat(resp.conciliar().itens().get(0).candidatos()).hasSize(1);
         assertThat(resp.cobrar().quantidade()).isZero();
-        assertThat(resp.repassar().quantidade()).isEqualTo(1);
+        assertThat(resp.repassar().quantidade()).isEqualTo(2);
+        assertThat(resp.repassar().itens().stream().filter(i -> "PROCESSO".equals(i.origem())).count())
+                .isEqualTo(1);
+        assertThat(resp.repassar().itens().stream().filter(i -> "IMOVEL".equals(i.origem())).count())
+                .isEqualTo(1);
     }
 }

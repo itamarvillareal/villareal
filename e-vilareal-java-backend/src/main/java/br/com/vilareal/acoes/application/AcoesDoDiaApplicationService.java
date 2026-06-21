@@ -2,6 +2,11 @@ package br.com.vilareal.acoes.application;
 
 import br.com.vilareal.acoes.api.dto.AcoesDoDiaResponse;
 import br.com.vilareal.acoes.api.dto.AcoesDoDiaResponse.*;
+import br.com.vilareal.documento.api.dto.CandidatoAlvaraCreditoResponse;
+import br.com.vilareal.documento.api.dto.CandidatoAlvaraProcessoResponse;
+import br.com.vilareal.documento.api.dto.RepassePendenteHonorarioCarteiraResponse;
+import br.com.vilareal.documento.api.dto.RepassePendenteHonorarioItemResponse;
+import br.com.vilareal.documento.application.HonorarioRepasseService;
 import br.com.vilareal.imovel.api.dto.CreditoCandidatoAluguelItem;
 import br.com.vilareal.imovel.api.dto.RepassePendenteCarteiraResponse;
 import br.com.vilareal.imovel.api.dto.RepassePendenteItemResponse;
@@ -28,6 +33,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Painel derivado “Ações do Dia”: consolida A Receber, A Repassar e contratos a vencer — sem materializar.
@@ -37,16 +43,19 @@ public class AcoesDoDiaApplicationService {
 
     private final RecebivelQuadroApplicationService quadroService;
     private final LocacaoReconciliacaoService locacaoReconciliacaoService;
+    private final HonorarioRepasseService honorarioRepasseService;
     private final ContratoLocacaoRepository contratoLocacaoRepository;
     private final Clock clock;
 
     public AcoesDoDiaApplicationService(
             RecebivelQuadroApplicationService quadroService,
             LocacaoReconciliacaoService locacaoReconciliacaoService,
+            HonorarioRepasseService honorarioRepasseService,
             ContratoLocacaoRepository contratoLocacaoRepository,
             Clock clock) {
         this.quadroService = quadroService;
         this.locacaoReconciliacaoService = locacaoReconciliacaoService;
+        this.honorarioRepasseService = honorarioRepasseService;
         this.contratoLocacaoRepository = contratoLocacaoRepository;
         this.clock = clock;
     }
@@ -92,6 +101,7 @@ public class AcoesDoDiaApplicationService {
             int diasAtraso = diasEntre(vencimento, hoje);
             ImovelEntity imovel = contrato.getImovel();
             itens.add(new ItemConciliar(
+                    "IMOVEL",
                     contrato.getId(),
                     imovel != null ? imovel.getNumeroPlanilha() : null,
                     imovel != null ? imovel.getEnderecoCompleto() : null,
@@ -99,12 +109,61 @@ public class AcoesDoDiaApplicationService {
                     escala(contrato.getValorAluguel()),
                     vencimento,
                     diasAtraso,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
                     candidatos.stream()
-                            .map(c -> new CandidatoCredito(c.lancamentoId(), c.data(), c.valor(), c.descricao()))
+                            .map(c -> new CandidatoCredito(
+                                    c.lancamentoId(), c.data(), c.valor(), c.descricao(), null, null))
                             .toList()));
         }
+
+        for (CandidatoAlvaraProcessoResponse grupo : honorarioRepasseService.candidatosAlvara()) {
+            if (grupo.candidatos() == null || grupo.candidatos().isEmpty()) {
+                continue;
+            }
+            LocalDate dataRef = grupo.candidatos().stream()
+                    .map(CandidatoAlvaraCreditoResponse::data)
+                    .filter(Objects::nonNull)
+                    .min(LocalDate::compareTo)
+                    .orElse(null);
+            int dias = dataRef != null ? diasEntre(dataRef, hoje) : 0;
+            BigDecimal valorRef = grupo.candidatos().stream()
+                    .map(CandidatoAlvaraCreditoResponse::valor)
+                    .filter(Objects::nonNull)
+                    .max(BigDecimal::compareTo)
+                    .orElse(BigDecimal.ZERO);
+            itens.add(new ItemConciliar(
+                    "ALVARA",
+                    grupo.contratoHonorariosId(),
+                    null,
+                    null,
+                    null,
+                    escala(valorRef),
+                    dataRef,
+                    dias,
+                    grupo.processoId(),
+                    grupo.numeroInterno(),
+                    grupo.codigoCliente(),
+                    grupo.contratanteNome(),
+                    grupo.percentualProveito(),
+                    grupo.candidatos().stream()
+                            .map(c -> new CandidatoCredito(
+                                    c.lancamentoId(),
+                                    c.data(),
+                                    c.valor(),
+                                    c.descricao(),
+                                    c.retencao(),
+                                    c.repasseEsperado()))
+                            .toList()));
+        }
+
         itens.sort(Comparator.comparingInt(ItemConciliar::diasEmAtraso).reversed()
-                .thenComparing(ItemConciliar::imovelNumeroPlanilha, Comparator.nullsLast(Integer::compareTo)));
+                .thenComparing(ItemConciliar::origem)
+                .thenComparing(ItemConciliar::imovelNumeroPlanilha, Comparator.nullsLast(Integer::compareTo))
+                .thenComparing(ItemConciliar::numeroInterno, Comparator.nullsLast(Integer::compareTo)));
         return itens;
     }
 
@@ -158,23 +217,61 @@ public class AcoesDoDiaApplicationService {
     }
 
     private List<ItemRepassar> montarRepassar(String competencia) {
-        RepassePendenteCarteiraResponse carteira = locacaoReconciliacaoService.repassesPendentes(competencia);
         List<ItemRepassar> itens = new ArrayList<>();
-        for (RepassePendenteItemResponse item : carteira.itens()) {
+
+        RepassePendenteCarteiraResponse carteiraImovel = locacaoReconciliacaoService.repassesPendentes(competencia);
+        for (RepassePendenteItemResponse item : carteiraImovel.itens()) {
             if (!competencia.equals(item.competencia())) {
                 continue;
             }
             itens.add(new ItemRepassar(
+                    "IMOVEL",
                     item.contratoId(),
                     item.imovelNumeroPlanilha(),
                     item.imovelEndereco(),
                     item.locadorNome(),
                     item.competencia(),
                     escala(item.valorEmAberto()),
-                    item.dadosBancariosRepasse()));
+                    item.dadosBancariosRepasse(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null));
         }
+
+        RepassePendenteHonorarioCarteiraResponse carteiraHonorario =
+                honorarioRepasseService.repassesPendentesHonorario();
+        for (RepassePendenteHonorarioItemResponse item : carteiraHonorario.itens()) {
+            String comp = item.dataReferencia() != null
+                    ? YearMonth.from(item.dataReferencia()).toString()
+                    : null;
+            itens.add(new ItemRepassar(
+                    "PROCESSO",
+                    item.contratoHonorariosId(),
+                    null,
+                    null,
+                    null,
+                    comp,
+                    escala(item.valorEmAberto()),
+                    null,
+                    item.processoId(),
+                    item.numeroInterno(),
+                    item.codigoCliente(),
+                    item.contratanteNome(),
+                    item.alvaraLancamentoId(),
+                    escala(item.valorAlvara()),
+                    escala(item.retencao()),
+                    escala(item.repasseEsperado())));
+        }
+
         itens.sort(Comparator.comparing(ItemRepassar::valorEmAberto, Comparator.reverseOrder())
-                .thenComparing(ItemRepassar::imovelNumeroPlanilha, Comparator.nullsLast(Integer::compareTo)));
+                .thenComparing(ItemRepassar::origem)
+                .thenComparing(ItemRepassar::imovelNumeroPlanilha, Comparator.nullsLast(Integer::compareTo))
+                .thenComparing(ItemRepassar::numeroInterno, Comparator.nullsLast(Integer::compareTo)));
         return itens;
     }
 
@@ -200,7 +297,17 @@ public class AcoesDoDiaApplicationService {
     }
 
     private static GrupoConciliar grupoConciliar(List<ItemConciliar> itens) {
-        BigDecimal total = itens.stream().map(ItemConciliar::valorAluguel).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal total = itens.stream()
+                .map(i -> {
+                    if ("ALVARA".equals(i.origem())) {
+                        return i.candidatos().stream()
+                                .map(CandidatoCredito::valor)
+                                .filter(Objects::nonNull)
+                                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                    }
+                    return i.valorAluguel() != null ? i.valorAluguel() : BigDecimal.ZERO;
+                })
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
         return new GrupoConciliar(itens.size(), escala(total), itens);
     }
 

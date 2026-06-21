@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link2, CircleDollarSign, HandCoins, RefreshCw, CalendarClock, PhoneCall } from 'lucide-react';
 import { obterAcoesDoDiaApi } from '../repositories/acoesDoDiaRepository.js';
 import { vincularReconciliacaoApi } from '../repositories/imoveisRepository.js';
+import { classificarAlvaraHonorarioApi } from '../repositories/honorariosRepository.js';
 import { featureFlags } from '../config/featureFlags.js';
 
 function formatBRL(n) {
@@ -92,7 +93,7 @@ export function AcoesDoDia() {
       setErro('Ative a API de imóveis para vincular aluguéis.');
       return;
     }
-    const chave = `${contratoId}-${lancamentoId}`;
+    const chave = `imovel-${contratoId}-${lancamentoId}`;
     setVinculando(chave);
     setErro('');
     try {
@@ -102,6 +103,24 @@ export function AcoesDoDia() {
       recarregar();
     } catch (e) {
       setErro(e?.message || 'Falha ao vincular crédito.');
+    } finally {
+      setVinculando(null);
+    }
+  };
+
+  const classificarAlvara = async (lancamentoId) => {
+    if (!featureFlags.useApiFinanceiro) {
+      setErro('Ative a API financeiro para classificar alvará.');
+      return;
+    }
+    const chave = `alvara-${lancamentoId}`;
+    setVinculando(chave);
+    setErro('');
+    try {
+      await classificarAlvaraHonorarioApi(lancamentoId);
+      recarregar();
+    } catch (e) {
+      setErro(e?.message || 'Falha ao marcar como alvará.');
     } finally {
       setVinculando(null);
     }
@@ -149,18 +168,47 @@ export function AcoesDoDia() {
           >
             <ul className="space-y-4">
               {(dados.conciliar?.itens ?? []).map((item) => {
-                const rotulo = [
-                  item.imovelNumeroPlanilha != null ? `#${item.imovelNumeroPlanilha}` : null,
-                  item.locadorNome,
-                ]
-                  .filter(Boolean)
-                  .join(' · ');
+                const ehAlvara = item.origem === 'ALVARA';
+                const rotulo = ehAlvara
+                  ? [
+                      item.contratanteNome,
+                      item.codigoCliente ? `Cli. ${item.codigoCliente}` : null,
+                      item.numeroInterno != null ? `Proc. ${item.numeroInterno}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')
+                  : [
+                      item.imovelNumeroPlanilha != null ? `#${item.imovelNumeroPlanilha}` : null,
+                      item.locadorNome,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ');
                 return (
-                  <li key={item.contratoId} className="rounded-lg border border-slate-200 p-3 space-y-2">
+                  <li
+                    key={`${item.origem}-${item.contratoId}`}
+                    className="rounded-lg border border-slate-200 p-3 space-y-2"
+                  >
                     <div className="flex flex-wrap justify-between gap-2 text-sm">
                       <div>
-                        <p className="font-semibold text-slate-900">{rotulo || 'Imóvel'}</p>
-                        <p className="text-slate-600 text-xs break-words">{item.imovelEndereco}</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold text-slate-900">{rotulo || (ehAlvara ? 'Processo' : 'Imóvel')}</p>
+                          <span
+                            className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${
+                              ehAlvara
+                                ? 'bg-violet-100 text-violet-900'
+                                : 'bg-teal-100 text-teal-900'
+                            }`}
+                          >
+                            {ehAlvara ? 'Alvará' : 'Aluguel'}
+                          </span>
+                        </div>
+                        <p className="text-slate-600 text-xs break-words">
+                          {ehAlvara
+                            ? item.percentualProveito != null
+                              ? `Contrato ${item.percentualProveito}% proveito`
+                              : 'Contrato percentual'
+                            : item.imovelEndereco}
+                        </p>
                       </div>
                       <div className="text-right tabular-nums">
                         <p className="font-semibold">{formatBRL(item.valorAluguel)}</p>
@@ -169,7 +217,9 @@ export function AcoesDoDia() {
                     </div>
                     <ul className="space-y-2">
                       {(item.candidatos ?? []).map((c) => {
-                        const chave = `${item.contratoId}-${c.lancamentoId}`;
+                        const chave = ehAlvara
+                          ? `alvara-${c.lancamentoId}`
+                          : `imovel-${item.contratoId}-${c.lancamentoId}`;
                         return (
                           <li
                             key={c.lancamentoId}
@@ -181,14 +231,31 @@ export function AcoesDoDia() {
                               {c.descricao ? (
                                 <p className="text-xs text-slate-600 truncate max-w-md">{c.descricao}</p>
                               ) : null}
+                              {ehAlvara && c.retencao != null && c.repasseEsperado != null ? (
+                                <p className="text-xs text-violet-800 mt-0.5">
+                                  Retenção {formatBRL(c.retencao)} · repasse {formatBRL(c.repasseEsperado)}
+                                </p>
+                              ) : null}
                             </div>
                             <button
                               type="button"
                               disabled={vinculando === chave}
-                              onClick={() => vincularCredito(item.contratoId, c.lancamentoId, competencia)}
-                              className="shrink-0 px-3 py-1.5 text-xs font-semibold rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+                              onClick={() =>
+                                ehAlvara
+                                  ? classificarAlvara(c.lancamentoId)
+                                  : vincularCredito(item.contratoId, c.lancamentoId, competencia)
+                              }
+                              className={`shrink-0 px-3 py-1.5 text-xs font-semibold rounded-md disabled:opacity-50 ${
+                                ehAlvara
+                                  ? 'bg-violet-600 text-white hover:bg-violet-700'
+                                  : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                              }`}
                             >
-                              {vinculando === chave ? '…' : 'É este'}
+                              {vinculando === chave
+                                ? '…'
+                                : ehAlvara
+                                  ? 'Marcar como alvará'
+                                  : 'É este'}
                             </button>
                           </li>
                         );
@@ -237,23 +304,64 @@ export function AcoesDoDia() {
             vazio={!(dados.repassar?.itens?.length > 0)}
           >
             <ul className="divide-y divide-slate-100">
-              {(dados.repassar?.itens ?? []).map((item) => (
-                <li key={`${item.contratoId}-${item.competencia}`} className="py-3 first:pt-0 last:pb-0 space-y-1">
+              {(dados.repassar?.itens ?? []).map((item) => {
+                const ehProcesso = item.origem === 'PROCESSO';
+                const chave = ehProcesso
+                  ? `proc-${item.processoId}-${item.alvaraLancamentoId ?? item.contratoId}`
+                  : `${item.contratoId}-${item.competencia}`;
+                const titulo = ehProcesso
+                  ? item.contratanteNome || 'Contratante'
+                  : item.locadorNome || '—';
+                const subtitulo = ehProcesso
+                  ? [
+                      item.codigoCliente ? `Cli. ${item.codigoCliente}` : null,
+                      item.numeroInterno != null ? `Proc. ${item.numeroInterno}` : null,
+                      item.valorAlvara != null ? `Alvará ${formatBRL(item.valorAlvara)}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')
+                  : [
+                      item.imovelNumeroPlanilha != null ? `#${item.imovelNumeroPlanilha}` : null,
+                      item.imovelEndereco,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ');
+                return (
+                <li key={chave} className="py-3 first:pt-0 last:pb-0 space-y-1">
                   <div className="flex flex-wrap justify-between gap-2 text-sm">
                     <div>
-                      <p className="font-semibold">{item.locadorNome || '—'}</p>
-                      <p className="text-slate-600 text-xs break-words">
-                        {item.imovelNumeroPlanilha != null ? `#${item.imovelNumeroPlanilha} · ` : ''}
-                        {item.imovelEndereco}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold">{titulo}</p>
+                        <span
+                          className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${
+                            ehProcesso
+                              ? 'bg-violet-100 text-violet-900'
+                              : 'bg-teal-100 text-teal-900'
+                          }`}
+                        >
+                          {ehProcesso ? 'Processo' : 'Imóvel'}
+                        </span>
+                      </div>
+                      <p className="text-slate-600 text-xs break-words">{subtitulo || '—'}</p>
+                      {ehProcesso && item.retencao != null && item.repasseEsperado != null ? (
+                        <p className="text-xs text-slate-600 mt-0.5">
+                          Retenção {formatBRL(item.retencao)} · repasse esperado {formatBRL(item.repasseEsperado)}
+                        </p>
+                      ) : null}
                     </div>
                     <p className="font-semibold tabular-nums">{formatBRL(item.valorEmAberto)}</p>
                   </div>
-                  <p className="text-xs text-slate-600 break-words">
-                    <span className="font-medium">Destino:</span> {formatDadosBancarios(item.dadosBancariosRepasse)}
-                  </p>
+                  {!ehProcesso ? (
+                    <p className="text-xs text-slate-600 break-words">
+                      <span className="font-medium">Destino:</span> {formatDadosBancarios(item.dadosBancariosRepasse)}
+                      {item.competencia ? ` · ${item.competencia}` : ''}
+                    </p>
+                  ) : item.competencia ? (
+                    <p className="text-xs text-slate-500">Ref. {item.competencia}</p>
+                  ) : null}
                 </li>
-              ))}
+                );
+              })}
             </ul>
           </BlocoGrupo>
 

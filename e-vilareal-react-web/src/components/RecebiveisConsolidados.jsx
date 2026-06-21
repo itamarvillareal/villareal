@@ -84,7 +84,13 @@ function chaveSugestaoHonorarios(linha) {
  * @param {{ codigoCliente?: string|null, numeroInterno?: number|null }} [props.contextoProcesso]
  * @param {boolean} [props.modoProcesso]
  */
-export function RecebiveisConsolidados({ processoId = null, contextoProcesso = null, modoProcesso = false } = {}) {
+export function RecebiveisConsolidados({
+  processoId = null,
+  contextoProcesso = null,
+  modoProcesso = false,
+  modoDrillDown = false,
+  onVoltar = null,
+} = {}) {
   const navigate = useNavigate();
   const [contratos, setContratos] = useState([]);
   const [sugestoesFinanceiro, setSugestoesFinanceiro] = useState([]);
@@ -244,7 +250,15 @@ export function RecebiveisConsolidados({ processoId = null, contextoProcesso = n
               ← Voltar ao processo
             </Link>
           ) : null
-        ) : (
+        ) : modoDrillDown && typeof onVoltar === 'function' ? (
+          <button
+            type="button"
+            onClick={onVoltar}
+            className="inline-flex text-sm font-medium text-emerald-800 hover:underline dark:text-emerald-300"
+          >
+            ← Voltar ao quadro de recebíveis
+          </button>
+        ) : modoDrillDown ? null : (
           <ResultadoFinanceiroSubmenu />
         )}
 
@@ -255,7 +269,7 @@ export function RecebiveisConsolidados({ processoId = null, contextoProcesso = n
             </div>
             <div>
               <h1 className="text-xl font-bold text-slate-900 dark:text-white">
-                {modoProcesso ? 'Recebíveis' : 'Resultado financeiro'}
+                {modoProcesso ? 'Recebíveis' : modoDrillDown ? 'Cobrança de honorários' : 'Resultado financeiro'}
               </h1>
               <p className="text-sm text-slate-600 dark:text-slate-400">
                 {modoProcesso ? (
@@ -267,10 +281,15 @@ export function RecebiveisConsolidados({ processoId = null, contextoProcesso = n
                       'selecionado'
                     )}
                     . Para visão geral de todos os processos, use{' '}
-                    <Link to="/resultado-financeiro/cobranca" className="font-medium text-indigo-700 hover:underline dark:text-indigo-300">
-                      Resultado financeiro → Cobrança
+                    <Link to="/recebiveis?tipo=HONORARIOS" className="font-medium text-indigo-700 hover:underline dark:text-indigo-300">
+                      Recebíveis → Honorários
                     </Link>
                     .
+                  </>
+                ) : modoDrillDown ? (
+                  <>
+                    Parcelas de honorários em <strong>todos os processos</strong> — previsão de recebimentos, vínculo
+                    com Pagamentos e conciliação com o financeiro.
                   </>
                 ) : (
                   <>

@@ -618,6 +618,7 @@ const MENU_ICONS = {
   calculos: IconCalculationsLucide,
   'relatorio-calculos': IconRelatorioCalculos,
   'admin-imoveis-grupo': IconLandmarkImoveis,
+  'imoveis-grupo': IconBuilding,
   imoveis: IconBuilding,
   'imoveis/demandas': LayoutGrid,
   'imoveis/pagamentos': IconPagamentosMenu,

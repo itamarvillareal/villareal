@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 
 function subNavClass(isActive) {
   const base =
@@ -16,6 +16,14 @@ function subNavClass(isActive) {
 }
 
 export function ResultadoFinanceiroSubmenu() {
+  const location = useLocation();
+  const tipoRecebiveis = new URLSearchParams(location.search).get('tipo')?.toUpperCase();
+  const detalheRecebiveis = new URLSearchParams(location.search).get('detalhe');
+  const cobrancaAtiva =
+    location.pathname.replace(/\/+$/, '') === '/recebiveis' &&
+    tipoRecebiveis === 'HONORARIOS' &&
+    detalheRecebiveis === 'cobranca';
+
   return (
     <nav aria-label="Submenu Resultado financeiro" className="mb-4 flex flex-wrap gap-2">
       <NavLink
@@ -25,8 +33,8 @@ export function ResultadoFinanceiroSubmenu() {
         Resultado nos autos
       </NavLink>
       <NavLink
-        to="/resultado-financeiro/cobranca"
-        className={({ isActive }) => subNavClass(isActive)}
+        to="/recebiveis?tipo=HONORARIOS&detalhe=cobranca"
+        className={() => subNavClass(cobrancaAtiva)}
       >
         Cobrança de honorários
       </NavLink>

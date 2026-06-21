@@ -10,23 +10,25 @@ import {
 
 export const navItems = [
   { id: 'acoes-do-dia', label: 'Ações do dia', icon: 'ClipboardList' },
+  { id: 'recebiveis', label: 'Recebíveis', icon: 'CircleDollarSign' },
+  { id: 'pagamentos', label: 'Pagamentos', icon: 'Wallet' },
+  { id: 'resultado-financeiro', label: 'Resultado por processo', icon: 'CircleDollarSign' },
   {
-    id: 'admin-imoveis-grupo',
-    label: 'Administração de Imóveis',
-    icon: 'Landmark',
+    id: 'imoveis-grupo',
+    label: 'Imóveis',
+    icon: 'Building2',
     children: [
       { id: 'imoveis', label: 'Imóveis', icon: 'Building2' },
-      { id: 'imoveis/demandas', label: 'Demandas', icon: 'LayoutGrid' },
-      { id: 'imoveis/pagamentos', label: 'Pagamentos', icon: 'Wallet' },
       { id: 'imoveis/pagamentos/conciliacao', label: 'Conciliação bancária', icon: 'Link2' },
       { id: 'imoveis/acerto-cliente', label: 'Acerto com Cliente', icon: 'FileCheck' },
       { id: 'imoveis/relatorio-pagamentos', label: 'Relatório Pagamentos', icon: 'BarChart3' },
-      { id: 'imoveis/sugestoes-vinculo', label: 'Sugestões de vínculo', icon: 'Sparkles' },
-      { id: 'iptu', label: 'IPTU', icon: 'Receipt' },
       { id: 'imoveis/relatorio-financeiro', label: 'Relatório Financeiro Imóveis', icon: 'CircleDollarSign' },
+      { id: 'imoveis/sugestoes-vinculo', label: 'Sugestões de vínculo', icon: 'Sparkles' },
       { id: 'relatorio-imoveis', label: 'Relatório Imóveis', icon: 'FileSpreadsheet' },
     ],
   },
+  { id: 'imoveis/demandas', label: 'Demandas', icon: 'LayoutGrid' },
+  { id: 'iptu', label: 'IPTU', icon: 'Receipt' },
   {
     id: 'pessoas-grupo',
     label: 'Pessoas',
@@ -46,8 +48,6 @@ export const navItems = [
     menuSections: processosMenuSections,
     children: processosMenuChildrenFlat,
   },
-  { id: 'resultado-financeiro', label: 'Resultado financeiro', icon: 'CircleDollarSign' },
-  { id: 'recebiveis', label: 'Recebíveis', icon: 'CircleDollarSign' },
   {
     id: 'calcular-grupo',
     label: 'Calcular',
@@ -71,7 +71,6 @@ export const navItems = [
       { id: 'financeiro/relatorios', label: 'Relatórios', icon: 'FileBarChart' },
     ],
   },
-  { id: 'pagamentos', label: 'Pagamentos', icon: 'Wallet' },
   { id: 'descontos-cheque', label: 'Desconto de Cheques', icon: 'Banknote' },
   { id: 'pendencias', label: 'Pendências', icon: 'AlertTriangle' },
   {

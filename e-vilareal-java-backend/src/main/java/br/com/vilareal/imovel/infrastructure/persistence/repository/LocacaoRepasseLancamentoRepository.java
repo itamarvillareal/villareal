@@ -46,4 +46,6 @@ public interface LocacaoRepasseLancamentoRepository extends JpaRepository<Locaca
     List<LocacaoRepasseLancamentoEntity> findAllParaCarteiraRepasses();
 
     List<LocacaoRepasseLancamentoEntity> findByLancamentoFinanceiro_IdIn(Collection<Long> lancamentoFinanceiroIds);
+
+    boolean existsByLancamentoFinanceiro_IdAndPapel(Long lancamentoFinanceiroId, PapelReconciliacao papel);
 }

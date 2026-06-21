@@ -29,6 +29,9 @@ import {
   vincularReconciliacaoApi,
 } from '../repositories/imoveisRepository.js';
 import {
+  listarRepassesPendentesHonorarioApi,
+} from '../repositories/honorariosRepository.js';
+import {
   agruparLinhasReconciliacao,
   competenciaAtual,
   competenciaValida,
@@ -239,16 +242,48 @@ export function ImoveisAdministracaoFinanceiro() {
   const recarregarRepasses = useCallback(() => setRepassesTick((t) => t + 1), []);
 
   useEffect(() => {
-    if (abaPrincipal !== 'repassar' || !featureFlags.useApiImoveis) {
+    if (abaPrincipal !== 'repassar') {
+      return undefined;
+    }
+    if (!featureFlags.useApiImoveis && !featureFlags.useApiFinanceiro) {
       return undefined;
     }
     let ativo = true;
     setErroRepasses('');
     setCarregandoRepasses(true);
-    listarRepassesPendentesApi()
-      .then((data) => {
+    Promise.all([
+      featureFlags.useApiImoveis
+        ? listarRepassesPendentesApi()
+        : Promise.resolve({ totalEmAberto: 0, itens: [] }),
+      featureFlags.useApiFinanceiro
+        ? listarRepassesPendentesHonorarioApi()
+        : Promise.resolve({ totalEmAberto: 0, itens: [] }),
+    ])
+      .then(([imovel, honorario]) => {
         if (!ativo) return;
-        setRepassesCarteira(data || { totalEmAberto: 0, itens: [] });
+        const itensImovel = (imovel?.itens ?? []).map((i) => ({ ...i, origem: 'IMOVEL' }));
+        const itensHonorario = (honorario?.itens ?? []).map((i) => ({
+          origem: 'PROCESSO',
+          contratoId: i.contratoHonorariosId,
+          locadorNome: i.contratanteNome,
+          imovelNumeroPlanilha: null,
+          imovelEndereco:
+            i.codigoCliente && i.numeroInterno != null
+              ? `Proc. ${i.numeroInterno} · Cli. ${i.codigoCliente}`
+              : i.processoId
+                ? `Processo #${i.processoId}`
+                : '—',
+          competencia: i.dataReferencia ? String(i.dataReferencia).slice(0, 7) : '—',
+          valorEmAberto: i.valorEmAberto,
+          statusRepasse: i.statusRepasse,
+          valorAlvara: i.valorAlvara,
+          retencao: i.retencao,
+          repasseEsperado: i.repasseEsperado,
+          processoId: i.processoId,
+          alvaraLancamentoId: i.alvaraLancamentoId,
+        }));
+        const total = Number(imovel?.totalEmAberto ?? 0) + Number(honorario?.totalEmAberto ?? 0);
+        setRepassesCarteira({ totalEmAberto: total, itens: [...itensImovel, ...itensHonorario] });
       })
       .catch((e) => {
         if (!ativo) return;
@@ -653,27 +688,27 @@ export function ImoveisAdministracaoFinanceiro() {
               <div>
                 <h2 className="text-sm font-semibold text-slate-800">Carteira a repassar</h2>
                 <p className="text-xs text-slate-600 mt-1 max-w-3xl">
-                  Ciclos com aluguel já vinculado e repasse pendente ou divergente. Valores derivados dos vínculos
-                  existentes — não é saldo materializado.
+                  Repasses pendentes ou divergentes de imóveis (locação) e de processos (alvará / honorários).
+                  Valores derivados dos vínculos existentes — não é saldo materializado.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={recarregarRepasses}
-                disabled={carregandoRepasses || !featureFlags.useApiImoveis}
+                disabled={carregandoRepasses || (!featureFlags.useApiImoveis && !featureFlags.useApiFinanceiro)}
                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-50"
               >
                 <RefreshCw className={`w-4 h-4 ${carregandoRepasses ? 'animate-spin' : ''}`} aria-hidden />
                 Atualizar
               </button>
             </div>
-            {!featureFlags.useApiImoveis ? (
+            {!featureFlags.useApiImoveis && !featureFlags.useApiFinanceiro ? (
               <p className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-                Ative a API de imóveis para consultar a carteira de repasses pendentes.
+                Ative a API de imóveis ou financeiro para consultar a carteira de repasses pendentes.
               </p>
             ) : null}
             {erroRepasses ? <p className="text-sm text-red-700">{erroRepasses}</p> : null}
-            {featureFlags.useApiImoveis ? (
+            {featureFlags.useApiImoveis || featureFlags.useApiFinanceiro ? (
               <>
                 <div className="rounded-lg border border-teal-200 bg-teal-50/80 px-4 py-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-teal-800">Total em aberto</p>
@@ -683,15 +718,16 @@ export function ImoveisAdministracaoFinanceiro() {
                   <p className="text-xs text-teal-800 mt-1">
                     {carregandoRepasses
                       ? 'Carregando…'
-                      : `${repassesCarteira?.itens?.length ?? 0} ciclo(s) pendente(s) ou divergente(s)`}
+                      : `${repassesCarteira?.itens?.length ?? 0} item(ns) pendente(s) ou divergente(s)`}
                   </p>
                 </div>
                 <div className="overflow-x-auto rounded-lg border border-slate-200">
                   <table className="min-w-full border-collapse">
                     <thead>
                       <tr>
-                        <th className={th}>Locador</th>
-                        <th className={th}>Imóvel</th>
+                        <th className={th}>Origem</th>
+                        <th className={th}>Destinatário</th>
+                        <th className={th}>Referência</th>
                         <th className={th}>Competência</th>
                         <th className={th}>Em aberto</th>
                         <th className={th}>Status</th>
@@ -700,14 +736,14 @@ export function ImoveisAdministracaoFinanceiro() {
                     <tbody>
                       {carregandoRepasses ? (
                         <tr>
-                          <td colSpan={5} className={`${td} text-slate-500`}>
+                          <td colSpan={6} className={`${td} text-slate-500`}>
                             Carregando repasses pendentes…
                           </td>
                         </tr>
                       ) : null}
                       {!carregandoRepasses && (repassesCarteira?.itens?.length ?? 0) === 0 ? (
                         <tr>
-                          <td colSpan={5} className={`${td} text-slate-500`}>
+                          <td colSpan={6} className={`${td} text-slate-500`}>
                             Nenhum repasse pendente ou divergente no momento.
                           </td>
                         </tr>
@@ -715,19 +751,41 @@ export function ImoveisAdministracaoFinanceiro() {
                       {!carregandoRepasses
                         ? (repassesCarteira?.itens ?? []).map((item) => {
                             const info = statusRepasseInfo(item.statusRepasse);
-                            const imovelLabel = [
-                              item.imovelNumeroPlanilha != null ? `#${item.imovelNumeroPlanilha}` : null,
-                              item.imovelEndereco,
-                            ]
-                              .filter(Boolean)
-                              .join(' · ');
+                            const ehProcesso = item.origem === 'PROCESSO';
+                            const refLabel = ehProcesso
+                              ? [
+                                  item.valorAlvara != null ? `Alvará ${formatBRL(item.valorAlvara)}` : null,
+                                  item.retencao != null ? `Ret. ${formatBRL(item.retencao)}` : null,
+                                ]
+                                  .filter(Boolean)
+                                  .join(' · ')
+                              : [
+                                  item.imovelNumeroPlanilha != null ? `#${item.imovelNumeroPlanilha}` : null,
+                                  item.imovelEndereco,
+                                ]
+                                  .filter(Boolean)
+                                  .join(' · ');
+                            const chave = ehProcesso
+                              ? `proc-${item.processoId}-${item.alvaraLancamentoId ?? item.contratoId}`
+                              : `${item.contratoId}-${item.competencia}`;
                             return (
-                              <tr key={`${item.contratoId}-${item.competencia}`} className="hover:bg-slate-50/80">
+                              <tr key={chave} className="hover:bg-slate-50/80">
+                                <td className={td}>
+                                  <span
+                                    className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase ${
+                                      ehProcesso
+                                        ? 'bg-violet-50 text-violet-900 border-violet-200'
+                                        : 'bg-teal-50 text-teal-900 border-teal-200'
+                                    }`}
+                                  >
+                                    {ehProcesso ? 'Processo' : 'Imóvel'}
+                                  </span>
+                                </td>
                                 <td className={td}>
                                   <span className="font-medium">{item.locadorNome || '—'}</span>
                                 </td>
                                 <td className={td}>
-                                  <span className="break-words">{imovelLabel || '—'}</span>
+                                  <span className="break-words">{refLabel || '—'}</span>
                                 </td>
                                 <td className={`${td} tabular-nums`}>{item.competencia || '—'}</td>
                                 <td className={`${td} tabular-nums font-semibold`}>

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CircleDollarSign, RefreshCw } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { CircleDollarSign, ExternalLink, Receipt, RefreshCw } from 'lucide-react';
 import { obterQuadroRecebiveisApi } from '../repositories/recebiveisRepository.js';
+import { RecebiveisConsolidados } from './RecebiveisConsolidados.jsx';
 
 const TIPOS_CARTAO = [
   { key: 'MENSALIDADE', titulo: 'Mensalistas', contagemRotulo: 'contratos' },
@@ -55,7 +57,15 @@ function fimDoMes(yyyyMm) {
   return `${y}-${String(m).padStart(2, '0')}-${String(ultimo).padStart(2, '0')}`;
 }
 
+function normalizarTipo(tipo) {
+  return String(tipo || '').toUpperCase();
+}
+
 export function QuadroRecebiveis() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tipoFiltro = normalizarTipo(searchParams.get('tipo'));
+  const cobrancaAberta = searchParams.get('detalhe') === 'cobranca';
+
   const [modoPeriodo, setModoPeriodo] = useState('ESTE_MES');
   const [periodoCustomInicio, setPeriodoCustomInicio] = useState(() => competenciaAtual());
   const [periodoCustomFim, setPeriodoCustomFim] = useState(() => competenciaAtual());
@@ -101,10 +111,61 @@ export function QuadroRecebiveis() {
   const resumoMap = useMemo(() => {
     const map = {};
     for (const r of quadro?.resumoPorTipo ?? []) {
-      map[String(r.tipo).toUpperCase()] = r;
+      map[normalizarTipo(r.tipo)] = r;
     }
     return map;
   }, [quadro]);
+
+  const itensFiltrados = useMemo(() => {
+    const itens = quadro?.itens ?? [];
+    if (!tipoFiltro) return itens;
+    return itens.filter((item) => normalizarTipo(item.tipo) === tipoFiltro);
+  }, [quadro, tipoFiltro]);
+
+  const resumoFiltrado = useMemo(() => {
+    if (!tipoFiltro) {
+      return {
+        total: quadro?.totalGeral ?? 0,
+        vencido: quadro?.totalVencido ?? 0,
+      };
+    }
+    const r = resumoMap[tipoFiltro] || { total: 0, totalVencido: 0 };
+    return { total: r.total ?? 0, vencido: r.totalVencido ?? 0 };
+  }, [quadro, resumoMap, tipoFiltro]);
+
+  const definirTipoFiltro = useCallback(
+    (tipo) => {
+      const next = new URLSearchParams(searchParams);
+      next.delete('detalhe');
+      if (!tipo || tipo === tipoFiltro) {
+        next.delete('tipo');
+      } else {
+        next.set('tipo', tipo);
+      }
+      setSearchParams(next, { replace: false });
+    },
+    [searchParams, setSearchParams, tipoFiltro],
+  );
+
+  const abrirCobrancaHonorarios = useCallback(() => {
+    const next = new URLSearchParams(searchParams);
+    next.set('tipo', 'HONORARIOS');
+    next.set('detalhe', 'cobranca');
+    setSearchParams(next, { replace: false });
+  }, [searchParams, setSearchParams]);
+
+  const voltarAoQuadroFiltrado = useCallback(() => {
+    const next = new URLSearchParams(searchParams);
+    next.set('tipo', 'HONORARIOS');
+    next.delete('detalhe');
+    setSearchParams(next, { replace: false });
+  }, [searchParams, setSearchParams]);
+
+  if (cobrancaAberta) {
+    return (
+      <RecebiveisConsolidados modoDrillDown onVoltar={voltarAoQuadroFiltrado} />
+    );
+  }
 
   return (
     <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] p-4">
@@ -121,7 +182,7 @@ export function QuadroRecebiveis() {
             </h1>
             <p className="text-sm text-slate-600 mt-1 max-w-3xl">
               Visão consolidada do que está a receber no período — honorários, aluguéis, IPTU e cobranças operacionais.
-              Valores derivados; não altera os fluxos de cobrança existentes.
+              Em honorários, use <strong>Ver cobrança</strong> para parcelas, vínculo financeiro e Pagamentos.
             </p>
           </div>
           <button
@@ -193,16 +254,43 @@ export function QuadroRecebiveis() {
           ) : null}
         </div>
 
+        {tipoFiltro ? (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50/80 px-3 py-2 text-sm text-indigo-950">
+            <span>
+              Filtro: <strong>{ROTULO_TIPO[tipoFiltro] || tipoFiltro}</strong>
+            </span>
+            <button
+              type="button"
+              className="rounded-md border border-indigo-300 bg-white px-2 py-0.5 text-xs font-medium text-indigo-800 hover:bg-indigo-50"
+              onClick={() => definirTipoFiltro('')}
+            >
+              Limpar filtro
+            </button>
+            {tipoFiltro === 'HONORARIOS' ? (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-md border border-indigo-600 bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-indigo-700"
+                onClick={abrirCobrancaHonorarios}
+              >
+                <Receipt className="h-3.5 w-3.5" aria-hidden />
+                Ver cobrança
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
         {erro ? <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</p> : null}
 
         <div className="rounded-lg border border-emerald-200 bg-emerald-50/80 px-4 py-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800">Total a receber</p>
-          <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-900">
-            {carregando ? '…' : formatBRL(quadro?.totalGeral ?? 0)}
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800">
+            Total a receber{tipoFiltro ? ` (${ROTULO_TIPO[tipoFiltro] || tipoFiltro})` : ''}
           </p>
-          {!carregando && Number(quadro?.totalVencido) > 0 ? (
+          <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-900">
+            {carregando ? '…' : formatBRL(resumoFiltrado.total)}
+          </p>
+          {!carregando && Number(resumoFiltrado.vencido) > 0 ? (
             <p className="text-xs text-red-700 mt-1">
-              Vencido: <strong>{formatBRL(quadro.totalVencido)}</strong>
+              Vencido: <strong>{formatBRL(resumoFiltrado.vencido)}</strong>
             </p>
           ) : null}
         </div>
@@ -210,18 +298,43 @@ export function QuadroRecebiveis() {
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {TIPOS_CARTAO.map((card) => {
             const r = resumoMap[card.key] || { quantidade: 0, total: 0, totalVencido: 0 };
+            const ativo = tipoFiltro === card.key;
             return (
-              <div key={card.key} className="rounded-lg border border-slate-200 bg-white shadow-sm p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{card.titulo}</p>
-                <p className="mt-1 text-lg font-bold tabular-nums text-slate-900">
-                  {carregando ? '…' : formatBRL(r.total ?? 0)}
-                </p>
-                <p className="text-xs text-slate-600 mt-1">
-                  {carregando ? '…' : `${r.quantidade ?? 0} ${card.contagemRotulo}`}
-                </p>
-                {!carregando && Number(r.totalVencido) > 0 ? (
-                  <p className="text-[11px] text-red-700 mt-1">Vencido: {formatBRL(r.totalVencido)}</p>
-                ) : null}
+              <div
+                key={card.key}
+                className={`rounded-lg border bg-white shadow-sm p-4 ${
+                  ativo ? 'border-indigo-400 ring-2 ring-indigo-200' : 'border-slate-200'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <button
+                    type="button"
+                    className="text-left flex-1"
+                    onClick={() => definirTipoFiltro(card.key)}
+                  >
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{card.titulo}</p>
+                    <p className="mt-1 text-lg font-bold tabular-nums text-slate-900">
+                      {carregando ? '…' : formatBRL(r.total ?? 0)}
+                    </p>
+                    <p className="text-xs text-slate-600 mt-1">
+                      {carregando ? '…' : `${r.quantidade ?? 0} ${card.contagemRotulo}`}
+                    </p>
+                    {!carregando && Number(r.totalVencido) > 0 ? (
+                      <p className="text-[11px] text-red-700 mt-1">Vencido: {formatBRL(r.totalVencido)}</p>
+                    ) : null}
+                  </button>
+                  {card.key === 'HONORARIOS' ? (
+                    <button
+                      type="button"
+                      title="Ver cobrança de honorários"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-md border border-indigo-300 bg-indigo-50 px-2 py-1 text-[11px] font-medium text-indigo-800 hover:bg-indigo-100"
+                      onClick={abrirCobrancaHonorarios}
+                    >
+                      <ExternalLink className="h-3 w-3" aria-hidden />
+                      Cobrança
+                    </button>
+                  ) : null}
+                </div>
               </div>
             );
           })}
@@ -246,49 +359,69 @@ export function QuadroRecebiveis() {
                 <th className="px-3 py-2 text-left text-xs font-semibold text-slate-700 border-b border-slate-200">
                   Status
                 </th>
+                <th className="px-3 py-2 text-left text-xs font-semibold text-slate-700 border-b border-slate-200">
+                  Ações
+                </th>
               </tr>
             </thead>
             <tbody>
               {carregando ? (
                 <tr>
-                  <td colSpan={5} className="px-3 py-6 text-sm text-slate-500 text-center">
+                  <td colSpan={6} className="px-3 py-6 text-sm text-slate-500 text-center">
                     Carregando…
                   </td>
                 </tr>
               ) : null}
-              {!carregando && (quadro?.itens?.length ?? 0) === 0 ? (
+              {!carregando && itensFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-3 py-6 text-sm text-slate-500 text-center">
-                    Nenhum recebível em aberto no período.
+                  <td colSpan={6} className="px-3 py-6 text-sm text-slate-500 text-center">
+                    Nenhum recebível em aberto no período{tipoFiltro ? ` para ${ROTULO_TIPO[tipoFiltro] || tipoFiltro}` : ''}.
                   </td>
                 </tr>
               ) : null}
               {!carregando
-                ? (quadro?.itens ?? []).map((item) => (
-                    <tr key={`${item.origem}-${item.refId}`} className="hover:bg-slate-50/80">
-                      <td className="px-3 py-2 text-sm text-slate-800 border-b border-slate-100 align-top break-words">
-                        {item.descricao || '—'}
-                      </td>
-                      <td className="px-3 py-2 text-sm text-slate-700 border-b border-slate-100 align-top">
-                        {ROTULO_TIPO[String(item.tipo).toUpperCase()] || item.tipo}
-                      </td>
-                      <td className="px-3 py-2 text-sm tabular-nums text-slate-800 border-b border-slate-100 align-top whitespace-nowrap">
-                        {formatData(item.vencimento)}
-                      </td>
-                      <td className="px-3 py-2 text-sm tabular-nums font-medium text-slate-900 border-b border-slate-100 align-top text-right whitespace-nowrap">
-                        {formatBRL(item.valor)}
-                      </td>
-                      <td className="px-3 py-2 text-sm border-b border-slate-100 align-top">
-                        <span
-                          className={`inline-flex px-2 py-0.5 rounded-full border text-xs font-semibold ${
-                            STATUS_BADGE[String(item.status).toUpperCase()] || STATUS_BADGE.A_VENCER
-                          }`}
-                        >
-                          {STATUS_LABEL[String(item.status).toUpperCase()] || item.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
+                ? itensFiltrados.map((item) => {
+                    const tipo = normalizarTipo(item.tipo);
+                    return (
+                      <tr key={`${item.origem}-${item.refId}`} className="hover:bg-slate-50/80">
+                        <td className="px-3 py-2 text-sm text-slate-800 border-b border-slate-100 align-top break-words">
+                          {item.descricao || '—'}
+                        </td>
+                        <td className="px-3 py-2 text-sm text-slate-700 border-b border-slate-100 align-top">
+                          {ROTULO_TIPO[tipo] || item.tipo}
+                        </td>
+                        <td className="px-3 py-2 text-sm tabular-nums text-slate-800 border-b border-slate-100 align-top whitespace-nowrap">
+                          {formatData(item.vencimento)}
+                        </td>
+                        <td className="px-3 py-2 text-sm tabular-nums font-medium text-slate-900 border-b border-slate-100 align-top text-right whitespace-nowrap">
+                          {formatBRL(item.valor)}
+                        </td>
+                        <td className="px-3 py-2 text-sm border-b border-slate-100 align-top">
+                          <span
+                            className={`inline-flex px-2 py-0.5 rounded-full border text-xs font-semibold ${
+                              STATUS_BADGE[normalizarTipo(item.status)] || STATUS_BADGE.A_VENCER
+                            }`}
+                          >
+                            {STATUS_LABEL[normalizarTipo(item.status)] || item.status}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-sm border-b border-slate-100 align-top">
+                          {tipo === 'HONORARIOS' ? (
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 text-indigo-700 hover:underline dark:text-indigo-300"
+                              onClick={abrirCobrancaHonorarios}
+                            >
+                              Ver cobrança
+                              <ExternalLink className="h-3 w-3" aria-hidden />
+                            </button>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 : null}
             </tbody>
           </table>
