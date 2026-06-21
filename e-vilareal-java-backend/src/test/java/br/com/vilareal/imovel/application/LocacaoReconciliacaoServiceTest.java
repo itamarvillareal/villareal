@@ -12,10 +12,13 @@ import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaCon
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
+import br.com.vilareal.imovel.api.dto.ConciliarAlugueisAutomaticoResponse;
 import br.com.vilareal.imovel.api.dto.ReconciliacaoResultadoResponse;
 import br.com.vilareal.imovel.api.dto.ReconciliacaoSugestaoItemResponse;
 import br.com.vilareal.imovel.api.dto.ReconciliacaoVincularRequest;
 import br.com.vilareal.imovel.api.dto.ReconciliacaoVinculoResponse;
+import br.com.vilareal.imovel.api.dto.RepassePendenteCarteiraResponse;
+import br.com.vilareal.imovel.api.dto.RepassePendenteItemResponse;
 import br.com.vilareal.imovel.domain.PapelReconciliacao;
 import br.com.vilareal.imovel.domain.StatusRepasse;
 import br.com.vilareal.imovel.infrastructure.persistence.entity.ContratoLocacaoEntity;
@@ -147,17 +150,13 @@ class LocacaoReconciliacaoServiceTest {
         when(vinculoRepository.findByContratoLocacao_IdAndLancamentoFinanceiro_IdAndPapel(
                         CONTRATO_ID, 10L, PapelReconciliacao.ALUGUEL))
                 .thenReturn(Optional.of(existente));
-        when(vinculoRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ReconciliacaoVincularRequest req = new ReconciliacaoVincularRequest(
                 List.of(new ReconciliacaoVincularRequest.Item(10L, PapelReconciliacao.ALUGUEL, "2026-03")));
 
         List<ReconciliacaoVinculoResponse> out = service.vincular(CONTRATO_ID, req);
 
-        ArgumentCaptor<LocacaoRepasseLancamentoEntity> captor =
-                ArgumentCaptor.forClass(LocacaoRepasseLancamentoEntity.class);
-        verify(vinculoRepository).save(captor.capture());
-        assertThat(captor.getValue().getId()).isEqualTo(55L); // mesma linha, não cria outra
+        verify(vinculoRepository, never()).save(any());
         assertThat(out.get(0).id()).isEqualTo(55L);
     }
 
@@ -233,6 +232,64 @@ class LocacaoReconciliacaoServiceTest {
         ReconciliacaoResultadoResponse r = service.resultado(CONTRATO_ID, "2026-03", null, null);
 
         assertThat(r.statusRepasse()).isEqualTo(StatusRepasse.DIVERGENTE);
+    }
+
+    @Test
+    void repassesPendentesListaCiclosComAluguelSemRepasse() {
+        ContratoLocacaoEntity c = contratoComLocador();
+        LocacaoRepasseLancamentoEntity aluguel =
+                vinculoComContrato(c, PapelReconciliacao.ALUGUEL, "1000.00", "2026-03");
+        when(vinculoRepository.findAllParaCarteiraRepasses()).thenReturn(List.of(aluguel));
+
+        RepassePendenteCarteiraResponse carteira = service.repassesPendentes(null);
+
+        assertThat(carteira.itens()).hasSize(1);
+        RepassePendenteItemResponse item = carteira.itens().get(0);
+        assertThat(item.contratoId()).isEqualTo(CONTRATO_ID);
+        assertThat(item.imovelNumeroPlanilha()).isEqualTo(42);
+        assertThat(item.imovelEndereco()).isEqualTo("Rua A, 1");
+        assertThat(item.locadorNome()).isEqualTo("Maria Locadora");
+        assertThat(item.dadosBancariosRepasse()).contains("341");
+        assertThat(item.competencia()).isEqualTo("2026-03");
+        assertThat(item.aluguel()).isEqualByComparingTo("1000.00");
+        assertThat(item.taxaEsperadaValor()).isEqualByComparingTo("100.00");
+        assertThat(item.repassado()).isEqualByComparingTo("0.00");
+        assertThat(item.repasseEsperado()).isEqualByComparingTo("900.00");
+        assertThat(item.valorEmAberto()).isEqualByComparingTo("900.00");
+        assertThat(item.statusRepasse()).isEqualTo(StatusRepasse.PENDENTE);
+        assertThat(carteira.totalEmAberto()).isEqualByComparingTo("900.00");
+    }
+
+    @Test
+    void repassesPendentesIgnoraCicloFeitoERespeitaFiltroAte() {
+        ContratoLocacaoEntity c = contratoComLocador();
+        LocacaoRepasseLancamentoEntity pendente =
+                vinculoComContrato(c, PapelReconciliacao.ALUGUEL, "1000.00", "2026-04");
+        pendente.setCompetenciaMes("2026-04");
+        LocacaoRepasseLancamentoEntity feitoAluguel =
+                vinculoComContrato(c, PapelReconciliacao.ALUGUEL, "1000.00", "2026-03");
+        LocacaoRepasseLancamentoEntity feitoRepasse =
+                vinculoComContrato(c, PapelReconciliacao.REPASSE, "900.00", "2026-03");
+        when(vinculoRepository.findAllParaCarteiraRepasses())
+                .thenReturn(List.of(feitoAluguel, feitoRepasse, pendente));
+
+        RepassePendenteCarteiraResponse carteira = service.repassesPendentes("2026-03");
+
+        assertThat(carteira.itens()).isEmpty();
+        assertThat(carteira.totalEmAberto()).isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    void resultadoExpoeLocadorEDadosBancarios() {
+        ContratoLocacaoEntity c = contratoComLocador();
+        when(contratoLocacaoRepository.findById(CONTRATO_ID)).thenReturn(Optional.of(c));
+        when(vinculoRepository.findByContratoLocacao_IdAndCompetenciaMesOrderByIdAsc(CONTRATO_ID, "2026-03"))
+                .thenReturn(List.of(vinculoComContrato(c, PapelReconciliacao.ALUGUEL, "1000.00", "2026-03")));
+
+        ReconciliacaoResultadoResponse r = service.resultado(CONTRATO_ID, "2026-03", null, null);
+
+        assertThat(r.locadorNome()).isEqualTo("Maria Locadora");
+        assertThat(r.dadosBancariosRepasse()).contains("341");
     }
 
     @Test
@@ -906,6 +963,64 @@ class LocacaoReconciliacaoServiceTest {
         verify(lancamentoRepository, never()).save(any(LancamentoFinanceiroEntity.class));
     }
 
+    // ------------------------------------------------------------------ auto-conciliação Cora
+
+    @Test
+    void conciliarAlugueisAutomaticoVinculaQuandoUmCreditoNaFaixa() {
+        ContratoLocacaoEntity contrato = contratoTerceiro();
+        contrato.getImovel().setNumeroPlanilha(42);
+        when(contratoLocacaoRepository.findVigentesSemAluguelNaCompetencia(
+                        eq("2026-06"), eq(LocalDate.of(2026, 6, 1)), eq(LocalDate.of(2026, 6, 30))))
+                .thenReturn(List.of(contrato));
+
+        LancamentoFinanceiroEntity credito =
+                lancamento(10L, NaturezaLancamento.CREDITO, "1000.00", LocalDate.of(2026, 6, 5), "ALUGUEL");
+        credito.setProcesso(processoComId(PROCESSO_ID));
+        credito.setNumeroBanco(26);
+        when(lancamentoRepository.findCreditosCoraSemVinculoAluguelNoContrato(
+                        eq(26), eq(PROCESSO_ID), eq(CONTRATO_ID),
+                        eq(LocalDate.of(2026, 6, 1)), eq(LocalDate.of(2026, 6, 30))))
+                .thenReturn(List.of(credito));
+        when(vinculoRepository.findByContratoLocacao_IdAndLancamentoFinanceiro_IdAndPapel(
+                        CONTRATO_ID, 10L, PapelReconciliacao.ALUGUEL))
+                .thenReturn(Optional.empty());
+        when(vinculoRepository.save(any())).thenAnswer(inv -> withId(inv.getArgument(0), 88L));
+
+        ConciliarAlugueisAutomaticoResponse resp = service.conciliarAlugueisAutomatico("2026-06");
+
+        assertThat(resp.getAutoVinculados()).isEqualTo(1);
+        assertThat(resp.getParaRevisao()).isEmpty();
+        assertThat(resp.getSemCredito()).isEmpty();
+        ArgumentCaptor<LocacaoRepasseLancamentoEntity> captor =
+                ArgumentCaptor.forClass(LocacaoRepasseLancamentoEntity.class);
+        verify(vinculoRepository).save(captor.capture());
+        assertThat(captor.getValue().getOrigem()).isEqualTo(LocacaoReconciliacaoService.ORIGEM_VINCULO_AUTO);
+        assertThat(captor.getValue().getPapel()).isEqualTo(PapelReconciliacao.ALUGUEL);
+    }
+
+    @Test
+    void conciliarAlugueisAutomaticoMarcaParaRevisaoQuandoMultiplosCreditosNaFaixa() {
+        ContratoLocacaoEntity contrato = contratoTerceiro();
+        when(contratoLocacaoRepository.findVigentesSemAluguelNaCompetencia(
+                        eq("2026-06"), any(), any()))
+                .thenReturn(List.of(contrato));
+
+        LancamentoFinanceiroEntity c1 =
+                lancamento(10L, NaturezaLancamento.CREDITO, "1000.00", LocalDate.of(2026, 6, 5), "ALUGUEL");
+        LancamentoFinanceiroEntity c2 =
+                lancamento(11L, NaturezaLancamento.CREDITO, "990.00", LocalDate.of(2026, 6, 8), "ALUGUEL");
+        when(lancamentoRepository.findCreditosCoraSemVinculoAluguelNoContrato(
+                        eq(26), eq(PROCESSO_ID), eq(CONTRATO_ID), any(), any()))
+                .thenReturn(List.of(c1, c2));
+
+        ConciliarAlugueisAutomaticoResponse resp = service.conciliarAlugueisAutomatico("2026-06");
+
+        assertThat(resp.getAutoVinculados()).isZero();
+        assertThat(resp.getParaRevisao()).hasSize(1);
+        assertThat(resp.getParaRevisao().get(0).motivo()).isEqualTo("MULTIPLOS_CREDITOS_NA_FAIXA");
+        verify(vinculoRepository, never()).save(any());
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private static final AtomicLong SEQ = new AtomicLong(1000);
@@ -951,7 +1066,22 @@ class LocacaoReconciliacaoServiceTest {
         return c;
     }
 
-    /** Contrato de imóvel de TERCEIRO (não-próprio): não dispara o repasse interno. */
+    private static ContratoLocacaoEntity contratoComLocador() {
+        ContratoLocacaoEntity c = contrato();
+        c.setLocadorPessoa(pessoa("Maria Locadora"));
+        c.setDadosBancariosRepasseJson("{\"banco\":\"341\"}");
+        c.getImovel().setNumeroPlanilha(42);
+        c.getImovel().setEnderecoCompleto("Rua A, 1");
+        return c;
+    }
+
+    private static LocacaoRepasseLancamentoEntity vinculoComContrato(
+            ContratoLocacaoEntity contrato, PapelReconciliacao papel, String valor, String competencia) {
+        LocacaoRepasseLancamentoEntity v = vinculo(papel, valor, competencia);
+        v.setContratoLocacao(contrato);
+        return v;
+    }
+
     private static ContratoLocacaoEntity contratoTerceiro() {
         ContratoLocacaoEntity c = contrato();
         ClienteEntity cliente = new ClienteEntity();

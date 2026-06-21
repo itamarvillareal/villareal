@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AlertCircle, ChevronDown, ChevronUp, Check, X } from 'lucide-react';
+import { ChaveEdicaoOnOff } from '../cadastro-pessoas/ChaveEdicaoOnOff.jsx';
 
 const STORAGE_PROCESSOS_ACOES_EXPANDIDAS = 'vilareal:processos-acoes-toolbar-expandida';
 const STORAGE_PROCESSOS_BANNER_MOBILE = 'vilareal:processos-banner-mobile-expandido';
@@ -512,15 +513,16 @@ export function ProcessosStickyHeader({
                   {cliente || '—'}
                 </p>
                 {onEdicaoDesabilitadaChange ? (
-                  <label className="flex shrink-0 cursor-pointer items-center gap-2 text-sm text-slate-600">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(edicaoDesabilitada)}
-                      onChange={(e) => onEdicaoDesabilitadaChange(e.target.checked)}
-                      className="rounded border-slate-300 accent-indigo-600"
+                  <div className="flex shrink-0 flex-col items-start gap-1">
+                    <span className="text-xs font-medium text-slate-500">Edição</span>
+                    <ChaveEdicaoOnOff
+                      edicaoHabilitada={!edicaoDesabilitada}
+                      onChange={(habilitada) => onEdicaoDesabilitadaChange(!habilitada)}
                     />
-                    Edição Desabilitada
-                  </label>
+                    <span className="text-[11px] text-slate-400">
+                      {edicaoDesabilitada ? 'Somente leitura' : 'Campos liberados'}
+                    </span>
+                  </div>
                 ) : null}
               </div>
             </div>

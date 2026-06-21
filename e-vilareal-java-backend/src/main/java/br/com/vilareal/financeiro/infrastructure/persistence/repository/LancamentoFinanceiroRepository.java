@@ -40,6 +40,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
                     """
             SELECT DISTINCT data_lancamento FROM financeiro_lancamento
             WHERE numero_banco = :numeroBanco
+              AND status = 'ATIVO'
             ORDER BY data_lancamento DESC
             LIMIT 2
             """,
@@ -54,7 +55,12 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             @Param("numeroBanco") Integer numeroBanco,
             @Param("numerosLancamento") Collection<String> numerosLancamento);
 
-    List<LancamentoFinanceiroEntity> findByNumeroLancamentoIn(Collection<String> numerosLancamento);
+    @Query("""
+            SELECT l FROM LancamentoFinanceiroEntity l
+            WHERE l.numeroLancamento IN :numerosLancamento AND l.status = 'ATIVO'
+            """)
+    List<LancamentoFinanceiroEntity> findByNumeroLancamentoIn(@Param("numerosLancamento") Collection<String> numerosLancamento);
+
 
     @EntityGraph(attributePaths = {"contaContabil", "pessoaRef", "clienteEntidade", "processo"})
     @Override
@@ -64,12 +70,15 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
     @Override
     Page<LancamentoFinanceiroEntity> findAll(Specification<LancamentoFinanceiroEntity> spec, Pageable pageable);
 
-    long countByProcesso_Id(Long processoId);
+    @Query("SELECT COUNT(l) FROM LancamentoFinanceiroEntity l WHERE l.processo.id = :processoId AND l.status = 'ATIVO'")
+    long countByProcesso_Id(@Param("processoId") Long processoId);
+
 
     @Query(value = """
             SELECT COALESCE(SUM(CASE WHEN natureza = 'CREDITO' THEN valor ELSE -valor END), 0)
             FROM financeiro_lancamento
             WHERE processo_id = :processoId
+              AND status = 'ATIVO'
             """, nativeQuery = true)
     BigDecimal sumSaldoAssinadoPorProcesso(@Param("processoId") Long processoId);
 
@@ -77,6 +86,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             SELECT COALESCE(SUM(CASE WHEN natureza = 'CREDITO' THEN valor ELSE -valor END), 0)
             FROM financeiro_lancamento
             WHERE numero_banco = :numeroBanco
+              AND status = 'ATIVO'
             """, nativeQuery = true)
     BigDecimal sumSaldoAssinadoPorNumeroBanco(@Param("numeroBanco") Integer numeroBanco);
 
@@ -84,6 +94,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             SELECT COALESCE(SUM(CASE WHEN natureza = 'CREDITO' THEN valor ELSE -valor END), 0)
             FROM financeiro_lancamento
             WHERE numero_banco = :numeroBanco
+              AND status = 'ATIVO'
               AND data_lancamento <= :dataAte
             """, nativeQuery = true)
     BigDecimal sumSaldoAssinadoPorNumeroBancoAteData(
@@ -93,6 +104,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             SELECT COALESCE(SUM(CASE WHEN natureza = 'CREDITO' THEN valor ELSE -valor END), 0)
             FROM financeiro_lancamento
             WHERE numero_banco = :numeroBanco
+              AND status = 'ATIVO'
               AND data_lancamento = :dataDia
             """, nativeQuery = true)
     BigDecimal sumSaldoAssinadoPorNumeroBancoNoDia(
@@ -102,6 +114,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             SELECT COUNT(*)
             FROM financeiro_lancamento
             WHERE numero_banco = :numeroBanco
+              AND status = 'ATIVO'
               AND data_lancamento <= :dataAte
             """, nativeQuery = true)
     long countByNumeroBancoAteData(@Param("numeroBanco") Integer numeroBanco, @Param("dataAte") LocalDate dataAte);
@@ -120,6 +133,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
                    COUNT(*)
             FROM financeiro_lancamento
             WHERE numero_banco = :numeroBanco
+              AND status = 'ATIVO'
               AND data_lancamento >= :dataInicio
               AND data_lancamento <= :dataFim
             GROUP BY data_lancamento
@@ -137,15 +151,21 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             """, nativeQuery = true)
     LocalDate findDataUltimoLancamentoPorNumeroBanco(@Param("numeroBanco") Integer numeroBanco);
 
-    long countByNumeroBanco(Integer numeroBanco);
+    @Query("SELECT COUNT(l) FROM LancamentoFinanceiroEntity l WHERE l.numeroBanco = :numeroBanco AND l.status = 'ATIVO'")
+    long countByNumeroBanco(@Param("numeroBanco") Integer numeroBanco);
 
-    @Query("SELECT l.etapa, COUNT(l) FROM LancamentoFinanceiroEntity l GROUP BY l.etapa")
+    @Query("SELECT COUNT(l) FROM LancamentoFinanceiroEntity l WHERE l.numeroBanco = :numeroBanco AND l.status = :status")
+    long countByNumeroBancoAndStatus(@Param("numeroBanco") Integer numeroBanco, @Param("status") String status);
+
+
+    @Query("SELECT l.etapa, COUNT(l) FROM LancamentoFinanceiroEntity l WHERE l.status = 'ATIVO' GROUP BY l.etapa")
     List<Object[]> contarPorEtapa();
 
     @Query(value = """
             SELECT conta_contabil_id, COUNT(*) AS total
             FROM financeiro_lancamento
             WHERE etapa != 'IMPORTADO'
+              AND status = 'ATIVO'
               AND (:numeroBanco IS NULL OR numero_banco = :numeroBanco)
               AND descricao_norm = :descricaoNorm
             GROUP BY conta_contabil_id
@@ -252,6 +272,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             LEFT JOIN FETCH l.clienteEntidade
             LEFT JOIN FETCH l.processo
             WHERE l.etapa <> br.com.vilareal.financeiro.domain.EtapaLancamento.IMPORTADO
+              AND l.status = 'ATIVO'
               AND l.numeroBanco = :numeroBanco
               AND l.descricaoNorm = :descricaoNorm
               AND l.valor BETWEEN :valorMin AND :valorMax
@@ -276,6 +297,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             LEFT JOIN FETCH l.clienteEntidade
             LEFT JOIN FETCH l.processo
             WHERE l.etapa <> br.com.vilareal.financeiro.domain.EtapaLancamento.IMPORTADO
+              AND l.status = 'ATIVO'
               AND l.numeroBanco = :numeroBanco
               AND l.descricaoNorm = :descricaoNorm
               AND l.valor BETWEEN :valorMin AND :valorMax
@@ -300,6 +322,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             LEFT JOIN FETCH l.clienteEntidade
             LEFT JOIN FETCH l.processo
             WHERE l.etapa <> br.com.vilareal.financeiro.domain.EtapaLancamento.IMPORTADO
+              AND l.status = 'ATIVO'
               AND l.numeroBanco = :numeroBanco
               AND (l.descricaoNorm = :descricaoNorm OR l.descricaoNorm LIKE CONCAT(:chaveEstabelecimento, '%'))
               AND (:excluirId IS NULL OR l.id <> :excluirId)
@@ -320,6 +343,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             LEFT JOIN FETCH l.clienteEntidade
             LEFT JOIN FETCH l.processo
             WHERE l.etapa <> br.com.vilareal.financeiro.domain.EtapaLancamento.IMPORTADO
+              AND l.status = 'ATIVO'
               AND l.numeroBanco = :numeroBanco
               AND (l.descricaoNorm = :descricaoNorm OR l.descricaoNorm LIKE CONCAT(:chaveEstabelecimento, '%'))
               AND (:excluirId IS NULL OR l.id <> :excluirId)
@@ -340,6 +364,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             LEFT JOIN FETCH l.clienteEntidade
             LEFT JOIN FETCH l.processo
             WHERE l.etapa <> br.com.vilareal.financeiro.domain.EtapaLancamento.IMPORTADO
+              AND l.status = 'ATIVO'
               AND l.numeroBanco = :numeroBanco
               AND l.descricaoNorm = :descricaoNorm
               AND l.valor BETWEEN :valorMin AND :valorMax
@@ -364,6 +389,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             LEFT JOIN FETCH l.clienteEntidade
             LEFT JOIN FETCH l.processo
             WHERE l.id <> :excluirId
+              AND l.status = 'ATIVO'
               AND l.etapa <> :importado
               AND l.pessoaRef IS NOT NULL
               AND UPPER(c.codigo) = 'A'
@@ -388,6 +414,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             LEFT JOIN FETCH l.clienteEntidade
             LEFT JOIN FETCH l.processo
             WHERE l.id <> :excluirId
+              AND l.status = 'ATIVO'
               AND l.etapa <> :importado
               AND l.pessoaRef IS NOT NULL
               AND UPPER(c.codigo) = 'A'
@@ -414,6 +441,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             LEFT JOIN FETCH l.clienteEntidade
             LEFT JOIN FETCH l.processo
             WHERE l.id <> :excluirId
+              AND l.status = 'ATIVO'
               AND l.etapa <> :importado
               AND l.pessoaRef IS NOT NULL
               AND UPPER(c.codigo) = 'A'
@@ -434,7 +462,12 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             Pageable pageable);
 
     @EntityGraph(attributePaths = {"contaContabil", "pessoaRef", "clienteEntidade", "processo"})
-    List<LancamentoFinanceiroEntity> findAllByGrupoCompensacao(String grupoCompensacao);
+    @Query("""
+            SELECT l FROM LancamentoFinanceiroEntity l
+            WHERE l.grupoCompensacao = :grupoCompensacao AND l.status = 'ATIVO'
+            """)
+    List<LancamentoFinanceiroEntity> findAllByGrupoCompensacao(@Param("grupoCompensacao") String grupoCompensacao);
+
 
     @EntityGraph(attributePaths = {"contaContabil", "pessoaRef", "clienteEntidade", "processo"})
     List<LancamentoFinanceiroEntity> findAllByIdIn(Collection<Long> ids);
@@ -457,6 +490,8 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             + """
             WHERE a.etapa IN ('IMPORTADO', 'CLASSIFICADO')
               AND b.etapa IN ('IMPORTADO', 'CLASSIFICADO')
+              AND a.status = 'ATIVO'
+              AND b.status = 'ATIVO'
               AND (a.grupo_compensacao IS NULL OR a.grupo_compensacao = '')
               AND (b.grupo_compensacao IS NULL OR b.grupo_compensacao = '')
             """
@@ -533,11 +568,13 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
                        COUNT(*) AS total
                 FROM financeiro_lancamento
                 WHERE grupo_compensacao IS NOT NULL AND grupo_compensacao <> ''
+                  AND status = 'ATIVO'
                 GROUP BY grupo_compensacao
                 HAVING ABS(SUM(CASE WHEN natureza = 'CREDITO' THEN valor ELSE -valor END)) > 0.01
             ) g
             INNER JOIN financeiro_lancamento l ON l.grupo_compensacao = g.grupo_compensacao
-            WHERE (:ano IS NULL OR (YEAR(l.data_lancamento) = :ano AND (:mes IS NULL OR MONTH(l.data_lancamento) = :mes)))
+            WHERE l.status = 'ATIVO'
+              AND (:ano IS NULL OR (YEAR(l.data_lancamento) = :ano AND (:mes IS NULL OR MONTH(l.data_lancamento) = :mes)))
               AND (:numeroBanco IS NULL OR l.numero_banco = :numeroBanco)
             GROUP BY g.grupo_compensacao, g.soma, g.total
             ORDER BY ABS(g.soma) DESC
@@ -557,11 +594,13 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
                     SELECT grupo_compensacao
                     FROM financeiro_lancamento
                     WHERE grupo_compensacao IS NOT NULL AND grupo_compensacao <> ''
+                      AND status = 'ATIVO'
                     GROUP BY grupo_compensacao
                     HAVING ABS(SUM(CASE WHEN natureza = 'CREDITO' THEN valor ELSE -valor END)) > 0.01
                 ) g
                 INNER JOIN financeiro_lancamento l ON l.grupo_compensacao = g.grupo_compensacao
-                WHERE (:ano IS NULL OR (YEAR(l.data_lancamento) = :ano AND (:mes IS NULL OR MONTH(l.data_lancamento) = :mes)))
+                WHERE l.status = 'ATIVO'
+                  AND (:ano IS NULL OR (YEAR(l.data_lancamento) = :ano AND (:mes IS NULL OR MONTH(l.data_lancamento) = :mes)))
                   AND (:numeroBanco IS NULL OR l.numero_banco = :numeroBanco)
                 GROUP BY g.grupo_compensacao
             ) x
@@ -574,6 +613,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             FROM financeiro_lancamento l
             INNER JOIN financeiro_conta_contabil c ON c.id = l.conta_contabil_id
             WHERE UPPER(c.codigo) = 'A'
+              AND l.status = 'ATIVO'
               AND l.cliente_id IS NULL
             """, nativeQuery = true)
     long countContaASemCliente();
@@ -585,6 +625,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
                    SUM(CASE WHEN etapa = 'IMPORTADO' THEN 1 ELSE 0 END) AS pendentes
             FROM financeiro_lancamento
             WHERE data_lancamento >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+              AND status = 'ATIVO'
             GROUP BY YEAR(data_lancamento), MONTH(data_lancamento)
             ORDER BY ano DESC, mes DESC
             """, nativeQuery = true)
@@ -597,6 +638,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             LEFT JOIN FETCH l.clienteEntidade
             LEFT JOIN FETCH l.processo
             WHERE l.numeroBanco = :numeroBanco
+              AND l.status = 'ATIVO'
               AND l.dataLancamento BETWEEN :inicio AND :fim
             """)
     List<LancamentoFinanceiroEntity> findByNumeroBancoAndMes(
@@ -614,6 +656,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             FROM financeiro_lancamento l
             INNER JOIN financeiro_conta_contabil c ON c.id = l.conta_contabil_id
             WHERE l.data_lancamento >= :dataInicio
+              AND l.status = 'ATIVO'
               AND l.data_lancamento < :dataFimExclusive
             GROUP BY UPPER(TRIM(c.codigo)), TRIM(c.nome), YEAR(l.data_lancamento), MONTH(l.data_lancamento)
             ORDER BY codigo, ano, mes
@@ -627,13 +670,15 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
                    COUNT(l.id) AS qtd
             FROM financeiro_lancamento l
             INNER JOIN financeiro_conta_contabil c ON c.id = l.conta_contabil_id
+            WHERE l.status = 'ATIVO'
             GROUP BY UPPER(TRIM(c.codigo))
             """, nativeQuery = true)
     List<Object[]> countLancamentosPorContaCodigo();
 
     @Query("""
             SELECT l FROM LancamentoFinanceiroEntity l
-            WHERE l.natureza = :debito
+            WHERE l.status = 'ATIVO'
+              AND l.natureza = :debito
               AND l.dataLancamento BETWEEN :inicio AND :fim
               AND (:numeroBanco IS NULL OR l.numeroBanco = :numeroBanco)
               AND NOT EXISTS (
@@ -648,13 +693,17 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             @Param("fim") LocalDate fim,
             @Param("numeroBanco") Integer numeroBanco);
 
+    @Query("SELECT l FROM LancamentoFinanceiroEntity l WHERE l.descricaoNorm IS NULL AND l.status = 'ATIVO'")
     List<LancamentoFinanceiroEntity> findByDescricaoNormIsNull(Pageable pageable);
 
+    @Query("SELECT COUNT(l) FROM LancamentoFinanceiroEntity l WHERE l.descricaoNorm IS NULL AND l.status = 'ATIVO'")
     long countByDescricaoNormIsNull();
+
 
     @Query("""
             SELECT l FROM LancamentoFinanceiroEntity l
             WHERE l.etapa = br.com.vilareal.financeiro.domain.EtapaLancamento.IMPORTADO
+              AND l.status = 'ATIVO'
               AND l.descricaoNorm = :descricaoNorm
               AND l.numeroBanco = :numeroBanco
             ORDER BY l.id
@@ -666,6 +715,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
     @Query("""
             SELECT COUNT(l) FROM LancamentoFinanceiroEntity l
             WHERE l.etapa = br.com.vilareal.financeiro.domain.EtapaLancamento.CLASSIFICADO
+              AND l.status = 'ATIVO'
               AND l.descricaoNorm = :descricaoNorm
               AND l.numeroBanco = :numeroBanco
               AND l.contaContabil.id = :contaContabilId
@@ -680,6 +730,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
     @Query("""
             SELECT l FROM LancamentoFinanceiroEntity l
             WHERE l.etapa = br.com.vilareal.financeiro.domain.EtapaLancamento.CLASSIFICADO
+              AND l.status = 'ATIVO'
               AND l.descricaoNorm = :descricaoNorm
               AND l.numeroBanco = :numeroBanco
               AND l.contaContabil.id = :contaContabilId
@@ -698,6 +749,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             LEFT JOIN FETCH l.clienteEntidade
             LEFT JOIN FETCH l.processo
             WHERE l.etapa <> br.com.vilareal.financeiro.domain.EtapaLancamento.IMPORTADO
+              AND l.status = 'ATIVO'
               AND UPPER(TRIM(c.codigo)) = 'A'
               AND l.clienteEntidade IS NOT NULL
               AND l.processo IS NOT NULL
@@ -710,7 +762,8 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
     @Query("""
             SELECT l FROM LancamentoFinanceiroEntity l
             JOIN FETCH l.contaContabil c
-            WHERE UPPER(TRIM(c.codigo)) = 'A'
+            WHERE l.status = 'ATIVO'
+              AND UPPER(TRIM(c.codigo)) = 'A'
               AND (l.clienteEntidade IS NULL OR l.processo IS NULL)
               AND l.descricaoNorm IS NOT NULL AND TRIM(l.descricaoNorm) <> ''
               AND (:numeroBanco IS NULL OR l.numeroBanco = :numeroBanco)
@@ -727,6 +780,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             SELECT l.valor FROM LancamentoFinanceiroEntity l
             INNER JOIN l.contaContabil c
             WHERE l.etapa <> br.com.vilareal.financeiro.domain.EtapaLancamento.IMPORTADO
+              AND l.status = 'ATIVO'
               AND UPPER(TRIM(c.codigo)) <> 'N'
               AND l.descricaoNorm = :descricaoNorm
               AND l.numeroBanco = :numeroBanco
@@ -741,6 +795,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             SELECT l FROM LancamentoFinanceiroEntity l
             JOIN FETCH l.contaContabil
             WHERE l.processo.id = :processoId
+              AND l.status = 'ATIVO'
             ORDER BY l.dataLancamento DESC, l.id DESC
             """)
     List<LancamentoFinanceiroEntity> findByProcessoId(@Param("processoId") Long processoId);
@@ -748,6 +803,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
     @Query("""
             SELECT l FROM LancamentoFinanceiroEntity l
             WHERE l.processo.id = :processoId
+              AND l.status = 'ATIVO'
               AND l.natureza = br.com.vilareal.financeiro.domain.NaturezaLancamento.CREDITO
               AND NOT EXISTS (
                   SELECT 1 FROM PagamentoEntity p
@@ -760,6 +816,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
     @Query("""
             SELECT l FROM LancamentoFinanceiroEntity l
             WHERE l.processo.id = :processoId
+              AND l.status = 'ATIVO'
               AND l.natureza = br.com.vilareal.financeiro.domain.NaturezaLancamento.CREDITO
             ORDER BY l.dataLancamento ASC, l.id ASC
             """)
@@ -773,16 +830,42 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             SELECT l FROM LancamentoFinanceiroEntity l
             JOIN FETCH l.contaContabil
             WHERE l.processo IS NULL
+              AND l.status = 'ATIVO'
               AND l.dataLancamento BETWEEN :inicio AND :fim
             ORDER BY l.dataLancamento DESC, l.id DESC
             """)
     List<LancamentoFinanceiroEntity> findOrfaosNoIntervalo(
             @Param("inicio") LocalDate inicio, @Param("fim") LocalDate fim);
 
+    /** Créditos Cora no processo, ainda sem vínculo ALUGUEL neste contrato. */
+    @Query(
+            """
+            SELECT l FROM LancamentoFinanceiroEntity l
+            WHERE l.numeroBanco = :numeroBanco
+              AND l.status = 'ATIVO'
+              AND l.natureza = br.com.vilareal.financeiro.domain.NaturezaLancamento.CREDITO
+              AND l.dataLancamento BETWEEN :inicio AND :fim
+              AND l.processo.id = :processoId
+              AND NOT EXISTS (
+                  SELECT 1 FROM LocacaoRepasseLancamentoEntity v
+                  WHERE v.lancamentoFinanceiro.id = l.id
+                    AND v.contratoLocacao.id = :contratoId
+                    AND v.papel = br.com.vilareal.imovel.domain.PapelReconciliacao.ALUGUEL
+              )
+            ORDER BY l.dataLancamento ASC, l.id ASC
+            """)
+    List<LancamentoFinanceiroEntity> findCreditosCoraSemVinculoAluguelNoContrato(
+            @Param("numeroBanco") Integer numeroBanco,
+            @Param("processoId") Long processoId,
+            @Param("contratoId") Long contratoId,
+            @Param("inicio") LocalDate inicio,
+            @Param("fim") LocalDate fim);
+
     /** Créditos órfãos (sem processo) compatíveis com valor e janela — candidatos a honorários. */
     @Query("""
             SELECT l FROM LancamentoFinanceiroEntity l
             WHERE l.processo IS NULL
+              AND l.status = 'ATIVO'
               AND l.natureza = br.com.vilareal.financeiro.domain.NaturezaLancamento.CREDITO
               AND l.valor >= :valorMin
               AND l.valor <= :valorMax
@@ -811,6 +894,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
                                COUNT(*) AS qtd
                         FROM financeiro_lancamento l
                         WHERE l.processo_id IN (:ids)
+                          AND l.status = 'ATIVO'
                           AND l.etapa <> 'IMPORTADO'
                         GROUP BY l.processo_id
                         UNION ALL
@@ -826,4 +910,32 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
                     """,
             nativeQuery = true)
     List<Object[]> findAtividadeClassificadaPorProcessoIds(@Param("ids") Collection<Long> ids);
+
+    @Query("""
+            SELECT l FROM LancamentoFinanceiroEntity l
+            JOIN FETCH l.contaContabil
+            LEFT JOIN FETCH l.clienteEntidade
+            LEFT JOIN FETCH l.processo
+            WHERE l.numeroBanco = :numeroBanco
+              AND l.status = 'ATIVO'
+              AND l.origem IN :origens
+            ORDER BY l.id ASC
+            """)
+    List<LancamentoFinanceiroEntity> findAtivosPorNumeroBancoEOrigens(
+            @Param("numeroBanco") Integer numeroBanco, @Param("origens") Collection<String> origens);
+
+    @Query(value = """
+            SELECT COALESCE(SUM(CASE WHEN natureza = 'CREDITO' THEN valor ELSE -valor END), 0)
+            FROM financeiro_lancamento
+            WHERE grupo_compensacao = :grupo
+              AND status = 'ATIVO'
+            """, nativeQuery = true)
+    BigDecimal sumSaldoAssinadoPorGrupoCompensacaoAtivo(@Param("grupo") String grupo);
+
+    @Query("""
+            SELECT l FROM LancamentoFinanceiroEntity l
+            JOIN FETCH l.contaContabil
+            WHERE l.grupoCompensacao = :grupo AND l.status = 'ATIVO'
+            """)
+    List<LancamentoFinanceiroEntity> findAtivosByGrupoCompensacao(@Param("grupo") String grupo);
 }

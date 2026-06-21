@@ -62,12 +62,36 @@ import {
 } from '../repositories/clientesRepository.js';
 import { getIdPessoaPorCodCliente } from '../data/clienteCodigoHelpers.js';
 import {
+  buscarMensalistaPorCliente,
+  salvarMensalista,
+} from '../repositories/mensalistasRepository.js';
+import {
   buscarClientePorCodigo,
   buscarProcessoPorChaveNatural,
   listarProcessosResumoPorCodigoCliente,
   mergeCadastroClientesProcessosComApi,
   salvarCabecalhoProcesso,
 } from '../repositories/processosRepository.js';
+
+const MENSALISTA_ESTADO_VAZIO = {
+  cadastrado: false,
+  ativo: false,
+  valor: '',
+  diaVencimento: '10',
+  dataInicio: '',
+  dataFim: '',
+  carregando: false,
+  salvando: false,
+  erro: '',
+};
+
+function hojeIsoLocal() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 let __ultimoListaClientesLog = 0;
 let __ultimoClienteConsultaLog = '';
@@ -457,6 +481,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   const [modalConfigCalculoAberto, setModalConfigCalculoAberto] = useState(false);
   const [modalCobrancaAutomaticaAberto, setModalCobrancaAutomaticaAberto] = useState(false);
   const [modalWhatsAppAberto, setModalWhatsAppAberto] = useState(false);
+  const [mensalista, setMensalista] = useState(MENSALISTA_ESTADO_VAZIO);
   const [modalEscolherPessoa, setModalEscolherPessoa] = useState(false);
   const [buscaPessoaModal, setBuscaPessoaModal] = useState('');
   const [pessoasModalApiLista, setPessoasModalApiLista] = useState([]);
@@ -779,6 +804,112 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     }
   }, [refreshProcessosGrade]);
   aplicarDadosClienteRef.current = aplicarDadosCliente;
+
+  const resolveClientePkAtual = useCallback(async () => {
+    const cod = padCliente8(codigoRef.current);
+    const fromList = (clientesApiIndexRef.current || []).find((c) => c.codigo === cod);
+    if (fromList?.clienteId != null && Number.isFinite(Number(fromList.clienteId))) {
+      return Number(fromList.clienteId);
+    }
+    if (!featureFlags.useApiClientes) return null;
+    const resolved = await resolverClienteCadastroPorCodigo(cod);
+    const pk = resolved?.clienteId ?? null;
+    return pk != null && Number.isFinite(Number(pk)) ? Number(pk) : null;
+  }, []);
+
+  useEffect(() => {
+    if (!featureFlags.useApiClientes || !formularioClienteAberto || !codigo) {
+      setMensalista(MENSALISTA_ESTADO_VAZIO);
+      return undefined;
+    }
+    let cancelled = false;
+    setMensalista((m) => ({ ...MENSALISTA_ESTADO_VAZIO, carregando: true }));
+    void (async () => {
+      try {
+        const clientePk = await resolveClientePkAtual();
+        if (cancelled) return;
+        if (!clientePk) {
+          setMensalista(MENSALISTA_ESTADO_VAZIO);
+          return;
+        }
+        const data = await buscarMensalistaPorCliente(clientePk);
+        if (cancelled) return;
+        if (!data) {
+          setMensalista({ ...MENSALISTA_ESTADO_VAZIO, carregando: false });
+          return;
+        }
+        setMensalista({
+          cadastrado: true,
+          ativo: data.ativo !== false,
+          valor: data.valor ?? '',
+          diaVencimento: String(data.diaVencimento ?? 10),
+          dataInicio: data.dataInicio ?? '',
+          dataFim: data.dataFim ?? '',
+          carregando: false,
+          salvando: false,
+          erro: '',
+        });
+      } catch (err) {
+        if (!cancelled) {
+          setMensalista((m) => ({
+            ...m,
+            carregando: false,
+            erro: String(err?.message ?? 'Erro ao carregar mensalista'),
+          }));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [codigo, formularioClienteAberto, clientesApiCarregados, resolveClientePkAtual]);
+
+  const salvarMensalistaAtual = useCallback(async () => {
+    if (!featureFlags.useApiClientes || edicaoDesabilitada) return;
+    setMensalista((m) => ({ ...m, salvando: true, erro: '' }));
+    try {
+      const clientePk = await resolveClientePkAtual();
+      if (!clientePk) {
+        setMensalista((m) => ({
+          ...m,
+          salvando: false,
+          erro: 'Salve o cliente na API antes de cadastrar mensalista.',
+        }));
+        return;
+      }
+      const snapshot = mensalista;
+      if (!snapshot.ativo && !snapshot.cadastrado) {
+        setMensalista((m) => ({ ...m, salvando: false }));
+        return;
+      }
+      const dataInicio = snapshot.dataInicio || hojeIsoLocal();
+      const saved = await salvarMensalista({
+        clienteId: clientePk,
+        valor: snapshot.valor,
+        diaVencimento: snapshot.diaVencimento,
+        dataInicio,
+        dataFim: snapshot.dataFim || null,
+        ativo: snapshot.ativo,
+      });
+      setMensalista({
+        cadastrado: true,
+        ativo: saved.ativo !== false,
+        valor: saved.valor ?? '',
+        diaVencimento: String(saved.diaVencimento ?? 10),
+        dataInicio: saved.dataInicio ?? dataInicio,
+        dataFim: saved.dataFim ?? '',
+        carregando: false,
+        salvando: false,
+        erro: '',
+      });
+    } catch (err) {
+      setMensalista((m) => ({
+        ...m,
+        salvando: false,
+        erro: String(err?.message ?? 'Erro ao salvar mensalista'),
+      }));
+    }
+  }, [edicaoDesabilitada, mensalista, resolveClientePkAtual]);
 
   /** Após o índice leve carregar, revalida só se o cabeçalho ainda não veio do índice. */
   useEffect(() => {
@@ -1974,6 +2105,136 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
               className={`${inputClass} resize-y ${edicaoDesabilitada ? 'bg-slate-50' : ''}`}
             />
           </div>
+
+          {featureFlags.useApiClientes ? (
+            <div className="rounded-xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/50 via-white to-teal-50/30 overflow-hidden shadow-sm ring-1 ring-emerald-500/10">
+              <div className="border-b border-emerald-200/70 bg-gradient-to-r from-emerald-600 via-teal-600 to-green-600 px-4 py-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-bold uppercase tracking-wide text-white flex items-center gap-2">
+                      <Wallet className="h-4 w-4" aria-hidden />
+                      Mensalista
+                    </p>
+                    <p className="text-xs text-emerald-100/95 mt-0.5">
+                      Gera pagamento RECEBER (MENSALIDADE) mensal no quadro /recebiveis
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={edicaoDesabilitada || mensalista.salvando || mensalista.carregando || !mensalista.ativo}
+                    onClick={() => void salvarMensalistaAtual()}
+                    className={`${btnPrimarioForte} !min-h-9 !px-3 !py-1.5 !text-xs`}
+                  >
+                    {mensalista.salvando ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                        Salvando…
+                      </>
+                    ) : (
+                      'Salvar mensalista'
+                    )}
+                  </button>
+                </div>
+              </div>
+              <div className="p-3 sm:p-4 space-y-3">
+                {mensalista.carregando ? (
+                  <p className="text-sm text-slate-600 flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                    Carregando mensalista…
+                  </p>
+                ) : (
+                  <>
+                    <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-800">
+                      <input
+                        type="checkbox"
+                        checked={mensalista.ativo}
+                        disabled={edicaoDesabilitada}
+                        onChange={(e) => {
+                          const ativo = e.target.checked;
+                          setMensalista((m) => ({
+                            ...m,
+                            ativo,
+                            dataInicio: m.dataInicio || hojeIsoLocal(),
+                          }));
+                        }}
+                        className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                      />
+                      Cliente mensalista ativo
+                    </label>
+                    {mensalista.ativo ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">
+                            Valor mensal (R$)
+                          </label>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={mensalista.valor}
+                            disabled={edicaoDesabilitada}
+                            onChange={(e) => setMensalista((m) => ({ ...m, valor: e.target.value }))}
+                            placeholder="1500,00"
+                            className={`${inputClass} ${edicaoDesabilitada ? 'bg-slate-50' : ''}`}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">
+                            Dia vencimento
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={31}
+                            value={mensalista.diaVencimento}
+                            disabled={edicaoDesabilitada}
+                            onChange={(e) => setMensalista((m) => ({ ...m, diaVencimento: e.target.value }))}
+                            className={`${inputClass} ${edicaoDesabilitada ? 'bg-slate-50' : ''}`}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">
+                            Início
+                          </label>
+                          <input
+                            type="date"
+                            value={mensalista.dataInicio || hojeIsoLocal()}
+                            disabled={edicaoDesabilitada}
+                            onChange={(e) => setMensalista((m) => ({ ...m, dataInicio: e.target.value }))}
+                            className={`${inputClass} ${edicaoDesabilitada ? 'bg-slate-50' : ''}`}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">
+                            Fim (opcional)
+                          </label>
+                          <input
+                            type="date"
+                            value={mensalista.dataFim}
+                            disabled={edicaoDesabilitada}
+                            onChange={(e) => setMensalista((m) => ({ ...m, dataFim: e.target.value }))}
+                            className={`${inputClass} ${edicaoDesabilitada ? 'bg-slate-50' : ''}`}
+                          />
+                        </div>
+                      </div>
+                    ) : mensalista.cadastrado ? (
+                      <p className="text-sm text-slate-600">
+                        Mensalista cadastrado, porém inativo — não gera recebíveis.
+                      </p>
+                    ) : (
+                      <p className="text-sm text-slate-600">
+                        Marque como ativo para configurar valor e vencimento mensal.
+                      </p>
+                    )}
+                    {mensalista.erro ? (
+                      <p className="text-sm text-red-600" role="alert">
+                        {mensalista.erro}
+                      </p>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            </div>
+          ) : null}
 
           <div className="rounded-xl border border-sky-200/80 bg-gradient-to-br from-sky-50/50 via-white to-indigo-50/30 overflow-hidden shadow-sm ring-1 ring-sky-500/10">
             <div className="border-b border-sky-200/70 bg-gradient-to-r from-sky-600 via-cyan-600 to-indigo-600 px-4 py-2.5">

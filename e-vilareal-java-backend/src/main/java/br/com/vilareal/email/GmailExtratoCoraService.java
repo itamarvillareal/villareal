@@ -2,6 +2,8 @@ package br.com.vilareal.email;
 
 import br.com.vilareal.financeiro.application.ExtratoCoraImportResult;
 import br.com.vilareal.financeiro.application.ExtratoCoraImportService;
+import br.com.vilareal.imovel.application.LocacaoReconciliacaoService;
+import br.com.vilareal.imovel.api.dto.ConciliarAlugueisAutomaticoResponse;
 import com.google.api.services.gmail.Gmail;
 import com.google.api.services.gmail.model.ListMessagesResponse;
 import com.google.api.services.gmail.model.Message;
@@ -27,16 +29,19 @@ public class GmailExtratoCoraService {
     private final GmailApiProvider gmailApiProvider;
     private final ExtratoCoraImportService extratoCoraImportService;
     private final ExtratoCoraEmailProcessadoService emailProcessadoService;
+    private final LocacaoReconciliacaoService locacaoReconciliacaoService;
     private final String gmailUser;
 
     public GmailExtratoCoraService(
             GmailApiProvider gmailApiProvider,
             ExtratoCoraImportService extratoCoraImportService,
             ExtratoCoraEmailProcessadoService emailProcessadoService,
+            LocacaoReconciliacaoService locacaoReconciliacaoService,
             @Value("${gmail.user:me}") String gmailUser) {
         this.gmailApiProvider = gmailApiProvider;
         this.extratoCoraImportService = extratoCoraImportService;
         this.emailProcessadoService = emailProcessadoService;
+        this.locacaoReconciliacaoService = locacaoReconciliacaoService;
         this.gmailUser = gmailUser;
     }
 
@@ -151,7 +156,24 @@ public class GmailExtratoCoraService {
                 resumo.getLancamentosCriados(),
                 resumo.getLancamentosJaExistiam(),
                 resumo.getFalhas());
+        conciliarAlugueisPosImportacao(resumo);
         return resumo;
+    }
+
+    /** Pós-processamento idempotente: auto-vincula aluguéis Cora inequívocos do mês corrente. */
+    private void conciliarAlugueisPosImportacao(ExtratoCoraEmailProcessamentoResumo resumo) {
+        try {
+            ConciliarAlugueisAutomaticoResponse auto = locacaoReconciliacaoService.conciliarAlugueisAutomatico(null);
+            log.info(
+                    "Auto-conciliação aluguéis pós-import Cora (competencia={}): {} vinculado(s), {} para revisão, {} sem crédito.",
+                    auto.getCompetencia(),
+                    auto.getAutoVinculados(),
+                    auto.getParaRevisao().size(),
+                    auto.getSemCredito().size());
+        } catch (Exception ex) {
+            log.warn("Auto-conciliação aluguéis pós-import Cora falhou (importação já concluída): {}", mensagemRaiz(ex), ex);
+            resumo.getErros().add("Auto-conciliação aluguéis: " + mensagemRaiz(ex));
+        }
     }
 
     private List<Message> listarMensagens(Gmail gmail, String query) throws IOException {

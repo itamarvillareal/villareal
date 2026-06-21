@@ -15,4 +15,6 @@ public record ReconciliacaoVinculoResponse(
         /** true quando o lançamento órfão foi adotado (classificado A + cliente + proc) neste confirm. */
         boolean adotado,
         String contaCodigoAplicada,
-        Long processoAplicadoId) {}
+        Long processoAplicadoId,
+        /** {@code AUTO} quando criado pela conciliação automática; {@code null} = manual. */
+        String origem) {}

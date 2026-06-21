@@ -2,6 +2,7 @@ package br.com.vilareal.financeiro.infrastructure.persistence;
 
 import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.financeiro.domain.FinanceiroCadastroPlenitude;
+import br.com.vilareal.financeiro.domain.StatusLancamento;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
 import jakarta.persistence.criteria.JoinType;
 import org.springframework.data.jpa.domain.Specification;
@@ -147,7 +148,12 @@ public final class LancamentoFinanceiroSpecifications {
             spec = spec.and(comAno(ano));
         }
         spec = spec.and(comCadastroPlenitude(cadastroPlenitude));
-        return spec;
+        return spec.and(somenteAtivos());
+    }
+
+    /** Extrato / consolidado: oculta lançamentos aposentados (soft-delete). */
+    public static Specification<LancamentoFinanceiroEntity> somenteAtivos() {
+        return (root, query, cb) -> cb.equal(root.get("status"), StatusLancamento.ATIVO);
     }
 
     /** Ex.: {@code A,E,F} — letras de conta contábil para filtro do extrato. */

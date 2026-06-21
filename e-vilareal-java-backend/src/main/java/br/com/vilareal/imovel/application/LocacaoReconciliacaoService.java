@@ -16,8 +16,12 @@ import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaCon
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
+import br.com.vilareal.imovel.api.dto.ConciliarAlugueisAutomaticoResponse;
+import br.com.vilareal.imovel.api.dto.CreditoCandidatoAluguelItem;
 import br.com.vilareal.imovel.api.dto.ReconciliacaoResultadoResponse;
 import br.com.vilareal.imovel.api.dto.ReconciliacaoResultadoResponse.ReconciliacaoResultadoCompetenciaResponse;
+import br.com.vilareal.imovel.api.dto.RepassePendenteCarteiraResponse;
+import br.com.vilareal.imovel.api.dto.RepassePendenteItemResponse;
 import br.com.vilareal.imovel.api.dto.ReconciliacaoSugestaoItemResponse;
 import br.com.vilareal.imovel.api.dto.ReconciliacaoVincularRequest;
 import br.com.vilareal.imovel.api.dto.ReconciliacaoVinculoResponse;
@@ -47,6 +51,7 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -76,6 +81,9 @@ public class LocacaoReconciliacaoService {
     private static final String TIPO_CONTA_REPASSE_INTERNO = "VIRTUAL";
     /** Origem dos lançamentos gerados automaticamente. */
     private static final String ORIGEM_AUTO = "AUTO";
+    /** Origem do vínculo locacao_repasse_lancamento criado pela conciliação automática. */
+    public static final String ORIGEM_VINCULO_AUTO = "AUTO";
+    public static final int NUMERO_BANCO_CORA = 26;
     /** Prefixo do {@code numero_lancamento} do débito interno; embute o id do vínculo de ALUGUEL (idempotência). */
     private static final String PREFIXO_GRUPO_REPASSE_INTERNO = "AUTO-REP-";
 
@@ -389,7 +397,7 @@ public class LocacaoReconciliacaoService {
             }
 
             LocacaoRepasseLancamentoEntity entity =
-                    criarVinculoComGatilho(contrato, lancamento, item.papel(), item.competenciaMes());
+                    criarVinculoComGatilho(contrato, lancamento, item.papel(), item.competenciaMes(), null);
             saida.add(toVinculoResponse(entity, adotado));
         }
         return saida;
@@ -403,11 +411,20 @@ public class LocacaoReconciliacaoService {
     private LocacaoRepasseLancamentoEntity criarVinculoComGatilho(
             ContratoLocacaoEntity contrato, LancamentoFinanceiroEntity lancamento,
             PapelReconciliacao papel, String competenciaMes) {
-        LocacaoRepasseLancamentoEntity entity = vinculoRepository
-                .findByContratoLocacao_IdAndLancamentoFinanceiro_IdAndPapel(
-                        contrato.getId(), lancamento.getId(), papel)
-                .orElseGet(LocacaoRepasseLancamentoEntity::new);
+        return criarVinculoComGatilho(contrato, lancamento, papel, competenciaMes, null);
+    }
 
+    private LocacaoRepasseLancamentoEntity criarVinculoComGatilho(
+            ContratoLocacaoEntity contrato, LancamentoFinanceiroEntity lancamento,
+            PapelReconciliacao papel, String competenciaMes, String origemVinculo) {
+        Optional<LocacaoRepasseLancamentoEntity> existente = vinculoRepository
+                .findByContratoLocacao_IdAndLancamentoFinanceiro_IdAndPapel(
+                        contrato.getId(), lancamento.getId(), papel);
+        if (existente.isPresent()) {
+            return existente.get();
+        }
+
+        LocacaoRepasseLancamentoEntity entity = new LocacaoRepasseLancamentoEntity();
         entity.setContratoLocacao(contrato);
         entity.setLancamentoFinanceiro(lancamento);
         entity.setPapel(papel);
@@ -418,6 +435,9 @@ public class LocacaoReconciliacaoService {
             throw new BusinessRuleException("Lançamento sem valor não pode ser vinculado.");
         }
         entity.setValor(lancamento.getValor().abs());
+        if (StringUtils.hasText(origemVinculo)) {
+            entity.setOrigem(origemVinculo.trim());
+        }
 
         entity = vinculoRepository.save(entity);
 
@@ -489,6 +509,157 @@ public class LocacaoReconciliacaoService {
         BigDecimal diff = valor.abs().subtract(aluguel.abs()).abs();
         BigDecimal limite = aluguel.abs().multiply(new BigDecimal("0.10")).max(new BigDecimal("50"));
         return diff.compareTo(limite) <= 0;
+    }
+
+    /**
+     * Créditos Cora candidatos na faixa do aluguel, sem classificar (read-only).
+     * Fonte do grupo CONCILIAR em Ações do Dia e da auto-conciliação inequívoca.
+     */
+    @Transactional(readOnly = true)
+    public List<CreditoCandidatoAluguelItem> creditosCandidatosAluguelSemClassificar(
+            Long contratoId, String competenciaParam) {
+        ContratoLocacaoEntity contrato = requireContrato(contratoId);
+        YearMonth ym = StringUtils.hasText(competenciaParam)
+                ? parseCompetencia(competenciaParam.trim())
+                : YearMonth.now();
+        Long processoId = processoIdDoContrato(contrato);
+        if (processoId == null) {
+            return List.of();
+        }
+        LocalDate inicio = ym.atDay(1);
+        LocalDate fim = ym.atEndOfMonth();
+        return creditosNaFaixaDoAluguel(contrato, processoId, inicio, fim).stream()
+                .map(this::toCreditoCandidatoItem)
+                .toList();
+    }
+
+    private List<LancamentoFinanceiroEntity> creditosNaFaixaDoAluguel(
+            ContratoLocacaoEntity contrato, Long processoId, LocalDate inicio, LocalDate fim) {
+        return creditosCandidatos(contrato, processoId, inicio, fim).stream()
+                .filter(l -> valorNaFaixaDoAluguel(l.getValor(), contrato.getValorAluguel()))
+                .toList();
+    }
+
+    private CreditoCandidatoAluguelItem toCreditoCandidatoItem(LancamentoFinanceiroEntity l) {
+        String descricao = null;
+        if (StringUtils.hasText(l.getDescricaoNorm())) {
+            descricao = l.getDescricaoNorm().trim();
+        } else if (StringUtils.hasText(l.getDescricao())) {
+            descricao = l.getDescricao().trim();
+        }
+        return new CreditoCandidatoAluguelItem(
+                l.getId(), l.getDataLancamento(), l.getValor() != null ? l.getValor().abs() : null, descricao);
+    }
+
+    /**
+     * Auto-concilia créditos Cora inequívocos como {@code papel=ALUGUEL} ({@code origem=AUTO}).
+     * Idempotente: não duplica vínculos existentes nem altera vínculos manuais.
+     */
+    @Transactional
+    public ConciliarAlugueisAutomaticoResponse conciliarAlugueisAutomatico(String competenciaParam) {
+        YearMonth ym = StringUtils.hasText(competenciaParam)
+                ? parseCompetencia(competenciaParam.trim())
+                : YearMonth.now();
+        String competencia = ym.toString();
+        LocalDate inicio = ym.atDay(1);
+        LocalDate fim = ym.atEndOfMonth();
+
+        ConciliarAlugueisAutomaticoResponse resp = new ConciliarAlugueisAutomaticoResponse();
+        resp.setCompetencia(competencia);
+
+        List<ContratoLocacaoEntity> pendentes =
+                contratoLocacaoRepository.findVigentesSemAluguelNaCompetencia(competencia, inicio, fim);
+
+        Map<Long, List<ContratoLocacaoEntity>> porProcesso = new HashMap<>();
+        for (ContratoLocacaoEntity contrato : pendentes) {
+            Long processoId = processoIdDoContrato(contrato);
+            if (processoId == null) {
+                resp.getSemCredito()
+                        .add(semCreditoItem(contrato));
+                continue;
+            }
+            porProcesso.computeIfAbsent(processoId, k -> new ArrayList<>()).add(contrato);
+        }
+
+        Set<Long> processosMultiContrato = new HashSet<>();
+        for (Map.Entry<Long, List<ContratoLocacaoEntity>> e : porProcesso.entrySet()) {
+            if (e.getValue().size() > 1) {
+                processosMultiContrato.add(e.getKey());
+                for (ContratoLocacaoEntity c : e.getValue()) {
+                    resp.getParaRevisao()
+                            .add(paraRevisaoItem(c, "MULTIPLOS_CONTRATOS_VIGENTES", creditosCandidatos(c, e.getKey(), inicio, fim).size()));
+                }
+            }
+        }
+
+        for (ContratoLocacaoEntity contrato : pendentes) {
+            Long processoId = processoIdDoContrato(contrato);
+            if (processoId == null || processosMultiContrato.contains(processoId)) {
+                continue;
+            }
+
+            List<LancamentoFinanceiroEntity> creditos =
+                    creditosCandidatos(contrato, processoId, inicio, fim);
+            List<LancamentoFinanceiroEntity> naFaixa = creditosNaFaixaDoAluguel(contrato, processoId, inicio, fim);
+
+            if (naFaixa.size() == 1) {
+                LancamentoFinanceiroEntity credito = naFaixa.get(0);
+                LocacaoRepasseLancamentoEntity vinculo = criarVinculoComGatilho(
+                        contrato, credito, PapelReconciliacao.ALUGUEL, competencia, ORIGEM_VINCULO_AUTO);
+                resp.setAutoVinculados(resp.getAutoVinculados() + 1);
+                resp.getAutoVinculadosDetalhes()
+                        .add(new ConciliarAlugueisAutomaticoResponse.AutoVinculadoItem(
+                                contrato.getId(),
+                                vinculo.getId(),
+                                credito.getId(),
+                                numeroPlanilha(contrato),
+                                contrato.getValorAluguel(),
+                                credito.getDataLancamento(),
+                                credito.getValor()));
+                log.info(
+                        "[reconciliacao-imovel] AUTO-ALUGUEL contrato={} lancamento={} competencia={} vinculo={}",
+                        contrato.getId(),
+                        credito.getId(),
+                        competencia,
+                        vinculo.getId());
+            } else if (creditos.isEmpty()) {
+                resp.getSemCredito().add(semCreditoItem(contrato));
+            } else if (naFaixa.isEmpty()) {
+                resp.getParaRevisao()
+                        .add(paraRevisaoItem(contrato, "VALOR_FORA_FAIXA", creditos.size()));
+            } else {
+                resp.getParaRevisao()
+                        .add(paraRevisaoItem(contrato, "MULTIPLOS_CREDITOS_NA_FAIXA", naFaixa.size()));
+            }
+        }
+
+        return resp;
+    }
+
+    private List<LancamentoFinanceiroEntity> creditosCandidatos(
+            ContratoLocacaoEntity contrato, Long processoId, LocalDate inicio, LocalDate fim) {
+        return lancamentoRepository.findCreditosCoraSemVinculoAluguelNoContrato(
+                NUMERO_BANCO_CORA, processoId, contrato.getId(), inicio, fim);
+    }
+
+    private static ConciliarAlugueisAutomaticoResponse.SemCreditoItem semCreditoItem(ContratoLocacaoEntity contrato) {
+        return new ConciliarAlugueisAutomaticoResponse.SemCreditoItem(
+                contrato.getId(), numeroPlanilha(contrato), contrato.getValorAluguel());
+    }
+
+    private static ConciliarAlugueisAutomaticoResponse.ParaRevisaoItem paraRevisaoItem(
+            ContratoLocacaoEntity contrato, String motivo, int quantidadeCreditosCandidatos) {
+        return new ConciliarAlugueisAutomaticoResponse.ParaRevisaoItem(
+                contrato.getId(),
+                numeroPlanilha(contrato),
+                contrato.getValorAluguel(),
+                motivo,
+                quantidadeCreditosCandidatos);
+    }
+
+    private static Integer numeroPlanilha(ContratoLocacaoEntity contrato) {
+        ImovelEntity imovel = contrato != null ? contrato.getImovel() : null;
+        return imovel != null ? imovel.getNumeroPlanilha() : null;
     }
 
     /**
@@ -962,7 +1133,123 @@ public class LocacaoReconciliacaoService {
                 taxaEfetivaPercent(total),
                 taxaEsperada,
                 statusTotal,
+                nomePessoa(contrato.getLocadorPessoa()),
+                contrato.getDadosBancariosRepasseJson(),
                 detalhe);
+    }
+
+    /**
+     * Chaves {@code contratoId|AAAA-MM} com aluguel recebido (soma {@code papel=ALUGUEL} &gt; 0).
+     * Mesma agregação de {@link #repassesPendentes(String)} / {@link #resultado(Long, String, String, String)}.
+     */
+    @Transactional(readOnly = true)
+    public Set<String> chavesContratoCompetenciaComAluguelRecebido() {
+        List<LocacaoRepasseLancamentoEntity> todos = vinculoRepository.findAllParaCarteiraRepasses();
+        Map<String, List<LocacaoRepasseLancamentoEntity>> porContratoCompetencia = new HashMap<>();
+        for (LocacaoRepasseLancamentoEntity v : todos) {
+            String competencia = chaveCompetencia(v.getCompetenciaMes());
+            if (!StringUtils.hasText(competencia)) {
+                continue;
+            }
+            ContratoLocacaoEntity contrato = v.getContratoLocacao();
+            if (contrato == null || contrato.getId() == null) {
+                continue;
+            }
+            String chave = contrato.getId() + "|" + competencia;
+            porContratoCompetencia.computeIfAbsent(chave, k -> new ArrayList<>()).add(v);
+        }
+        Set<String> out = new HashSet<>();
+        for (Map.Entry<String, List<LocacaoRepasseLancamentoEntity>> e : porContratoCompetencia.entrySet()) {
+            if (agregar(e.getValue()).aluguel().compareTo(BigDecimal.ZERO) > 0) {
+                out.add(e.getKey());
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Carteira de repasses em aberto: ciclos com aluguel vinculado ({@code papel=ALUGUEL}) e repasse
+     * {@link StatusRepasse#PENDENTE} ou {@link StatusRepasse#DIVERGENTE}. Valores derivados da mesma
+     * agregação de {@link #resultado(Long, String, String, String)}.
+     *
+     * @param ate competência máxima inclusive (AAAA-MM); {@code null} = todas as competências com aluguel
+     */
+    @Transactional(readOnly = true)
+    public RepassePendenteCarteiraResponse repassesPendentes(String ate) {
+        String ateCompetencia = StringUtils.hasText(ate) ? parseCompetencia(ate).toString() : null;
+        List<LocacaoRepasseLancamentoEntity> todos = vinculoRepository.findAllParaCarteiraRepasses();
+
+        Map<String, List<LocacaoRepasseLancamentoEntity>> porContratoCompetencia = new HashMap<>();
+        for (LocacaoRepasseLancamentoEntity v : todos) {
+            String competencia = chaveCompetencia(v.getCompetenciaMes());
+            if (!StringUtils.hasText(competencia)) {
+                continue;
+            }
+            if (ateCompetencia != null && competencia.compareTo(ateCompetencia) > 0) {
+                continue;
+            }
+            ContratoLocacaoEntity contrato = v.getContratoLocacao();
+            if (contrato == null || contrato.getId() == null) {
+                continue;
+            }
+            String chave = contrato.getId() + "|" + competencia;
+            porContratoCompetencia.computeIfAbsent(chave, k -> new ArrayList<>()).add(v);
+        }
+
+        List<RepassePendenteItemResponse> itens = new ArrayList<>();
+        for (List<LocacaoRepasseLancamentoEntity> vinculos : porContratoCompetencia.values()) {
+            RepassePendenteItemResponse item = montarRepassePendenteSeAplicavel(vinculos);
+            if (item != null) {
+                itens.add(item);
+            }
+        }
+
+        itens.sort(Comparator.comparing(
+                        RepassePendenteItemResponse::competencia, Comparator.nullsLast(String::compareTo))
+                .thenComparing(RepassePendenteItemResponse::valorEmAberto, Comparator.reverseOrder()));
+
+        BigDecimal totalEmAberto = itens.stream()
+                .map(RepassePendenteItemResponse::valorEmAberto)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return new RepassePendenteCarteiraResponse(escala(totalEmAberto), itens);
+    }
+
+    private RepassePendenteItemResponse montarRepassePendenteSeAplicavel(List<LocacaoRepasseLancamentoEntity> vinculos) {
+        if (vinculos == null || vinculos.isEmpty()) {
+            return null;
+        }
+        ContratoLocacaoEntity contrato = vinculos.get(0).getContratoLocacao();
+        if (contrato == null) {
+            return null;
+        }
+        String competencia = chaveCompetencia(vinculos.get(0).getCompetenciaMes());
+        BigDecimal taxaEsperada = taxaEsperadaPercent(contrato);
+        Agregado a = agregar(vinculos);
+        if (a.aluguel().compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+        StatusRepasse status = statusRepasse(a, taxaEsperada);
+        if (status != StatusRepasse.PENDENTE && status != StatusRepasse.DIVERGENTE) {
+            return null;
+        }
+        MetricasCicloRepasse metricas = metricasCicloRepasse(a, taxaEsperada);
+        BigDecimal valorEmAberto = escala(metricas.repasseEsperado().subtract(a.repassado()));
+        ImovelEntity imovel = contrato.getImovel();
+        return new RepassePendenteItemResponse(
+                contrato.getId(),
+                imovel != null ? imovel.getNumeroPlanilha() : null,
+                imovel != null ? imovel.getEnderecoCompleto() : null,
+                nomePessoa(contrato.getLocadorPessoa()),
+                contrato.getDadosBancariosRepasseJson(),
+                competencia,
+                escala(a.aluguel()),
+                escala(metricas.taxaEsperadaValor()),
+                escala(a.despesas()),
+                escala(metricas.repasseEsperado()),
+                escala(a.repassado()),
+                valorEmAberto,
+                status);
     }
 
     private ReconciliacaoResultadoCompetenciaResponse calcularCompetencia(
@@ -998,6 +1285,14 @@ public class LocacaoReconciliacaoService {
 
     private record Agregado(BigDecimal aluguel, BigDecimal repassado, BigDecimal despesas, boolean temRepasse) {}
 
+    private record MetricasCicloRepasse(BigDecimal taxaEsperadaValor, BigDecimal repasseEsperado) {}
+
+    private static MetricasCicloRepasse metricasCicloRepasse(Agregado a, BigDecimal taxaEsperadaPercent) {
+        BigDecimal taxaEsperadaValor = a.aluguel().multiply(taxaEsperadaPercent).divide(CEM, 2, RoundingMode.HALF_UP);
+        BigDecimal repasseEsperado = a.aluguel().subtract(taxaEsperadaValor).subtract(a.despesas());
+        return new MetricasCicloRepasse(taxaEsperadaValor, repasseEsperado);
+    }
+
     private static BigDecimal resultadoEscritorio(Agregado a) {
         return a.aluguel().subtract(a.repassado()).subtract(a.despesas());
     }
@@ -1015,9 +1310,8 @@ public class LocacaoReconciliacaoService {
         if (!a.temRepasse()) {
             return StatusRepasse.PENDENTE;
         }
-        BigDecimal taxaEsperadaValor = a.aluguel().multiply(taxaEsperada).divide(CEM, 2, RoundingMode.HALF_UP);
-        BigDecimal repasseEsperado = a.aluguel().subtract(taxaEsperadaValor).subtract(a.despesas());
-        BigDecimal diff = a.repassado().subtract(repasseEsperado).abs();
+        MetricasCicloRepasse metricas = metricasCicloRepasse(a, taxaEsperada);
+        BigDecimal diff = a.repassado().subtract(metricas.repasseEsperado()).abs();
         return diff.compareTo(TOLERANCIA_REPASSE) <= 0 ? StatusRepasse.FEITO : StatusRepasse.DIVERGENTE;
     }
 
@@ -1225,7 +1519,8 @@ public class LocacaoReconciliacaoService {
                 e.getValor(),
                 adotado,
                 contaCodigo,
-                processoId);
+                processoId,
+                e.getOrigem());
     }
 
     private static String trimToNull(String s) {

@@ -42,6 +42,10 @@ public class LocacaoRepasseLancamentoEntity {
     @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal valor;
 
+    /** {@code AUTO} = vínculo criado pela conciliação automática pós-import Cora; {@code null} = manual. */
+    @Column(length = 20)
+    private String origem;
+
     /**
      * FK real (self-ref) do repasse interno → vínculo de ALUGUEL que o originou (V115). Só populado
      * em vínculos {@code papel=REPASSE} gerados automaticamente (imóvel próprio). É a fonte de

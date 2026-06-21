@@ -42,6 +42,14 @@ import {
 } from './lib/resolve-extrato-bancos-planilha-xls.mjs';
 import { anexarCodigoClienteTagDescricaoDetalhada } from '../src/data/financeiroData.js';
 
+const CORA_NUMERO_BANCO = 26;
+
+function coraImportsCongelados() {
+  if (process.env.VILAREAL_CORA_IMPORTS_FROZEN === '1') return true;
+  const flag = path.resolve(import.meta.dirname, '../../e-vilareal-java-backend/data/cora-imports-frozen.flag');
+  return fs.existsSync(flag);
+}
+
 function parseArgs(argv) {
   const out = {
     file: null,
@@ -339,6 +347,12 @@ async function importarUmBanco(opts, token, wb, bancoNome, contaIdPorLetra) {
     ? LAYOUTS_EXTRATO_BANCO[opts.layout] ?? layoutExtratoPorNomeInstituicao(bancoNome)
     : layoutExtratoPorNomeInstituicao(bancoNome);
   const numeroBanco = numeroBancoPorNome(bancoNome);
+  if (numeroBanco === CORA_NUMERO_BANCO && coraImportsCongelados()) {
+    console.error(
+      `  Import Cora (banco ${numeroBanco}) bloqueado: janela de migração (cora-imports-frozen.flag / VILAREAL_CORA_IMPORTS_FROZEN=1).`,
+    );
+    return { errosPost: 0, congelado: true };
+  }
   const ws = wb.Sheets[bancoNome];
   if (!ws) {
     console.error(`  Aba não encontrada: ${bancoNome}`);

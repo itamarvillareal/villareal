@@ -6,6 +6,7 @@ import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.financeiro.api.dto.*;
 import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.financeiro.domain.NaturezaLancamento;
+import br.com.vilareal.financeiro.domain.StatusLancamento;
 import br.com.vilareal.financeiro.infrastructure.persistence.LancamentoFinanceiroSpecifications;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabilEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
@@ -13,6 +14,8 @@ import br.com.vilareal.financeiro.infrastructure.persistence.entity.SaldoInicial
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaContabilRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.SaldoInicialBancoRepository;
+import br.com.vilareal.financeiro.infrastructure.persistence.repository.CompensacaoParDescarteRepository;
+import br.com.vilareal.financeiro.infrastructure.persistence.repository.SemelhanteEscritorioDescarteRepository;
 import br.com.vilareal.pessoa.application.ClienteResolverService;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
@@ -34,10 +37,13 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -52,6 +58,8 @@ public class FinanceiroApplicationService {
     private final ContaContabilRepository contaContabilRepository;
     private final LancamentoFinanceiroRepository lancamentoRepository;
     private final SaldoInicialBancoRepository saldoInicialRepository;
+    private final SemelhanteEscritorioDescarteRepository semelhanteEscritorioDescarteRepository;
+    private final CompensacaoParDescarteRepository compensacaoParDescarteRepository;
     private final PessoaRepository pessoaRepository;
     private final ProcessoRepository processoRepository;
     private final ClienteCodigoPessoaResolver clienteCodigoPessoaResolver;
@@ -63,6 +71,8 @@ public class FinanceiroApplicationService {
             ContaContabilRepository contaContabilRepository,
             LancamentoFinanceiroRepository lancamentoRepository,
             SaldoInicialBancoRepository saldoInicialRepository,
+            SemelhanteEscritorioDescarteRepository semelhanteEscritorioDescarteRepository,
+            CompensacaoParDescarteRepository compensacaoParDescarteRepository,
             PessoaRepository pessoaRepository,
             ProcessoRepository processoRepository,
             ClienteCodigoPessoaResolver clienteCodigoPessoaResolver,
@@ -72,6 +82,8 @@ public class FinanceiroApplicationService {
         this.contaContabilRepository = contaContabilRepository;
         this.lancamentoRepository = lancamentoRepository;
         this.saldoInicialRepository = saldoInicialRepository;
+        this.semelhanteEscritorioDescarteRepository = semelhanteEscritorioDescarteRepository;
+        this.compensacaoParDescarteRepository = compensacaoParDescarteRepository;
         this.pessoaRepository = pessoaRepository;
         this.processoRepository = processoRepository;
         this.clienteCodigoPessoaResolver = clienteCodigoPessoaResolver;
@@ -483,8 +495,88 @@ public class FinanceiroApplicationService {
         if (!lancamentoRepository.existsById(id)) {
             throw new ResourceNotFoundException("Lançamento não encontrado: " + id);
         }
+        removerDependenciasLancamentos(List.of(id));
         lancamentoRepository.deleteById(id);
         invalidarCacheSaude();
+    }
+
+    /**
+     * Soft-delete reversível: oculta lançamentos do extrato/consolidado sem apagar a linha (UK intacta).
+     * Idempotente — ids já {@link StatusLancamento#APOSENTADO} são ignorados.
+     */
+    @Transactional
+    public int aposentarLancamentos(Collection<Long> ids, String motivo) {
+        if (ids == null || ids.isEmpty()) {
+            return 0;
+        }
+        Set<Long> unicos = new HashSet<>();
+        for (Long id : ids) {
+            if (id != null) {
+                unicos.add(id);
+            }
+        }
+        if (unicos.isEmpty()) {
+            return 0;
+        }
+        List<LancamentoFinanceiroEntity> lancamentos = lancamentoRepository.findAllByIdIn(unicos);
+        int alterados = 0;
+        for (LancamentoFinanceiroEntity l : lancamentos) {
+            if (StatusLancamento.isAposentado(l.getStatus())) {
+                continue;
+            }
+            l.setStatus(StatusLancamento.APOSENTADO);
+            alterados++;
+            log.info(
+                    "Lancamento aposentado id={} numeroBanco={} numeroLancamento={} motivo={}",
+                    l.getId(),
+                    l.getNumeroBanco(),
+                    l.getNumeroLancamento(),
+                    StringUtils.hasText(motivo) ? motivo.trim() : "(sem motivo)");
+        }
+        if (alterados > 0) {
+            lancamentoRepository.saveAll(lancamentos);
+            invalidarCacheSaude();
+        }
+        return alterados;
+    }
+
+    /**
+     * Reverte {@link #aposentarLancamentos} — restaura visibilidade operacional ({@link StatusLancamento#ATIVO}).
+     * Idempotente — ids já ativos são ignorados.
+     */
+    @Transactional
+    public int reativarLancamentos(Collection<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return 0;
+        }
+        Set<Long> unicos = new HashSet<>();
+        for (Long id : ids) {
+            if (id != null) {
+                unicos.add(id);
+            }
+        }
+        if (unicos.isEmpty()) {
+            return 0;
+        }
+        List<LancamentoFinanceiroEntity> lancamentos = lancamentoRepository.findAllByIdIn(unicos);
+        int alterados = 0;
+        for (LancamentoFinanceiroEntity l : lancamentos) {
+            if (StatusLancamento.isAtivo(l.getStatus())) {
+                continue;
+            }
+            l.setStatus(StatusLancamento.ATIVO);
+            alterados++;
+            log.info(
+                    "Lancamento reativado id={} numeroBanco={} numeroLancamento={}",
+                    l.getId(),
+                    l.getNumeroBanco(),
+                    l.getNumeroLancamento());
+        }
+        if (alterados > 0) {
+            lancamentoRepository.saveAll(lancamentos);
+            invalidarCacheSaude();
+        }
+        return alterados;
     }
 
     /**
@@ -512,6 +604,8 @@ public class FinanceiroApplicationService {
         List<LancamentoFinanceiroEntity> toDelete = new ArrayList<>(porId.values());
         int removidos = toDelete.size();
         if (!toDelete.isEmpty()) {
+            List<Long> ids = toDelete.stream().map(LancamentoFinanceiroEntity::getId).toList();
+            removerDependenciasLancamentos(ids);
             lancamentoRepository.deleteAll(toDelete);
             invalidarCacheSaude();
         }
@@ -525,6 +619,18 @@ public class FinanceiroApplicationService {
     @Transactional
     public LimparExtratoResult limparExtratoCoraEElosRelacionados() {
         return limparExtratoBancoEElosRelacionados("CORA", null);
+    }
+
+    /**
+     * Remove vínculos auxiliares que referenciam lançamentos do extrato antes do DELETE em
+     * {@code financeiro_lancamento} (FKs sem ON DELETE CASCADE).
+     */
+    private void removerDependenciasLancamentos(Collection<Long> lancamentoIds) {
+        if (lancamentoIds == null || lancamentoIds.isEmpty()) {
+            return;
+        }
+        semelhanteEscritorioDescarteRepository.deleteByLancamentoIdIn(lancamentoIds);
+        compensacaoParDescarteRepository.deleteByEnvolvendoLancamentos(lancamentoIds);
     }
 
     @Transactional(readOnly = true)
@@ -610,7 +716,7 @@ public class FinanceiroApplicationService {
         e.setOrigem(StringUtils.hasText(origem) ? origem : "MANUAL");
 
         String status = req.getStatus() != null ? req.getStatus().trim() : "";
-        e.setStatus(StringUtils.hasText(status) ? status : "ATIVO");
+        e.setStatus(StringUtils.hasText(status) ? status : StatusLancamento.ATIVO);
 
         if (req.getGrupoCompensacao() != null) {
             String g = req.getGrupoCompensacao().trim();

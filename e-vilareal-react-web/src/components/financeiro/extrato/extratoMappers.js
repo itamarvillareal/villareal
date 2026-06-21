@@ -18,6 +18,13 @@ function toBrDate(iso) {
   return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
+function brDateToIso(br) {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(br ?? '').trim());
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(br ?? '').trim());
+  return iso ? iso[0] : '';
+}
+
 function codClienteExibicao(l) {
   return codigoClienteExtratoDesdeApiDto(l);
 }
@@ -132,6 +139,46 @@ export function mapApiLancamentoToExtratoRow(l, contaToLetra) {
     parcela: '',
     origem: String(l.origem ?? ''),
     status: String(l.status ?? ''),
+  };
+}
+
+/** Converte transação da Conta Corrente (local ou UI da API) para o painel de detalhe do extrato. */
+export function contaCorrenteTransacaoParaExtratoDetailItem(t) {
+  if (!t || typeof t !== 'object') return null;
+  const isCartao = t.origemExtrato === 'cartao';
+  const valorNum = Number(t.valor) || 0;
+  const natureza = valorNum < 0 ? 'DEBITO' : 'CREDITO';
+  const valorAbs = Math.abs(valorNum);
+  const dataIso = brDateToIso(t.data) || String(t.dataLancamento ?? '').slice(0, 10);
+  const letra = String(t.letra ?? 'A').trim().toUpperCase() || 'A';
+  const id = Number(t.apiId ?? t.id);
+  return {
+    id: Number.isFinite(id) && id > 0 ? id : null,
+    origemExtrato: isCartao ? 'cartao' : 'banco',
+    cartaoId: t._financeiroMeta?.cartaoId ?? t.cartaoId ?? null,
+    cartaoNome: isCartao ? String(t.nomeBanco ?? t.cartaoNome ?? '') : '',
+    numeroCartao: isCartao ? t.numeroBanco ?? t.numeroCartao ?? null : null,
+    contaCodigo: letra,
+    contaContabilId: t._financeiroMeta?.contaContabilId ?? t.contaContabilId ?? null,
+    dataLancamento: dataIso,
+    dataExibicao: formatDataExtratoColuna(dataIso || t.data),
+    descricao: String(t.descricao ?? ''),
+    descricaoDetalhada: String(t.descricaoDetalhada ?? t.categoria ?? ''),
+    valor: valorAbs,
+    natureza,
+    etapa: String(t.etapa ?? 'IMPORTADO').toUpperCase(),
+    observacao: String(t.descricaoDetalhada ?? t.categoria ?? '').trim(),
+    codCliente: String(t.codCliente ?? ''),
+    proc: String(t.proc ?? ''),
+    clienteId: t.clienteId ?? t._financeiroMeta?.clienteId ?? null,
+    pessoaRefId: t.pessoaRefId ?? t._financeiroMeta?.pessoaRefId ?? null,
+    processoId: t.processoId ?? t._financeiroMeta?.processoId ?? null,
+    bancoNome: String(t.nomeBanco ?? t.bancoNome ?? ''),
+    numeroBanco: t.numeroBanco ?? null,
+    numeroLancamento: String(t.numero ?? t.numeroLancamento ?? ''),
+    grupoCompensacao: t._financeiroMeta?.grupoCompensacao ?? t.grupoCompensacao ?? null,
+    ref: String(t.ref ?? 'N').toUpperCase() === 'R' ? 'R' : 'N',
+    origem: String(t.origemImportacao ?? t.origem ?? ''),
   };
 }
 

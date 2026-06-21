@@ -19,6 +19,8 @@ public record ReconciliacaoResultadoResponse(
         BigDecimal taxaEfetivaPercent,
         BigDecimal taxaEsperadaPercent,
         StatusRepasse statusRepasse,
+        String locadorNome,
+        String dadosBancariosRepasse,
         List<ReconciliacaoResultadoCompetenciaResponse> porCompetencia) {
 
     /** Detalhe de uma competência (ciclo). */

@@ -12,6 +12,7 @@ public final class JobNames {
     public static final String PIPELINE_PROJUDI = "pipeline_projudi_movimentacoes";
     public static final String PAGAMENTO_ROTINA_DIARIA = "pagamento_rotina_diaria";
     public static final String PAGAMENTO_RECORRENCIA = "pagamento_recorrencia";
+    public static final String MENSALISTA_RECEBIVEL = "mensalista_recebivel";
     public static final String IPTU_ROTINA_DIARIA = "iptu_rotina_diaria";
     public static final String FINANCEIRO_FECHAMENTO_FATURA_CARTAO = "financeiro_fechamento_fatura_cartao";
     public static final String WHATSAPP_AGENDAMENTOS = "whatsapp_agendamentos";
@@ -26,6 +27,7 @@ public final class JobNames {
             PIPELINE_PROJUDI,
             PAGAMENTO_ROTINA_DIARIA,
             PAGAMENTO_RECORRENCIA,
+            MENSALISTA_RECEBIVEL,
             IPTU_ROTINA_DIARIA,
             FINANCEIRO_FECHAMENTO_FATURA_CARTAO,
             WHATSAPP_AGENDAMENTOS,

@@ -1,0 +1,53 @@
+import { request } from '../api/httpClient.js';
+import { featureFlags } from '../config/featureFlags.js';
+
+function mapApiToUi(data) {
+  if (!data || typeof data !== 'object') return null;
+  return {
+    id: data.id ?? null,
+    clienteId: data.clienteId ?? null,
+    clienteNome: data.clienteNome ?? '',
+    codigoCliente: data.codigoCliente ?? '',
+    valor: data.valor != null ? String(data.valor) : '',
+    diaVencimento: data.diaVencimento ?? 10,
+    dataInicio: data.dataInicio ?? '',
+    dataFim: data.dataFim ?? '',
+    ativo: data.ativo !== false,
+  };
+}
+
+export async function buscarMensalistaPorCliente(clienteId) {
+  const id = Number(clienteId);
+  if (!featureFlags.useApiClientes || !Number.isFinite(id) || id < 1) return null;
+  try {
+    const data = await request(`/api/mensalistas/cliente/${id}`);
+    return mapApiToUi(data);
+  } catch (err) {
+    if (String(err?.message || '').includes('404')) return null;
+    throw err;
+  }
+}
+
+export async function salvarMensalista(payload) {
+  const body = {
+    clienteId: Number(payload.clienteId),
+    valor: Number(String(payload.valor ?? '').replace(',', '.')),
+    diaVencimento: Number(payload.diaVencimento),
+    dataInicio: payload.dataInicio,
+    dataFim: payload.dataFim || null,
+    ativo: payload.ativo === true,
+  };
+  const data = await request('/api/mensalistas', { method: 'PUT', body });
+  return mapApiToUi(data);
+}
+
+export async function removerMensalista(clienteId) {
+  const id = Number(clienteId);
+  if (!Number.isFinite(id) || id < 1) return;
+  await request(`/api/mensalistas/cliente/${id}`, { method: 'DELETE' });
+}
+
+export async function gerarRecebiveisMensalistasMes(mesAno) {
+  const query = mesAno ? { mesAno } : undefined;
+  return request('/api/mensalistas/gerar-mes', { method: 'POST', query });
+}

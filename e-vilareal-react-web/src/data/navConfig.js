@@ -9,6 +9,7 @@ import {
 } from './processosMenuSections.js';
 
 export const navItems = [
+  { id: 'acoes-do-dia', label: 'Ações do dia', icon: 'ClipboardList' },
   {
     id: 'admin-imoveis-grupo',
     label: 'Administração de Imóveis',
@@ -46,6 +47,7 @@ export const navItems = [
     children: processosMenuChildrenFlat,
   },
   { id: 'resultado-financeiro', label: 'Resultado financeiro', icon: 'CircleDollarSign' },
+  { id: 'recebiveis', label: 'Recebíveis', icon: 'CircleDollarSign' },
   {
     id: 'calcular-grupo',
     label: 'Calcular',

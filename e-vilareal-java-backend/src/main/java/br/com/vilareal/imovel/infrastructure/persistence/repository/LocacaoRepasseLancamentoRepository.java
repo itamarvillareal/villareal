@@ -4,7 +4,9 @@ import br.com.vilareal.imovel.domain.PapelReconciliacao;
 import br.com.vilareal.imovel.infrastructure.persistence.entity.LocacaoRepasseLancamentoEntity;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -27,4 +29,21 @@ public interface LocacaoRepasseLancamentoRepository extends JpaRepository<Locaca
     @EntityGraph(attributePaths = {"lancamentoFinanceiro"})
     Optional<LocacaoRepasseLancamentoEntity> findByOrigemAluguelVinculo_IdAndPapel(
             Long origemAluguelVinculoId, PapelReconciliacao papel);
+
+    /** Todos os vínculos para montar a carteira de repasses pendentes (leitura derivada). */
+    @EntityGraph(
+            attributePaths = {
+                "contratoLocacao",
+                "contratoLocacao.imovel",
+                "contratoLocacao.locadorPessoa",
+                "lancamentoFinanceiro"
+            })
+    @Query(
+            """
+            SELECT v FROM LocacaoRepasseLancamentoEntity v
+            ORDER BY v.contratoLocacao.id ASC, v.competenciaMes ASC, v.id ASC
+            """)
+    List<LocacaoRepasseLancamentoEntity> findAllParaCarteiraRepasses();
+
+    List<LocacaoRepasseLancamentoEntity> findByLancamentoFinanceiro_IdIn(Collection<Long> lancamentoFinanceiroIds);
 }

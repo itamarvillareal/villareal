@@ -2,7 +2,9 @@ package br.com.vilareal.financeiro.application;
 
 import br.com.vilareal.financeiro.api.dto.LimparExtratoResult;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
+import br.com.vilareal.financeiro.infrastructure.persistence.repository.CompensacaoParDescarteRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
+import br.com.vilareal.financeiro.infrastructure.persistence.repository.SemelhanteEscritorioDescarteRepository;
 import br.com.vilareal.pessoa.application.ClienteResolverService;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.processo.application.ClienteCodigoPessoaResolver;
@@ -17,6 +19,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -25,6 +28,10 @@ class FinanceiroApplicationServiceLimparExtratoTest {
 
     @Mock
     private LancamentoFinanceiroRepository lancamentoRepository;
+    @Mock
+    private SemelhanteEscritorioDescarteRepository semelhanteEscritorioDescarteRepository;
+    @Mock
+    private CompensacaoParDescarteRepository compensacaoParDescarteRepository;
     @Mock
     private PessoaRepository pessoaRepository;
     @Mock
@@ -57,6 +64,9 @@ class FinanceiroApplicationServiceLimparExtratoTest {
         LimparExtratoResult r = service.limparExtratoBancoEElosRelacionados("CEF", 5);
 
         assertThat(r.getLancamentosRemovidos()).isEqualTo(2);
+
+        verify(semelhanteEscritorioDescarteRepository).deleteByLancamentoIdIn(eq(List.of(1L, 2L)));
+        verify(compensacaoParDescarteRepository).deleteByEnvolvendoLancamentos(eq(List.of(1L, 2L)));
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Iterable<LancamentoFinanceiroEntity>> cap = ArgumentCaptor.forClass(Iterable.class);

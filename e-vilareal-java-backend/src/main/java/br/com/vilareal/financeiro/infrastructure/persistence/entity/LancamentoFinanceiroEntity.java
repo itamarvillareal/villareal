@@ -3,6 +3,7 @@ package br.com.vilareal.financeiro.infrastructure.persistence.entity;
 import br.com.vilareal.financeiro.domain.DescricaoNormalizer;
 import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.financeiro.domain.NaturezaLancamento;
+import br.com.vilareal.financeiro.domain.StatusLancamento;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
@@ -91,7 +92,7 @@ public class LancamentoFinanceiroEntity {
     private String origem = "MANUAL";
 
     @Column(nullable = false, length = 20)
-    private String status = "ATIVO";
+    private String status = StatusLancamento.ATIVO;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)

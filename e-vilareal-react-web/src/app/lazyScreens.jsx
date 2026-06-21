@@ -78,6 +78,8 @@ export const LazyRelatorioResultadoProcessos = fromNamed(
   'RelatorioResultadoProcessos',
 );
 export const LazyRecebiveisConsolidados = lazy(() => import('../components/RecebiveisConsolidados.jsx'));
+export const LazyQuadroRecebiveis = fromNamed(() => import('../components/QuadroRecebiveis.jsx'), 'QuadroRecebiveis');
+export const LazyAcoesDoDia = fromNamed(() => import('../components/AcoesDoDia.jsx'), 'AcoesDoDia');
 export const LazyRelatorioCalculos = fromNamed(() => import('../components/RelatorioCalculos.jsx'), 'RelatorioCalculos');
 export const LazyCalculos = fromNamed(() => import('../components/Calculos.jsx'), 'Calculos');
 export const LazyDiagnosticos = fromNamed(() => import('../components/Diagnosticos.jsx'), 'Diagnosticos');

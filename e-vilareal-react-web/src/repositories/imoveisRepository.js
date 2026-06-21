@@ -1111,6 +1111,14 @@ export async function obterResultadoImovelApi(contratoId, { competencia, inicio,
   });
 }
 
+/** Carteira de repasses pendentes/divergentes (todos os imóveis). */
+export async function listarRepassesPendentesApi({ ate } = {}) {
+  if (!featureFlags.useApiImoveis) return { totalEmAberto: 0, itens: [] };
+  return request('/api/locacoes/repasses-pendentes', {
+    query: { ate: ate || undefined },
+  });
+}
+
 /** Cache em memória (sessão) para não repetir dezenas de GET ao aprovar/descartar. */
 let cacheCadastroSugestoesVinculo = null;
 let cacheCadastroSugestoesVinculoTs = 0;

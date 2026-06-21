@@ -17,6 +17,8 @@ public interface PagamentoRepository extends JpaRepository<PagamentoEntity, Long
 
     boolean existsByFinanceiroLancamento_Id(Long financeiroLancamentoId);
 
+    List<PagamentoEntity> findByFinanceiroLancamento_IdIn(Collection<Long> financeiroLancamentoIds);
+
     boolean existsByFinanceiroLancamento_IdAndIdNot(Long financeiroLancamentoId, Long pagamentoId);
 
     @Query("""
@@ -60,6 +62,8 @@ public interface PagamentoRepository extends JpaRepository<PagamentoEntity, Long
 
     Optional<PagamentoEntity> findFirstByRecorrenciaConfig_IdAndMesReferencia(Long recorrenciaConfigId, String mesReferencia);
 
+    Optional<PagamentoEntity> findFirstByOrigemAndMesReferencia(String origem, String mesReferencia);
+
     Page<PagamentoEntity> findByRecorrenciaConfig_IdOrderByMesReferenciaDescIdDesc(
             Long recorrenciaConfigId, Pageable pageable);
 
@@ -86,4 +90,19 @@ public interface PagamentoRepository extends JpaRepository<PagamentoEntity, Long
             ORDER BY p.dataVencimento ASC, p.id ASC
             """)
     List<PagamentoEntity> findReceberPorProcesso(@Param("processoId") Long processoId);
+
+    @Query(
+            """
+            SELECT p FROM PagamentoEntity p
+            LEFT JOIN FETCH p.cliente c
+            LEFT JOIN FETCH c.pessoa
+            LEFT JOIN FETCH p.processo proc
+            LEFT JOIN FETCH p.imovel im
+            WHERE p.tipo = 'RECEBER'
+              AND p.status IN ('EMITIDO', 'VENCIDO')
+              AND p.dataVencimento BETWEEN :inicio AND :fim
+            ORDER BY p.dataVencimento ASC, p.id ASC
+            """)
+    List<PagamentoEntity> findReceberAbertosNoPeriodo(
+            @Param("inicio") LocalDate inicio, @Param("fim") LocalDate fim);
 }

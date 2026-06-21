@@ -42,3 +42,7 @@ google-drive-credentials.json
 .totp-encryption-key.local
 pje-capture.cjs
 pje-state.json
+
+# Backups locais de migração (dump SQL, audit TSV) — não commitar
+data/backups/
+data/cora-imports-frozen.flag

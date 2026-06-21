@@ -53,6 +53,25 @@ public class LocacoesController {
     // Repasse/despesa LEGADO (locacao_repasse/locacao_despesa) removido — C9/A8.
     // /resultado e reconciliação derivam só de locacao_repasse_lancamento.
 
+    @GetMapping("/repasses-pendentes")
+    @Operation(
+            summary = "Carteira de repasses em aberto",
+            description =
+                    "Ciclos com aluguel vinculado e repasse PENDENTE ou DIVERGENTE. Valores derivados dos vínculos existentes.")
+    public RepassePendenteCarteiraResponse repassesPendentes(@RequestParam(required = false) String ate) {
+        return reconciliacaoService.repassesPendentes(ate);
+    }
+
+    @PostMapping("/conciliar-alugueis")
+    @Operation(
+            summary = "Auto-conciliar aluguéis Cora inequívocos",
+            description =
+                    "Vincula créditos Cora como ALUGUEL (origem=AUTO) quando há exatamente 1 contrato vigente e 1 crédito na faixa de valor. Idempotente.")
+    public ConciliarAlugueisAutomaticoResponse conciliarAlugueisAutomatico(
+            @RequestParam(required = false) String competencia) {
+        return reconciliacaoService.conciliarAlugueisAutomatico(competencia);
+    }
+
     // ----------------------------------------------------------------- Reconciliação (caixa real)
 
     @GetMapping("/{contratoId}/reconciliacao/sugestoes")

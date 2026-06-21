@@ -88,7 +88,7 @@ export async function parseArquivoExtrato(file, nomeBanco) {
   }
 }
 
-async function carregarLancamentosExistentesBanco(numeroBanco, signal) {
+export async function carregarLancamentosExistentesBanco(numeroBanco, signal) {
   const contaToLetra = buildContaToLetraMerge(loadPersistedContasContabeisExtrasFinanceiro());
   const nb = Number(numeroBanco);
   if (!Number.isFinite(nb)) return [];

@@ -5,6 +5,7 @@ import {
   registrarCodigoClienteFinanceiroPorPessoaId,
 } from '../../../data/financeiroData.js';
 import {
+  contaCorrenteTransacaoParaExtratoDetailItem,
   extratoRowToUi,
   formatDataExtratoColuna,
   mapApiLancamentoToExtratoRow,
@@ -196,5 +197,24 @@ describe('extratoMappers', () => {
     expect(row.etapa).toBe('IMPORTADO');
     expect(row.natureza).toBe('CREDITO');
     expect(row.valor).toBe(100);
+  });
+
+  it('contaCorrenteTransacaoParaExtratoDetailItem converte linha local', () => {
+    const item = contaCorrenteTransacaoParaExtratoDetailItem({
+      apiId: 42,
+      letra: 'A',
+      data: '18/06/2026',
+      descricao: 'Pagamento recebido',
+      valor: 1680,
+      nomeBanco: 'Cora',
+      numero: 'abc-123',
+      codCliente: '00000149',
+      proc: '155',
+    });
+    expect(item.id).toBe(42);
+    expect(item.contaCodigo).toBe('A');
+    expect(item.dataLancamento).toBe('2026-06-18');
+    expect(item.natureza).toBe('CREDITO');
+    expect(item.bancoNome).toBe('Cora');
   });
 });

@@ -12,6 +12,10 @@ public interface SemelhanteEscritorioDescarteRepository extends JpaRepository<Se
 
     boolean existsByLancamentoIdAndClienteIdAndProcessoId(Long lancamentoId, Long clienteId, Long processoId);
 
+    void deleteByLancamentoId(Long lancamentoId);
+
+    void deleteByLancamentoIdIn(Collection<Long> lancamentoIds);
+
     @Query(
             """
             SELECT d FROM SemelhanteEscritorioDescarteEntity d

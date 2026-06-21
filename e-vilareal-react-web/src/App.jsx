@@ -58,6 +58,8 @@ import {
   LazyRelatorio,
   LazyRelatorioResultadoProcessos,
   LazyRecebiveisConsolidados,
+  LazyQuadroRecebiveis,
+  LazyAcoesDoDia,
   LazyRelatorioCalculos,
   LazyRelatorioFinanceiroImoveis,
   LazyRelatorioPagamentos,
@@ -373,7 +375,8 @@ function App() {
           />
           <Route element={<ProtectedRoute />}>
             <Route element={<Layout />}>
-              <Route path="/" element={<Navigate to="/agenda" replace />} />
+              <Route path="/" element={<Navigate to="/acoes-do-dia" replace />} />
+              <Route path="/acoes-do-dia" element={<LazyAcoesDoDia />} />
               <Route path="/clientes" element={<RedirectClientesParaLista />} />
               <Route path="/clientes/lista" element={<LazyCadastroPessoas />} />
               <Route path="/clientes/relatorio" element={<LazyRelatorioPessoas />} />
@@ -416,6 +419,7 @@ function App() {
               <Route path="/resultado-financeiro" element={<Navigate to="/resultado-financeiro/autos" replace />} />
               <Route path="/resultado-financeiro/autos" element={<LazyRelatorioResultadoProcessos />} />
               <Route path="/resultado-financeiro/cobranca" element={<LazyRecebiveisConsolidados />} />
+              <Route path="/recebiveis" element={<LazyQuadroRecebiveis />} />
               <Route
                 path="/relatorio-resultado-processos"
                 element={<Navigate to="/resultado-financeiro/autos" replace />}

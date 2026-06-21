@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Pencil, Search, Trash2 } from 'lucide-react';
+import { Pencil, Search, Trash2, Wrench } from 'lucide-react';
 import { useFinanceiroChrome, useFinanceiroFilters } from '../FinanceiroContext.jsx';
 import { PeriodoSelector } from '../shared/PeriodoSelector.jsx';
 import { FilterTag } from '../shared/FilterTag.jsx';
 import { EtapaFiltroSelect } from '../shared/EtapaFiltroSelect.jsx';
 import { LimparContaDialog } from '../shared/LimparContaDialog.jsx';
 import { SaldoInicialDialog } from '../shared/SaldoInicialDialog.jsx';
+import { ExtratoRepararDialog } from './ExtratoRepararDialog.jsx';
 import { formatDataCurta, formatMoeda } from '../shared/financeiroFormat.js';
 import { FINANCEIRO_REFRESH_PENDENTES } from '../hooks/useKeyboardShortcuts.js';
 import { LetrasFiltroExtrato } from './LetrasFiltroExtrato.jsx';
@@ -38,6 +39,7 @@ export function ExtratoFilters({
   const [buscaLocal, setBuscaLocal] = useState(filters.busca ?? '');
   const [limparOpen, setLimparOpen] = useState(false);
   const [saldoInicialOpen, setSaldoInicialOpen] = useState(false);
+  const [repararOpen, setRepararOpen] = useState(false);
 
   useEffect(() => {
     setBuscaLocal(filters.busca ?? '');
@@ -151,6 +153,18 @@ export function ExtratoFilters({
       {bancoAtivo && bancoNome ? (
         <button
           type="button"
+          onClick={() => setRepararOpen(true)}
+          className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-md border border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100 dark:bg-amber-950/40 dark:border-amber-900 dark:text-amber-200 dark:hover:bg-amber-950/70 shrink-0"
+          title="Comparar OFX do mês com os lançamentos gravados (não importa)"
+        >
+          <Wrench className="w-3 h-3" aria-hidden />
+          Reparar
+        </button>
+      ) : null}
+
+      {bancoAtivo && bancoNome ? (
+        <button
+          type="button"
           onClick={() => setLimparOpen(true)}
           className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-md border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-950/40 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/70 shrink-0"
           title="Apagar todos os lançamentos desta conta corrente"
@@ -202,6 +216,15 @@ export function ExtratoFilters({
         nome={bancoNome}
         numero={bancoAtivo}
         onClose={() => setLimparOpen(false)}
+      />
+    ) : null}
+
+    {bancoAtivo && bancoNome ? (
+      <ExtratoRepararDialog
+        open={repararOpen}
+        bancoNome={bancoNome}
+        numeroBanco={bancoAtivo}
+        onClose={() => setRepararOpen(false)}
       />
     ) : null}
 
