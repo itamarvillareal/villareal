@@ -3,6 +3,7 @@ package br.com.vilareal.financeiro.api;
 import br.com.vilareal.financeiro.api.dto.*;
 import br.com.vilareal.financeiro.application.CartaoBancoMapeamentoApplicationService;
 import br.com.vilareal.financeiro.application.ContaBancariaApplicationService;
+import br.com.vilareal.financeiro.application.ExtratoPosImportApplicationService;
 import br.com.vilareal.financeiro.application.FinanceiroApplicationService;
 import br.com.vilareal.financeiro.application.FinanceiroCompensacaoService;
 import br.com.vilareal.financeiro.application.FinanceiroFaturaSugestaoService;
@@ -58,6 +59,7 @@ public class FinanceiroController {
     private final FinanceiroSemelhantesEscritorioService semelhantesEscritorioService;
     private final FinanceiroFaturaCartaoFechamentoService faturaCartaoFechamentoService;
     private final InboxClassificarApplicationService inboxClassificarService;
+    private final ExtratoPosImportApplicationService extratoPosImportService;
 
     public FinanceiroController(
             FinanceiroApplicationService financeiroService,
@@ -74,7 +76,8 @@ public class FinanceiroController {
             ContaBancariaApplicationService contaBancariaService,
             FinanceiroSemelhantesEscritorioService semelhantesEscritorioService,
             FinanceiroFaturaCartaoFechamentoService faturaCartaoFechamentoService,
-            InboxClassificarApplicationService inboxClassificarService) {
+            InboxClassificarApplicationService inboxClassificarService,
+            ExtratoPosImportApplicationService extratoPosImportService) {
         this.financeiroService = financeiroService;
         this.financeiroCartaoService = financeiroCartaoService;
         this.pagamentoFaturaService = pagamentoFaturaService;
@@ -90,6 +93,7 @@ public class FinanceiroController {
         this.semelhantesEscritorioService = semelhantesEscritorioService;
         this.faturaCartaoFechamentoService = faturaCartaoFechamentoService;
         this.inboxClassificarService = inboxClassificarService;
+        this.extratoPosImportService = extratoPosImportService;
     }
 
     @GetMapping("/saude")
@@ -346,6 +350,12 @@ public class FinanceiroController {
                 .buildAndExpand(body.getId())
                 .toUri();
         return ResponseEntity.created(uri).body(body);
+    }
+
+    @PostMapping("/extrato/pos-import")
+    @Operation(description = "Pós-processamento idempotente após upload OFX/PDF (honorários; skip Cora e bancos congelados).")
+    public ExtratoPosImportResponse posImportExtrato(@Valid @RequestBody ExtratoPosImportRequest request) {
+        return extratoPosImportService.rodar(request);
     }
 
     @PutMapping("/lancamentos/{id:\\d+}")

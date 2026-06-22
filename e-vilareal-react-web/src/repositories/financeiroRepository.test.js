@@ -55,6 +55,31 @@ describe('lancamentoBateContaCorrenteProcesso', () => {
     );
     expect(ok).toBe(true);
   });
+
+  it('aceita legado sem processoId quando grupoCompensacao bate o proc da N:N', () => {
+    const ok = lancamentoBateContaCorrenteProcesso(
+      {
+        codigoCliente: '00000793',
+        processoId: null,
+        grupoCompensacao: '17',
+        numeroInternoProcesso: null,
+      },
+      { codigoNorm: '793', procNorm: '17', resolvedProcessoId: 13058 },
+    );
+    expect(ok).toBe(true);
+  });
+
+  it('exclui proc errado dos extras quando a chave veio da N:N', () => {
+    const ok = lancamentoBateContaCorrenteProcesso(
+      {
+        codigoCliente: '00000793',
+        processoId: 13061,
+        numeroInternoProcesso: 20,
+      },
+      { codigoNorm: '793', procNorm: '17', resolvedProcessoId: 13058 },
+    );
+    expect(ok).toBe(false);
+  });
 });
 
 describe('mergeUiLancamentoComRespostaApi', () => {

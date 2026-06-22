@@ -134,12 +134,61 @@ class ContratoHonorariosRecebiveisConciliacaoServiceTest {
         assertThat(score).isGreaterThanOrEqualTo(ContratoHonorariosRecebiveisConciliacaoService.MIN_SCORE_SUGESTAO);
     }
 
+    @Test
+    void inequivocoPosImport_rejeitaQuandoGapInsuficiente() {
+        assertThat(ContratoHonorariosRecebiveisConciliacaoService.inequivocoParaAutoPosImport(5, 4, 2))
+                .isFalse();
+    }
+
+    @Test
+    void inequivocoPosImport_aceitaUnicoCandidato() {
+        assertThat(ContratoHonorariosRecebiveisConciliacaoService.inequivocoParaAutoPosImport(5, 0, 1))
+                .isTrue();
+    }
+
+    @Test
+    void inequivocoPosImport_aceitaComGapMinimo() {
+        assertThat(ContratoHonorariosRecebiveisConciliacaoService.inequivocoParaAutoPosImport(6, 3, 2))
+                .isTrue();
+    }
+
+    @Test
+    void rankearPosImport_doisCreditosCompativeis_retornaDois() {
+        ContratoHonorariosEntity contrato = new ContratoHonorariosEntity();
+        contrato.setValorFixo(new BigDecimal("1000.00"));
+        var parcela = new ContratoHonorariosRecebiveisConciliacaoService.ParcelaConciliacao(
+                null, 1, new BigDecimal("1000.00"), LocalDate.of(2026, 6, 10), null, null, null);
+
+        LancamentoFinanceiroEntity l1 = lanc(1L, LocalDate.of(2026, 6, 10), "1000.00");
+        LancamentoFinanceiroEntity l2 = lanc(2L, LocalDate.of(2026, 6, 11), "1000.00");
+
+        var rankeados = ContratoHonorariosRecebiveisConciliacaoService.rankearCandidatosHonorariosPosImport(
+                contrato, parcela, List.of(), List.of(l1, l2), Set.of());
+
+        assertThat(rankeados).hasSize(2);
+    }
+
+    @Test
+    void rankearPosImport_umCreditoCompativel_retornaUm() {
+        ContratoHonorariosEntity contrato = new ContratoHonorariosEntity();
+        contrato.setValorFixo(new BigDecimal("500.00"));
+        var parcela = new ContratoHonorariosRecebiveisConciliacaoService.ParcelaConciliacao(
+                null, 1, new BigDecimal("500.00"), LocalDate.of(2026, 6, 5), null, null, null);
+        LancamentoFinanceiroEntity l1 = lanc(9L, LocalDate.of(2026, 6, 5), "500.00");
+
+        var rankeados = ContratoHonorariosRecebiveisConciliacaoService.rankearCandidatosHonorariosPosImport(
+                contrato, parcela, List.of(), List.of(l1), Set.of());
+
+        assertThat(rankeados).hasSize(1);
+    }
+
     private static LancamentoFinanceiroEntity lanc(Long id, LocalDate data, String valor) {
         LancamentoFinanceiroEntity l = new LancamentoFinanceiroEntity();
         l.setId(id);
         l.setNatureza(NaturezaLancamento.CREDITO);
         l.setDataLancamento(data);
         l.setValor(new BigDecimal(valor));
+        l.setStatus("ATIVO");
         return l;
     }
 }

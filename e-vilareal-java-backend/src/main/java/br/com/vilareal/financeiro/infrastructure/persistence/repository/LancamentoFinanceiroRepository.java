@@ -965,4 +965,20 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             """)
     List<LancamentoFinanceiroEntity> findDebitosCondominioNaoVinculadosPagamento(
             @Param("inicio") java.time.LocalDate inicio, @Param("fim") java.time.LocalDate fim);
+
+    @Query(
+            """
+            SELECT l.id FROM LancamentoFinanceiroEntity l
+            WHERE l.status = 'ATIVO'
+              AND l.natureza = br.com.vilareal.financeiro.domain.NaturezaLancamento.CREDITO
+              AND l.numeroBanco IN :numerosBanco
+              AND l.dataLancamento >= :desde
+              AND NOT EXISTS (
+                  SELECT 1 FROM PagamentoEntity p
+                  WHERE p.financeiroLancamento = l
+              )
+            ORDER BY l.dataLancamento DESC, l.id DESC
+            """)
+    List<Long> findCreditosOrfaosPosImportHonorarios(
+            @Param("numerosBanco") Collection<Integer> numerosBanco, @Param("desde") LocalDate desde);
 }

@@ -55,6 +55,7 @@ public class ContratoHonorariosRecebiveisConciliacaoService {
     static final int MAX_DIAS_DATA = 30;
     static final int MIN_SCORE_SUGESTAO = 3;
     static final int JANELA_DIAS_ORFAO = 45;
+    static final int GAP_MINIMO_SCORE_AUTO = 2;
     static final String CONTA_ESCRITORIO_CODIGO = "A";
 
     private static final Set<String> STATUS_PAGAMENTO_ENCERRADO =
@@ -358,6 +359,146 @@ public class ContratoHonorariosRecebiveisConciliacaoService {
                 pagamento != null ? pagamento.getStatus() : null,
                 lancamento.getId(),
                 "Recebível vinculado ao financeiro com sucesso.");
+    }
+
+    /**
+     * Pós-import manual (upload OFX/PDF): auto-concilia honorários inequívocos entre créditos recém-criados.
+     * Ambíguos permanecem para {@link #listarSugestoesFinanceiro}. Idempotente e reversível.
+     */
+    @Transactional
+    public HonorariosPosImportResult conciliarHonorariosPosImport(List<Long> lancamentoIds) {
+        if (lancamentoIds == null || lancamentoIds.isEmpty()) {
+            return HonorariosPosImportResult.vazio();
+        }
+
+        Set<Long> idsSolicitados = new HashSet<>(lancamentoIds);
+        List<LancamentoFinanceiroEntity> creditosNovos = lancamentoFinanceiroRepository.findAllByIdIn(idsSolicitados).stream()
+                .filter(l -> l.getId() != null && idsSolicitados.contains(l.getId()))
+                .filter(l -> "ATIVO".equals(l.getStatus()))
+                .filter(l -> l.getNatureza() == NaturezaLancamento.CREDITO)
+                .toList();
+        if (creditosNovos.isEmpty()) {
+            return HonorariosPosImportResult.vazio();
+        }
+
+        int autoConciliados = 0;
+        int ambiguos = 0;
+        List<String> erros = new ArrayList<>();
+        Set<Long> lancamentosUsados = new HashSet<>();
+
+        List<ContratoHonorariosEntity> contratos = contratoRepository.listarComFiltros(null, null, null, null);
+        for (ContratoHonorariosEntity contrato : contratos) {
+            if (contrato.getProcesso() == null || contrato.getProcesso().getId() == null) {
+                continue;
+            }
+            Long pid = contrato.getProcesso().getId();
+            List<ProcessoParteEntity> partes =
+                    processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(pid);
+
+            for (ParcelaConciliacao parcela : resolverParcelasConciliacao(contrato)) {
+                if (parcelaJaQuitada(parcela)) {
+                    continue;
+                }
+
+                List<Scored<LancamentoFinanceiroEntity>> rankeados =
+                        rankearCandidatosHonorariosPosImport(contrato, parcela, partes, creditosNovos, lancamentosUsados);
+                if (rankeados.isEmpty()) {
+                    continue;
+                }
+
+                Scored<LancamentoFinanceiroEntity> melhor = rankeados.get(0);
+                int segundoScore = rankeados.size() > 1 ? rankeados.get(1).score() : 0;
+                if (!inequivocoParaAutoPosImport(melhor.score(), segundoScore, rankeados.size())) {
+                    ambiguos++;
+                    continue;
+                }
+
+                try {
+                    aprovarSugestaoFinanceiro(new ContratoHonorariosAprovarSugestaoRequest(
+                            contrato.getId(), parcela.numeroParcela(), melhor.value().getId()));
+                    lancamentosUsados.add(melhor.value().getId());
+                    autoConciliados++;
+                    log.info(
+                            "Honorários pós-import AUTO contrato={} parcela={} lancamento={} score={}",
+                            contrato.getId(),
+                            parcela.numeroParcela(),
+                            melhor.value().getId(),
+                            melhor.score());
+                } catch (Exception ex) {
+                    String msg = "contrato "
+                            + contrato.getId()
+                            + " parcela "
+                            + parcela.numeroParcela()
+                            + ": "
+                            + mensagemRaiz(ex);
+                    log.warn("Honorários pós-import falhou ({}): {}", melhor.value().getId(), msg);
+                    erros.add(msg);
+                }
+            }
+        }
+
+        return HonorariosPosImportResult.of(autoConciliados, ambiguos, erros);
+    }
+
+    static List<Scored<LancamentoFinanceiroEntity>> rankearCandidatosHonorariosPosImport(
+            ContratoHonorariosEntity contrato,
+            ParcelaConciliacao parcela,
+            List<ProcessoParteEntity> partes,
+            List<LancamentoFinanceiroEntity> creditosNovos,
+            Set<Long> lancamentosUsados) {
+        Long processoId = contrato.getProcesso() != null ? contrato.getProcesso().getId() : null;
+        return creditosNovos.stream()
+                .filter(l -> l.getId() != null && !lancamentosUsados.contains(l.getId()))
+                .filter(l -> creditoNovoCompativelParcela(contrato, parcela, l, processoId))
+                .map(l -> new Scored<>(l, scoreLancamentoSugestao(contrato, parcela, l, partes)))
+                .filter(s -> s.score() >= MIN_SCORE_SUGESTAO)
+                .sorted(Comparator.comparingInt(Scored<LancamentoFinanceiroEntity>::score).reversed())
+                .toList();
+    }
+
+    static boolean inequivocoParaAutoPosImport(int melhorScore, int segundoScore, int totalCandidatos) {
+        if (melhorScore < MIN_SCORE_SUGESTAO || totalCandidatos < 1) {
+            return false;
+        }
+        return totalCandidatos == 1 || melhorScore - segundoScore >= GAP_MINIMO_SCORE_AUTO;
+    }
+
+    static boolean creditoNovoCompativelParcela(
+            ContratoHonorariosEntity contrato,
+            ParcelaConciliacao parcela,
+            LancamentoFinanceiroEntity lancamento,
+            Long processoId) {
+        if (parcela.valor() == null || lancamento.getValor() == null) {
+            return false;
+        }
+        BigDecimal diff = lancamento.getValor().abs().subtract(parcela.valor()).abs();
+        if (diff.compareTo(TOLERANCIA_VALOR) > 0) {
+            return false;
+        }
+        LocalDate ref = parcela.dataVencimento() != null ? parcela.dataVencimento() : contrato.getDataContrato();
+        if (ref != null && lancamento.getDataLancamento() != null) {
+            LocalDate inicio = ref.minusDays(JANELA_DIAS_ORFAO);
+            LocalDate fim = ref.plusDays(JANELA_DIAS_ORFAO);
+            if (lancamento.getDataLancamento().isBefore(inicio) || lancamento.getDataLancamento().isAfter(fim)) {
+                return false;
+            }
+        }
+        if (lancamento.getProcesso() != null && processoId != null) {
+            return Objects.equals(lancamento.getProcesso().getId(), processoId);
+        }
+        return lancamento.getProcesso() == null;
+    }
+
+    private static String mensagemRaiz(Throwable ex) {
+        Throwable t = ex;
+        String last = t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
+        while (t.getCause() != null && t.getCause() != t) {
+            t = t.getCause();
+            if (t.getMessage() != null && !t.getMessage().isBlank()) {
+                last = t.getMessage();
+            }
+        }
+        return last;
     }
 
     static boolean parcelaJaQuitada(ParcelaConciliacao parcela) {

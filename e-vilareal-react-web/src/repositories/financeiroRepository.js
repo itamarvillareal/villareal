@@ -942,12 +942,29 @@ export async function persistirImportacaoOfxFinanceiroApi({
     }
   }
 
+  let posImport = null;
+  if (savedPairs.length > 0 && nb != null) {
+    try {
+      posImport = await request('/api/financeiro/extrato/pos-import', {
+        method: 'POST',
+        body: {
+          numeroBanco: nb,
+          lancamentoIds: savedPairs.map((p) => Number(p.saved.id)).filter((id) => Number.isFinite(id) && id > 0),
+          origem: String(origemImportacao || 'OFX').trim() || 'OFX',
+        },
+      });
+    } catch (e) {
+      erros.push(`Pós-import honorários: ${e?.message || e}`);
+    }
+  }
+
   return {
     ok: erros.length === 0,
     criados: savedPairs.length,
     removidos,
     erros,
     savedPairs,
+    posImport,
     ignorados: analiseDedupe.ignorados,
     ignoradosPorCorte: protecao.ignoradosPorCorte ?? 0,
     dataCorte: dataCorteEfetiva,
@@ -1069,6 +1086,8 @@ export function lancamentoBateContaCorrenteProcesso(l, { codigoNorm, procNorm, r
   if (procNorm) {
     const ni = Number(l.numeroInternoProcesso);
     if (Number.isFinite(ni) && String(ni) === procNorm) return true;
+    const grupo = String(l.grupoCompensacao ?? '').trim();
+    if (grupo && normalizarProcFinanceiro(grupo) === procNorm) return true;
     if (resolvedProcessoId && Number(l.processoId) === resolvedProcessoId) return true;
     return false;
   }
