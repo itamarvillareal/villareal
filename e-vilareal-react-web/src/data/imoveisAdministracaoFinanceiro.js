@@ -422,6 +422,19 @@ function dataLimitePrazoNoMes(chaveMesYYYYMM, dia) {
   return new Date(y, m - 1, d, 23, 59, 59, 999);
 }
 
+/** Data de vencimento (dd/mm/aaaa) no mês de referência, a partir do dia cadastrado no contrato. */
+export function formatarDataVencimentoFluxoNoMes(chaveMesYYYYMM, diaCadastro) {
+  const dia = parseDiaCadastro(diaCadastro);
+  if (!dia) return null;
+  const [ys, ms] = String(chaveMesYYYYMM).split('-');
+  const y = Number(ys);
+  const m = Number(ms);
+  if (!y || !m) return null;
+  const ultimoDia = new Date(y, m, 0).getDate();
+  const d = Math.min(dia, ultimoDia);
+  return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`;
+}
+
 /** Situação de aluguel ou repasse em um mês (cadastro do dia + totais do extrato). */
 export function avaliarSituacaoFluxoMes({
   totalNoMes,
@@ -588,11 +601,14 @@ export function linhaRelatorioFinanceiroFromCadastro(item, chaveMesYYYYMM, totai
   });
 
   const locatario = String(item.inquilino ?? '').trim();
+  const locador = String(item.proprietario ?? '').trim();
+  const dataVencimentoAluguel = formatarDataVencimentoFluxoNoMes(chaveMesYYYYMM, item.diaPagAluguel);
 
   return {
     imovelId: item.imovelId,
     unidade: String(item.unidade || item.condominio || item.endereco || '').trim() || '—',
     locatario: locatario || '—',
+    locador: locador || '—',
     codigo: codigoNum > 0 ? codigoNum : item.codigo || '—',
     proc: procStr || '—',
     valorReferenciaLocacao,
@@ -602,6 +618,7 @@ export function linhaRelatorioFinanceiroFromCadastro(item, chaveMesYYYYMM, totai
     totalAluguel,
     totalRepasse,
     totalRepasseAnterior,
+    dataVencimentoAluguel,
     dataPrimeiroAluguel,
     dataPrimeiroRepasse,
     dataPrimeiroRepasseAnterior,

@@ -49,14 +49,51 @@ function BadgeStatus({ tipo }) {
 const btnPrimario =
   'inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 disabled:opacity-50 disabled:pointer-events-none shadow-lg shadow-indigo-500/20';
 
+const STORAGE_RELATORIO_FINANCEIRO_IMOVEIS = 'vilareal.relatorioFinanceiroImoveis.v1';
+
+function carregarRelatorioPersistido() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_RELATORIO_FINANCEIRO_IMOVEIS);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== 'object' || !Array.isArray(data.linhas) || !data.chaveMes) return null;
+    return {
+      chaveMes: String(data.chaveMes),
+      soOcupados: Boolean(data.soOcupados),
+      linhas: data.linhas,
+      ultimaCarga: data.ultimaCarga ? new Date(data.ultimaCarga) : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function persistirRelatorio(relatorio) {
+  if (typeof window === 'undefined' || !relatorio) return;
+  try {
+    window.localStorage.setItem(
+      STORAGE_RELATORIO_FINANCEIRO_IMOVEIS,
+      JSON.stringify({
+        chaveMes: relatorio.chaveMes,
+        soOcupados: relatorio.soOcupados,
+        linhas: relatorio.linhas,
+        ultimaCarga: relatorio.ultimaCarga?.toISOString?.() ?? null,
+      }),
+    );
+  } catch {
+    /* quota / modo privado */
+  }
+}
+
 export function RelatorioFinanceiroImoveis() {
   const navigate = useNavigate();
   const hoje = new Date();
   const [ano, setAno] = useState(hoje.getFullYear());
   const [mes, setMes] = useState(hoje.getMonth() + 1);
   const [soOcupados, setSoOcupados] = useState(true);
-  /** Último relatório gerado com sucesso; persiste até nova geração. */
-  const [relatorio, setRelatorio] = useState(null);
+  /** Último relatório gerado com sucesso; persiste até nova geração (memória + localStorage). */
+  const [relatorio, setRelatorio] = useState(() => carregarRelatorioPersistido());
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState('');
   const [cadastroModal, setCadastroModal] = useState({ open: false, imovelId: null });
@@ -86,7 +123,9 @@ export function RelatorioFinanceiroImoveis() {
         setErro(motivo || 'Não foi possível gerar o relatório.');
         return;
       }
-      setRelatorio({ chaveMes: chaveMesFiltro, soOcupados, linhas: rows, ultimaCarga: ts });
+      const next = { chaveMes: chaveMesFiltro, soOcupados, linhas: rows, ultimaCarga: ts };
+      setRelatorio(next);
+      persistirRelatorio(next);
     } catch (e) {
       setErro(e?.message || 'Falha ao gerar o relatório.');
     } finally {
@@ -260,17 +299,20 @@ export function RelatorioFinanceiroImoveis() {
             </span>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse min-w-[1380px]">
+            <table className="w-full text-sm border-collapse min-w-[1540px]">
               <thead>
                 <tr className="bg-slate-50/95 dark:bg-black/25 text-left text-xs font-semibold text-slate-700 dark:text-slate-400 border-b border-slate-200 dark:border-white/[0.08]">
                   <th className="py-3 px-3 w-12">Nº</th>
                   <th className="py-3 px-3 min-w-[140px]">Unidade</th>
                   <th className="py-3 px-3 min-w-[160px]">Locatário</th>
+                  <th className="py-3 px-3 min-w-[160px]">Locador</th>
                   <th className="py-3 px-3">Cod.</th>
                   <th className="py-3 px-3">Proc.</th>
                   <th className="py-3 px-3 text-right">Valor loc. ref.</th>
                   <th className="py-3 px-3 text-right">Aluguel (mês)</th>
-                  <th className="py-3 px-3">Data aluguel</th>
+                  <th className="py-3 px-3" title="Data de vencimento do aluguel (dia cadastrado no contrato)">
+                    Data venc. aluguel
+                  </th>
                   <th className="py-3 px-3">Situação aluguel</th>
                   <th className="py-3 px-3 text-right">Taxa adm. (%)</th>
                   <th className="py-3 px-3 text-right">Honorários (mês)</th>
@@ -287,14 +329,15 @@ export function RelatorioFinanceiroImoveis() {
               <tbody>
                 {!gerado ? (
                   <tr>
-                    <td colSpan={17} className="py-10 text-center text-slate-500 dark:text-slate-400 text-sm">
+                    <td colSpan={18} className="py-10 text-center text-slate-500 dark:text-slate-400 text-sm">
                       Nenhum dado carregado. Clique em <strong>Gerar relatório</strong> para buscar os imóveis e os
-                      lançamentos do mês {labelMesPt(chaveMesFiltro)}.
+                      lançamentos do mês {labelMesPt(chaveMesFiltro)}. O último relatório gerado permanece visível até
+                      você gerar outro.
                     </td>
                   </tr>
                 ) : linhas.length === 0 ? (
                   <tr>
-                    <td colSpan={17} className="py-10 text-center text-slate-500 dark:text-slate-400 text-sm">
+                    <td colSpan={18} className="py-10 text-center text-slate-500 dark:text-slate-400 text-sm">
                       Nenhum imóvel neste filtro. Ajuste o mês ou desmarque «Somente imóveis ocupados».
                     </td>
                   </tr>
@@ -313,12 +356,24 @@ export function RelatorioFinanceiroImoveis() {
                       <td className="py-2.5 px-3 text-slate-800 dark:text-slate-200 max-w-[220px] truncate" title={L.locatario}>
                         {L.locatario || '—'}
                       </td>
+                      <td className="py-2.5 px-3 text-slate-800 dark:text-slate-200 max-w-[220px] truncate" title={L.locador}>
+                        {L.locador || '—'}
+                      </td>
                       <td className="py-2.5 px-3 font-mono text-xs">{L.codigo}</td>
                       <td className="py-2.5 px-3 font-mono text-xs">{L.proc}</td>
                       <td className="py-2.5 px-3 text-right tabular-nums">{fmtReais(L.valorReferenciaLocacao)}</td>
                       <td className="py-2.5 px-3 text-right tabular-nums font-medium">{fmtReais(L.totalAluguel)}</td>
-                      <td className="py-2.5 px-3 text-slate-600 dark:text-slate-400 whitespace-nowrap">
-                        {L.dataPrimeiroAluguel || '—'}
+                      <td
+                        className="py-2.5 px-3 text-slate-600 dark:text-slate-400 whitespace-nowrap"
+                        title={
+                          L.dataPrimeiroAluguel
+                            ? `Pago em ${L.dataPrimeiroAluguel}`
+                            : L.dataVencimentoAluguel
+                              ? `Vencimento previsto`
+                              : undefined
+                        }
+                      >
+                        {L.dataVencimentoAluguel || '—'}
                       </td>
                       <td className="py-2.5 px-3">
                         <div className="flex flex-col gap-0.5">

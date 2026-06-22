@@ -10,6 +10,7 @@ import {
   construirIndiceImoveisPorCodProc,
   extrairTotaisFinanceirosMes,
   extrairTotaisFinanceirosMesComRepasseAnterior,
+  formatarDataVencimentoFluxoNoMes,
   linhaRelatorioFinanceiroFromCadastro,
   mesAnteriorChaveYYYYMM,
   montarLinhasRelatorioFinanceiroImoveisExtrato,
@@ -169,6 +170,21 @@ describe('paresCodProcComLancamentosNoMes', () => {
   });
 });
 
+describe('formatarDataVencimentoFluxoNoMes', () => {
+  it('monta dd/mm/aaaa no mês de referência', () => {
+    expect(formatarDataVencimentoFluxoNoMes('2026-06', '10')).toBe('10/06/2026');
+    expect(formatarDataVencimentoFluxoNoMes('2026-06', '01')).toBe('01/06/2026');
+  });
+
+  it('ajusta dia 31 em fevereiro', () => {
+    expect(formatarDataVencimentoFluxoNoMes('2026-02', '31')).toBe('28/02/2026');
+  });
+
+  it('retorna null sem dia cadastrado', () => {
+    expect(formatarDataVencimentoFluxoNoMes('2026-06', '')).toBeNull();
+  });
+});
+
 describe('buildRelatorioFinanceiroImoveisMes', () => {
   it('filtra imóveis desocupados quando soOcupados', () => {
     const linhas = buildRelatorioFinanceiroImoveisMes(
@@ -199,6 +215,42 @@ describe('buildRelatorioFinanceiroImoveisMes', () => {
       { soOcupados: false },
     );
     expect(linha.locatario).toBe('Maria Silva');
+  });
+
+  it('inclui data de vencimento do aluguel a partir do dia do contrato', () => {
+    const [linha] = buildRelatorioFinanceiroImoveisMes(
+      [
+        {
+          imovelId: 1,
+          imovelOcupado: true,
+          codigo: '100',
+          proc: '1',
+          diaPagAluguel: '15',
+          valorLocacao: '1.000,00',
+        },
+      ],
+      '2026-06',
+      { soOcupados: false },
+    );
+    expect(linha.dataVencimentoAluguel).toBe('15/06/2026');
+  });
+
+  it('inclui nome do locador (proprietário) do cadastro', () => {
+    const [linha] = buildRelatorioFinanceiroImoveisMes(
+      [
+        {
+          imovelId: 1,
+          imovelOcupado: true,
+          codigo: '100',
+          proc: '1',
+          proprietario: 'João Proprietário',
+          valorLocacao: '1.000,00',
+        },
+      ],
+      '2026-05',
+      { soOcupados: false },
+    );
+    expect(linha.locador).toBe('João Proprietário');
   });
 });
 
