@@ -49,7 +49,13 @@ public class PagamentoConciliacaoApplicationService {
             PagamentoDominio.ST_VENCIDO,
             PagamentoDominio.ST_RECEBIDO);
 
-    private static final Set<String> STATUS_VINCULAR_PAGAR = STATUS_CANDIDATOS_CONCILIACAO_PAGAR;
+    private static final Set<String> STATUS_VINCULAR_PAGAR = Set.of(
+            PagamentoDominio.ST_PENDENTE,
+            PagamentoDominio.ST_VENCIDO,
+            PagamentoDominio.ST_AGENDADO,
+            PagamentoDominio.ST_PAGO_CONFIRMADO,
+            PagamentoDominio.ST_PAGO_SEM_COMPROVANTE,
+            PagamentoDominio.ST_CONFERENCIA_PENDENTE);
 
     private static final Set<String> STATUS_VINCULAR_RECEBER = Set.of(PagamentoDominio.ST_RECEBIDO);
 
@@ -238,7 +244,7 @@ public class PagamentoConciliacaoApplicationService {
             throw new BusinessRuleException(
                     "Pagamento com status "
                             + e.getStatus()
-                            + " não pode ser vinculado. Status aceitos: AGENDADO, PAGO_CONFIRMADO, PAGO_SEM_COMPROVANTE, CONFERENCIA_PENDENTE.");
+                            + " não pode ser vinculado. Status aceitos: PENDENTE, VENCIDO, AGENDADO, PAGO_CONFIRMADO, PAGO_SEM_COMPROVANTE, CONFERENCIA_PENDENTE.");
         }
         LancamentoFinanceiroEntity lanc = requireLancamento(req.getFinanceiroLancamentoId());
         validarLancamentoDisponivel(lanc.getId(), e.getId());
@@ -248,7 +254,9 @@ public class PagamentoConciliacaoApplicationService {
         e.setFinanceiroLancamento(lanc);
 
         boolean precisaPagoIntermediario =
-                PagamentoDominio.ST_AGENDADO.equals(e.getStatus())
+                PagamentoDominio.ST_PENDENTE.equals(e.getStatus())
+                        || PagamentoDominio.ST_VENCIDO.equals(e.getStatus())
+                        || PagamentoDominio.ST_AGENDADO.equals(e.getStatus())
                         || PagamentoDominio.ST_CONFERENCIA_PENDENTE.equals(e.getStatus());
 
         if (precisaPagoIntermediario) {

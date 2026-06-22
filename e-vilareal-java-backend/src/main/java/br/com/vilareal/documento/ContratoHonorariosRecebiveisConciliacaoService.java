@@ -440,6 +440,93 @@ public class ContratoHonorariosRecebiveisConciliacaoService {
         return HonorariosPosImportResult.of(autoConciliados, ambiguos, erros);
     }
 
+    /**
+     * Simulação read-only — mesma lógica de {@link #conciliarHonorariosPosImport}, sem gravar.
+     */
+    @Transactional(readOnly = true)
+    public HonorariosPosImportSimulacaoResult simularHonorariosPosImport(
+            List<Long> lancamentoIds, LocalDate desde, List<Integer> bancos) {
+        if (lancamentoIds == null || lancamentoIds.isEmpty()) {
+            return HonorariosPosImportSimulacaoResult.vazio(desde, bancos);
+        }
+
+        Set<Long> idsSolicitados = new HashSet<>(lancamentoIds);
+        List<LancamentoFinanceiroEntity> creditosNovos = lancamentoFinanceiroRepository.findAllByIdIn(idsSolicitados).stream()
+                .filter(l -> l.getId() != null && idsSolicitados.contains(l.getId()))
+                .filter(l -> "ATIVO".equals(l.getStatus()))
+                .filter(l -> l.getNatureza() == NaturezaLancamento.CREDITO)
+                .toList();
+        if (creditosNovos.isEmpty()) {
+            return HonorariosPosImportSimulacaoResult.vazio(desde, bancos);
+        }
+
+        int autoConciliariam = 0;
+        int ambiguos = 0;
+        List<HonorariosPosImportSimulacaoItem> itens = new ArrayList<>();
+        Set<Long> lancamentosUsados = new HashSet<>();
+
+        List<ContratoHonorariosEntity> contratos = contratoRepository.listarComFiltros(null, null, null, null);
+        for (ContratoHonorariosEntity contrato : contratos) {
+            if (contrato.getProcesso() == null || contrato.getProcesso().getId() == null) {
+                continue;
+            }
+            Long pid = contrato.getProcesso().getId();
+            List<ProcessoParteEntity> partes =
+                    processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(pid);
+            ProcessoEntity processo = contrato.getProcesso();
+            String nome = resolverNomeExibicao(contrato, partes);
+
+            for (ParcelaConciliacao parcela : resolverParcelasConciliacao(contrato)) {
+                if (parcelaJaQuitada(parcela)) {
+                    continue;
+                }
+
+                List<Scored<LancamentoFinanceiroEntity>> rankeados =
+                        rankearCandidatosHonorariosPosImport(contrato, parcela, partes, creditosNovos, lancamentosUsados);
+                if (rankeados.isEmpty()) {
+                    continue;
+                }
+
+                Scored<LancamentoFinanceiroEntity> melhor = rankeados.get(0);
+                int segundoScore = rankeados.size() > 1 ? rankeados.get(1).score() : 0;
+                int gap = melhor.score() - segundoScore;
+                boolean inequivoco = inequivocoParaAutoPosImport(melhor.score(), segundoScore, rankeados.size());
+                LancamentoFinanceiroEntity lanc = melhor.value();
+
+                HonorariosPosImportSimulacaoItem item = new HonorariosPosImportSimulacaoItem(
+                        inequivoco ? "AUTO" : "AMBIGUO",
+                        lanc.getId(),
+                        lanc.getNumeroBanco(),
+                        lanc.getBancoNome(),
+                        lanc.getDataLancamento(),
+                        lanc.getValor() != null ? lanc.getValor().abs() : null,
+                        lanc.getDescricao(),
+                        contrato.getId(),
+                        pid,
+                        processo.getNumeroInterno(),
+                        nome,
+                        parcela.numeroParcela(),
+                        parcela.valor(),
+                        parcela.dataVencimento(),
+                        melhor.score(),
+                        segundoScore,
+                        gap,
+                        rankeados.size());
+                itens.add(item);
+
+                if (inequivoco) {
+                    lancamentosUsados.add(lanc.getId());
+                    autoConciliariam++;
+                } else {
+                    ambiguos++;
+                }
+            }
+        }
+
+        return new HonorariosPosImportSimulacaoResult(
+                desde, bancos, lancamentoIds.size(), autoConciliariam, ambiguos, List.copyOf(itens));
+    }
+
     static List<Scored<LancamentoFinanceiroEntity>> rankearCandidatosHonorariosPosImport(
             ContratoHonorariosEntity contrato,
             ParcelaConciliacao parcela,

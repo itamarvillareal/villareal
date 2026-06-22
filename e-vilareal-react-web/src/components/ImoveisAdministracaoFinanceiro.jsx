@@ -22,15 +22,11 @@ import { ImoveisSugestoesVinculoPanel } from './imoveis/ImoveisSugestoesVinculoP
 import {
   carregarPainelAdministracaoImovel,
   desvincularReconciliacaoApi,
-  listarRepassesPendentesApi,
   obterResultadoImovelApi,
   recarregarSomentePainelFinanceiroImovel,
   sugerirReconciliacaoApi,
   vincularReconciliacaoApi,
 } from '../repositories/imoveisRepository.js';
-import {
-  listarRepassesPendentesHonorarioApi,
-} from '../repositories/honorariosRepository.js';
 import {
   agruparLinhasReconciliacao,
   competenciaAtual,
@@ -108,13 +104,6 @@ export function ImoveisAdministracaoFinanceiro() {
   // Competência editável por vínculo de ALUGUEL (chave = lancamentoFinanceiroId). O draft persiste
   // entre recargas para refletir a competência movida (o backend não expõe a competência crua do vínculo).
   const [competenciaVinculoDraft, setCompetenciaVinculoDraft] = useState({});
-
-  /** Aba principal: reconciliação do imóvel selecionado vs carteira global a repassar. */
-  const [abaPrincipal, setAbaPrincipal] = useState('imovel');
-  const [repassesCarteira, setRepassesCarteira] = useState(null);
-  const [carregandoRepasses, setCarregandoRepasses] = useState(false);
-  const [erroRepasses, setErroRepasses] = useState('');
-  const [repassesTick, setRepassesTick] = useState(0);
 
   /** Nº do imóvel na planilha (col. A) — mesmo valor exibido no cadastro e no relatório. */
   const imovelId = useMemo(() => {
@@ -238,66 +227,6 @@ export function ImoveisAdministracaoFinanceiro() {
       ativo = false;
     };
   }, [contratoId, competencia, modoPeriodo, periodoInicio, periodoFim, reconcTick]);
-
-  const recarregarRepasses = useCallback(() => setRepassesTick((t) => t + 1), []);
-
-  useEffect(() => {
-    if (abaPrincipal !== 'repassar') {
-      return undefined;
-    }
-    if (!featureFlags.useApiImoveis && !featureFlags.useApiFinanceiro) {
-      return undefined;
-    }
-    let ativo = true;
-    setErroRepasses('');
-    setCarregandoRepasses(true);
-    Promise.all([
-      featureFlags.useApiImoveis
-        ? listarRepassesPendentesApi()
-        : Promise.resolve({ totalEmAberto: 0, itens: [] }),
-      featureFlags.useApiFinanceiro
-        ? listarRepassesPendentesHonorarioApi()
-        : Promise.resolve({ totalEmAberto: 0, itens: [] }),
-    ])
-      .then(([imovel, honorario]) => {
-        if (!ativo) return;
-        const itensImovel = (imovel?.itens ?? []).map((i) => ({ ...i, origem: 'IMOVEL' }));
-        const itensHonorario = (honorario?.itens ?? []).map((i) => ({
-          origem: 'PROCESSO',
-          contratoId: i.contratoHonorariosId,
-          locadorNome: i.contratanteNome,
-          imovelNumeroPlanilha: null,
-          imovelEndereco:
-            i.codigoCliente && i.numeroInterno != null
-              ? `Proc. ${i.numeroInterno} · Cli. ${i.codigoCliente}`
-              : i.processoId
-                ? `Processo #${i.processoId}`
-                : '—',
-          competencia: i.dataReferencia ? String(i.dataReferencia).slice(0, 7) : '—',
-          valorEmAberto: i.valorEmAberto,
-          statusRepasse: i.statusRepasse,
-          valorAlvara: i.valorAlvara,
-          retencao: i.retencao,
-          repasseEsperado: i.repasseEsperado,
-          processoId: i.processoId,
-          alvaraLancamentoId: i.alvaraLancamentoId,
-        }));
-        const total = Number(imovel?.totalEmAberto ?? 0) + Number(honorario?.totalEmAberto ?? 0);
-        setRepassesCarteira({ totalEmAberto: total, itens: [...itensImovel, ...itensHonorario] });
-      })
-      .catch((e) => {
-        if (!ativo) return;
-        setErroRepasses(e?.message || 'Falha ao carregar repasses pendentes.');
-        setRepassesCarteira(null);
-      })
-      .finally(() => {
-        if (!ativo) return;
-        setCarregandoRepasses(false);
-      });
-    return () => {
-      ativo = false;
-    };
-  }, [abaPrincipal, repassesTick]);
 
   function setPapelLinha(id, papel) {
     setPapeisEditados((s) => ({ ...s, [id]: papel }));
@@ -554,17 +483,37 @@ export function ImoveisAdministracaoFinanceiro() {
   // CRUD de repasse/despesa LEGADO (locacao_repasse/locacao_despesa) removido — C9/A8.
   // O caixa real é reconciliado via locacao_repasse_lancamento (sugestões/vínculos/resultado).
 
-  // Rola até o extrato apenas UMA vez, na chegada via âncora. Sem o guard, qualquer
-  // recarga do painel (aprovar/desvincular) re-disparava o scroll e a tela "pulava".
-  const jaRolouParaExtratoRef = useRef(false);
   useEffect(() => {
-    if (jaRolouParaExtratoRef.current) return;
-    if (location.hash !== '#extrato-imoveis') return;
-    const el = document.getElementById('extrato-imoveis');
+    const q = new URLSearchParams(location.search || '');
+    if (q.get('aba') === 'repassar') {
+      navigate('/acoes-do-dia', { replace: true });
+    }
+  }, [location.search, navigate]);
+
+  useEffect(() => {
+    const st = location.state && typeof location.state === 'object' ? location.state : null;
+    if (!st?.focoReconciliacao) return;
+    setCompetencia(competenciaAtual());
+    setModoPeriodo(false);
+  }, [location.state]);
+
+  // Rola até a âncora apenas UMA vez na chegada. Sem o guard, recargas do painel re-disparavam o scroll.
+  const jaRolouParaAncoraRef = useRef(false);
+  useEffect(() => {
+    if (jaRolouParaAncoraRef.current) return;
+    const hash = location.hash;
+    const alvo =
+      hash === '#reconciliacao-imoveis'
+        ? 'reconciliacao-imoveis'
+        : hash === '#extrato-imoveis'
+          ? 'extrato-imoveis'
+          : null;
+    if (!alvo) return;
+    const el = document.getElementById(alvo);
     if (!el) return;
-    jaRolouParaExtratoRef.current = true;
+    jaRolouParaAncoraRef.current = true;
     window.requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }));
-  }, [location.hash, painel]);
+  }, [location.hash, painel, contratoId]);
 
   return (
     <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] p-4">
@@ -649,169 +598,6 @@ export function ImoveisAdministracaoFinanceiro() {
           </div>
         </div>
 
-        <div
-          className="flex flex-wrap gap-2 border-b border-slate-200 pb-0"
-          role="tablist"
-          aria-label="Seções do financeiro da locação"
-        >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={abaPrincipal === 'imovel'}
-            onClick={() => setAbaPrincipal('imovel')}
-            className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${
-              abaPrincipal === 'imovel'
-                ? 'border-indigo-600 text-indigo-800'
-                : 'border-transparent text-slate-600 hover:text-slate-800'
-            }`}
-          >
-            Este imóvel
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={abaPrincipal === 'repassar'}
-            onClick={() => setAbaPrincipal('repassar')}
-            className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${
-              abaPrincipal === 'repassar'
-                ? 'border-indigo-600 text-indigo-800'
-                : 'border-transparent text-slate-600 hover:text-slate-800'
-            }`}
-          >
-            A repassar
-          </button>
-        </div>
-
-        {abaPrincipal === 'repassar' ? (
-          <div className="bg-white rounded-lg border border-slate-300 shadow-sm p-4 space-y-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-semibold text-slate-800">Carteira a repassar</h2>
-                <p className="text-xs text-slate-600 mt-1 max-w-3xl">
-                  Repasses pendentes ou divergentes de imóveis (locação) e de processos (alvará / honorários).
-                  Valores derivados dos vínculos existentes — não é saldo materializado.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={recarregarRepasses}
-                disabled={carregandoRepasses || (!featureFlags.useApiImoveis && !featureFlags.useApiFinanceiro)}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-50"
-              >
-                <RefreshCw className={`w-4 h-4 ${carregandoRepasses ? 'animate-spin' : ''}`} aria-hidden />
-                Atualizar
-              </button>
-            </div>
-            {!featureFlags.useApiImoveis && !featureFlags.useApiFinanceiro ? (
-              <p className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-                Ative a API de imóveis ou financeiro para consultar a carteira de repasses pendentes.
-              </p>
-            ) : null}
-            {erroRepasses ? <p className="text-sm text-red-700">{erroRepasses}</p> : null}
-            {featureFlags.useApiImoveis || featureFlags.useApiFinanceiro ? (
-              <>
-                <div className="rounded-lg border border-teal-200 bg-teal-50/80 px-4 py-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-teal-800">Total em aberto</p>
-                  <p className="mt-1 text-2xl font-bold tabular-nums text-teal-900">
-                    {carregandoRepasses ? '…' : formatBRL(repassesCarteira?.totalEmAberto ?? 0)}
-                  </p>
-                  <p className="text-xs text-teal-800 mt-1">
-                    {carregandoRepasses
-                      ? 'Carregando…'
-                      : `${repassesCarteira?.itens?.length ?? 0} item(ns) pendente(s) ou divergente(s)`}
-                  </p>
-                </div>
-                <div className="overflow-x-auto rounded-lg border border-slate-200">
-                  <table className="min-w-full border-collapse">
-                    <thead>
-                      <tr>
-                        <th className={th}>Origem</th>
-                        <th className={th}>Destinatário</th>
-                        <th className={th}>Referência</th>
-                        <th className={th}>Competência</th>
-                        <th className={th}>Em aberto</th>
-                        <th className={th}>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {carregandoRepasses ? (
-                        <tr>
-                          <td colSpan={6} className={`${td} text-slate-500`}>
-                            Carregando repasses pendentes…
-                          </td>
-                        </tr>
-                      ) : null}
-                      {!carregandoRepasses && (repassesCarteira?.itens?.length ?? 0) === 0 ? (
-                        <tr>
-                          <td colSpan={6} className={`${td} text-slate-500`}>
-                            Nenhum repasse pendente ou divergente no momento.
-                          </td>
-                        </tr>
-                      ) : null}
-                      {!carregandoRepasses
-                        ? (repassesCarteira?.itens ?? []).map((item) => {
-                            const info = statusRepasseInfo(item.statusRepasse);
-                            const ehProcesso = item.origem === 'PROCESSO';
-                            const refLabel = ehProcesso
-                              ? [
-                                  item.valorAlvara != null ? `Alvará ${formatBRL(item.valorAlvara)}` : null,
-                                  item.retencao != null ? `Ret. ${formatBRL(item.retencao)}` : null,
-                                ]
-                                  .filter(Boolean)
-                                  .join(' · ')
-                              : [
-                                  item.imovelNumeroPlanilha != null ? `#${item.imovelNumeroPlanilha}` : null,
-                                  item.imovelEndereco,
-                                ]
-                                  .filter(Boolean)
-                                  .join(' · ');
-                            const chave = ehProcesso
-                              ? `proc-${item.processoId}-${item.alvaraLancamentoId ?? item.contratoId}`
-                              : `${item.contratoId}-${item.competencia}`;
-                            return (
-                              <tr key={chave} className="hover:bg-slate-50/80">
-                                <td className={td}>
-                                  <span
-                                    className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase ${
-                                      ehProcesso
-                                        ? 'bg-violet-50 text-violet-900 border-violet-200'
-                                        : 'bg-teal-50 text-teal-900 border-teal-200'
-                                    }`}
-                                  >
-                                    {ehProcesso ? 'Processo' : 'Imóvel'}
-                                  </span>
-                                </td>
-                                <td className={td}>
-                                  <span className="font-medium">{item.locadorNome || '—'}</span>
-                                </td>
-                                <td className={td}>
-                                  <span className="break-words">{refLabel || '—'}</span>
-                                </td>
-                                <td className={`${td} tabular-nums`}>{item.competencia || '—'}</td>
-                                <td className={`${td} tabular-nums font-semibold`}>
-                                  {formatBRL(item.valorEmAberto)}
-                                </td>
-                                <td className={td}>
-                                  <span
-                                    className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-semibold ${info.cls}`}
-                                  >
-                                    {info.label}
-                                  </span>
-                                </td>
-                              </tr>
-                            );
-                          })
-                        : null}
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            ) : null}
-          </div>
-        ) : null}
-
-        {abaPrincipal === 'imovel' && (
-          <>
         {(carregando || erro || sucesso) && (
           <div className="bg-white rounded-lg border border-slate-300 shadow-sm p-3 text-sm">
             {carregando ? <p className="text-indigo-700">Carregando painel de administração...</p> : null}
@@ -955,7 +741,10 @@ export function ImoveisAdministracaoFinanceiro() {
                   </div>
                 )}
 
-                <div className="bg-white rounded-lg border border-slate-300 shadow-sm p-4 space-y-3">
+                <div
+                  id="reconciliacao-imoveis"
+                  className="bg-white rounded-lg border border-slate-300 shadow-sm p-4 space-y-3 scroll-mt-4"
+                >
                   <div className="flex flex-wrap items-end gap-3">
                     <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
                       Competência
@@ -1201,8 +990,6 @@ export function ImoveisAdministracaoFinanceiro() {
                 </div>
               </>
             )}
-          </>
-        )}
           </>
         )}
       </div>

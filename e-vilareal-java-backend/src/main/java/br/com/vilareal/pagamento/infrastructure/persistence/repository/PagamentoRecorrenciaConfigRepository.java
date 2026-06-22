@@ -6,12 +6,16 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface PagamentoRecorrenciaConfigRepository extends JpaRepository<PagamentoRecorrenciaConfigEntity, Long> {
 
     List<PagamentoRecorrenciaConfigEntity> findByAtivoTrueOrderByIdAsc();
 
     List<PagamentoRecorrenciaConfigEntity> findByImovel_IdAndAtivoTrueOrderByIdAsc(Long imovelId);
+
+    Optional<PagamentoRecorrenciaConfigEntity> findFirstByImovel_IdAndCategoriaAndAtivoTrue(
+            Long imovelId, String categoria);
 
     @Query("""
             SELECT c FROM PagamentoRecorrenciaConfigEntity c

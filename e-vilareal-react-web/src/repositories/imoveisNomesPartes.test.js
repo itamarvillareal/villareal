@@ -13,7 +13,7 @@ describe('enriquecerNomesPartesImovelUi', () => {
   });
 
   it('resolve inquilino pelo inquilinoNumeroPessoa quando extras.inquilino está vazio', async () => {
-    vi.mocked(buscarCliente).mockResolvedValueOnce({ nome: 'Renato Mikhail Martins' });
+    vi.mocked(buscarCliente).mockResolvedValueOnce({ nome: 'Renato Mikhail Martins', cpf: '', telefone: '' });
     const item = await enriquecerNomesPartesImovelUi({
       inquilino: '',
       inquilinoNumeroPessoa: '6881',
@@ -22,12 +22,13 @@ describe('enriquecerNomesPartesImovelUi', () => {
     expect(item.inquilino).toBe('Renato Mikhail Martins');
   });
 
-  it('não chama API se o nome já veio nos extras', async () => {
+  it('prefere FK mesmo quando extras já trazem nome', async () => {
+    vi.mocked(buscarCliente).mockResolvedValueOnce({ nome: 'Nome da Pessoa FK', cpf: '', telefone: '' });
     const item = await enriquecerNomesPartesImovelUi({
       inquilino: 'Maria Silva',
-      inquilinoNumeroPessoa: '6881',
+      inquilinoNumeroPessoa: '7001',
     });
-    expect(buscarCliente).not.toHaveBeenCalled();
-    expect(item.inquilino).toBe('Maria Silva');
+    expect(buscarCliente).toHaveBeenCalledWith(7001);
+    expect(item.inquilino).toBe('Nome da Pessoa FK');
   });
 });

@@ -2,8 +2,10 @@ package br.com.vilareal.email;
 
 import br.com.vilareal.financeiro.application.ExtratoCoraImportResult;
 import br.com.vilareal.financeiro.application.ExtratoCoraImportService;
+import br.com.vilareal.imovel.application.DespesaCondominioAutoConciliacaoService;
 import br.com.vilareal.imovel.application.LocacaoReconciliacaoService;
 import br.com.vilareal.imovel.api.dto.ConciliarAlugueisAutomaticoResponse;
+import br.com.vilareal.imovel.api.dto.ConciliarCondominioAutomaticoResponse;
 import com.google.api.services.gmail.Gmail;
 import com.google.api.services.gmail.model.ListMessagesResponse;
 import com.google.api.services.gmail.model.Message;
@@ -30,6 +32,7 @@ public class GmailExtratoCoraService {
     private final ExtratoCoraImportService extratoCoraImportService;
     private final ExtratoCoraEmailProcessadoService emailProcessadoService;
     private final LocacaoReconciliacaoService locacaoReconciliacaoService;
+    private final DespesaCondominioAutoConciliacaoService despesaCondominioAutoConciliacaoService;
     private final String gmailUser;
 
     public GmailExtratoCoraService(
@@ -37,11 +40,13 @@ public class GmailExtratoCoraService {
             ExtratoCoraImportService extratoCoraImportService,
             ExtratoCoraEmailProcessadoService emailProcessadoService,
             LocacaoReconciliacaoService locacaoReconciliacaoService,
+            DespesaCondominioAutoConciliacaoService despesaCondominioAutoConciliacaoService,
             @Value("${gmail.user:me}") String gmailUser) {
         this.gmailApiProvider = gmailApiProvider;
         this.extratoCoraImportService = extratoCoraImportService;
         this.emailProcessadoService = emailProcessadoService;
         this.locacaoReconciliacaoService = locacaoReconciliacaoService;
+        this.despesaCondominioAutoConciliacaoService = despesaCondominioAutoConciliacaoService;
         this.gmailUser = gmailUser;
     }
 
@@ -156,8 +161,14 @@ public class GmailExtratoCoraService {
                 resumo.getLancamentosCriados(),
                 resumo.getLancamentosJaExistiam(),
                 resumo.getFalhas());
-        conciliarAlugueisPosImportacao(resumo);
+        conciliarPosImportacao(resumo);
         return resumo;
+    }
+
+    /** Pós-import OFX Cora: auto-concilia aluguéis e condomínios do mês corrente (idempotente). */
+    private void conciliarPosImportacao(ExtratoCoraEmailProcessamentoResumo resumo) {
+        conciliarAlugueisPosImportacao(resumo);
+        conciliarCondominioPosImportacao(resumo);
     }
 
     /** Pós-processamento idempotente: auto-vincula aluguéis Cora inequívocos do mês corrente. */
@@ -173,6 +184,26 @@ public class GmailExtratoCoraService {
         } catch (Exception ex) {
             log.warn("Auto-conciliação aluguéis pós-import Cora falhou (importação já concluída): {}", mensagemRaiz(ex), ex);
             resumo.getErros().add("Auto-conciliação aluguéis: " + mensagemRaiz(ex));
+        }
+    }
+
+    /** Pós-processamento idempotente: auto-vincula condomínios confirmados com débito inequívoco no mês. */
+    private void conciliarCondominioPosImportacao(ExtratoCoraEmailProcessamentoResumo resumo) {
+        try {
+            ConciliarCondominioAutomaticoResponse auto =
+                    despesaCondominioAutoConciliacaoService.conciliarCondominioAutomatico(null);
+            log.info(
+                    "Auto-conciliação condomínio pós-import Cora (competencia={}): {} conciliado(s), {} para revisão, {} sem débito.",
+                    auto.getCompetencia(),
+                    auto.getAutoConciliados(),
+                    auto.getParaRevisao().size(),
+                    auto.getSemDebito().size());
+        } catch (Exception ex) {
+            log.warn(
+                    "Auto-conciliação condomínio pós-import Cora falhou (importação já concluída): {}",
+                    mensagemRaiz(ex),
+                    ex);
+            resumo.getErros().add("Auto-conciliação condomínio: " + mensagemRaiz(ex));
         }
     }
 

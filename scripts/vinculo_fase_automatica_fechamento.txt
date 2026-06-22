@@ -1,0 +1,21 @@
+Fase automatica (vinculo imovel_id) — FECHADA em 2026-06-22
+
+Rodadas automaticas aplicadas (resumo):
+  - vincular_imoveis / fase3 manual+auto
+  - placeholders, cross-ref, unidade explicita (171 ALTA)
+  - nome cross-ref Getulino (12 contas -> imovel 63)
+  - nome cross-ref Luiz Faria (3 contas -> imovel 60, ja vinculadas)
+  - sweep Getulino CC_CLI 717 (3 contas -> imovel 63)
+
+Total ATIVO DEBITO com imovel_id: 353 (esperado 353)
+Sem imovel_id (pool restante): 30129
+quase_vinculos.csv: 1004 linhas (revisao manual)
+
+Nao aplicado / mantido REVISAR:
+  - 207213 Sidnei (conflito relatório/processo/PIX)
+  - demais ~1004 contas em quase_vinculos.csv
+
+Ultimo sweep (2026-06-22):
+  194200 -> imovel 63
+  194201 -> imovel 63
+  196431 -> imovel 63

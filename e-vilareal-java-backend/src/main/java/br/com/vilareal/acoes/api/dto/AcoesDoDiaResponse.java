@@ -9,7 +9,8 @@ public record AcoesDoDiaResponse(
         GrupoConciliar conciliar,
         GrupoCobrar cobrar,
         GrupoRepassar repassar,
-        GrupoRenegociar renegociar) {
+        GrupoRenegociar renegociar,
+        GrupoPagar pagar) {
 
     public record GrupoConciliar(int quantidade, BigDecimal total, List<ItemConciliar> itens) {}
 
@@ -83,4 +84,19 @@ public record AcoesDoDiaResponse(
             LocalDate dataFim,
             int diasRestantes,
             BigDecimal valorAluguel) {}
+
+    public record GrupoPagar(int quantidade, BigDecimal total, List<ItemPagar> itens) {}
+
+    public record ItemPagar(
+            Long pagamentoId,
+            String descricao,
+            String categoria,
+            BigDecimal valor,
+            LocalDate vencimento,
+            boolean vencido,
+            Long imovelId,
+            Integer imovelNumeroPlanilha,
+            Long clienteId,
+            Long processoId,
+            Integer numeroInterno) {}
 }

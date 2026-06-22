@@ -43,6 +43,60 @@ import { listarParesCodProcPorNumeroImovelProcessos } from '../data/processosHis
 
 /** Cache em memória: número da pessoa → nome (evita N×GET no relatório). */
 const cacheNomePessoa = new Map();
+/** Cache curto para dados completos de pessoa (nome/cpf/contato) usados nas partes do imóvel. */
+const cacheDadosPessoa = new Map();
+
+function formatDocBrExibicao(digits) {
+  const d = String(digits ?? '').replace(/\D/g, '');
+  if (d.length === 11) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+  if (d.length === 14) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+  return d || '—';
+}
+
+/**
+ * Observações canônicas na leitura: coluna imovel → contrato → extras legado.
+ * @param {object|null|undefined} imovel
+ * @param {object|null|undefined} contrato
+ * @param {Record<string, unknown>} [extras]
+ */
+export function resolverObservacoesImovelParaUi(imovel, contrato, extras = {}) {
+  const col = String(imovel?.observacoes ?? '').trim();
+  if (col) return col;
+  const contr = String(contrato?.observacoes ?? '').trim();
+  if (contr) return contr;
+  return String(extras.observacoesInquilino ?? extras.obsInquilino ?? '').trim();
+}
+
+function preservarChaveExtrasLegado(extrasOrig, chaves) {
+  for (const chave of chaves) {
+    const v = String(extrasOrig?.[chave] ?? '').trim();
+    if (v) return v;
+  }
+  return '';
+}
+
+async function resolverDadosPessoaPorId(idPessoa) {
+  if (!idPessoa) return null;
+  if (cacheDadosPessoa.has(idPessoa)) return cacheDadosPessoa.get(idPessoa);
+  try {
+    const p = await buscarCliente(idPessoa);
+    if (!p) {
+      cacheDadosPessoa.set(idPessoa, null);
+      return null;
+    }
+    const dados = {
+      nome: String(p.nome ?? '').trim(),
+      cpf: formatDocBrExibicao(p.cpf),
+      contato: String(p.telefone ?? '').trim() || '—',
+    };
+    cacheDadosPessoa.set(idPessoa, dados);
+    cacheNomePessoa.set(idPessoa, dados.nome);
+    return dados;
+  } catch {
+    cacheDadosPessoa.set(idPessoa, null);
+    return null;
+  }
+}
 
 // -----------------------------------------------------------------------------
 // Fase 7 — imóveis / locações
@@ -56,6 +110,43 @@ function padCliente8(value) {
   const n = Number(d || '1');
   const safe = Number.isFinite(n) && n > 0 ? Math.floor(n) : 1;
   return String(safe).padStart(8, '0');
+}
+
+function normalizarProcUi(proc) {
+  const n = Number.parseInt(String(proc ?? '').replace(/\D/g, ''), 10);
+  return Number.isFinite(n) && n >= 1 ? String(n) : String(proc ?? '').trim();
+}
+
+/**
+ * Cod+proc exibidos no formulário: N:N da API (processoId + codigoCliente + numeroInterno) antes dos extras.
+ */
+export function derivarCodProcUiImovel(imovel, extras = {}) {
+  const processoIdApi = imovel?.processoId;
+  if (processoIdApi != null && Number(processoIdApi) > 0) {
+    const codNn = imovel?.codigoCliente ? padCliente8(imovel.codigoCliente) : '';
+    const procNn =
+      imovel?.numeroInternoProcesso != null ? normalizarProcUi(imovel.numeroInternoProcesso) : '';
+    if (codNn && procNn) {
+      return { codigo: codNn, proc: procNn, fonte: 'nn' };
+    }
+  }
+  const codigo = String(extras.codigo || imovel?.codigoCliente || '').trim();
+  const proc = String(
+    extras.proc || (imovel?.numeroInternoProcesso != null ? imovel.numeroInternoProcesso : ''),
+  ).trim();
+  return {
+    codigo: codigo ? padCliente8(codigo) : '',
+    proc: proc ? normalizarProcUi(proc) : '',
+    fonte: 'extras',
+  };
+}
+
+function usuarioAlterouVinculoProcessoNoForm(uiPayload) {
+  const codForm = String(uiPayload.codigo ?? '').trim();
+  const procForm = normalizarProcUi(uiPayload.proc);
+  const codOrig = String(uiPayload._vinculoCodigoOriginal ?? uiPayload.codigo ?? '').trim();
+  const procOrig = normalizarProcUi(uiPayload._vinculoProcOriginal ?? uiPayload.proc);
+  return codForm !== codOrig || procForm !== procOrig;
 }
 
 function toIsoDate(dateBr) {
@@ -331,51 +422,75 @@ async function resolverNomePessoaPorId(idPessoa) {
 }
 
 /**
- * Preenche inquilino/proprietário pelo cadastro de pessoas quando só há o número (contrato API).
+ * Preenche inquilino/proprietário: FK (pessoa) tem prioridade; JSON legado só sem FK.
  */
 export async function enriquecerNomesPartesImovelUi(item) {
   if (!item) return item;
-  let inquilino = String(item.inquilino ?? '').trim();
-  let proprietario = String(item.proprietario ?? '').trim();
   const idInq = parseIdPessoa(item.inquilinoNumeroPessoa);
   const idProp = parseIdPessoa(item.proprietarioNumeroPessoa);
-  if (!inquilino && idInq) inquilino = await resolverNomePessoaPorId(idInq);
-  if (!proprietario && idProp) proprietario = await resolverNomePessoaPorId(idProp);
-  return { ...item, inquilino, proprietario };
+
+  let inquilino = String(item.inquilino ?? '').trim();
+  let inquilinoCpf = String(item.inquilinoCpf ?? '').trim();
+  let inquilinoContato = String(item.inquilinoContato ?? '').trim();
+  let proprietario = String(item.proprietario ?? '').trim();
+  let proprietarioCpf = String(item.proprietarioCpf ?? '').trim();
+  let proprietarioContato = String(item.proprietarioContato ?? '').trim();
+
+  if (idProp) {
+    const p = await resolverDadosPessoaPorId(idProp);
+    if (p?.nome) proprietario = p.nome;
+    if (p?.cpf) proprietarioCpf = p.cpf;
+    if (p?.contato) proprietarioContato = p.contato;
+  }
+
+  if (idInq) {
+    const p = await resolverDadosPessoaPorId(idInq);
+    if (p?.nome) inquilino = p.nome;
+    if (p?.cpf) inquilinoCpf = p.cpf;
+    if (p?.contato) inquilinoContato = p.contato;
+  }
+
+  return {
+    ...item,
+    inquilino,
+    inquilinoCpf,
+    inquilinoContato,
+    proprietario,
+    proprietarioCpf,
+    proprietarioContato,
+  };
 }
 
 export async function enriquecerNomesPartesImoveisLote(itens) {
   const lista = Array.isArray(itens) ? itens : [];
   const ids = new Set();
   for (const item of lista) {
-    if (!String(item.inquilino ?? '').trim()) {
-      const id = parseIdPessoa(item.inquilinoNumeroPessoa);
-      if (id) ids.add(id);
-    }
-    if (!String(item.proprietario ?? '').trim()) {
-      const id = parseIdPessoa(item.proprietarioNumeroPessoa);
-      if (id) ids.add(id);
-    }
+    const idInq = parseIdPessoa(item.inquilinoNumeroPessoa);
+    const idProp = parseIdPessoa(item.proprietarioNumeroPessoa);
+    if (idInq) ids.add(idInq);
+    if (idProp) ids.add(idProp);
   }
-  await Promise.all([...ids].map((id) => resolverNomePessoaPorId(id)));
+  await Promise.all([...ids].map((id) => resolverDadosPessoaPorId(id)));
   return Promise.all(lista.map((item) => enriquecerNomesPartesImovelUi(item)));
 }
 
 function mapApiToUi(imovel, contrato) {
-  const extras = normalizarExtrasImovelParaUi(parseJsonSafe(imovel?.camposExtrasJson, {}));
+  const extrasRaw = parseJsonSafe(imovel?.camposExtrasJson, {});
+  const extras = normalizarExtrasImovelParaUi(extrasRaw);
   const dadosBanc = parseJsonSafe(contrato?.dadosBancariosRepasseJson, {});
   const idApi = Number(imovel?.id);
   const np = imovel?.numeroPlanilha != null ? Number(imovel.numeroPlanilha) : null;
+  const { codigo, proc } = derivarCodProcUiImovel(imovel, extras);
   /** No formulário Imóveis (API): o inteiro exibido é o da col. A da planilha; sem planilha, cai no id interno. */
   const imovelIdUi = np != null && Number.isFinite(np) && np >= 1 ? np : idApi;
   return {
     imovelId: imovelIdUi,
     imovelOcupado: String(imovel?.situacao || '').toUpperCase() !== 'DESOCUPADO',
-    codigo: String(extras.codigo || imovel?.codigoCliente || ''),
-    proc: String(
-      extras.proc || (imovel?.numeroInternoProcesso != null ? imovel.numeroInternoProcesso : ''),
-    ),
-    observacoesInquilino: String(extras.observacoesInquilino ?? ''),
+    codigo,
+    proc,
+    _vinculoCodigoOriginal: codigo,
+    _vinculoProcOriginal: proc,
+    observacoesInquilino: resolverObservacoesImovelParaUi(imovel, contrato, extras),
     endereco: String(imovel?.enderecoCompleto ?? ''),
     condominio: String(imovel?.condominio ?? ''),
     unidade: String(imovel?.unidade ?? ''),
@@ -445,6 +560,8 @@ function mapApiToUi(imovel, contrato) {
     _apiContratoId: contrato?.id ?? null,
     _apiClienteId: imovel?.clienteId ?? null,
     _apiProcessoId: imovel?.processoId ?? null,
+    _jsonExtrasOriginal: extrasRaw,
+    _contratoObservacoesOriginal: contrato?.observacoes ?? null,
   };
 }
 
@@ -462,11 +579,17 @@ export async function resolverProcessoIdPorChave(codigoCliente, procInterno) {
   return p?.id ?? null;
 }
 
-function montarPayloadImovelFromUi(ui, clienteId, processoId) {
+function montarPayloadImovelFromUi(ui, clienteId, processoId, espelhoCodProc = null) {
+  const extrasOrig =
+    ui._jsonExtrasOriginal && typeof ui._jsonExtrasOriginal === 'object' ? ui._jsonExtrasOriginal : {};
+  const idProp = parseIdPessoa(ui.proprietarioNumeroPessoa);
+  const idInq = parseIdPessoa(ui.inquilinoNumeroPessoa);
+  const codEspelho = espelhoCodProc?.codigo ?? String(ui.codigo ?? '');
+  const procEspelho = espelhoCodProc?.proc ?? String(ui.proc ?? '');
+
   const extras = {
-    codigo: String(ui.codigo ?? ''),
-    proc: String(ui.proc ?? ''),
-    observacoesInquilino: String(ui.observacoesInquilino ?? ''),
+    codigo: codEspelho,
+    proc: procEspelho,
     dataPag1TxCond: String(ui.dataPag1TxCond ?? ''),
     ...(!FEATURE_IPTU_NOVO
       ? {
@@ -489,13 +612,7 @@ function montarPayloadImovelFromUi(ui, clienteId, processoId) {
     diaVencGas: String(ui.diaVencGas ?? ''),
     dataConsDebitoCond: String(ui.dataConsDebitoCond ?? ''),
     existeDebitoCond: String(ui.existeDebitoCond ?? ''),
-    proprietario: String(ui.proprietario ?? ''),
-    proprietarioCpf: String(ui.proprietarioCpf ?? ''),
-    proprietarioContato: String(ui.proprietarioContato ?? ''),
     linkVistoria: String(ui.linkVistoria ?? ''),
-    inquilino: String(ui.inquilino ?? ''),
-    inquilinoCpf: String(ui.inquilinoCpf ?? ''),
-    inquilinoContato: String(ui.inquilinoContato ?? ''),
     contratoAssinadoInquilino: String(ui.contratoAssinadoInquilino ?? 'nao'),
     contratoAssinadoProprietario: String(ui.contratoAssinadoProprietario ?? 'nao'),
     contratoAssinadoGarantidor: String(ui.contratoAssinadoGarantidor ?? 'nao'),
@@ -505,6 +622,35 @@ function montarPayloadImovelFromUi(ui, clienteId, processoId) {
     contratoIntermediacaoAssinadoProprietario: String(ui.contratoIntermediacaoAssinadoProprietario ?? 'nao'),
     valorGarantia: String(ui.valorGarantia ?? ''),
   };
+
+  const obsExtraLegado = preservarChaveExtrasLegado(extrasOrig, ['observacoesInquilino', 'obsInquilino']);
+  if (obsExtraLegado) extras.observacoesInquilino = obsExtraLegado;
+
+  if (idProp) {
+    const nome = preservarChaveExtrasLegado(extrasOrig, ['proprietario']);
+    const cpf = preservarChaveExtrasLegado(extrasOrig, ['proprietarioCpf']);
+    const contato = preservarChaveExtrasLegado(extrasOrig, ['proprietarioContato']);
+    if (nome) extras.proprietario = nome;
+    if (cpf) extras.proprietarioCpf = cpf;
+    if (contato) extras.proprietarioContato = contato;
+  } else {
+    extras.proprietario = String(ui.proprietario ?? '');
+    extras.proprietarioCpf = String(ui.proprietarioCpf ?? '');
+    extras.proprietarioContato = String(ui.proprietarioContato ?? '');
+  }
+
+  if (idInq) {
+    const nome = preservarChaveExtrasLegado(extrasOrig, ['inquilino']);
+    const cpf = preservarChaveExtrasLegado(extrasOrig, ['inquilinoCpf']);
+    const contato = preservarChaveExtrasLegado(extrasOrig, ['inquilinoContato']);
+    if (nome) extras.inquilino = nome;
+    if (cpf) extras.inquilinoCpf = cpf;
+    if (contato) extras.inquilinoContato = contato;
+  } else {
+    extras.inquilino = String(ui.inquilino ?? '');
+    extras.inquilinoCpf = String(ui.inquilinoCpf ?? '');
+    extras.inquilinoContato = String(ui.inquilinoContato ?? '');
+  }
   const nPlan = Number(ui.imovelId);
   const numeroPlanilhaBody =
     Number.isFinite(nPlan) && nPlan >= 1 ? Math.floor(nPlan) : null;
@@ -528,6 +674,7 @@ function montarPayloadImovelFromUi(ui, clienteId, processoId) {
 }
 
 function montarPayloadContratoFromUi(ui, imovelId) {
+  const obsContratoLegado = String(ui._contratoObservacoesOriginal ?? '').trim();
   return {
     imovelId,
     locadorPessoaId: Number(ui.proprietarioNumeroPessoa) || null,
@@ -550,7 +697,7 @@ function montarPayloadContratoFromUi(ui, imovelId) {
       chavePix: String(ui.chavePix ?? ''),
     }),
     status: 'VIGENTE',
-    observacoes: String(ui.observacoesInquilino || '').trim() || null,
+    observacoes: obsContratoLegado || null,
   };
 }
 
@@ -961,20 +1108,20 @@ export async function salvarImovelCadastro(uiPayload) {
   if (!featureFlags.useApiImoveis) {
     return { fonte: 'legado', salvo: false, motivo: 'Mock sem persistência real.' };
   }
-  const codigoTrim = String(uiPayload.codigo ?? '').trim();
+  const vinculo = await resolverVinculoProcessoParaSaveImovel(uiPayload);
+  const codigoTrim = String(vinculo.espelhoCodigo || uiPayload.codigo || '').trim();
   let clienteId = null;
   if (codigoTrim) {
-    clienteId = await resolverClienteIdPorCodigo(uiPayload.codigo);
+    clienteId = await resolverClienteIdPorCodigo(codigoTrim);
     if (!clienteId) {
       throw new Error('Cliente não encontrado para o código informado.');
     }
   }
-  const processoId =
-    clienteId && String(uiPayload.proc ?? '').trim()
-      ? await resolverProcessoIdPorChave(uiPayload.codigo, uiPayload.proc)
-      : null;
 
-  const bodyImovel = montarPayloadImovelFromUi(uiPayload, clienteId, processoId);
+  const bodyImovel = montarPayloadImovelFromUi(uiPayload, clienteId, vinculo.processoIdPayload, {
+    codigo: vinculo.espelhoCodigo,
+    proc: vinculo.espelhoProc,
+  });
   const imovelSalvo = uiPayload._apiImovelId
     ? await request(`/api/imoveis/${uiPayload._apiImovelId}`, { method: 'PUT', body: bodyImovel })
     : await request('/api/imoveis', { method: 'POST', body: bodyImovel });
@@ -990,7 +1137,106 @@ export async function salvarImovelCadastro(uiPayload) {
   return {
     fonte: 'api',
     salvo: true,
-    item: mapApiToUi(imovelSalvo, contratoSalvo),
+    item: await enriquecerNomesPartesImovelUi(mapApiToUi(imovelSalvo, contratoSalvo)),
+  };
+}
+
+/**
+ * Chave do processo para conta corrente / painel financeiro do imóvel (somente leitura).
+ * Com N:N ({@code _apiProcessoId}): deriva cod+proc oficiais do processo — não dos extras.
+ * Sem N:N: mantém cod/proc do cadastro (extras).
+ */
+export async function resolverChaveProcessoContaCorrentePainel(imovel) {
+  const fallbackCodigo = String(imovel?.codigo ?? '').trim();
+  const fallbackProc = String(imovel?.proc ?? '').trim();
+  const processoIdRaw = imovel?._apiProcessoId;
+  const processoId =
+    processoIdRaw != null && Number.isFinite(Number(processoIdRaw)) && Number(processoIdRaw) > 0
+      ? Number(processoIdRaw)
+      : null;
+
+  if (processoId && featureFlags.useApiProcessos) {
+    try {
+      const procApi = await buscarProcessoPorId(processoId);
+      const ni = procApi?.numeroInterno ?? procApi?.numeroInternoProcesso;
+      const codRaw = procApi?.codigoCliente ?? fallbackCodigo;
+      const codigo = padCliente8(codRaw);
+      if (codigo && ni != null && Number(ni) >= 1) {
+        return {
+          codigo,
+          proc: String(Math.trunc(Number(ni))),
+          processoId,
+          fonteChave: 'nn',
+        };
+      }
+    } catch {
+      /* fallback abaixo */
+    }
+  }
+
+  return {
+    codigo: fallbackCodigo,
+    proc: fallbackProc,
+    processoId,
+    fonteChave: 'extras',
+  };
+}
+
+/**
+ * Resolve processoId do PUT e cod+proc espelho nos extras no save do cadastro imóvel.
+ * Sem alteração deliberada de cod+proc: mantém N:N e reescreve extras como espelho canônico.
+ */
+export async function resolverVinculoProcessoParaSaveImovel(uiPayload) {
+  const codForm = String(uiPayload.codigo ?? '').trim();
+  const procForm = normalizarProcUi(uiPayload.proc);
+  const apiProcessoId =
+    uiPayload._apiProcessoId != null && Number(uiPayload._apiProcessoId) > 0
+      ? Number(uiPayload._apiProcessoId)
+      : null;
+  const alterouVinculo = usuarioAlterouVinculoProcessoNoForm(uiPayload);
+
+  if (alterouVinculo) {
+    if (!codForm || !procForm) {
+      return {
+        alterouVinculo: true,
+        processoIdPayload: null,
+        espelhoCodigo: codForm ? padCliente8(codForm) : '',
+        espelhoProc: procForm,
+      };
+    }
+    const novoId = await resolverProcessoIdPorChave(codForm, procForm);
+    if (!novoId) {
+      throw new Error('Processo não encontrado para o código e proc. informados.');
+    }
+    return {
+      alterouVinculo: true,
+      processoIdPayload: novoId,
+      espelhoCodigo: padCliente8(codForm),
+      espelhoProc: procForm,
+    };
+  }
+
+  if (apiProcessoId) {
+    const chave = await resolverChaveProcessoContaCorrentePainel(uiPayload);
+    if (chave.fonteChave === 'nn') {
+      return {
+        alterouVinculo: false,
+        processoIdPayload: chave.processoId,
+        espelhoCodigo: chave.codigo,
+        espelhoProc: chave.proc,
+      };
+    }
+  }
+
+  let processoIdPayload = null;
+  if (codForm && procForm) {
+    processoIdPayload = await resolverProcessoIdPorChave(codForm, procForm);
+  }
+  return {
+    alterouVinculo: false,
+    processoIdPayload,
+    espelhoCodigo: codForm ? padCliente8(codForm) : '',
+    espelhoProc: procForm,
   };
 }
 
@@ -998,13 +1244,19 @@ export async function carregarPainelAdministracaoImovel({ imovelId, imovelIdApi,
   let codigo = String(codigoFallback ?? '').trim();
   let proc = String(procFallback ?? '').trim();
   let imovel = null;
+  let processoIdPainel = null;
 
   if (featureFlags.useApiImoveis) {
     const r = await carregarImovelCadastroParaPainel({ imovelId, imovelIdApi });
     imovel = r.item;
     if (imovel) {
-      codigo = String(imovel.codigo || codigo).trim();
-      proc = String(imovel.proc || proc).trim();
+      const chave = await resolverChaveProcessoContaCorrentePainel(imovel);
+      codigo = String(chave.codigo || codigo).trim();
+      proc = String(chave.proc || proc).trim();
+      processoIdPainel = chave.processoId ?? null;
+      if (chave.fonteChave === 'nn') {
+        imovel = { ...imovel, codigo, proc };
+      }
     }
   }
 
@@ -1019,7 +1271,7 @@ export async function carregarPainelAdministracaoImovel({ imovelId, imovelIdApi,
       transacoes = await listarLancamentosProcessoApiFirst({
         codigoCliente: cod8,
         numeroInterno: Number.isFinite(procNum) && procNum >= 1 ? procNum : proc,
-        processoId: imovel?._apiProcessoId ?? null,
+        processoId: processoIdPainel ?? imovel?._apiProcessoId ?? null,
       });
       fonte = 'api';
     } else {

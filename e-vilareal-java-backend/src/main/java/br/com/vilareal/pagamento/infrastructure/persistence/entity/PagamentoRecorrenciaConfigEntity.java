@@ -39,6 +39,9 @@ public class PagamentoRecorrenciaConfigEntity {
     @Column(name = "descricao_padrao", nullable = false, length = 500)
     private String descricaoPadrao;
 
+    @Column(name = "grafias_extrato_json", columnDefinition = "TEXT")
+    private String grafiasExtratoJson;
+
     @Column(name = "conta_referencia", length = 50)
     private String contaReferencia;
 

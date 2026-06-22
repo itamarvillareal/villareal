@@ -2,6 +2,7 @@ package br.com.vilareal.financeiro.application;
 
 import br.com.vilareal.documento.ContratoHonorariosRecebiveisConciliacaoService;
 import br.com.vilareal.documento.HonorariosPosImportResult;
+import br.com.vilareal.documento.HonorariosPosImportSimulacaoResult;
 import br.com.vilareal.financeiro.api.dto.ExtratoPosImportRequest;
 import br.com.vilareal.financeiro.api.dto.ExtratoPosImportResponse;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
@@ -96,5 +97,18 @@ public class ExtratoPosImportApplicationService {
                     r.ambiguos());
         }
         return r;
+    }
+
+    /** Simulação read-only da rede de segurança (45 dias, bancos upload manual). */
+    @Transactional(readOnly = true)
+    public HonorariosPosImportSimulacaoResult simularRedeSegurancaHonorarios() {
+        LocalDate desde = LocalDate.now().minusDays(JANELA_REDE_SEGURANCA_DIAS);
+        List<Integer> bancos = BANCOS_POS_IMPORT_HONORARIO.stream().sorted().toList();
+        List<Long> ids =
+                lancamentoRepository.findCreditosOrfaosPosImportHonorarios(BANCOS_POS_IMPORT_HONORARIO, desde);
+        if (ids.isEmpty()) {
+            return HonorariosPosImportSimulacaoResult.vazio(desde, bancos);
+        }
+        return honorariosConciliacaoService.simularHonorariosPosImport(ids, desde, bancos);
     }
 }

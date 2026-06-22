@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { FileSpreadsheet, X } from 'lucide-react';
 import {
@@ -94,7 +94,6 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   const [inquilinoCadastroErro, setInquilinoCadastroErro] = useState('');
   const [showModalIptu, setShowModalIptu] = useState(false);
   const [infoIptuTexto, setInfoIptuTexto] = useState('IPTU 2025 cinco parcelas em atraso + duas à vencer R$1.323,30');
-  const [showModalContrato, setShowModalContrato] = useState(false);
   const [showModalVinculosProc, setShowModalVinculosProc] = useState(false);
   const [contratoAssinadoInquilino, setContratoAssinadoInquilino] = useState('nao');
   const [contratoAssinadoProprietario, setContratoAssinadoProprietario] = useState('nao');
@@ -111,6 +110,9 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   const [_apiContratoId, setApiContratoId] = useState(null);
   const [_apiClienteId, setApiClienteId] = useState(null);
   const [_apiProcessoId, setApiProcessoId] = useState(null);
+  /** Preservados entre loads/saves para não apagar legado em JSON/contrato ao salvar. */
+  const jsonExtrasOriginalRef = useRef({});
+  const contratoObservacoesOriginalRef = useRef(null);
   const unidadeAlvo =
     !modoModal && location.state && typeof location.state === 'object' ? location.state.unidade : null;
 
@@ -202,6 +204,8 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
       setApiContratoId(null);
       setApiClienteId(null);
       setApiProcessoId(null);
+      jsonExtrasOriginalRef.current = {};
+      contratoObservacoesOriginalRef.current = null;
       return;
     }
 
@@ -267,6 +271,9 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     setApiContratoId(data._apiContratoId ?? null);
     setApiClienteId(data._apiClienteId ?? null);
     setApiProcessoId(data._apiProcessoId ?? null);
+    jsonExtrasOriginalRef.current =
+      data._jsonExtrasOriginal && typeof data._jsonExtrasOriginal === 'object' ? data._jsonExtrasOriginal : {};
+    contratoObservacoesOriginalRef.current = data._contratoObservacoesOriginal ?? null;
   }
 
   useEffect(() => {
@@ -564,6 +571,8 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
         contratoIntermediacaoAssinadoProprietario,
         _apiImovelId,
         _apiContratoId,
+        _jsonExtrasOriginal: jsonExtrasOriginalRef.current,
+        _contratoObservacoesOriginal: contratoObservacoesOriginalRef.current,
       });
       if (r?.item) {
         popularFormulario(r.item);
@@ -800,7 +809,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
               if (modoModal && onFecharModal) onFecharModal();
               navigate({
                 pathname: '/imoveis/financeiro',
-                hash: '#extrato-imoveis',
+                hash: '#reconciliacao-imoveis',
                 search:
                   Number.isFinite(np) && np >= 1
                     ? `?imovel=${np}${Number.isFinite(idApi) && idApi >= 1 ? `&imovelApi=${idApi}` : ''}`
@@ -808,6 +817,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
                 state: {
                   imovelId: np,
                   imovelIdApi: Number.isFinite(idApi) && idApi >= 1 ? idApi : null,
+                  focoReconciliacao: true,
                 },
               });
             }}
@@ -816,7 +826,6 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
             onGerenciarIptu={() => navigate(`/iptu/${_apiImovelId}`)}
             onRelatorio={() => navigate('/relatorio-imoveis')}
             onFechar={modoModal && onFecharModal ? onFecharModal : () => window.history.back()}
-            onAbrirContrato={() => setShowModalContrato(true)}
             onAbrirIptu={() => setShowModalIptu(true)}
             onVincularProprietario={() =>
               navigate('/clientes/lista', {
@@ -854,135 +863,6 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
           navegarParaProcesso(codigoCliente, numeroInterno);
         }}
       />
-
-      {/* Modal Informações sobre o Contrato */}
-      {showModalContrato && (
-        <div
-          className={overlayModalClass}
-          onClick={() => setShowModalContrato(false)}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="modal-contrato-titulo"
-        >
-          <div
-            className="bg-slate-100 dark:bg-[#161e2e] rounded-2xl shadow-2xl border border-slate-300/90 dark:border-white/[0.1] max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#1a2436] rounded-t-2xl">
-              <h2 id="modal-contrato-titulo" className="text-base font-semibold text-slate-800 dark:text-slate-100">
-                Informações sobre o Contrato
-              </h2>
-              <button type="button" onClick={() => setShowModalContrato(false)} className={btnIconGhost} aria-label="Fechar">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-4 overflow-y-auto flex-1">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-sm font-medium text-slate-700 mb-1.5">Contrato Assinado Pelo Inquilino</p>
-                    <div className="flex gap-4">
-                      <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                        <input type="radio" name="contratoInquilino" checked={contratoAssinadoInquilino === 'sim'} onChange={() => setContratoAssinadoInquilino('sim')} className="text-slate-600" />
-                        Sim
-                      </label>
-                      <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                        <input type="radio" name="contratoInquilino" checked={contratoAssinadoInquilino === 'nao'} onChange={() => setContratoAssinadoInquilino('nao')} className="text-slate-600" />
-                        Não
-                      </label>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-slate-700 mb-1.5">Contrato Assinado Pelo Proprietário</p>
-                    <div className="flex gap-4">
-                      <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                        <input type="radio" name="contratoProprietario" checked={contratoAssinadoProprietario === 'sim'} onChange={() => setContratoAssinadoProprietario('sim')} className="text-slate-600" />
-                        Sim
-                      </label>
-                      <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                        <input type="radio" name="contratoProprietario" checked={contratoAssinadoProprietario === 'nao'} onChange={() => setContratoAssinadoProprietario('nao')} className="text-slate-600" />
-                        Não
-                      </label>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-slate-700 mb-1.5">Contrato Assinado Pelo Garantidor</p>
-                    <div className="flex gap-4">
-                      <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                        <input type="radio" name="contratoGarantidor" checked={contratoAssinadoGarantidor === 'sim'} onChange={() => setContratoAssinadoGarantidor('sim')} className="text-slate-600" />
-                        Sim
-                      </label>
-                      <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                        <input type="radio" name="contratoGarantidor" checked={contratoAssinadoGarantidor === 'nao'} onChange={() => setContratoAssinadoGarantidor('nao')} className="text-slate-600" />
-                        Não
-                      </label>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-slate-700 mb-1.5">Contrato Assinado Pelas Testemunhas</p>
-                    <div className="flex gap-4">
-                      <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                        <input type="radio" name="contratoTestemunhas" checked={contratoAssinadoTestemunhas === 'sim'} onChange={() => setContratoAssinadoTestemunhas('sim')} className="text-slate-600" />
-                        Sim
-                      </label>
-                      <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                        <input type="radio" name="contratoTestemunhas" checked={contratoAssinadoTestemunhas === 'nao'} onChange={() => setContratoAssinadoTestemunhas('nao')} className="text-slate-600" />
-                        Não
-                      </label>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-slate-700 mb-1.5">Contrato Arquivado</p>
-                    <div className="flex gap-4">
-                      <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                        <input type="radio" name="contratoArquivado" checked={contratoArquivado === 'sim'} onChange={() => setContratoArquivado('sim')} className="text-slate-600" />
-                        Sim
-                      </label>
-                      <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                        <input type="radio" name="contratoArquivado" checked={contratoArquivado === 'nao'} onChange={() => setContratoArquivado('nao')} className="text-slate-600" />
-                        Não
-                      </label>
-                    </div>
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-sm font-medium text-slate-700 mb-1.5">Contrato de Intermediação Imobiliária Arquivado</p>
-                    <div className="flex gap-4">
-                      <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                        <input type="radio" name="intermediacaoArquivado" checked={contratoIntermediacaoArquivado === 'sim'} onChange={() => setContratoIntermediacaoArquivado('sim')} className="text-slate-600" />
-                        Sim
-                      </label>
-                      <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                        <input type="radio" name="intermediacaoArquivado" checked={contratoIntermediacaoArquivado === 'nao'} onChange={() => setContratoIntermediacaoArquivado('nao')} className="text-slate-600" />
-                        Não
-                      </label>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-slate-700 mb-1.5">Contrato de Intermediação Imobiliária Assinado Pelo Proprietário</p>
-                    <div className="flex gap-4">
-                      <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                        <input type="radio" name="intermediacaoProprietario" checked={contratoIntermediacaoAssinadoProprietario === 'sim'} onChange={() => setContratoIntermediacaoAssinadoProprietario('sim')} className="text-slate-600" />
-                        Sim
-                      </label>
-                      <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                        <input type="radio" name="intermediacaoProprietario" checked={contratoIntermediacaoAssinadoProprietario === 'nao'} onChange={() => setContratoIntermediacaoAssinadoProprietario('nao')} className="text-slate-600" />
-                        Não
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="px-5 py-4 border-t border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#151d2c] rounded-b-2xl flex justify-center">
-              <button type="button" onClick={() => setShowModalContrato(false)} className={btnSecondary}>
-                Fechar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Modal Informações sobre o IPTU (legado; desligado quando FEATURE_IPTU_NOVO) */}
       {!FEATURE_IPTU_NOVO && showModalIptu && (

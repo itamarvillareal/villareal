@@ -1,5 +1,6 @@
 package br.com.vilareal.imovel.infrastructure.persistence.entity;
 
+import br.com.vilareal.imovel.domain.ResponsavelPagamentoCondominio;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
@@ -48,6 +49,10 @@ public class ImovelEntity {
 
     @Column(length = 255)
     private String condominio;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "responsavel_pagamento_condominio", length = 16)
+    private ResponsavelPagamentoCondominio responsavelPagamentoCondominio;
 
     @Column(length = 120)
     private String unidade;

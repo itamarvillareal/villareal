@@ -105,4 +105,33 @@ public interface PagamentoRepository extends JpaRepository<PagamentoEntity, Long
             """)
     List<PagamentoEntity> findReceberAbertosNoPeriodo(
             @Param("inicio") LocalDate inicio, @Param("fim") LocalDate fim);
+
+    @Query(
+            """
+            SELECT DISTINCT p FROM PagamentoEntity p
+            LEFT JOIN FETCH p.cliente c
+            LEFT JOIN FETCH p.processo proc
+            LEFT JOIN FETCH p.imovel im
+            WHERE p.tipo = 'PAGAR'
+              AND p.status IN ('PENDENTE', 'AGENDADO', 'VENCIDO')
+              AND p.dataVencimento <= :fimCompetencia
+            ORDER BY p.dataVencimento ASC, p.id ASC
+            """)
+    List<PagamentoEntity> findPagarAbertosAteVencimento(@Param("fimCompetencia") LocalDate fimCompetencia);
+
+    @Query(
+            """
+            SELECT DISTINCT p FROM PagamentoEntity p
+            JOIN FETCH p.recorrenciaConfig rc
+            JOIN FETCH rc.imovel im
+            LEFT JOIN FETCH p.cliente c
+            WHERE p.tipo = 'PAGAR'
+              AND p.categoria = 'CONDOMINIO'
+              AND p.recorrenciaConfig IS NOT NULL
+              AND p.financeiroLancamento IS NULL
+              AND p.status IN ('PENDENTE', 'AGENDADO', 'VENCIDO')
+              AND (:mesReferencia IS NULL OR p.mesReferencia = :mesReferencia)
+            ORDER BY p.dataVencimento ASC, p.id ASC
+            """)
+    List<PagamentoEntity> findCondominioRecorrenteAbertoParaConciliar(@Param("mesReferencia") String mesReferencia);
 }

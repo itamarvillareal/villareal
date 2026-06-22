@@ -1,6 +1,9 @@
 package br.com.vilareal.imovel.api;
 
 import br.com.vilareal.imovel.api.dto.*;
+import br.com.vilareal.imovel.application.DespesaCondominioAutoConciliacaoService;
+import br.com.vilareal.imovel.application.DespesaCondominioCandidatoService;
+import br.com.vilareal.imovel.application.DespesaCondominioConfirmacaoService;
 import br.com.vilareal.imovel.application.ImovelApplicationService;
 import br.com.vilareal.imovel.application.LocacaoReconciliacaoService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -20,12 +23,21 @@ public class LocacoesController {
 
     private final ImovelApplicationService imovelApplicationService;
     private final LocacaoReconciliacaoService reconciliacaoService;
+    private final DespesaCondominioCandidatoService despesaCondominioCandidatoService;
+    private final DespesaCondominioConfirmacaoService despesaCondominioConfirmacaoService;
+    private final DespesaCondominioAutoConciliacaoService despesaCondominioAutoConciliacaoService;
 
     public LocacoesController(
             ImovelApplicationService imovelApplicationService,
-            LocacaoReconciliacaoService reconciliacaoService) {
+            LocacaoReconciliacaoService reconciliacaoService,
+            DespesaCondominioCandidatoService despesaCondominioCandidatoService,
+            DespesaCondominioConfirmacaoService despesaCondominioConfirmacaoService,
+            DespesaCondominioAutoConciliacaoService despesaCondominioAutoConciliacaoService) {
         this.imovelApplicationService = imovelApplicationService;
         this.reconciliacaoService = reconciliacaoService;
+        this.despesaCondominioCandidatoService = despesaCondominioCandidatoService;
+        this.despesaCondominioConfirmacaoService = despesaCondominioConfirmacaoService;
+        this.despesaCondominioAutoConciliacaoService = despesaCondominioAutoConciliacaoService;
     }
 
     @GetMapping("/contratos")
@@ -73,6 +85,39 @@ public class LocacoesController {
     }
 
     // ----------------------------------------------------------------- Reconciliação (caixa real)
+
+    @GetMapping("/despesas-condominio/candidatos")
+    @Operation(
+            summary = "Candidatos read-only: débitos recorrentes de condomínio",
+            description =
+                    "Agrupa saídas do extrato (contas A/I, descrição com CONDOM, ≥2 meses) e sugere imóvel "
+                            + "pelo nome do condomínio. Não grava vínculos.")
+    public DespesaCondominioCandidatosResponse candidatosDespesaCondominio() {
+        return despesaCondominioCandidatoService.candidatosDespesaCondominio();
+    }
+
+    @PostMapping("/despesas-condominio/confirmar")
+    @Operation(
+            summary = "Confirmar condomínio pago pelo escritório",
+            description =
+                    "Marca imóvel com responsável ESCRITORIO e cria recorrência CONDOMINIO no A Pagar. "
+                            + "Idempotente. Não altera repasse/LRL DESPESA.")
+    public DespesaCondominioConfirmarResponse confirmarDespesaCondominio(
+            @Valid @RequestBody DespesaCondominioConfirmarRequest request) {
+        return despesaCondominioConfirmacaoService.confirmarDespesaCondominio(
+                request.obrigacaoChave(), request.imovelId());
+    }
+
+    @PostMapping("/despesas-condominio/conciliar-automatico")
+    @Operation(
+            summary = "Auto-conciliar condomínio inequívoco",
+            description =
+                    "Vincula pagamentos CONDOMINIO em aberto ao débito do mês quando há exatamente 1 candidato "
+                            + "(grafia + valor ±15%). Idempotente. Reversível via desvincular conciliação.")
+    public ConciliarCondominioAutomaticoResponse conciliarCondominioAutomatico(
+            @RequestParam(required = false) String competencia) {
+        return despesaCondominioAutoConciliacaoService.conciliarCondominioAutomatico(competencia);
+    }
 
     @GetMapping("/{contratoId}/reconciliacao/sugestoes")
     @Operation(summary = "Sugestões de papel (ALUGUEL/REPASSE/DESPESA) para os lançamentos do imóvel")

@@ -12,6 +12,7 @@ import br.com.vilareal.imovel.infrastructure.persistence.entity.ContratoLocacaoE
 import br.com.vilareal.imovel.infrastructure.persistence.entity.ImovelEntity;
 import br.com.vilareal.imovel.infrastructure.persistence.repository.ContratoLocacaoRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
+import br.com.vilareal.pagamento.infrastructure.persistence.repository.PagamentoRepository;
 import br.com.vilareal.recebivel.api.dto.RecebivelQuadroItemResponse;
 import br.com.vilareal.recebivel.api.dto.RecebivelQuadroResponse;
 import br.com.vilareal.recebivel.application.RecebivelQuadroApplicationService;
@@ -50,6 +51,8 @@ class AcoesDoDiaApplicationServiceTest {
     private HonorarioRepasseService honorarioRepasseService;
     @Mock
     private ContratoLocacaoRepository contratoLocacaoRepository;
+    @Mock
+    private PagamentoRepository pagamentoRepository;
 
     @InjectMocks
     private AcoesDoDiaApplicationService service;
@@ -59,7 +62,12 @@ class AcoesDoDiaApplicationServiceTest {
     @BeforeEach
     void setUp() {
         service = new AcoesDoDiaApplicationService(
-                quadroService, locacaoReconciliacaoService, honorarioRepasseService, contratoLocacaoRepository, CLOCK);
+                quadroService,
+                locacaoReconciliacaoService,
+                honorarioRepasseService,
+                contratoLocacaoRepository,
+                pagamentoRepository,
+                CLOCK);
         contrato = new ContratoLocacaoEntity();
         contrato.setId(10L);
         contrato.setValorAluguel(new BigDecimal("1700.00"));
@@ -90,23 +98,38 @@ class AcoesDoDiaApplicationServiceTest {
                         BigDecimal.ZERO,
                         List.of(),
                         List.of()));
-        when(locacaoReconciliacaoService.repassesPendentes("2026-06"))
+        when(locacaoReconciliacaoService.repassesPendentes(null))
                 .thenReturn(new RepassePendenteCarteiraResponse(
-                        BigDecimal.ZERO,
-                        List.of(new RepassePendenteItemResponse(
-                                4L,
-                                4,
-                                "End",
-                                "Locador",
-                                "{}",
-                                "2026-06",
-                                new BigDecimal("2300"),
-                                null,
-                                null,
-                                new BigDecimal("2070"),
-                                BigDecimal.ZERO,
-                                new BigDecimal("2070"),
-                                StatusRepasse.PENDENTE))));
+                        new BigDecimal("3570.00"),
+                        List.of(
+                                new RepassePendenteItemResponse(
+                                        4L,
+                                        4,
+                                        "End",
+                                        "Locador",
+                                        "{}",
+                                        "2026-05",
+                                        new BigDecimal("1700"),
+                                        null,
+                                        null,
+                                        new BigDecimal("1530"),
+                                        BigDecimal.ZERO,
+                                        new BigDecimal("1530"),
+                                        StatusRepasse.PENDENTE),
+                                new RepassePendenteItemResponse(
+                                        4L,
+                                        4,
+                                        "End",
+                                        "Locador",
+                                        "{}",
+                                        "2026-06",
+                                        new BigDecimal("2300"),
+                                        null,
+                                        null,
+                                        new BigDecimal("2070"),
+                                        BigDecimal.ZERO,
+                                        new BigDecimal("2070"),
+                                        StatusRepasse.PENDENTE))));
         when(honorarioRepasseService.repassesPendentesHonorario())
                 .thenReturn(new RepassePendenteHonorarioCarteiraResponse(
                         new BigDecimal("6500.00"),
@@ -129,16 +152,20 @@ class AcoesDoDiaApplicationServiceTest {
                                 StatusRepasseHonorario.PENDENTE,
                                 false))));
         when(contratoLocacaoRepository.findVigentesComDataFimEntre(any(), any())).thenReturn(List.of());
+        when(pagamentoRepository.findPagarAbertosAteVencimento(any())).thenReturn(List.of());
 
         var resp = service.obter("2026-06");
 
         assertThat(resp.conciliar().quantidade()).isEqualTo(1);
         assertThat(resp.conciliar().itens().get(0).candidatos()).hasSize(1);
         assertThat(resp.cobrar().quantidade()).isZero();
-        assertThat(resp.repassar().quantidade()).isEqualTo(2);
+        assertThat(resp.repassar().quantidade()).isEqualTo(3);
         assertThat(resp.repassar().itens().stream().filter(i -> "PROCESSO".equals(i.origem())).count())
                 .isEqualTo(1);
         assertThat(resp.repassar().itens().stream().filter(i -> "IMOVEL".equals(i.origem())).count())
-                .isEqualTo(1);
+                .isEqualTo(2);
+        assertThat(resp.repassar().itens().get(0).competencia()).isEqualTo("2026-05");
+        assertThat(resp.repassar().itens().get(1).competencia()).isEqualTo("2026-06");
+        assertThat(resp.pagar().quantidade()).isZero();
     }
 }

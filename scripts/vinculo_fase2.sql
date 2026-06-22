@@ -1,0 +1,56 @@
+-- Fase 2: varredura processo 1:1. DRY-RUN — aguardando OK.
+-- Lançamentos: 1219 | Processos: 52
+START TRANSACTION;
+UPDATE financeiro_lancamento SET imovel_id = 85 WHERE processo_id = 1865 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 48 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 86 WHERE processo_id = 1878 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 35 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 87 WHERE processo_id = 1896 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 21 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 88 WHERE processo_id = 1898 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 32 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 5 WHERE processo_id = 1899 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 29 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 89 WHERE processo_id = 1941 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 25 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 9 WHERE processo_id = 1949 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 15 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 12 WHERE processo_id = 5360 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 55 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 101 WHERE processo_id = 5783 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 1 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 13 WHERE processo_id = 8743 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 46 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 62 WHERE processo_id = 9841 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 42 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 14 WHERE processo_id = 10144 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 39 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 100 WHERE processo_id = 10265 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 33 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 97 WHERE processo_id = 10429 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 11 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 17 WHERE processo_id = 10473 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 47 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 99 WHERE processo_id = 12799 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 49 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 19 WHERE processo_id = 13024 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 27 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 20 WHERE processo_id = 13031 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 21 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 21 WHERE processo_id = 13051 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 51 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 22 WHERE processo_id = 13055 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 18 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 23 WHERE processo_id = 13056 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 34 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 24 WHERE processo_id = 13057 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 30 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 25 WHERE processo_id = 13058 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 21 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 26 WHERE processo_id = 13088 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 48 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 27 WHERE processo_id = 13093 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 14 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 28 WHERE processo_id = 13300 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 80 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 96 WHERE processo_id = 13321 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 47 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 30 WHERE processo_id = 15230 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 42 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 32 WHERE processo_id = 15434 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 37 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 33 WHERE processo_id = 15449 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 16 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 78 WHERE processo_id = 15450 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 1 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 35 WHERE processo_id = 15971 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 8 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 95 WHERE processo_id = 15991 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 26 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 37 WHERE processo_id = 16003 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 8 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 66 WHERE processo_id = 16004 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 8 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 38 WHERE processo_id = 16008 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 12 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 67 WHERE processo_id = 16010 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 3 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 39 WHERE processo_id = 16011 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 8 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 40 WHERE processo_id = 16013 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 15 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 64 WHERE processo_id = 16014 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 1 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 43 WHERE processo_id = 16019 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 11 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 63 WHERE processo_id = 16022 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 16 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 54 WHERE processo_id = 16026 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 12 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 44 WHERE processo_id = 16028 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 15 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 45 WHERE processo_id = 16029 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 18 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 61 WHERE processo_id = 16032 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 10 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 47 WHERE processo_id = 16036 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 2 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 48 WHERE processo_id = 16037 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 2 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 92 WHERE processo_id = 16041 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 1 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 56 WHERE processo_id = 16043 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 1 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 93 WHERE processo_id = 16052 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 1 lanc.
+UPDATE financeiro_lancamento SET imovel_id = 53 WHERE processo_id = 16389 AND imovel_id IS NULL AND status = 'ATIVO' AND natureza = 'DEBITO';  -- 26 lanc.
+-- COMMIT;

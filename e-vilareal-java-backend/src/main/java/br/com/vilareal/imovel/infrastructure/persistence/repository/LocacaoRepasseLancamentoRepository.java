@@ -48,4 +48,12 @@ public interface LocacaoRepasseLancamentoRepository extends JpaRepository<Locaca
     List<LocacaoRepasseLancamentoEntity> findByLancamentoFinanceiro_IdIn(Collection<Long> lancamentoFinanceiroIds);
 
     boolean existsByLancamentoFinanceiro_IdAndPapel(Long lancamentoFinanceiroId, PapelReconciliacao papel);
+
+    @EntityGraph(attributePaths = {"lancamentoFinanceiro", "contratoLocacao", "contratoLocacao.imovel"})
+    @Query(
+            """
+            SELECT v FROM LocacaoRepasseLancamentoEntity v
+            WHERE v.papel = 'DESPESA'
+            """)
+    List<LocacaoRepasseLancamentoEntity> findHistoricoDespesa();
 }

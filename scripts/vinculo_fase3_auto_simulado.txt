@@ -1,0 +1,15 @@
+Fase 3 — auto com mapa corrigido (simulação; inclui já vinculados)
+================================================================
+PENDENTES (aplicáveis agora): 0
+
+JÁ VINCULADOS (candidato único + tipo compatível):
+  176646 -> 71   Executive Privê condomínio 1763.95  [OK Fase 3]
+  176979 -> 44   1204-C água 68.98                   [OK manual]
+  177379 -> 65   505-A gás 8.93                      [OK Fase 3]
+  180087 -> 8    F-18 energia 127.04                 [Pass1]
+  180388 -> 73   1101-C água 38.98                   [OK Fase 3]
+  180150 -> 73   1101-C energia 61.12                [OK Fase 3]
+  171586 -> 73   1101-C sifão 81.73 (relatório)      [Fase 2 proc 16029 -> imovel 45; MANTER 45]
+
+103-A / 103-C (mapa corrigido 27 / 47): nenhum auto — SEM_CANDIDATO ou REVISAR no revisar.csv
+503-A -> 79 (Avenida): linha TSU 159.73 — REVISAR (candidato não confirma IPTU)

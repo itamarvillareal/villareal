@@ -156,12 +156,12 @@ public class ImovelApplicationService {
 
     private ImovelVinculoProcessoItemResponse montarVinculoProcessoDeImovel(
             ImovelEntity im, int numeroPlanilha, Long imovelIdCadastroAtual) {
-        ProcessoEntity proc = im.getProcesso();
+        ProcessoEntity proc = resolverProcessoParaLeituraVinculo(im);
         String cod8 = null;
         Integer numeroInterno = null;
         Long processoId = null;
 
-        if (proc != null && proc.getNumeroInterno() != null) {
+        if (proc != null) {
             numeroInterno = proc.getNumeroInterno();
             processoId = proc.getId();
             cod8 = resolverCodigoClienteImovelProcesso(im, proc);
@@ -187,6 +187,27 @@ public class ImovelApplicationService {
         item.setNumeroPlanilhaImovel(im.getNumeroPlanilha() != null ? im.getNumeroPlanilha() : numeroPlanilha);
         item.setCadastroAtual(imovelIdCadastroAtual != null && imovelIdCadastroAtual.equals(im.getId()));
         return item;
+    }
+
+    /**
+     * Leitura de vínculo para "Abrir Proc." e resolvers associados: N:N ativo → escalar → extras (fallback).
+     * Somente leitura; alinhado à fonte canônica da reconciliação/API.
+     */
+    private ProcessoEntity resolverProcessoParaLeituraVinculo(ImovelEntity im) {
+        if (im.getId() != null) {
+            Optional<ProcessoEntity> fromNn = imovelProcessoRepository
+                    .findFirstByImovel_IdAndAtivoTrueOrderByIdDesc(im.getId())
+                    .map(ImovelProcessoEntity::getProcesso)
+                    .filter(p -> p.getNumeroInterno() != null);
+            if (fromNn.isPresent()) {
+                return fromNn.get();
+            }
+        }
+        ProcessoEntity escalar = im.getProcesso();
+        if (escalar != null && escalar.getNumeroInterno() != null) {
+            return escalar;
+        }
+        return null;
     }
 
     private String resolverCodigoClienteImovelProcesso(ImovelEntity im, ProcessoEntity proc) {

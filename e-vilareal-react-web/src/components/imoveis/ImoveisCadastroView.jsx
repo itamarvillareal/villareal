@@ -23,7 +23,6 @@ import {
   formatValorMoeda,
   imoveisBtnPrimary,
   imoveisBtnSecondary,
-  imoveisBtnGhost,
   imoveisInputClass,
 } from './ImoveisAdminLayout.jsx';
 import { CampoNumeroComContador } from '../ui/CampoNumeroComContador.jsx';
@@ -160,7 +159,6 @@ export function ImoveisCadastroView(props) {
     onGerenciarIptu,
     onRelatorio,
     onFechar,
-    onAbrirContrato,
     onAbrirIptu,
     onVincularProprietario,
     onVincularInquilino,
@@ -536,12 +534,6 @@ export function ImoveisCadastroView(props) {
             </Field>
           </div>
           <div className="flex flex-wrap items-end gap-3 pt-1">
-            <button type="button" className={imoveisBtnGhost}>
-              Catálogo
-            </button>
-            <button type="button" className={imoveisBtnGhost}>
-              Doc. Interessados
-            </button>
             <Field label="Data pag. 1ª Tx. Cond." className="w-full sm:w-44">
               <input
                 type="text"
@@ -591,14 +583,11 @@ export function ImoveisCadastroView(props) {
         <AccordionSection
           id="contrato"
           title="Contrato"
-          subtitle="Vigência e informações complementares"
+          subtitle="Vigência do contrato de locação"
           icon={FileText}
           accent={IMOVEIS_SECTION_ACCENTS.contrato}
         >
           <div className="flex flex-wrap items-end gap-4">
-            <button type="button" onClick={onAbrirContrato} className={imoveisBtnPrimary}>
-              Informações do contrato
-            </button>
             <Field label="Data início" className="w-full sm:w-40">
               <input
                 type="text"
@@ -621,37 +610,11 @@ export function ImoveisCadastroView(props) {
         <AccordionSection
           id="utilidades"
           title="Utilidades"
-          subtitle="Água, energia, gás, condomínio e contrato"
+          subtitle="Água, energia, gás e condomínio"
           icon={Layers}
           accent={IMOVEIS_SECTION_ACCENTS.utilidades}
         >
-          <TabelaUtilidades
-            rows={utilidadeRows}
-            onChange={handleUtilidadeChange}
-            contratoExtra={
-              <div className="flex flex-wrap items-end gap-4">
-                <button type="button" onClick={onAbrirContrato} className={imoveisBtnPrimary}>
-                  Contrato
-                </button>
-                <Field label="Data início" className="w-full sm:w-40">
-                  <input
-                    type="text"
-                    value={dataInicioContrato}
-                    onChange={(e) => setDataInicioContrato(e.target.value)}
-                    className={imoveisInputClass}
-                  />
-                </Field>
-                <Field label="Data fim" className="w-full sm:w-40">
-                  <input
-                    type="text"
-                    value={dataFimContrato}
-                    onChange={(e) => setDataFimContrato(e.target.value)}
-                    className={imoveisInputClass}
-                  />
-                </Field>
-              </div>
-            }
-          />
+          <TabelaUtilidades rows={utilidadeRows} onChange={handleUtilidadeChange} />
         </AccordionSection>
 
         <AccordionSection
