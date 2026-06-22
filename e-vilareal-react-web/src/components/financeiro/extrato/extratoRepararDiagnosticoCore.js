@@ -53,6 +53,11 @@ export function extratoAlinhadoComOfx(diag) {
   return !transacoesDesalinhadasNoPeriodoOfx(diag);
 }
 
+/** Lançamentos do período e saldo (LEDGERBAL) coincidem com o OFX. */
+export function extratoFielComOfx(diag) {
+  return extratoAlinhadoComOfx(diag) && !saldoLedgerDesalinhadoComOfx(diag);
+}
+
 /**
  * «Continuar importação» no modal: mesclagem com proteção de corte.
  * - Alinhado no período → ok.
@@ -236,9 +241,19 @@ function montarConclusao({ meta, totais, faltamNoSistema, sobramNoSistema }) {
     sobramNoSistema.length === 0 &&
     (diffSaldo == null || Math.abs(diffSaldo) < 0.01)
   ) {
-    linhas.push('Lançamentos alinhados com o OFX.');
+    linhas.push('Extrato fiel ao OFX (lançamentos e saldo).');
   } else if (faltamNoSistema.length === 0 && sobramNoSistema.length === 0) {
-    linhas.push('Lançamentos do período alinhados com o OFX.');
+    if (diffSaldo != null && Math.abs(diffSaldo) >= 0.01 && totais.existenteIgnoradosForaPeriodo > 0) {
+      linhas.push(
+        `Lançamentos do período batem com o OFX, mas o saldo difere em ${formatarMoeda(diffSaldo)} porque há ${totais.existenteIgnoradosForaPeriodo} lançamento(s) **anterior(es) ao período** fora desta análise. Reparar só com OFX mensal não corrige o saldo — use OFX histórico completo ou «Limpar conta» e reimporte.`,
+      );
+    } else if (diffSaldo != null && Math.abs(diffSaldo) >= 0.01) {
+      linhas.push(
+        'Lançamentos do período alinhados; ajuste o **saldo de abertura** para fechar com o LEDGERBAL do banco.',
+      );
+    } else {
+      linhas.push('Lançamentos do período alinhados com o OFX.');
+    }
   }
 
   if (linhas.length === 0) {

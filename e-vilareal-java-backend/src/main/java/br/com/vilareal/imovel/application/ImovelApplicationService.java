@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -424,12 +425,28 @@ public class ImovelApplicationService {
             throw new ResourceNotFoundException("Imóvel não encontrado para número da planilha: " + numeroPlanilha);
         }
         if (todos.size() > 1) {
-            throw new BusinessRuleException(
-                    "Mais de um imóvel com planilha "
-                            + numeroPlanilha
-                            + "; informe clienteId ou codigoCliente.");
+            return escolherMelhorImovelPorNumeroPlanilha(todos);
         }
         return todos.get(0);
+    }
+
+    /** Preferir registro com mais dados de cadastro (import-real vs. fantasma vazio). */
+    static int scoreImovelCadastroPlanilha(ImovelEntity i) {
+        int s = 0;
+        if (StringUtils.hasText(i.getUnidade())) s += 4;
+        if (StringUtils.hasText(i.getCondominio())) s += 2;
+        if (StringUtils.hasText(i.getEnderecoCompleto())) s += 2;
+        if (i.getProcesso() != null) s += 1;
+        if (i.getCliente() != null) s += 1;
+        if ("OCUPADO".equalsIgnoreCase(i.getSituacao())) s += 1;
+        return s;
+    }
+
+    private ImovelEntity escolherMelhorImovelPorNumeroPlanilha(List<ImovelEntity> candidatos) {
+        return candidatos.stream()
+                .max(Comparator.comparingInt(ImovelApplicationService::scoreImovelCadastroPlanilha)
+                        .thenComparing(ImovelEntity::getId, Comparator.reverseOrder()))
+                .orElseThrow();
     }
 
     private void aplicarImovel(ImovelEntity e, ImovelWriteRequest req, boolean vincularProcessoViaLink) {

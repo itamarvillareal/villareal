@@ -43,7 +43,7 @@ public class ImoveisController {
     }
 
     @GetMapping("/por-numero-planilha/{numeroPlanilha}")
-    @Operation(summary = "Buscar imóvel pelo número da planilha (col. A); use clienteId ou codigoCliente quando houver mais de um cliente")
+    @Operation(summary = "Buscar imóvel pelo número da planilha (col. A); com duplicatas sem filtro, retorna o registro com mais dados de cadastro")
     public ImovelResponse porNumeroPlanilha(
             @PathVariable int numeroPlanilha,
             @RequestParam(required = false) Long clienteId,

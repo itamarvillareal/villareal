@@ -16,7 +16,7 @@ import { padCliente } from '../data/processosDadosRelatorio.js';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import {
   carregarImovelCadastro,
-  carregarImovelCadastroPorNumeroPlanilha,
+  carregarImovelCadastroParaPainel,
   listarImoveisApi,
   salvarImovelCadastro,
 } from '../repositories/imoveisRepository.js';
@@ -113,6 +113,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   /** Preservados entre loads/saves para não apagar legado em JSON/contrato ao salvar. */
   const jsonExtrasOriginalRef = useRef({});
   const contratoObservacoesOriginalRef = useRef(null);
+  const cargaInicialFeitaRef = useRef(false);
   const unidadeAlvo =
     !modoModal && location.state && typeof location.state === 'object' ? location.state.unidade : null;
 
@@ -278,83 +279,74 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
 
   useEffect(() => {
     let ativo = true;
+    const numero = Math.max(1, Number(imovelId) || 1);
     setApiError('');
     setApiSuccess('');
     setApiLoading(true);
 
-    void (async () => {
-      try {
-        const state =
-          !modoModal && location.state && typeof location.state === 'object' ? location.state : null;
-        const np = state?.numeroPlanilha != null ? Number(state.numeroPlanilha) : null;
-
-        if (!modoModal && featureFlags.useApiImoveis && Number.isFinite(np) && np >= 1) {
-          const porPlanilha = await carregarImovelCadastroPorNumeroPlanilha(np);
-          if (!ativo) return;
-          if (porPlanilha.item) {
-            popularFormulario(porPlanilha.item);
-            const idUi = Number(porPlanilha.item.imovelId);
-            if (Number.isFinite(idUi) && idUi > 0 && idUi !== imovelId) {
-              setImovelId(idUi);
-            }
-            return;
-          }
-        }
-
-        if (featureFlags.useApiImoveis) {
-          const porPlanilha = await carregarImovelCadastroPorNumeroPlanilha(imovelId);
-          if (!ativo) return;
-          if (porPlanilha.item) {
-            popularFormulario(porPlanilha.item);
-            const sync = Number(porPlanilha.item.imovelId);
-            if (Number.isFinite(sync) && sync > 0 && sync !== imovelId) {
-              setImovelId(sync);
-            }
-            return;
-          }
-        }
-
-        const r = await carregarImovelCadastro({ imovelId });
-        if (!ativo) return;
-        if (r.item) {
-          popularFormulario(r.item);
-          return;
-        }
-
-        if (featureFlags.useApiImoveis) {
-          const lista = await listarImoveisApi();
-          if (!ativo) return;
-          if (lista.length > 0) {
-            const first =
-              lista[0].numeroPlanilha != null ? Number(lista[0].numeroPlanilha) : Number(lista[0].id);
-            if (Number.isFinite(first) && first > 0 && first !== imovelId) {
-              setImovelId(first);
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          if (featureFlags.useApiImoveis) {
+            const r = await carregarImovelCadastroParaPainel({ imovelId: numero });
+            if (!ativo) return;
+            if (r.item) {
+              popularFormulario(r.item);
+              const sync = Number(r.item.imovelId);
+              if (Number.isFinite(sync) && sync > 0 && sync !== numero) {
+                setImovelId(sync);
+              }
               return;
             }
+
+            if (!cargaInicialFeitaRef.current) {
+              cargaInicialFeitaRef.current = true;
+              const lista = await listarImoveisApi();
+              if (!ativo) return;
+              if (lista.length > 0) {
+                const first =
+                  lista[0].numeroPlanilha != null ? Number(lista[0].numeroPlanilha) : Number(lista[0].id);
+                if (Number.isFinite(first) && first > 0 && first !== numero) {
+                  setImovelId(first);
+                  return;
+                }
+              }
+            }
+
+            popularFormulario(null);
+            setApiError(
+              cargaInicialFeitaRef.current
+                ? `Nenhum imóvel cadastrado com o número ${numero}.`
+                : 'Nenhum imóvel no banco. Rode o import do imoveis.xlsx (job Java) ou preencha e salve um novo cadastro.',
+            );
+            return;
+          }
+
+          const r = await carregarImovelCadastro({ imovelId: numero });
+          if (!ativo) return;
+          if (r.item) {
+            popularFormulario(r.item);
+            return;
           }
           popularFormulario(null);
-          setApiError(
-            lista.length === 0
-              ? 'Nenhum imóvel no banco. Rode o import do imoveis.xlsx (job Java) ou preencha e salve um novo cadastro.'
-              : 'Não foi possível carregar este imóvel pela API.',
-          );
-          return;
+        } catch (e) {
+          if (!ativo) return;
+          popularFormulario(null);
+          setApiError(e?.message || 'Falha ao carregar imóvel.');
+        } finally {
+          if (ativo) {
+            cargaInicialFeitaRef.current = true;
+            setApiLoading(false);
+          }
         }
-
-        popularFormulario(null);
-      } catch (e) {
-        if (!ativo) return;
-        popularFormulario(null);
-        setApiError(e?.message || 'Falha ao carregar imóvel.');
-      } finally {
-        if (ativo) setApiLoading(false);
-      }
-    })();
+      })();
+    }, 350);
 
     return () => {
       ativo = false;
+      window.clearTimeout(timer);
     };
-  }, [imovelId, unidadeAlvo, location.key, location.state, modoModal]);
+  }, [imovelId, unidadeAlvo, modoModal]);
 
   useEffect(() => {
     if (modoModal) return;

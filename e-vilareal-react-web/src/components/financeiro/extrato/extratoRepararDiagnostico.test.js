@@ -4,6 +4,7 @@ import {
   diagnosticarExtratoComOfxCore,
   extrairMetadadosOfx,
   extratoAlinhadoComOfx,
+  extratoFielComOfx,
   precisaReparoExtratoComOfx,
   saldoLedgerDesalinhadoComOfx,
   calcularDeltasAlinhamentoSaldo,
@@ -196,6 +197,25 @@ describe('extratoRepararDiagnostico', () => {
         totais: { somaFaltam: 0, somaSobram: 1 },
       }),
     ).toBe(false);
+  });
+
+  it('extratoFielComOfx exige saldo além dos lançamentos do período', () => {
+    expect(
+      extratoFielComOfx({
+        faltamNoSistema: [],
+        sobramNoSistema: [],
+        meta: { saldoLedger: 10000 },
+        totais: { saldoSistema: 22509.45 },
+      }),
+    ).toBe(false);
+    expect(
+      extratoFielComOfx({
+        faltamNoSistema: [],
+        sobramNoSistema: [],
+        meta: { saldoLedger: 10000 },
+        totais: { saldoSistema: 10000 },
+      }),
+    ).toBe(true);
   });
 
   it('podeContinuarImportacaoExtratoComOfx bloqueia faltam coerentes sem alinhar', () => {

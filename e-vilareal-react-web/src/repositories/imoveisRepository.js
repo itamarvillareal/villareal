@@ -927,6 +927,37 @@ export async function buscarNumeroImovelPorVinculo(codigoCliente, numeroInterno)
   }
 }
 
+function scoreImovelApiListItem(item) {
+  let s = 0;
+  if (String(item?.unidade ?? '').trim()) s += 4;
+  if (String(item?.condominio ?? '').trim()) s += 2;
+  if (String(item?.enderecoCompleto ?? '').trim()) s += 2;
+  if (item?.processoId != null) s += 1;
+  if (item?.clienteId != null) s += 1;
+  if (String(item?.situacao ?? '').toUpperCase() === 'OCUPADO') s += 1;
+  return s;
+}
+
+function escolherMelhorImovelApiPorNumeroPlanilha(candidatos) {
+  return (candidatos || []).reduce((best, cur) => {
+    if (!best) return cur;
+    const sb = scoreImovelApiListItem(best);
+    const sc = scoreImovelApiListItem(cur);
+    if (sc > sb) return cur;
+    if (sc < sb) return best;
+    return Number(cur.id) < Number(best.id) ? cur : best;
+  }, null);
+}
+
+async function montarItemCadastroFromApiImovel(apiImovel) {
+  const contratos = await request('/api/locacoes/contratos', { query: { imovelId: apiImovel.id } });
+  const contratoAtual = selecionarContratoVigente(Array.isArray(contratos) ? contratos : []);
+  let item = mapApiToUi(apiImovel, contratoAtual);
+  item = await enriquecerCodigoProcDoVinculo(item, apiImovel);
+  item = await enriquecerNomesPartesImovelUi(item);
+  return item;
+}
+
 export async function carregarImovelCadastroPorNumeroPlanilha(numeroPlanilha) {
   if (!featureFlags.useApiImoveis) {
     return { fonte: 'legado', item: null, encontrado: false };
@@ -937,14 +968,22 @@ export async function carregarImovelCadastroPorNumeroPlanilha(numeroPlanilha) {
   }
   try {
     const apiImovel = await request(`/api/imoveis/por-numero-planilha/${n}`);
-    const contratos = await request('/api/locacoes/contratos', { query: { imovelId: apiImovel.id } });
-    const contratoAtual = selecionarContratoVigente(Array.isArray(contratos) ? contratos : []);
-    let item = mapApiToUi(apiImovel, contratoAtual);
-    item = await enriquecerCodigoProcDoVinculo(item, apiImovel);
-    item = await enriquecerNomesPartesImovelUi(item);
+    const item = await montarItemCadastroFromApiImovel(apiImovel);
     return { fonte: 'api', item, encontrado: true };
   } catch {
-    return { fonte: 'api', item: null, encontrado: false };
+    try {
+      const list = await listarImoveisApi();
+      const candidatos = (Array.isArray(list) ? list : []).filter((i) => Number(i.numeroPlanilha) === n);
+      const melhor = escolherMelhorImovelApiPorNumeroPlanilha(candidatos);
+      if (!melhor?.id) {
+        return { fonte: 'api', item: null, encontrado: false };
+      }
+      const apiImovel = await request(`/api/imoveis/${melhor.id}`);
+      const item = await montarItemCadastroFromApiImovel(apiImovel);
+      return { fonte: 'api', item, encontrado: true };
+    } catch {
+      return { fonte: 'api', item: null, encontrado: false };
+    }
   }
 }
 

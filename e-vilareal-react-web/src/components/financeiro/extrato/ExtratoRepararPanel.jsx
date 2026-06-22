@@ -13,7 +13,12 @@ import {
   prepararExclusaoReparoExtrato,
   prepararImportacaoReparoExtrato,
 } from './extratoRepararDiagnostico.js';
-import { extratoAlinhadoComOfx, alinhamentoSaldoCoerenteComOfx } from './extratoRepararDiagnosticoCore.js';
+import {
+  extratoAlinhadoComOfx,
+  extratoFielComOfx,
+  alinhamentoSaldoCoerenteComOfx,
+  saldoLedgerDesalinhadoComOfx,
+} from './extratoRepararDiagnosticoCore.js';
 
 function LinhaResumo({ label, value, destaque }) {
   return (
@@ -268,7 +273,10 @@ export function ExtratoRepararPanel({
   };
 
   const { meta, totais } = resultado ?? {};
-  const alinhado = extratoAlinhadoComOfx(resultado);
+  const txsAlinhadas = extratoAlinhadoComOfx(resultado);
+  const fielComOfx = extratoFielComOfx(resultado);
+  const saldoDesalinhadoComTxsOk =
+    txsAlinhadas && saldoLedgerDesalinhadoComOfx(resultado);
 
   return (
     <div className="space-y-4">
@@ -409,9 +417,26 @@ export function ExtratoRepararPanel({
             tom="sobram"
           />
 
-          {alinhado ? (
+          {fielComOfx ? (
             <p className="text-sm text-emerald-800 dark:text-emerald-200 rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/30 px-3 py-2">
-              Extrato alinhado com o OFX. Pode continuar a importação.
+              Extrato fiel ao OFX (lançamentos e saldo). Pode continuar a importação.
+            </p>
+          ) : null}
+
+          {saldoDesalinhadoComTxsOk ? (
+            <p className="text-sm text-amber-900 dark:text-amber-100 rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40 px-3 py-2">
+              Os lançamentos de{' '}
+              {meta?.dataInicio && meta?.dataFim
+                ? `${meta.dataInicio.split('-').reverse().join('/')} a ${meta.dataFim.split('-').reverse().join('/')}`
+                : 'junho'}{' '}
+              coincidem com o OFX, mas o saldo ainda não bate (
+              {totais?.saldoSistema != null && meta?.saldoLedger != null
+                ? `sistema ${formatMoeda(totais.saldoSistema)} vs banco ${formatMoeda(meta.saldoLedger)}`
+                : 'diferença no LEDGERBAL'}
+              ).
+              {(totais?.existenteIgnoradosForaPeriodo ?? 0) > 0
+                ? ` Há ${totais.existenteIgnoradosForaPeriodo} lançamento(s) anteriores ao período deste arquivo — reparar só com OFX mensal não altera o saldo. Use o OFX histórico completo da conta Cora (desde 2020) e «Alinhar saldo com OFX», depois repita com o OFX de junho.`
+                : ' Ajuste o saldo de abertura (botão «Saldo inicial») para fechar com o LEDGERBAL.'}
             </p>
           ) : null}
 
