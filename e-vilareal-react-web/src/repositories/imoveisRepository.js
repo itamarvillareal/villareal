@@ -10,7 +10,7 @@ import {
 import {
   buildRelatorioFinanceiroImoveisMes,
   chaveParCodProc,
-  extrairTotaisFinanceirosMes,
+  extrairTotaisFinanceirosMesComRepasseAnterior,
   montarPainelAdministracaoImovelDeTransacoes,
 } from '../data/imoveisAdministracaoFinanceiro.js';
 import { TAG_ADM_ALUGUEL } from '../data/imoveisAdministracaoFinanceiro.js';
@@ -344,6 +344,7 @@ export function mapMockToUi(mock, imovelId) {
     garantia: String(mock.garantia ?? ''),
     valorGarantia: String(mock.valorGarantia ?? ''),
     valorLocacao: String(mock.valorLocacao ?? ''),
+    taxaAdministracaoPercent: String(mock.taxaAdministracaoPercent ?? '10'),
     diaPagAluguel: String(mock.diaPagAluguel ?? ''),
     dataPag1TxCond: String(mock.dataPag1TxCond ?? ''),
     inscricaoImobiliaria: String(mock.inscricaoImobiliaria ?? ''),
@@ -504,6 +505,10 @@ function mapApiToUi(imovel, contrato) {
           : '',
     valorLocacao:
       contrato?.valorAluguel != null ? formatValorMoedaCampo(contrato.valorAluguel) : '',
+    taxaAdministracaoPercent:
+      contrato?.taxaAdministracaoPercent != null
+        ? String(contrato.taxaAdministracaoPercent).replace('.', ',')
+        : '10',
     diaPagAluguel: contrato?.diaVencimentoAluguel != null ? String(contrato.diaVencimentoAluguel).padStart(2, '0') : '',
     dataPag1TxCond: String(extras.dataPag1TxCond ?? ''),
     inscricaoImobiliaria: String(imovel?.inscricaoImobiliaria ?? extras.inscricaoMunicipal ?? ''),
@@ -682,6 +687,8 @@ function montarPayloadContratoFromUi(ui, imovelId) {
     dataInicio: toIsoDate(ui.dataInicioContrato),
     dataFim: toIsoDate(ui.dataFimContrato),
     valorAluguel: toNumberOrNull(ui.valorLocacao),
+    taxaAdministracaoPercent:
+      toNumberOrNull(String(ui.taxaAdministracaoPercent ?? '').replace(',', '.')) ?? 10,
     valorRepassePactuado: null,
     diaVencimentoAluguel: Number(ui.diaPagAluguel) || null,
     diaRepasse: Number(ui.diaRepasse) || null,
@@ -1095,13 +1102,32 @@ export async function carregarRelatorioFinanceiroImoveisMes(chaveMesYYYYMM, opts
     return { ok: false, motivo: cad.motivo, linhas: [], ultimaCarga: null };
   }
 
+  /** Cod.+proc. canônicos (N:N do imóvel) — evita buscar extrato do par errado (ex.: 938/4 vs 856/4). */
+  const itensCanon = await Promise.all(
+    (cad.itens || []).map(async (item) => {
+      const chave = await resolverChaveProcessoContaCorrentePainel(item);
+      return {
+        ...item,
+        codigo: chave.codigo || item.codigo,
+        proc: chave.proc || item.proc,
+        _apiProcessoId: chave.processoId ?? item._apiProcessoId ?? null,
+      };
+    }),
+  );
+
   const totaisPorPar = new Map();
   const chavesVinculo = new Set();
-  for (const item of cad.itens || []) {
+  const metaPorChave = new Map();
+  for (const item of itensCanon) {
     const cod = normalizarCodigoClienteFinanceiro(item.codigo);
     const procNorm = normalizarProcFinanceiro(item.proc);
     const chave = chaveParCodProc(cod, procNorm);
-    if (chave) chavesVinculo.add(chave);
+    if (chave) {
+      chavesVinculo.add(chave);
+      metaPorChave.set(chave, {
+        processoId: item._apiProcessoId ?? null,
+      });
+    }
   }
 
   if (featureFlags.useApiFinanceiro) {
@@ -1109,15 +1135,17 @@ export async function carregarRelatorioFinanceiroImoveisMes(chaveMesYYYYMM, opts
       [...chavesVinculo].map(async (chave) => {
         const [cod, procNorm] = chave.split('|');
         const procNum = Number(procNorm);
+        const meta = metaPorChave.get(chave) || {};
         try {
           const lancs = await listarLancamentosProcessoApiFirst({
             codigoCliente: cod,
             numeroInterno: Number.isFinite(procNum) && procNum >= 1 ? procNum : procNorm,
+            processoId: meta.processoId ?? undefined,
             signal,
           });
           totaisPorPar.set(
             chave,
-            extrairTotaisFinanceirosMes(lancs, Number(cod), procNum, chaveMesYYYYMM),
+            extrairTotaisFinanceirosMesComRepasseAnterior(lancs, Number(cod), procNum, chaveMesYYYYMM),
           );
         } catch {
           /* mantém totais vazios para o par */
@@ -1130,12 +1158,12 @@ export async function carregarRelatorioFinanceiroImoveisMes(chaveMesYYYYMM, opts
       const lancs = getTransacoesContaCorrenteCompleto(cod, procNorm);
       totaisPorPar.set(
         chave,
-        extrairTotaisFinanceirosMes(lancs, Number(cod), Number(procNorm), chaveMesYYYYMM),
+        extrairTotaisFinanceirosMesComRepasseAnterior(lancs, Number(cod), Number(procNorm), chaveMesYYYYMM),
       );
     }
   }
 
-  const linhas = buildRelatorioFinanceiroImoveisMes(cad.itens, chaveMesYYYYMM, {
+  const linhas = buildRelatorioFinanceiroImoveisMes(itensCanon, chaveMesYYYYMM, {
     soOcupados,
     totaisPorPar,
   });
@@ -1232,7 +1260,19 @@ export async function resolverVinculoProcessoParaSaveImovel(uiPayload) {
     uiPayload._apiProcessoId != null && Number(uiPayload._apiProcessoId) > 0
       ? Number(uiPayload._apiProcessoId)
       : null;
-  const alterouVinculo = usuarioAlterouVinculoProcessoNoForm(uiPayload);
+  let alterouVinculo = usuarioAlterouVinculoProcessoNoForm(uiPayload);
+
+  let chaveNn = null;
+  if (!alterouVinculo && apiProcessoId && codForm && procForm) {
+    chaveNn = await resolverChaveProcessoContaCorrentePainel(uiPayload);
+    if (chaveNn.fonteChave === 'nn') {
+      const codNn = padCliente8(chaveNn.codigo);
+      const procNn = normalizarProcUi(chaveNn.proc);
+      if (codNn !== padCliente8(codForm) || procNn !== procForm) {
+        alterouVinculo = true;
+      }
+    }
+  }
 
   if (alterouVinculo) {
     if (!codForm || !procForm) {
@@ -1255,16 +1295,13 @@ export async function resolverVinculoProcessoParaSaveImovel(uiPayload) {
     };
   }
 
-  if (apiProcessoId) {
-    const chave = await resolverChaveProcessoContaCorrentePainel(uiPayload);
-    if (chave.fonteChave === 'nn') {
-      return {
-        alterouVinculo: false,
-        processoIdPayload: chave.processoId,
-        espelhoCodigo: chave.codigo,
-        espelhoProc: chave.proc,
-      };
-    }
+  if (chaveNn?.fonteChave === 'nn') {
+    return {
+      alterouVinculo: false,
+      processoIdPayload: chaveNn.processoId,
+      espelhoCodigo: chaveNn.codigo,
+      espelhoProc: chaveNn.proc,
+    };
   }
 
   let processoIdPayload = null;

@@ -75,6 +75,8 @@ export function ImoveisCadastroView(props) {
     setValorGarantia,
     valorLocacao,
     setValorLocacao,
+    taxaAdministracaoPercent,
+    setTaxaAdministracaoPercent,
     diaPagAluguel,
     setDiaPagAluguel,
     dataPag1TxCond,
@@ -528,6 +530,16 @@ export function ImoveisCadastroView(props) {
             </Field>
             <Field label="Valor da Locação">
               <input type="text" value={valorLocacao} onChange={(e) => setValorLocacao(e.target.value)} className={imoveisInputClass} />
+            </Field>
+            <Field label="Honorários / taxa adm. (%)" title="Percentual retido sobre o aluguel (ex.: 10 = 10%)">
+              <input
+                type="text"
+                inputMode="decimal"
+                value={taxaAdministracaoPercent}
+                onChange={(e) => setTaxaAdministracaoPercent(e.target.value)}
+                placeholder="10"
+                className={imoveisInputClass}
+              />
             </Field>
             <Field label="Dia Pag. Aluguel">
               <input type="text" value={diaPagAluguel} onChange={(e) => setDiaPagAluguel(e.target.value)} className={imoveisInputClass} />

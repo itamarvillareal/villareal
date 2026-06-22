@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Landmark, Building2, Info, RefreshCw } from 'lucide-react';
-import { TAG_ADM_ALUGUEL, TAG_ADM_REPASSE } from '../data/imoveisAdministracaoFinanceiro.js';
+import { TAG_ADM_ALUGUEL, TAG_ADM_REPASSE, mesAnteriorChaveYYYYMM } from '../data/imoveisAdministracaoFinanceiro.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { carregarRelatorioFinanceiroImoveisMes } from '../repositories/imoveisRepository.js';
 import { ImoveisCadastroModal } from './imoveis/ImoveisCadastroModal.jsx';
@@ -55,46 +55,44 @@ export function RelatorioFinanceiroImoveis() {
   const [ano, setAno] = useState(hoje.getFullYear());
   const [mes, setMes] = useState(hoje.getMonth() + 1);
   const [soOcupados, setSoOcupados] = useState(true);
-  const [linhas, setLinhas] = useState([]);
+  /** Último relatório gerado com sucesso; persiste até nova geração. */
+  const [relatorio, setRelatorio] = useState(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState('');
-  const [gerado, setGerado] = useState(false);
-  const [ultimaCarga, setUltimaCarga] = useState(null);
   const [cadastroModal, setCadastroModal] = useState({ open: false, imovelId: null });
 
-  const chaveMes = useMemo(() => chaveMesDeAnoMes(ano, mes), [ano, mes]);
+  const chaveMesFiltro = useMemo(() => chaveMesDeAnoMes(ano, mes), [ano, mes]);
+  const chaveMesExibido = relatorio?.chaveMes ?? chaveMesFiltro;
+  const linhas = relatorio?.linhas ?? [];
+  const ultimaCarga = relatorio?.ultimaCarga ?? null;
+  const gerado = relatorio != null;
+  const filtrosDiferemDoExibido =
+    gerado &&
+    (relatorio.chaveMes !== chaveMesFiltro || relatorio.soOcupados !== soOcupados);
 
-  useEffect(() => {
-    setLinhas([]);
-    setGerado(false);
-    setErro('');
-    setUltimaCarga(null);
-  }, [chaveMes, soOcupados]);
+  const labelMesAnterior = useMemo(() => {
+    const chave = mesAnteriorChaveYYYYMM(chaveMesExibido);
+    return chave ? labelMesPt(chave) : '';
+  }, [chaveMesExibido]);
 
   const executarRelatorio = useCallback(async () => {
     setErro('');
     setCarregando(true);
     try {
-      const { ok, motivo, linhas: rows, ultimaCarga: ts } = await carregarRelatorioFinanceiroImoveisMes(chaveMes, {
+      const { ok, motivo, linhas: rows, ultimaCarga: ts } = await carregarRelatorioFinanceiroImoveisMes(chaveMesFiltro, {
         soOcupados,
       });
       if (!ok) {
-        setLinhas([]);
-        setGerado(false);
         setErro(motivo || 'Não foi possível gerar o relatório.');
         return;
       }
-      setLinhas(rows);
-      setGerado(true);
-      setUltimaCarga(ts);
+      setRelatorio({ chaveMes: chaveMesFiltro, soOcupados, linhas: rows, ultimaCarga: ts });
     } catch (e) {
-      setLinhas([]);
-      setGerado(false);
       setErro(e?.message || 'Falha ao gerar o relatório.');
     } finally {
       setCarregando(false);
     }
-  }, [chaveMes, soOcupados]);
+  }, [chaveMesFiltro, soOcupados]);
 
   const anos = useMemo(() => {
     const y0 = new Date().getFullYear();
@@ -212,6 +210,12 @@ export function RelatorioFinanceiroImoveis() {
             {ultimaCarga ? (
               <span className="ml-2">Última geração: {ultimaCarga.toLocaleString('pt-BR')}.</span>
             ) : null}
+            {filtrosDiferemDoExibido ? (
+              <span className="ml-2 text-amber-700 dark:text-amber-300">
+                Filtros alterados — exibindo {labelMesPt(relatorio.chaveMes)}
+                {relatorio.soOcupados ? ' (ocupados)' : ' (todos)'} até gerar novamente.
+              </span>
+            ) : null}
           </p>
           <div className="flex gap-2 items-start text-xs text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-black/20 rounded-lg px-3 py-2 border border-slate-100 dark:border-white/[0.06]">
             <Info className="w-4 h-4 shrink-0 mt-0.5 text-slate-500" />
@@ -226,6 +230,8 @@ export function RelatorioFinanceiroImoveis() {
               {featureFlags.useApiFinanceiro ? (
                 <span className="block mt-1">
                   Totais e datas do mês vêm da API financeira; situação (prazo) usa os dias cadastrados no contrato.
+                  Honorários e repasse previsto usam a taxa de administração (%) do contrato — padrão 10%.
+                  A coluna «Repasse (mês ant.)» traz o repasse efetivo do extrato no mês anterior ao selecionado.
                 </span>
               ) : (
                 <span className="block mt-1 text-amber-800 dark:text-amber-200">
@@ -241,14 +247,20 @@ export function RelatorioFinanceiroImoveis() {
           <div className="px-4 py-3 border-b border-slate-200 dark:border-white/[0.08] bg-gradient-to-r from-indigo-600 to-violet-700 dark:from-[#1e2a45] dark:to-[#2a1f45] flex flex-wrap items-center gap-2">
             <Building2 className="w-4 h-4 text-white/90" />
             <span className="text-sm font-semibold text-white">
-              Mês de referência: <span className="text-white/95 font-bold">{labelMesPt(chaveMes)}</span>
+              Mês de referência: <span className="text-white/95 font-bold">{labelMesPt(chaveMesExibido)}</span>
             </span>
+            {carregando ? (
+              <span className="text-xs text-white/90 inline-flex items-center gap-1">
+                <RefreshCw className="w-3 h-3 animate-spin" aria-hidden />
+                Atualizando…
+              </span>
+            ) : null}
             <span className="text-xs text-white/80">
               ({linhas.length} {linhas.length === 1 ? 'Imóvel' : 'Imóveis'})
             </span>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse min-w-[1100px]">
+            <table className="w-full text-sm border-collapse min-w-[1380px]">
               <thead>
                 <tr className="bg-slate-50/95 dark:bg-black/25 text-left text-xs font-semibold text-slate-700 dark:text-slate-400 border-b border-slate-200 dark:border-white/[0.08]">
                   <th className="py-3 px-3 w-12">Nº</th>
@@ -260,6 +272,12 @@ export function RelatorioFinanceiroImoveis() {
                   <th className="py-3 px-3 text-right">Aluguel (mês)</th>
                   <th className="py-3 px-3">Data aluguel</th>
                   <th className="py-3 px-3">Situação aluguel</th>
+                  <th className="py-3 px-3 text-right">Taxa adm. (%)</th>
+                  <th className="py-3 px-3 text-right">Honorários (mês)</th>
+                  <th className="py-3 px-3 text-right">Repasse previsto</th>
+                  <th className="py-3 px-3 text-right" title={labelMesAnterior ? `Repasse efetivo em ${labelMesAnterior}` : undefined}>
+                    Repasse {labelMesAnterior ? `(${labelMesAnterior})` : '(mês ant.)'}
+                  </th>
                   <th className="py-3 px-3 text-right">Repasse (mês)</th>
                   <th className="py-3 px-3">Data repasse</th>
                   <th className="py-3 px-3">Situação repasse</th>
@@ -269,14 +287,14 @@ export function RelatorioFinanceiroImoveis() {
               <tbody>
                 {!gerado ? (
                   <tr>
-                    <td colSpan={13} className="py-10 text-center text-slate-500 dark:text-slate-400 text-sm">
+                    <td colSpan={17} className="py-10 text-center text-slate-500 dark:text-slate-400 text-sm">
                       Nenhum dado carregado. Clique em <strong>Gerar relatório</strong> para buscar os imóveis e os
-                      lançamentos do mês {labelMesPt(chaveMes)}.
+                      lançamentos do mês {labelMesPt(chaveMesFiltro)}.
                     </td>
                   </tr>
                 ) : linhas.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="py-10 text-center text-slate-500 dark:text-slate-400 text-sm">
+                    <td colSpan={17} className="py-10 text-center text-slate-500 dark:text-slate-400 text-sm">
                       Nenhum imóvel neste filtro. Ajuste o mês ou desmarque «Somente imóveis ocupados».
                     </td>
                   </tr>
@@ -311,6 +329,26 @@ export function RelatorioFinanceiroImoveis() {
                             </span>
                           ) : null}
                         </div>
+                      </td>
+                      <td className="py-2.5 px-3 text-right tabular-nums text-slate-600 dark:text-slate-400">
+                        {L.taxaAdministracaoPercent != null
+                          ? Number(L.taxaAdministracaoPercent).toLocaleString('pt-BR', {
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 2,
+                            })
+                          : '—'}
+                      </td>
+                      <td className="py-2.5 px-3 text-right tabular-nums text-slate-700 dark:text-slate-300">
+                        {fmtReais(L.honorariosValor)}
+                      </td>
+                      <td className="py-2.5 px-3 text-right tabular-nums font-medium text-indigo-800 dark:text-indigo-200">
+                        {fmtReais(L.repasseEsperado)}
+                      </td>
+                      <td
+                        className="py-2.5 px-3 text-right tabular-nums text-slate-700 dark:text-slate-300"
+                        title={L.dataPrimeiroRepasseAnterior ? `Repasse em ${L.dataPrimeiroRepasseAnterior}` : undefined}
+                      >
+                        {fmtReais(L.totalRepasseAnterior)}
                       </td>
                       <td className="py-2.5 px-3 text-right tabular-nums font-medium">{fmtReais(L.totalRepasse)}</td>
                       <td className="py-2.5 px-3 text-slate-600 dark:text-slate-400 whitespace-nowrap">

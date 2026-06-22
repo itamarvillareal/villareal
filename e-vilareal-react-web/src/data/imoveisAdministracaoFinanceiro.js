@@ -106,6 +106,33 @@ export function resolverNumeroImovelParCodProc(par, indicePorCodProc) {
   return numeroImovelCampoProcessoValido(reg?.imovelId);
 }
 
+export const TAXA_ADMINISTRACAO_PADRAO_PERCENT = 10;
+
+/** Percentual de honorários/taxa de administração (0–100). Default 10%. */
+export function parseTaxaAdministracaoPercent(valor) {
+  if (valor == null || String(valor).trim() === '') return TAXA_ADMINISTRACAO_PADRAO_PERCENT;
+  const n = Number(String(valor).replace(',', '.'));
+  if (!Number.isFinite(n) || n < 0 || n > 100) return TAXA_ADMINISTRACAO_PADRAO_PERCENT;
+  return n;
+}
+
+/** Honorários = aluguel × taxa / 100 (mesma regra do backend). */
+export function calcularHonorariosValor(valorAluguel, taxaPercent) {
+  const aluguel = Number(valorAluguel) || 0;
+  if (aluguel <= 0) return 0;
+  const taxa = parseTaxaAdministracaoPercent(taxaPercent);
+  return Math.round((aluguel * taxa) / 100 * 100) / 100;
+}
+
+/** Repasse previsto = aluguel − honorários (alinhado a LocacaoReconciliacaoService.repasseEsperadoPorTaxa). */
+export function calcularRepasseEsperado(valorAluguel, taxaPercent) {
+  const aluguel = Number(valorAluguel) || 0;
+  if (aluguel <= 0) return 0;
+  const taxa = parseTaxaAdministracaoPercent(taxaPercent);
+  const fator = 1 - taxa / 100;
+  return Math.round(aluguel * fator * 100) / 100;
+}
+
 export function itemCadastroMinimoRelatorioImovel(par, numeroImovel) {
   return {
     imovelId: numeroImovel,
@@ -117,6 +144,7 @@ export function itemCadastroMinimoRelatorioImovel(par, numeroImovel) {
     endereco: '',
     inquilino: '',
     valorLocacao: '',
+    taxaAdministracaoPercent: String(TAXA_ADMINISTRACAO_PADRAO_PERCENT),
     diaPagAluguel: '',
     diaRepasse: '',
   };
@@ -147,6 +175,18 @@ function papelPorTag(txt) {
   return null;
 }
 
+/** Crédito típico de aluguel (planilha/OFX) em processo de administração de imóvel. */
+function pareceCreditoAluguelAdministracaoImovel(txt, valor) {
+  const v = Number(valor);
+  if (!Number.isFinite(v) || v <= 0) return false;
+  if (/\b(ALUG|ALUGUEL|LOCA|LOCAÇ|LOCAC)\b/.test(txt)) return true;
+  if (/\bPAGAMENTO\s+RECEBIDO\b/.test(txt)) return true;
+  if (/\bDEPOSIT(?:O|)\s+(?:DO\s+)?INQUILIN/.test(txt)) return true;
+  // Histórico planilha: "PROPRIETÁRIO x LOCATÁRIO" no crédito (repasse usa o mesmo padrão no débito).
+  if (/\s x \s/.test(txt) && /\b(CR[EÉ]DITO|PAGAMENTO\s+RECEBIDO)\b/.test(txt)) return true;
+  return false;
+}
+
 /**
  * Classifica um lançamento para a visão de locação (não cria lançamentos novos).
  * Heurísticas só aplicam quando o processo é reconhecido como administração de imóvel.
@@ -168,7 +208,7 @@ export function classificarLancamentoAdministracaoImovel(t, codigoCliente, proc)
   }
 
   const v = Number(t.valor);
-  if (v > 0 && /\b(ALUG|ALUGUEL|LOCA|LOCAÇ|LOCAC)\b/.test(txt)) {
+  if (v > 0 && pareceCreditoAluguelAdministracaoImovel(txt, v)) {
     return { papel: PAPEL_ALUGUEL, motivo: 'heuristica', despesaRepassarAoLocador: false };
   }
   const pareceRepasse =
@@ -217,6 +257,20 @@ export function mesReferenciaDataBr(dataBr) {
 /** Mês do relatório / painel: data do lançamento no extrato; se ausente, competência. */
 export function mesReferenciaLancamentoParaRelatorio(t) {
   return mesReferenciaDataBr(t?.data) || mesReferenciaDataBr(t?.dataCompetencia);
+}
+
+/** Chave `YYYY-MM` do mês imediatamente anterior (ex.: `2026-06` → `2026-05`). */
+export function mesAnteriorChaveYYYYMM(chaveMesYYYYMM) {
+  const parts = String(chaveMesYYYYMM ?? '').trim().split('-');
+  if (parts.length !== 2) return null;
+  const y = Number(parts[0]);
+  const m = Number(parts[1]);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return null;
+  const d = new Date(y, m - 1, 1);
+  d.setMonth(d.getMonth() - 1);
+  const yy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${yy}-${mm}`;
 }
 
 /**
@@ -480,6 +534,25 @@ export function extrairTotaisFinanceirosMes(lancamentos, codigoCliente, proc, ch
   };
 }
 
+/** Totais do mês + repasse efetivo do mês anterior (mesmos lançamentos, outra competência). */
+export function extrairTotaisFinanceirosMesComRepasseAnterior(
+  lancamentos,
+  codigoCliente,
+  proc,
+  chaveMesYYYYMM,
+) {
+  const totais = extrairTotaisFinanceirosMes(lancamentos, codigoCliente, proc, chaveMesYYYYMM);
+  const chaveAnterior = mesAnteriorChaveYYYYMM(chaveMesYYYYMM);
+  if (!chaveAnterior) return totais;
+  const anterior = extrairTotaisFinanceirosMes(lancamentos, codigoCliente, proc, chaveAnterior);
+  return {
+    ...totais,
+    totalRepasseAnterior: anterior.totalRepasse,
+    dataPrimeiroRepasseAnterior: anterior.dataPrimeiroRepasse,
+    chaveMesAnterior: chaveAnterior,
+  };
+}
+
 export function linhaRelatorioFinanceiroFromCadastro(item, chaveMesYYYYMM, totaisFinanceiros = {}) {
   const codigoNum = Number(String(item.codigo ?? '').replace(/\D/g, ''));
   const procStr = item.proc != null && String(item.proc).trim() !== '' ? String(item.proc).trim() : '';
@@ -488,11 +561,18 @@ export function linhaRelatorioFinanceiroFromCadastro(item, chaveMesYYYYMM, totai
   const {
     totalAluguel = 0,
     totalRepasse = 0,
+    totalRepasseAnterior = 0,
     dataPrimeiroAluguel = null,
     dataPrimeiroRepasse = null,
+    dataPrimeiroRepasseAnterior = null,
+    chaveMesAnterior = mesAnteriorChaveYYYYMM(chaveMesYYYYMM),
   } = totaisFinanceiros;
 
   const valorReferenciaLocacao = parseValorMonetarioBr(item.valorLocacao) ?? 0;
+  const taxaAdministracaoPercent = parseTaxaAdministracaoPercent(item.taxaAdministracaoPercent);
+  const baseCalculoRepasse = totalAluguel > 0 ? totalAluguel : valorReferenciaLocacao;
+  const honorariosValor = calcularHonorariosValor(baseCalculoRepasse, taxaAdministracaoPercent);
+  const repasseEsperado = calcularRepasseEsperado(baseCalculoRepasse, taxaAdministracaoPercent);
   const alug = avaliarSituacaoFluxoMes({
     totalNoMes: totalAluguel,
     dataPrimeiroNoMes: dataPrimeiroAluguel,
@@ -516,10 +596,16 @@ export function linhaRelatorioFinanceiroFromCadastro(item, chaveMesYYYYMM, totai
     codigo: codigoNum > 0 ? codigoNum : item.codigo || '—',
     proc: procStr || '—',
     valorReferenciaLocacao,
+    taxaAdministracaoPercent,
+    honorariosValor,
+    repasseEsperado,
     totalAluguel,
     totalRepasse,
+    totalRepasseAnterior,
     dataPrimeiroAluguel,
     dataPrimeiroRepasse,
+    dataPrimeiroRepasseAnterior,
+    chaveMesAnterior,
     statusAluguel: temVinculo ? alug.status : 'n_a',
     legendaAluguel: temVinculo ? alug.legenda : 'Vincule Cod. cliente e Proc. no cadastro.',
     statusRepasse: temVinculo ? rep.status : 'n_a',

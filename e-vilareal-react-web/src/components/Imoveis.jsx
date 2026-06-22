@@ -50,6 +50,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   const [garantia, setGarantia] = useState('Fiador');
   const [valorGarantia, setValorGarantia] = useState('0');
   const [valorLocacao, setValorLocacao] = useState('1700');
+  const [taxaAdministracaoPercent, setTaxaAdministracaoPercent] = useState('10');
   const [diaPagAluguel, setDiaPagAluguel] = useState('04');
   const [dataPag1TxCond, setDataPag1TxCond] = useState('');
   const [inscricaoImobiliaria, setInscricaoImobiliaria] = useState('101.406.0332.243');
@@ -113,6 +114,9 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   /** Preservados entre loads/saves para não apagar legado em JSON/contrato ao salvar. */
   const jsonExtrasOriginalRef = useRef({});
   const contratoObservacoesOriginalRef = useRef(null);
+  /** Baseline cod+proc ao carregar — detecta edição deliberada vs. espelho N:N no save. */
+  const vinculoCodigoOriginalRef = useRef('');
+  const vinculoProcOriginalRef = useRef('');
   const cargaInicialFeitaRef = useRef(false);
   const unidadeAlvo =
     !modoModal && location.state && typeof location.state === 'object' ? location.state.unidade : null;
@@ -207,12 +211,14 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
       setApiProcessoId(null);
       jsonExtrasOriginalRef.current = {};
       contratoObservacoesOriginalRef.current = null;
+      vinculoCodigoOriginalRef.current = '';
+      vinculoProcOriginalRef.current = '';
       return;
     }
 
     setImovelOcupado(!!data.imovelOcupado);
     setCodigo(String(data.codigo ?? ''));
-    setProc(Number(data.proc ?? 1));
+    setProc(data.proc != null && data.proc !== '' ? String(data.proc) : '');
     setObservacoesInquilino(String(data.observacoesInquilino ?? ''));
     setEndereco(String(data.endereco ?? ''));
     setCondominio(String(data.condominio ?? ''));
@@ -222,6 +228,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     setGarantia(String(data.garantia ?? ''));
     setValorGarantia(String(data.valorGarantia ?? ''));
     setValorLocacao(String(data.valorLocacao ?? ''));
+    setTaxaAdministracaoPercent(String(data.taxaAdministracaoPercent ?? '10'));
     setDiaPagAluguel(String(data.diaPagAluguel ?? ''));
     setDataPag1TxCond(String(data.dataPag1TxCond ?? ''));
     setInscricaoImobiliaria(String(data.inscricaoImobiliaria ?? ''));
@@ -275,6 +282,10 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     jsonExtrasOriginalRef.current =
       data._jsonExtrasOriginal && typeof data._jsonExtrasOriginal === 'object' ? data._jsonExtrasOriginal : {};
     contratoObservacoesOriginalRef.current = data._contratoObservacoesOriginal ?? null;
+    vinculoCodigoOriginalRef.current = String(
+      data._vinculoCodigoOriginal ?? data.codigo ?? '',
+    ).trim();
+    vinculoProcOriginalRef.current = String(data._vinculoProcOriginal ?? data.proc ?? '').trim();
   }
 
   useEffect(() => {
@@ -515,6 +526,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
         garantia,
         valorGarantia,
         valorLocacao,
+        taxaAdministracaoPercent,
         diaPagAluguel,
         dataPag1TxCond,
         inscricaoImobiliaria,
@@ -565,6 +577,8 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
         _apiContratoId,
         _jsonExtrasOriginal: jsonExtrasOriginalRef.current,
         _contratoObservacoesOriginal: contratoObservacoesOriginalRef.current,
+        _vinculoCodigoOriginal: vinculoCodigoOriginalRef.current,
+        _vinculoProcOriginal: vinculoProcOriginalRef.current,
       });
       if (r?.item) {
         popularFormulario(r.item);
@@ -717,6 +731,8 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
             setValorGarantia={setValorGarantia}
             valorLocacao={valorLocacao}
             setValorLocacao={setValorLocacao}
+            taxaAdministracaoPercent={taxaAdministracaoPercent}
+            setTaxaAdministracaoPercent={setTaxaAdministracaoPercent}
             diaPagAluguel={diaPagAluguel}
             setDiaPagAluguel={setDiaPagAluguel}
             dataPag1TxCond={dataPag1TxCond}

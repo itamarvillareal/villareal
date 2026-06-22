@@ -18,4 +18,10 @@ class GoogleDriveServiceTest {
         assertThat(GoogleDriveService.sanitizarNomeArquivo("Procuracao - Maria"))
                 .isEqualTo("Procuracao - Maria.pdf");
     }
+
+    @Test
+    void formatarNomePastaPessoa_usaIdENome() {
+        assertThat(DocumentoDrivePastaService.formatarNomePastaPessoa(42L, "Maria Silva"))
+                .isEqualTo("00000042 - Maria Silva");
+    }
 }

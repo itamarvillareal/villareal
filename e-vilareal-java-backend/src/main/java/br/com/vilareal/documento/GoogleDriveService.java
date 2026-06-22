@@ -45,6 +45,8 @@ public class GoogleDriveService {
     private final String rootFolderIdConfig;
     private final String sharedDriveIdConfig;
     private final String clientesPath;
+    private final String pessoasFolderName;
+    private final String imoveisFolderName;
     private final String impersonateUser;
     private final Environment environment;
 
@@ -52,6 +54,8 @@ public class GoogleDriveService {
     private String sharedDriveId;
     private String rootFolderId;
     private String clientesFolderId;
+    private String pessoasFolderId;
+    private String imoveisFolderId;
 
     public GoogleDriveService(
             @Value("${google.drive.credentials-file}") String credentialsFile,
@@ -59,6 +63,8 @@ public class GoogleDriveService {
             @Value("${google.drive.root-folder-id:}") String rootFolderIdConfig,
             @Value("${google.drive.shared-drive-id:}") String sharedDriveIdConfig,
             @Value("${google.drive.clientes-path:}") String clientesPath,
+            @Value("${google.drive.pessoas-folder-name:Pessoas}") String pessoasFolderName,
+            @Value("${google.drive.imoveis-folder-name:Imóveis}") String imoveisFolderName,
             @Value("${google.drive.impersonate-user:}") String impersonateUser,
             Environment environment) {
         this.credentialsFile = credentialsFile;
@@ -66,6 +72,8 @@ public class GoogleDriveService {
         this.rootFolderIdConfig = rootFolderIdConfig;
         this.sharedDriveIdConfig = sharedDriveIdConfig;
         this.clientesPath = clientesPath;
+        this.pessoasFolderName = pessoasFolderName;
+        this.imoveisFolderName = imoveisFolderName;
         this.impersonateUser = impersonateUser;
         this.environment = environment;
     }
@@ -148,6 +156,16 @@ public class GoogleDriveService {
             } else {
                 clientesFolderId = rootFolderId;
             }
+
+            // Pasta «Pessoas» na raiz (irmã de «clientes»), para documentos pessoais.
+            String nomePessoas = StringUtils.hasText(pessoasFolderName) ? pessoasFolderName.trim() : "Pessoas";
+            pessoasFolderId = encontrarOuCriarPastaPublic(nomePessoas, rootFolderId);
+            log.info("Google Drive pasta de pessoas: {} ({})", nomePessoas, pessoasFolderId);
+
+            // Pasta «Imóveis» na raiz (irmã de «clientes»), para documentos de imóveis.
+            String nomeImoveis = StringUtils.hasText(imoveisFolderName) ? imoveisFolderName.trim() : "Imóveis";
+            imoveisFolderId = encontrarOuCriarPastaPublic(nomeImoveis, rootFolderId);
+            log.info("Google Drive pasta de imóveis: {} ({})", nomeImoveis, imoveisFolderId);
         } catch (IllegalStateException e) {
             throw e;
         } catch (Exception e) {
@@ -289,6 +307,16 @@ public class GoogleDriveService {
 
     public String getClientesFolderId() {
         return clientesFolderId != null ? clientesFolderId : rootFolderId;
+    }
+
+    /** Pasta raiz de documentos pessoais (irmã de «clientes»). */
+    public String getPessoasFolderId() {
+        return pessoasFolderId != null ? pessoasFolderId : rootFolderId;
+    }
+
+    /** Pasta raiz de documentos de imóveis (irmã de «clientes»). */
+    public String getImoveisFolderId() {
+        return imoveisFolderId != null ? imoveisFolderId : rootFolderId;
     }
 
     public String getSharedDriveId() {

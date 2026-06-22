@@ -3,10 +3,15 @@ import {
   avaliarSituacaoFluxoMes,
   avaliarSituacaoRepasseMes,
   buildRelatorioFinanceiroImoveisMes,
+  calcularHonorariosValor,
+  calcularRepasseEsperado,
   chaveParCodProc,
   classificarLancamentoAdministracaoImovel,
   construirIndiceImoveisPorCodProc,
   extrairTotaisFinanceirosMes,
+  extrairTotaisFinanceirosMesComRepasseAnterior,
+  linhaRelatorioFinanceiroFromCadastro,
+  mesAnteriorChaveYYYYMM,
   montarLinhasRelatorioFinanceiroImoveisExtrato,
   paresCodProcComLancamentosNoMes,
   resolverNumeroImovelParCodProc,
@@ -47,9 +52,38 @@ describe('avaliarSituacaoFluxoMes', () => {
 });
 
 describe('classificarLancamentoAdministracaoImovel / extrairTotaisFinanceirosMes', () => {
-  it('classifica crédito genérico como credito (classificar)', () => {
+  it('classifica Pagamento recebido (OFX/planilha) como aluguel', () => {
+    const t = {
+      data: '01/06/2026',
+      descricao: 'Pagamento recebido - Renato Mikhail Martins Atie Aji - 031.817.211-90',
+      descricaoDetalhada:
+        'ALOISIO SAVIO DA SILVA x RENATO MIKHAIL MARTINS ATIE AJI e NAIRA MARQUES DA SILVA MIKHAIL',
+      valor: 2100,
+    };
+    const c = classificarLancamentoAdministracaoImovel(t, '793', 20);
+    expect(c.papel).toBe('aluguel');
+    const totais = extrairTotaisFinanceirosMes([t], '793', 20, '2026-06');
+    expect(totais.totalAluguel).toBe(2100);
+    expect(totais.dataPrimeiroAluguel).toBe('01/06/2026');
+  });
+
+  it('classifica Pagamento recebido com obs CREDIT (imóvel 4 / Fabricio) como aluguel', () => {
+    const t = {
+      data: '15/06/2026',
+      descricao: 'Pagamento recebido - Fabricio Gonçalvez Martins - 844.925.111-72',
+      descricaoDetalhada: 'CREDIT',
+      valor: 2300,
+    };
+    const c = classificarLancamentoAdministracaoImovel(t, '856', 4);
+    expect(c.papel).toBe('aluguel');
+    const totais = extrairTotaisFinanceirosMes([t], '856', 4, '2026-06');
+    expect(totais.totalAluguel).toBe(2300);
+    expect(totais.dataPrimeiroAluguel).toBe('15/06/2026');
+  });
+
+  it('classifica crédito genérico sem sinal de aluguel como credito', () => {
     const c = classificarLancamentoAdministracaoImovel(
-      { data: '10/02/2026', descricao: 'DEPOSITO INQUILINO', valor: 2100 },
+      { data: '10/02/2026', descricao: 'REEMBOLSO DIVERSO', valor: 2100 },
       '793',
       20,
     );
@@ -165,5 +199,77 @@ describe('buildRelatorioFinanceiroImoveisMes', () => {
       { soOcupados: false },
     );
     expect(linha.locatario).toBe('Maria Silva');
+  });
+});
+
+describe('honorários e repasse previsto', () => {
+  it('calcula 10% sobre aluguel recebido no mês', () => {
+    expect(calcularHonorariosValor(2300, 10)).toBe(230);
+    expect(calcularRepasseEsperado(2300, 10)).toBe(2070);
+  });
+
+  it('usa valor de referência quando aluguel do mês é zero', () => {
+    const linha = linhaRelatorioFinanceiroFromCadastro(
+      {
+        imovelId: 4,
+        codigo: '856',
+        proc: '4',
+        valorLocacao: '2.300,00',
+        taxaAdministracaoPercent: '10',
+        diaPagAluguel: '15',
+        diaRepasse: '20',
+      },
+      '2026-06',
+      { totalAluguel: 0, totalRepasse: 0 },
+    );
+    expect(linha.honorariosValor).toBe(230);
+    expect(linha.repasseEsperado).toBe(2070);
+  });
+
+  it('prioriza aluguel recebido no mês para o cálculo', () => {
+    const linha = linhaRelatorioFinanceiroFromCadastro(
+      {
+        imovelId: 3,
+        codigo: '793',
+        proc: '20',
+        valorLocacao: '2.100,00',
+        taxaAdministracaoPercent: '10',
+        diaPagAluguel: '01',
+        diaRepasse: '05',
+      },
+      '2026-06',
+      { totalAluguel: 2100, totalRepasse: 0, dataPrimeiroAluguel: '01/06/2026' },
+    );
+    expect(linha.honorariosValor).toBe(210);
+    expect(linha.repasseEsperado).toBe(1890);
+  });
+});
+
+describe('repasse do mês anterior', () => {
+  it('mesAnteriorChaveYYYYMM decrementa mês e ano', () => {
+    expect(mesAnteriorChaveYYYYMM('2026-06')).toBe('2026-05');
+    expect(mesAnteriorChaveYYYYMM('2026-01')).toBe('2025-12');
+  });
+
+  it('extrai totalRepasseAnterior dos lançamentos', () => {
+    const lancs = [
+      { data: '20/05/2026', valor: -2070, descricao: '[ADM_IMOVEL:REPASSE]' },
+      { data: '20/06/2026', valor: -1890, descricao: '[ADM_IMOVEL:REPASSE]' },
+    ];
+    const totais = extrairTotaisFinanceirosMesComRepasseAnterior(lancs, 856, 4, '2026-06');
+    expect(totais.totalRepasse).toBe(1890);
+    expect(totais.totalRepasseAnterior).toBe(2070);
+    expect(totais.dataPrimeiroRepasseAnterior).toBe('20/05/2026');
+    expect(totais.chaveMesAnterior).toBe('2026-05');
+  });
+
+  it('expõe repasse anterior na linha do relatório', () => {
+    const linha = linhaRelatorioFinanceiroFromCadastro(
+      { imovelId: 4, codigo: '856', proc: '4', valorLocacao: '2.300,00', diaPagAluguel: '15', diaRepasse: '20' },
+      '2026-06',
+      { totalAluguel: 2300, totalRepasse: 2070, totalRepasseAnterior: 1890, chaveMesAnterior: '2026-05' },
+    );
+    expect(linha.totalRepasseAnterior).toBe(1890);
+    expect(linha.chaveMesAnterior).toBe('2026-05');
   });
 });

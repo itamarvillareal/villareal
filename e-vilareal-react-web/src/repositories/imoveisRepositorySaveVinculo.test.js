@@ -124,4 +124,26 @@ describe('resolverVinculoProcessoParaSaveImovel', () => {
     expect(r.alterouVinculo).toBe(true);
     expect(r.processoIdPayload).toBe(13058);
   });
+
+  it('sem baseline no payload: detecta proc. divergente da N:N e re-vincula', async () => {
+    vi.mocked(buscarProcessoPorId).mockResolvedValueOnce({
+      id: 13058,
+      codigoCliente: '00000793',
+      numeroInterno: 17,
+    });
+    vi.mocked(buscarProcessoPorChaveNatural).mockResolvedValueOnce({ id: 13061 });
+
+    const r = await resolverVinculoProcessoParaSaveImovel({
+      codigo: '00000793',
+      proc: '20',
+      _apiProcessoId: 13058,
+    });
+
+    expect(r).toEqual({
+      alterouVinculo: true,
+      processoIdPayload: 13061,
+      espelhoCodigo: '00000793',
+      espelhoProc: '20',
+    });
+  });
 });

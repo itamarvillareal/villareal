@@ -302,6 +302,23 @@ public class DocumentoDrivePastaService {
                 .orElse("Sem Nome");
     }
 
+    /**
+     * Pasta da pessoa em {@code Pessoas/{id} - {nome}} (documentos pessoais, fora de clientes/).
+     */
+    @Transactional(readOnly = true)
+    public DrivePastaProcessoDto resolverPastaPessoa(Long pessoaId) throws Exception {
+        if (!googleDriveService.isConfigurado() || pessoaId == null) {
+            return null;
+        }
+        String nomePessoa = resolverNomePessoa(pessoaId);
+        String nomePasta = formatarNomePastaPessoa(pessoaId, nomePessoa);
+        String pastaId = googleDriveService.encontrarOuCriarPastaPublic(
+                nomePasta, googleDriveService.getPessoasFolderId());
+        String webViewLink = googleDriveService.obterWebViewLink(pastaId);
+        String caminho = "Pessoas / " + nomePasta;
+        return new DrivePastaProcessoDto(pastaId, webViewLink, nomePasta, caminho);
+    }
+
     @Transactional(readOnly = true)
     Optional<ProcessoEntity> buscarProcessoEntity(String codigoCliente, int numeroInterno) {
         if (numeroInterno < 0 || !StringUtils.hasText(codigoCliente)) {
@@ -332,6 +349,14 @@ public class DocumentoDrivePastaService {
         String nome = StringUtils.hasText(nomeCliente)
                 ? QualificacaoPessoaUtil.normalizarNome(nomeCliente.trim())
                 : "Sem Cliente";
+        return GoogleDriveService.sanitizarNomePasta(codigo + " - " + nome);
+    }
+
+    static String formatarNomePastaPessoa(Long pessoaId, String nomePessoa) {
+        String codigo = pessoaId != null ? String.format("%08d", pessoaId) : "00000000";
+        String nome = StringUtils.hasText(nomePessoa)
+                ? QualificacaoPessoaUtil.normalizarNome(nomePessoa.trim())
+                : "Sem Nome";
         return GoogleDriveService.sanitizarNomePasta(codigo + " - " + nome);
     }
 
