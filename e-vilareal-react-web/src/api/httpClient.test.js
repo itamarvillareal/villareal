@@ -5,12 +5,22 @@ const { parseApiJsonResponseMock } = vi.hoisted(() => ({
 }));
 
 vi.mock('./config.js', () => ({ API_BASE_URL: 'http://api.test' }));
-vi.mock('./apiAuthHeaders.js', () => ({ buildDefaultApiHeaders: () => ({ 'X-Test': '1' }) }));
+vi.mock('./authTokenStorage.js', () => ({
+  getAccessToken: () => 'token-test',
+}));
+vi.mock('../services/auditoriaCliente.js', () => ({
+  buildAuditoriaHeaders: () => ({ 'X-Audit': '1' }),
+}));
+vi.mock('./apiAuthHeaders.js', () => ({
+  buildDefaultApiHeaders: () => ({ 'X-Test': '1' }),
+  emitApiUnauthorized: vi.fn(),
+}));
 vi.mock('./parseApiResponse.js', () => ({
   parseApiJsonResponse: (r, opts) => parseApiJsonResponseMock(r, opts),
 }));
 
-import { request } from './httpClient.js';
+import { request, requestBlob } from './httpClient.js';
+import { emitApiUnauthorized } from './apiAuthHeaders.js';
 
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn());
@@ -35,7 +45,7 @@ describe('httpClient.request', () => {
       }),
     );
     expect(parseApiJsonResponseMock).toHaveBeenCalledWith(fakeResponse, {
-      authTokenSnapshotAtRequest: '',
+      authTokenSnapshotAtRequest: 'token-test',
     });
     expect(out).toEqual({ parsed: true });
   });
@@ -47,5 +57,43 @@ describe('httpClient.request', () => {
 
     await expect(request('/foo', { signal: ac.signal })).rejects.toBe(err);
     expect(parseApiJsonResponseMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('httpClient.requestBlob', () => {
+  it('monta query com fileId repetido para consolidação selecionada', async () => {
+    globalThis.fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      blob: async () => new Blob(['pdf']),
+      headers: { get: (k) => (k === 'Content-Disposition' ? 'filename="x.pdf"' : null) },
+    });
+
+    await requestBlob('/proc/1/consolidar', {
+      query: { fileId: ['a', 'b'] },
+      fallbackFilename: 'f.pdf',
+    });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      'http://api.test/proc/1/consolidar?fileId=a&fileId=b',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer token-test',
+          Accept: 'application/pdf',
+        }),
+      }),
+    );
+  });
+
+  it('em 401 não desloga por padrão', async () => {
+    globalThis.fetch.mockResolvedValue({
+      ok: false,
+      status: 401,
+      text: async () => '{"message":"Não autenticado."}',
+    });
+
+    await expect(requestBlob('/pdf')).rejects.toThrow(/Não autenticado ao baixar/);
+    expect(emitApiUnauthorized).not.toHaveBeenCalled();
   });
 });

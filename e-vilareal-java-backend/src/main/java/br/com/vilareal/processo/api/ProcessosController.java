@@ -297,9 +297,16 @@ public class ProcessosController {
     @Operation(
             summary = "Consolidar PDFs da pasta Movimentações",
             description =
-                    "Mescla todos os PDFs da pasta Movimentações do processo no Google Drive, "
-                            + "ordenados por nome (crescente), e retorna um único arquivo para download.")
-    public ResponseEntity<byte[]> consolidarMovimentacoesPdf(@PathVariable Long id) throws Exception {
+                    "Mescla PDFs da pasta Movimentações. Sem parâmetros: todos os PDFs (ordem por nome). "
+                            + "Com fileId repetido na query: apenas os selecionados, na ordem enviada.")
+    public ResponseEntity<byte[]> consolidarMovimentacoesPdf(
+            @PathVariable Long id,
+            @RequestParam(value = "fileId", required = false) List<String> fileIds)
+            throws Exception {
+        if (fileIds != null && !fileIds.isEmpty()) {
+            return respostaPdfConsolidado(
+                    processoMovimentacoesConsolidarPdfService.gerarPdf(id, fileIds));
+        }
         return respostaPdfConsolidado(processoMovimentacoesConsolidarPdfService.gerarPdf(id));
     }
 

@@ -1,6 +1,6 @@
-import { request, postFormData } from '../api/httpClient.js';
+import { request, postFormData, requestBlob } from '../api/httpClient.js';
 import { API_BASE_URL } from '../api/config.js';
-import { buildDefaultApiHeaders, emitApiUnauthorized } from '../api/apiAuthHeaders.js';
+import { buildDefaultApiHeaders } from '../api/apiAuthHeaders.js';
 import { featureFlags } from '../config/featureFlags.js';
 import {
   listarHistoricoPorData,
@@ -598,7 +598,6 @@ export async function baixarZipLoteAguardandoProtocolo(peticaoIds) {
     },
     body: JSON.stringify({ peticaoIds: ids }),
   });
-  if (res.status === 401) emitApiUnauthorized();
   if (!res.ok) {
     let msg = `Erro ${res.status} ao gerar ZIP.`;
     try {
@@ -1530,21 +1529,6 @@ export function mapApiProcessoToUiShape(p) {
  * @param {string} numeroCnj
  * @returns {Promise<{ blob: Blob, filename: string, avisos: string|null }>}
  */
-function erroRespostaPdf(res, text) {
-  let message = `Erro ${res.status}`;
-  if (text) {
-    try {
-      const data = JSON.parse(text);
-      message = data.message || data.error || text;
-    } catch {
-      message = text.length > 300 ? `${text.slice(0, 300)}…` : text;
-    }
-  }
-  const err = new Error(message);
-  err.status = res.status;
-  return err;
-}
-
 function endpointConsolidarPdfAusente(err) {
   const status = Number(err?.status);
   const msg = String(err?.message ?? '');
@@ -1556,42 +1540,12 @@ function endpointConsolidarPdfAusente(err) {
   );
 }
 
-async function baixarPdfApiGet(path, fallbackFilename) {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    headers: buildDefaultApiHeaders(),
-  });
-  if (res.status === 401) emitApiUnauthorized();
-  if (!res.ok) {
-    const text = await res.text();
-    throw erroRespostaPdf(res, text);
-  }
-  const blob = await res.blob();
-  const disposition = res.headers.get('Content-Disposition') || '';
-  const match = /filename="([^"]+)"/i.exec(disposition);
-  const filename = match?.[1] || fallbackFilename;
-  return { blob, filename };
+async function baixarPdfApiGet(path, fallbackFilename, query) {
+  return requestBlob(path, { query, fallbackFilename });
 }
 
 async function baixarPdfApiPost(path, body, fallbackFilename) {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    method: 'POST',
-    headers: {
-      ...buildDefaultApiHeaders(),
-      'Content-Type': 'application/json',
-      Accept: 'application/pdf',
-    },
-    body: JSON.stringify(body ?? {}),
-  });
-  if (res.status === 401) emitApiUnauthorized();
-  if (!res.ok) {
-    const text = await res.text();
-    throw erroRespostaPdf(res, text);
-  }
-  const blob = await res.blob();
-  const disposition = res.headers.get('Content-Disposition') || '';
-  const match = /filename="([^"]+)"/i.exec(disposition);
-  const filename = match?.[1] || fallbackFilename;
-  return { blob, filename };
+  return requestBlob(path, { method: 'POST', body, fallbackFilename });
 }
 
 /**
@@ -1623,11 +1577,21 @@ export async function consolidarMovimentacoesPdfSelecionados(processoId, fileIds
   if (!ids.length) {
     throw new Error('Nenhum arquivo selecionado.');
   }
-  return baixarPdfApiPost(
-    `/api/processos/${id}/movimentacoes/consolidar-pdf`,
-    { fileIds: ids },
-    `Movimentacoes_Consolidado_${id}.pdf`
-  );
+  const fallbackFilename = `Movimentacoes_Consolidado_${id}.pdf`;
+  const path = `/api/processos/${id}/movimentacoes/consolidar-pdf`;
+  try {
+    return await requestBlob(path, {
+      query: { fileId: ids },
+      fallbackFilename,
+    });
+  } catch (e) {
+    if (!endpointConsolidarPdfAusente(e)) throw e;
+    return requestBlob(path, {
+      method: 'POST',
+      body: { fileIds: ids },
+      fallbackFilename,
+    });
+  }
 }
 
 /**
@@ -1667,20 +1631,11 @@ export async function baixarAutosIntegralProcesso(numeroCnj) {
   if (!numero) {
     throw new Error('Informe o número CNJ do processo.');
   }
-  const qs = new URLSearchParams({ numero });
-  const res = await fetch(`${API_BASE_URL}/api/processos/autos-integral?${qs}`, {
-    headers: buildDefaultApiHeaders(),
+  const { blob, filename, responseHeaders } = await requestBlob('/api/processos/autos-integral', {
+    query: { numero },
+    fallbackFilename: `${numero} - Autos.pdf`,
   });
-  if (res.status === 401) emitApiUnauthorized();
-  if (!res.ok) {
-    const text = await res.text();
-    throw erroRespostaPdf(res, text);
-  }
-  const blob = await res.blob();
-  const disposition = res.headers.get('Content-Disposition') || '';
-  const match = /filename="([^"]+)"/i.exec(disposition);
-  const filename = match?.[1] || `${numero} - Autos.pdf`;
-  const avisos = res.headers.get('X-Autos-Integral-Avisos');
+  const avisos = responseHeaders?.get('X-Autos-Integral-Avisos') ?? null;
   return { blob, filename, avisos };
 }
 

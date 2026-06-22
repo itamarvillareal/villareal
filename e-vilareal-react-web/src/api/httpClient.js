@@ -46,6 +46,80 @@ export async function request(path, { method = 'GET', body, query, headers, sign
   return parseApiJsonResponse(response, { authTokenSnapshotAtRequest });
 }
 
+/**
+ * Download binário (PDF, ZIP, etc.) com JWT. Por padrão **não** desloga em 401 — evita perder
+ * a sessão por falha pontual de download mantendo o contexto da tela.
+ */
+export async function requestBlob(
+  path,
+  {
+    method = 'GET',
+    body,
+    query,
+    accept = 'application/pdf',
+    fallbackFilename = 'download.bin',
+    logoutOn401 = false,
+    signal,
+  } = {},
+) {
+  const authTokenSnapshotAtRequest = getAccessToken();
+  const headers = { ...buildAuditoriaHeaders(), Accept: accept };
+  if (authTokenSnapshotAtRequest) headers.Authorization = `Bearer ${authTokenSnapshotAtRequest}`;
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+
+  let response;
+  try {
+    response = await fetch(buildUrl(path, query), {
+      method,
+      signal,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch (err) {
+    const msg = String(err?.message ?? err);
+    if (msg === 'Failed to fetch' || err instanceof TypeError) {
+      throw new Error(
+        'API indisponível. Verifique se o backend Java está rodando e tente novamente.',
+      );
+    }
+    throw err;
+  }
+
+  if (response.status === 401) {
+    if (
+      logoutOn401 &&
+      authTokenSnapshotAtRequest &&
+      getAccessToken() === authTokenSnapshotAtRequest
+    ) {
+      const { emitApiUnauthorized } = await import('./apiAuthHeaders.js');
+      emitApiUnauthorized();
+    }
+    throw new Error('Não autenticado ao baixar o arquivo. Verifique a sessão e tente novamente.');
+  }
+
+  if (!response.ok) {
+    const text = await response.text();
+    let message = `Erro ${response.status}`;
+    if (text) {
+      try {
+        const data = JSON.parse(text);
+        message = data.message || data.error || message;
+      } catch {
+        message = text.length > 300 ? `${text.slice(0, 300)}…` : text;
+      }
+    }
+    const err = new Error(message);
+    err.status = response.status;
+    throw err;
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get('Content-Disposition') || '';
+  const match = /filename="([^"]+)"/i.exec(disposition);
+  const filename = match?.[1] || fallbackFilename;
+  return { blob, filename, responseHeaders: response.headers };
+}
+
 /** POST multipart (não define Content-Type — o browser envia boundary). */
 export async function postFormData(path, formData, { signal } = {}) {
   const authTokenSnapshotAtRequest = getAccessToken();
