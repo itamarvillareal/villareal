@@ -8,9 +8,11 @@ import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.projudi.ProjudiDriveMovimentacoesPdfSupport;
 import com.google.api.services.drive.model.File;
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.io.IOUtils;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.multipdf.PDFMergerUtility;
+import org.apache.pdfbox.pdmodel.PDDocument;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -49,7 +51,13 @@ public class ProcessoMovimentacoesConsolidarPdfService {
         this.movimentacoesPdfSupport = movimentacoesPdfSupport;
     }
 
-    public record ResultadoConsolidado(byte[] pdf, String nomeArquivo) {}
+    public record ResultadoConsolidado(byte[] pdf, String nomeArquivo, List<String> avisos) {
+        public ResultadoConsolidado(byte[] pdf, String nomeArquivo) {
+            this(pdf, nomeArquivo, List.of());
+        }
+    }
+
+    private record PartePdf(String nome, byte[] bytes) {}
 
     private record ContextoProcesso(ProcessoEntity processo, String pastaMovimentacoesId) {}
 
@@ -80,8 +88,9 @@ public class ProcessoMovimentacoesConsolidarPdfService {
             throw new ResourceNotFoundException(
                     "Nenhum PDF encontrado na pasta Movimentações deste processo.");
         }
-        List<byte[]> partes = baixarPartesPorArquivos(pdfs);
-        return finalizarConsolidado(ctx.processo(), processoId, partes, pdfs.size());
+        List<String> avisos = new ArrayList<>();
+        List<PartePdf> partes = prepararPartesValidas(pdfs, avisos);
+        return finalizarConsolidado(ctx.processo(), processoId, partes, avisos);
     }
 
     @Transactional(readOnly = true)
@@ -91,7 +100,7 @@ public class ProcessoMovimentacoesConsolidarPdfService {
         }
         ContextoProcesso ctx = carregarContexto(processoId);
         Map<String, File> porId = indexarPdfsDaPasta(ctx.pastaMovimentacoesId());
-        List<byte[]> partes = new ArrayList<>();
+        List<File> selecionados = new ArrayList<>();
         for (String fileId : fileIds) {
             if (!StringUtils.hasText(fileId)) {
                 throw badRequest("Identificador de arquivo inválido.");
@@ -101,15 +110,11 @@ public class ProcessoMovimentacoesConsolidarPdfService {
             if (pdf == null) {
                 throw badRequest("Arquivo não pertence à pasta Movimentações deste processo: " + id);
             }
-            try {
-                partes.add(googleDriveService.baixarBytesArquivo(id));
-            } catch (Exception e) {
-                log.error("Falha ao baixar PDF do Drive (nome={}, id={}): {}", pdf.getName(), id, e.getMessage());
-                throw new BusinessRuleException(
-                        "Falha ao baixar o arquivo '" + pdf.getName() + "': " + resumirErro(e));
-            }
+            selecionados.add(pdf);
         }
-        return finalizarConsolidado(ctx.processo(), processoId, partes, fileIds.size());
+        List<String> avisos = new ArrayList<>();
+        List<PartePdf> partes = prepararPartesValidas(selecionados, avisos);
+        return finalizarConsolidado(ctx.processo(), processoId, partes, avisos);
     }
 
     private ContextoProcesso carregarContexto(Long processoId) throws Exception {
@@ -140,34 +145,70 @@ public class ProcessoMovimentacoesConsolidarPdfService {
         return porId;
     }
 
-    private List<byte[]> baixarPartesPorArquivos(List<File> pdfs) throws Exception {
-        List<byte[]> partes = new ArrayList<>();
-        for (File pdf : pdfs) {
+    private List<PartePdf> prepararPartesValidas(List<File> arquivos, List<String> avisos) throws Exception {
+        List<PartePdf> out = new ArrayList<>();
+        for (File pdf : arquivos) {
+            String nome = StringUtils.hasText(pdf.getName()) ? pdf.getName().trim() : pdf.getId();
+            byte[] bytes;
             try {
-                partes.add(googleDriveService.baixarBytesArquivo(pdf.getId()));
+                bytes = googleDriveService.baixarBytesArquivo(pdf.getId());
             } catch (Exception e) {
-                log.error("Falha ao baixar PDF do Drive (nome={}, id={}): {}", pdf.getName(), pdf.getId(), e.getMessage());
-                throw new BusinessRuleException(
-                        "Falha ao baixar o arquivo '" + pdf.getName() + "': " + resumirErro(e));
+                log.error("Falha ao baixar PDF do Drive (nome={}, id={}): {}", nome, pdf.getId(), e.getMessage());
+                avisos.add("Falha ao baixar '" + nome + "': " + resumirErro(e));
+                continue;
             }
+            try {
+                int paginas = contarPaginasPdf(bytes);
+                if (paginas <= 0) {
+                    avisos.add("PDF ignorado (sem páginas): '" + nome + "'");
+                    continue;
+                }
+            } catch (Exception e) {
+                avisos.add("PDF ignorado (corrompido/criptografado): '" + nome + "' — " + resumirErro(e));
+                continue;
+            }
+            out.add(new PartePdf(nome, bytes));
         }
-        return partes;
+        return out;
     }
 
     private ResultadoConsolidado finalizarConsolidado(
-            ProcessoEntity processo, Long processoId, List<byte[]> partes, int qtdArquivos) throws Exception {
-        byte[] consolidado = mesclarPdfs(partes);
+            ProcessoEntity processo, Long processoId, List<PartePdf> partes, List<String> avisos) throws Exception {
+        if (partes.isEmpty()) {
+            throw new BusinessRuleException(
+                    avisos.isEmpty()
+                            ? "Nenhum PDF válido para consolidar."
+                            : "Nenhum PDF válido pôde ser mesclado. " + String.join(" | ", avisos));
+        }
+        List<byte[]> bytesPartes = partes.stream().map(PartePdf::bytes).toList();
+        byte[] consolidado;
+        try {
+            consolidado = mesclarPdfs(bytesPartes);
+        } catch (IOException e) {
+            log.error("Falha ao mesclar PDFs (processoId={}): {}", processoId, e.getMessage());
+            throw new BusinessRuleException("Falha ao mesclar PDFs: " + resumirErro(e));
+        }
         String rotulo = StringUtils.hasText(processo.getNumeroCnj())
                 ? processo.getNumeroCnj().trim()
                 : String.valueOf(processoId);
         String nomeArquivo = ProcessoAutosIntegralService.sanitizarNomeArquivoDownload(
                 "Movimentacoes_Consolidado_" + rotulo + ".pdf");
         log.info(
-                "PDF Movimentações consolidado (processoId={}, arquivos={}, bytes={})",
+                "PDF Movimentações consolidado (processoId={}, arquivos={}, avisos={}, bytes={})",
                 processoId,
-                qtdArquivos,
+                partes.size(),
+                avisos.size(),
                 consolidado.length);
-        return new ResultadoConsolidado(consolidado, nomeArquivo);
+        return new ResultadoConsolidado(consolidado, nomeArquivo, List.copyOf(avisos));
+    }
+
+    private static int contarPaginasPdf(byte[] bytes) throws IOException {
+        try (PDDocument doc = Loader.loadPDF(new RandomAccessReadBuffer(bytes))) {
+            if (doc.isEncrypted()) {
+                throw new IOException("PDF criptografado");
+            }
+            return doc.getNumberOfPages();
+        }
     }
 
     static DriveArquivoDto mapearPdfParaDto(File f) {

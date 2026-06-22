@@ -246,6 +246,7 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, processoId
     if (consolidando) return;
     setModalSelecaoAberto(false);
     setFiltroNome('');
+    setErro('');
   }
 
   function alternarSelecao(id) {
@@ -271,6 +272,7 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, processoId
     setModalSelecaoAberto(true);
     setCarregandoCandidatos(true);
     setFiltroNome('');
+    setErro('');
     setCandidatos([]);
     setSelecionados(new Set());
     try {
@@ -295,13 +297,22 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, processoId
     setErro('');
     try {
       const cnj = String(numeroCnj ?? '').trim();
-      const { blob, filename } = await consolidarMovimentacoesPdfSelecionados(id, fileIds, { numeroCnj: cnj });
+      const { blob, filename, avisos } = await consolidarMovimentacoesPdfSelecionados(id, fileIds, {
+        numeroCnj: cnj,
+      });
       downloadPdfBlob(blob, filename);
       setModalSelecaoAberto(false);
       setFiltroNome('');
-      setToastMsg('PDF consolidado baixado com sucesso.');
+      const msgAvisos = avisos ? String(avisos).trim() : '';
+      setToastMsg(
+        msgAvisos
+          ? `PDF consolidado baixado. Avisos: ${msgAvisos}`
+          : 'PDF consolidado baixado com sucesso.',
+      );
     } catch (e) {
-      setToastMsg(e?.message || 'Não foi possível consolidar os PDFs.');
+      const msg = e?.message || 'Não foi possível consolidar os PDFs.';
+      setErro(msg);
+      setToastMsg(msg);
     } finally {
       setConsolidando(false);
     }
@@ -540,6 +551,11 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, processoId
               <p className="mt-1 text-xs text-slate-500">
                 Pasta Movimentações — ordem da lista = ordem no PDF final
               </p>
+              {erro ? (
+                <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+                  {erro}
+                </p>
+              ) : null}
             </div>
 
             <div className="shrink-0 space-y-2 border-b border-slate-200 px-5 py-3 dark:border-slate-700">

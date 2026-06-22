@@ -329,6 +329,9 @@ public class ProcessosController {
                 .filename(resultado.nomeArquivo())
                 .build());
         headers.setContentType(MediaType.APPLICATION_PDF);
+        if (resultado.avisos() != null && !resultado.avisos().isEmpty()) {
+            headers.set("X-Movimentacoes-Consolidado-Avisos", String.join(" | ", resultado.avisos()));
+        }
         return ResponseEntity.ok().headers(headers).body(resultado.pdf());
     }
 

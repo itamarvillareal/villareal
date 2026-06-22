@@ -9,6 +9,7 @@ import {
   FileUp,
   FileCheck2,
   ClipboardPaste,
+  ClipboardList,
   Loader2,
   Link2,
   Download,
@@ -182,6 +183,9 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
   const [modalVinculosSistema, setModalVinculosSistema] = useState(false);
   const [qualificacaoPreviewCompleta, setQualificacaoPreviewCompleta] = useState('');
   const [qualificacaoPreviewCarregando, setQualificacaoPreviewCarregando] = useState(false);
+  const [modalQualificacaoAberto, setModalQualificacaoAberto] = useState(false);
+  const [textoModalQualificacao, setTextoModalQualificacao] = useState('');
+  const [carregandoModalQualificacao, setCarregandoModalQualificacao] = useState(false);
   /** Evita que o GET de complementares sobrescreva alterações já digitadas na ficha. */
   const complementaresAplicadosParaIdRef = useRef(null);
   /** Autosave: baseline após carga; pausa até complementares da ficha. */
@@ -445,12 +449,14 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
     modalVinculosSistema && idPessoaParaVinculos != null,
     () => setModalVinculosSistema(false),
   );
+  useCloseOnEscape(modalQualificacaoAberto, () => setModalQualificacaoAberto(false));
   useCloseOnEscape(!!modalCpfDuplicado, () => setModalCpfDuplicado(null));
   useCloseOnEscape(
     isEmbedded &&
       !modalEnderecos &&
       !modalContatos &&
       !modalVinculosSistema &&
+      !modalQualificacaoAberto &&
       !modalCpfDuplicado,
     onFecharEmbed,
   );
@@ -526,6 +532,31 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
     }
     return esbocoQualificacaoComResponsavel({ nome: form.nome, cpf: form.cpf }, form.responsavel) || '';
   }, [editId, ehPessoaJuridica, form.cpf, form.nome, form.responsavel, form.responsavelId]);
+
+  const abrirModalQualificacaoCompleta = useCallback(async () => {
+    setModalQualificacaoAberto(true);
+    setCarregandoModalQualificacao(true);
+    setTextoModalQualificacao('');
+    try {
+      const texto = (await copiarQualificacaoContratual()) || '';
+      setTextoModalQualificacao(
+        texto
+          || 'Qualificação indisponível. Salve o cadastro ou complete nome, documento, endereço e demais dados.',
+      );
+      const { usuarioNome } = getContextoAuditoriaUsuario();
+      const nome = String(form.nome ?? '').trim() || 'cadastro sem nome';
+      registrarAuditoria({
+        modulo: 'Pessoas',
+        tela: pathPessoasNorm,
+        tipoAcao: 'DOCUMENTO',
+        descricao: `Usuário ${usuarioNome} abriu a qualificação jurídica de ${nome}.`,
+        registroAfetadoId: editId != null ? String(editId) : null,
+        registroAfetadoNome: nome,
+      });
+    } finally {
+      setCarregandoModalQualificacao(false);
+    }
+  }, [copiarQualificacaoContratual, editId, form.nome, pathPessoasNorm]);
 
   const [processosVinculo, setProcessosVinculo] = useState([]);
   const [carregandoProcessosVinculo, setCarregandoProcessosVinculo] = useState(false);
@@ -1690,6 +1721,23 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                         <FileUp className="w-4 h-4" />
                         Anexar documento pessoal
                       </button>
+                      {(modo === 'editar' && editId != null) || String(form.nome ?? '').trim() ? (
+                        <button
+                          type="button"
+                          onClick={() => void abrirModalQualificacaoCompleta()}
+                          disabled={carregandoModalQualificacao}
+                          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 text-sm font-medium hover:bg-amber-100 disabled:opacity-60"
+                          title="Abrir qualificação jurídica completa"
+                          aria-pressed={modalQualificacaoAberto}
+                        >
+                          {carregandoModalQualificacao ? (
+                            <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+                          ) : (
+                            <ClipboardList className="w-4 h-4" aria-hidden />
+                          )}
+                          Qualificação
+                        </button>
+                      ) : null}
                       <input
                         ref={inputDocRef}
                         id="upload-doc-pessoal"
@@ -2127,30 +2175,6 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                           placeholder="Profissão"
                           className={inputClassComAutofill('profissao', { flex: true })}
                         />
-                        <button
-                          type="button"
-                          className="px-3 py-2 text-sm border border-slate-300 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 whitespace-nowrap"
-                          onClick={() => {
-                            void (async () => {
-                              const texto = await copiarQualificacaoContratual();
-                              const { usuarioNome } = getContextoAuditoriaUsuario();
-                              const nome = String(form.nome ?? '').trim() || 'cadastro sem nome';
-                              registrarAuditoria({
-                                modulo: 'Pessoas',
-                                tela: pathPessoasNorm,
-                                tipoAcao: 'DOCUMENTO',
-                                descricao: `Usuário ${usuarioNome} gerou qualificação contratual de ${nome}.`,
-                                registroAfetadoId: editId != null ? String(editId) : null,
-                                registroAfetadoNome: nome,
-                              });
-                              if (texto && navigator.clipboard?.writeText) {
-                                navigator.clipboard.writeText(texto).catch(() => {});
-                              }
-                            })();
-                          }}
-                        >
-                          Qualificação
-                        </button>
                       </div>
                     </div>
                     <div>
@@ -2575,6 +2599,73 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
           </div>
         </div>
       )}
+
+      {modalQualificacaoAberto ? (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/40"
+          role="presentation"
+          onClick={() => setModalQualificacaoAberto(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-qualificacao-pessoa-titulo"
+            className="bg-white rounded-xl shadow-xl border border-slate-200 max-w-4xl w-full max-h-[85vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-3 shrink-0">
+              <div className="min-w-0">
+                <h2 id="modal-qualificacao-pessoa-titulo" className="text-lg font-semibold text-slate-800">
+                  Qualificação jurídica
+                </h2>
+                <p className="text-sm text-slate-600 mt-1 truncate">
+                  {String(form.nome ?? '').trim() || 'Pessoa'}
+                  {editId != null ? (
+                    <>
+                      {' '}
+                      <span className="text-slate-400">·</span> nº {editId}
+                    </>
+                  ) : null}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  disabled={carregandoModalQualificacao || !textoModalQualificacao}
+                  onClick={() => {
+                    if (!textoModalQualificacao || !navigator.clipboard?.writeText) return;
+                    void navigator.clipboard.writeText(textoModalQualificacao).catch(() => {});
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-sm border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Copiar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModalQualificacaoAberto(false)}
+                  className="px-3 py-1.5 rounded-lg text-sm text-slate-600 hover:bg-slate-100"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+            <div className="px-5 py-4 flex-1 min-h-0 flex flex-col">
+              {carregandoModalQualificacao ? (
+                <div className="flex flex-1 items-center justify-center gap-2 text-sm text-slate-600 py-12">
+                  <Loader2 className="w-5 h-5 animate-spin" aria-hidden />
+                  Gerando qualificação…
+                </div>
+              ) : (
+                <textarea
+                  readOnly
+                  value={textoModalQualificacao}
+                  className="w-full flex-1 min-h-[min(50vh,320px)] resize-none rounded-lg border border-slate-300 bg-slate-50/50 px-3 py-2 text-sm text-slate-800 leading-relaxed"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {toastDocumento?.mensagem ? (
         <div

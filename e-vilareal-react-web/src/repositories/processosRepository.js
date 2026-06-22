@@ -1579,18 +1579,27 @@ export async function consolidarMovimentacoesPdfSelecionados(processoId, fileIds
   }
   const fallbackFilename = `Movimentacoes_Consolidado_${id}.pdf`;
   const path = `/api/processos/${id}/movimentacoes/consolidar-pdf`;
+  const mapResultado = ({ blob, filename, responseHeaders }) => ({
+    blob,
+    filename,
+    avisos: responseHeaders?.get('X-Movimentacoes-Consolidado-Avisos') ?? null,
+  });
   try {
-    return await requestBlob(path, {
-      query: { fileId: ids },
-      fallbackFilename,
-    });
+    return mapResultado(
+      await requestBlob(path, {
+        method: 'POST',
+        body: { fileIds: ids },
+        fallbackFilename,
+      }),
+    );
   } catch (e) {
     if (!endpointConsolidarPdfAusente(e)) throw e;
-    return requestBlob(path, {
-      method: 'POST',
-      body: { fileIds: ids },
-      fallbackFilename,
-    });
+    return mapResultado(
+      await requestBlob(path, {
+        query: { fileId: ids },
+        fallbackFilename,
+      }),
+    );
   }
 }
 
