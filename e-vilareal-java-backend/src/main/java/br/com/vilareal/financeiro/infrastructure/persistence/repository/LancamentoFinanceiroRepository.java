@@ -36,15 +36,13 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
     boolean existsByNumeroBancoAndNumeroLancamento(Integer numeroBanco, String numeroLancamento);
 
     @Query(
-            value =
-                    """
-            SELECT DISTINCT data_lancamento FROM financeiro_lancamento
-            WHERE numero_banco = :numeroBanco
-              AND status = 'ATIVO'
-            ORDER BY data_lancamento DESC
+            """
+            SELECT DISTINCT l.dataLancamento FROM LancamentoFinanceiroEntity l
+            WHERE l.numeroBanco = :numeroBanco
+              AND l.status = 'ATIVO'
+            ORDER BY l.dataLancamento DESC
             LIMIT 2
-            """,
-            nativeQuery = true)
+            """)
     List<LocalDate> findDuasUltimasDatasDistintasPorNumeroBanco(@Param("numeroBanco") Integer numeroBanco);
 
     @Query("""
@@ -938,4 +936,33 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             WHERE l.grupoCompensacao = :grupo AND l.status = 'ATIVO'
             """)
     List<LancamentoFinanceiroEntity> findAtivosByGrupoCompensacao(@Param("grupo") String grupo);
+
+    @Query(
+            """
+            SELECT l FROM LancamentoFinanceiroEntity l
+            JOIN FETCH l.contaContabil c
+            WHERE l.natureza = 'DEBITO'
+              AND l.status = 'ATIVO'
+              AND c.codigo IN ('A', 'I')
+              AND UPPER(l.descricao) LIKE '%CONDOM%'
+            ORDER BY l.dataLancamento ASC, l.id ASC
+            """)
+    List<LancamentoFinanceiroEntity> findDebitosCondominioContasAdministracao();
+
+    @Query(
+            """
+            SELECT l FROM LancamentoFinanceiroEntity l
+            JOIN FETCH l.contaContabil c
+            WHERE l.natureza = br.com.vilareal.financeiro.domain.NaturezaLancamento.DEBITO
+              AND l.status = 'ATIVO'
+              AND c.codigo IN ('A', 'I')
+              AND l.dataLancamento BETWEEN :inicio AND :fim
+              AND NOT EXISTS (
+                  SELECT 1 FROM PagamentoEntity p
+                  WHERE p.financeiroLancamento = l
+              )
+            ORDER BY l.dataLancamento ASC, l.id ASC
+            """)
+    List<LancamentoFinanceiroEntity> findDebitosCondominioNaoVinculadosPagamento(
+            @Param("inicio") java.time.LocalDate inicio, @Param("fim") java.time.LocalDate fim);
 }
