@@ -11,7 +11,7 @@ import {
   extrairChavesCandidatasCnjDoTextoAgenda,
 } from '../domain/cnjAgendaResolucao.js';
 import { loadCadastroClienteDados } from './cadastroClientesStorage.js';
-import { padCliente } from './processosDadosRelatorio.js';
+import { normalizarTipoAudienciaCanonico, padCliente } from './processosDadosRelatorio.js';
 import { chaveNumeroProcessoBuscaDiagnostico } from '../domain/normalizarNumeroProcessoBuscaDiagnostico.js';
 import { ehTituloHistoricoSistemaLegado } from '../domain/historicoTituloLegadoSistema.js';
 
@@ -930,9 +930,10 @@ export function sincronizarAudienciasAgendaEntradas(entradas, options = {}) {
           historico: [],
           audienciaData: dataBr,
           audienciaHora: hora,
-          audienciaTipo: tipo || 'Audiência',
+          audienciaTipo: tipo,
         });
       } else {
+        const tipoAnterior = normalizarTipoAudienciaCanonico(prev.audienciaTipo);
         upsertRegistroProcesso({
           ...prev,
           codCliente: prev.codCliente,
@@ -940,7 +941,7 @@ export function sincronizarAudienciasAgendaEntradas(entradas, options = {}) {
           historico: prev.historico,
           audienciaData: dataBr,
           audienciaHora: hora,
-          audienciaTipo: tipo || prev.audienciaTipo,
+          audienciaTipo: tipo || tipoAnterior,
         });
       }
 

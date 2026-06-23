@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   extrairChavesCandidatasCnjDoTextoAgenda,
   extrairPartesClienteOpostaDoTextoCompromisso,
+  extrairTipoAudienciaDaDescricaoAgenda,
   encontrarProcessosHistoricoPorTextoAgenda,
 } from './cnjAgendaResolucao.js';
 
@@ -44,5 +45,18 @@ describe('encontrarProcessosHistoricoPorTextoAgenda', () => {
     const t = 'Autos nº 5003229.70 no juizado';
     const hits = encontrarProcessosHistoricoPorTextoAgenda(t, store);
     expect(hits).toEqual([{ codCliente: '00000001', proc: 3 }]);
+  });
+});
+
+describe('extrairTipoAudienciaDaDescricaoAgenda', () => {
+  it('extrai Conciliação de compromisso de audiência', () => {
+    const t =
+      'CONCILIAÇÃO (SE77E TELECOM EIRELI ME x JEAN RODRIGUES DA SILVA) Autos nº 5003229.70';
+    expect(extrairTipoAudienciaDaDescricaoAgenda(t)).toBe('Conciliação');
+  });
+
+  it('não trata tarefa «consultar …» como tipo de audiência', () => {
+    const t = 'consultar RAFAEL SIQUEIRA x KAROLYNE SOUZA (5738200-32.2025.8.09.0006)';
+    expect(extrairTipoAudienciaDaDescricaoAgenda(t)).toBe('');
   });
 });

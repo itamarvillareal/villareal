@@ -174,6 +174,48 @@ export const TIPOS_AUDIENCIA = [
   'Sessão de Julgamento',
 ];
 
+function normalizarTextoTipoAudienciaComparacao(texto) {
+  return String(texto ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * Restringe `audienciaTipo` às opções canónicas do cadastro.
+ * Textos de agenda/tarefa (ex.: «consultar AUTOR x RÉU») devolvem string vazia.
+ * @param {string | null | undefined} texto
+ * @returns {string}
+ */
+export function normalizarTipoAudienciaCanonico(texto) {
+  const bruto = String(texto ?? '').trim();
+  if (!bruto) return '';
+
+  for (const tipo of TIPOS_AUDIENCIA) {
+    if (normalizarTextoTipoAudienciaComparacao(tipo) === normalizarTextoTipoAudienciaComparacao(bruto)) {
+      return tipo;
+    }
+  }
+
+  const norm = normalizarTextoTipoAudienciaComparacao(bruto);
+
+  if (norm.startsWith('consultar')) return '';
+  if (/\s+x\s+/i.test(bruto)) return '';
+
+  if (norm.startsWith('conciliacao')) return 'Conciliação';
+  if (norm.startsWith('instrucao')) return 'Instrução';
+  if (norm.startsWith('administrativa')) return 'Administrativa';
+  if (norm.startsWith('pericia')) return 'Perícia';
+  if (norm.includes('sessao de julgamento') || norm.startsWith('julgamento')) {
+    return 'Sessão de Julgamento';
+  }
+
+  if (norm === 'audiencia') return '';
+
+  return '';
+}
+
 export const TRAMITACAO_OPCOES = ['Projudi', 'PJe', 'TJ Go - Autos Físicos'];
 
 function formatarListaComConjuncaoE(itens) {

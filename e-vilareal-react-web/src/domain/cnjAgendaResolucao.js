@@ -3,7 +3,7 @@
  * Este módulo extrai candidatos do texto e casa com `numeroProcessoNovo` no histórico local.
  */
 
-import { padCliente } from '../data/processosDadosRelatorio.js';
+import { normalizarTipoAudienciaCanonico, padCliente } from '../data/processosDadosRelatorio.js';
 
 function apenasDigitos(v) {
   return String(v ?? '').replace(/\D/g, '');
@@ -173,15 +173,18 @@ export function encontrarProcessosHistoricoPorTextoAgenda(texto, storeHistorico)
  */
 export function extrairTipoAudienciaDaDescricaoAgenda(descricao) {
   const s = String(descricao ?? '').trim();
-  if (!s) return 'Audiência';
+  if (!s) return '';
+  let candidato = '';
   const idx = s.indexOf('(');
   if (idx > 3) {
     const head = s.slice(0, idx).trim();
-    if (head.length >= 3 && head.length < 120) return head;
+    if (head.length >= 3 && head.length < 120) candidato = head;
   }
-  const m = /^(.+?)\s+—\s*Proc\./i.exec(s);
-  if (m) return m[1].trim();
-  return 'Audiência';
+  if (!candidato) {
+    const m = /^(.+?)\s+—\s*Proc\./i.exec(s);
+    if (m) candidato = m[1].trim();
+  }
+  return normalizarTipoAudienciaCanonico(candidato);
 }
 
 /**

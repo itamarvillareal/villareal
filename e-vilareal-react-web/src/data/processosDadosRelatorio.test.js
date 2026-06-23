@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   FASES,
+  TIPOS_AUDIENCIA,
   canonicalizarFaseParaOpcoesRadiosProcessos,
   classeShellFormularioProcessoPorFase,
+  normalizarTipoAudienciaCanonico,
 } from './processosDadosRelatorio.js';
 
 describe('canonicalizarFaseParaOpcoesRadiosProcessos', () => {
@@ -32,5 +34,27 @@ describe('classeShellFormularioProcessoPorFase', () => {
 
   it('aplica fundo escuro para Protocolo / Movimentação', () => {
     expect(classeShellFormularioProcessoPorFase('Protocolo / Movimentação')).toContain('bg-slate-900');
+  });
+});
+
+describe('normalizarTipoAudienciaCanonico', () => {
+  it('mantém tipos canónicos da lista', () => {
+    for (const tipo of TIPOS_AUDIENCIA) {
+      expect(normalizarTipoAudienciaCanonico(tipo)).toBe(tipo);
+    }
+  });
+
+  it('mapeia cabeçalho de agenda CONCILIAÇÃO para Conciliação', () => {
+    expect(normalizarTipoAudienciaCanonico('CONCILIAÇÃO')).toBe('Conciliação');
+  });
+
+  it('descarta descrições de tarefa «consultar … x …»', () => {
+    expect(
+      normalizarTipoAudienciaCanonico('consultar RAFAEL SIQUEIRA x KAROLYNE SOUZA')
+    ).toBe('');
+  });
+
+  it('descarta valor genérico «Audiência»', () => {
+    expect(normalizarTipoAudienciaCanonico('Audiência')).toBe('');
   });
 });

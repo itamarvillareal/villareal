@@ -46,6 +46,7 @@ import {
   gerarMockProcesso,
   normalizarCliente,
   normalizarProcesso,
+  normalizarTipoAudienciaCanonico,
   padCliente,
 } from '../data/processosDadosRelatorio';
 import {
@@ -1285,7 +1286,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     setFaseCampo(pickCampoStrSalvo(r, 'faseCampo', ''));
     setAudienciaData(pickCampoStrSalvo(r, 'audienciaData', ''));
     setAudienciaHora(pickCampoStrSalvo(r, 'audienciaHora', ''));
-    setAudienciaTipo(pickCampoStrSalvo(r, 'audienciaTipo', ''));
+    setAudienciaTipo(normalizarTipoAudienciaCanonico(pickCampoStrSalvo(r, 'audienciaTipo', '')));
     setAvisoAudiencia(pickCampoStrSalvo(r, 'avisoAudiencia', 'nao_avisado') || 'nao_avisado');
     setProximaInformacao(pickCampoStrSalvo(r, 'proximaInformacao', ''));
     setDataProximaInformacao(pickCampoStrSalvo(r, 'dataProximaInformacao', ''));
@@ -1368,7 +1369,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         faseCampo: pickCampoStrSalvo(r, 'faseCampo', ''),
         audienciaData: pickCampoStrSalvo(r, 'audienciaData', ''),
         audienciaHora: pickCampoStrSalvo(r, 'audienciaHora', ''),
-        audienciaTipo: pickCampoStrSalvo(r, 'audienciaTipo', ''),
+        audienciaTipo: normalizarTipoAudienciaCanonico(pickCampoStrSalvo(r, 'audienciaTipo', '')),
         avisoAudiencia: pickCampoStrSalvo(r, 'avisoAudiencia', 'nao_avisado') || 'nao_avisado',
         imovelId: nextImovelIdStr,
         unidade: mergedUnidade,
@@ -2487,7 +2488,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       faseCampo,
       audienciaData,
       audienciaHora,
-      audienciaTipo,
+      audienciaTipo: normalizarTipoAudienciaCanonico(audienciaTipo),
       avisoAudiencia,
       imovelId: String(imovelId ?? ''),
       unidade: String(unidadeEndereco ?? ''),
@@ -2734,7 +2735,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       setPapelParte(papelCarregado);
       setAudienciaData(mapped.audienciaData ?? '');
       setAudienciaHora(mapped.audienciaHora ?? '');
-      setAudienciaTipo(mapped.audienciaTipo ?? '');
+      setAudienciaTipo(normalizarTipoAudienciaCanonico(mapped.audienciaTipo ?? ''));
       setAvisoAudiencia(mapped.avisoAudiencia ?? 'nao_avisado');
 
       const partes = await listarPartesProcesso(procApi.id);
@@ -3422,7 +3423,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         void replicarAudienciaProcessoTodosColaboradoresApi({
           audienciaData,
           audienciaHora,
-          audienciaTipo,
+          audienciaTipo: normalizarTipoAudienciaCanonico(audienciaTipo),
           numeroProcessoNovo,
           codigoCliente,
           numeroInterno: processo,
@@ -3448,7 +3449,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     agendarAudienciaParaTodosUsuarios({
       audienciaData,
       audienciaHora,
-      audienciaTipo,
+      audienciaTipo: normalizarTipoAudienciaCanonico(audienciaTipo),
       numeroProcessoNovo,
       codigoCliente,
       numeroInterno: processo,
@@ -3604,7 +3605,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     []
   );
 
-  const audienciaResumo = [audienciaData, audienciaHora, audienciaTipo].filter((x) => String(x ?? '').trim()).join(' · ') || 'Sem audiência agendada';
+  const audienciaTipoCanonico = normalizarTipoAudienciaCanonico(audienciaTipo);
+  const audienciaResumo = [audienciaData, audienciaHora, audienciaTipoCanonico].filter((x) => String(x ?? '').trim()).join(' · ') || 'Sem audiência agendada';
 
   return (
     <div
@@ -4003,14 +4005,14 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                       {camposBloqueados ? (
                         <input
                           type="text"
-                          value={audienciaTipo || '—'}
+                          value={audienciaTipoCanonico || '—'}
                           readOnly
                           className={`w-full min-w-0 ${clsCampo}`}
-                          title={audienciaTipo || undefined}
+                          title={audienciaTipoCanonico || undefined}
                         />
                       ) : (
                         <select
-                          value={audienciaTipo}
+                          value={audienciaTipoCanonico}
                           onChange={(e) => setAudienciaTipo(e.target.value)}
                           className={`w-full min-w-0 ${clsCampo}`}
                         >
@@ -4020,10 +4022,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                               {t}
                             </option>
                           ))}
-                          {audienciaTipo &&
-                          !TIPOS_AUDIENCIA.includes(audienciaTipo) ? (
-                            <option value={audienciaTipo}>{audienciaTipo}</option>
-                          ) : null}
                         </select>
                       )}
                     </Field>

@@ -12,6 +12,7 @@ import {
   agruparConsultasRealizadasPorProcesso,
   ehTituloHistoricoSistemaLegado,
 } from '../domain/historicoTituloLegadoSistema.js';
+import { normalizarTipoAudienciaCanonico } from '../data/processosDadosRelatorio.js';
 import { getNomeExibicaoUsuario, isAssistenteIaUsuario } from '../data/usuarioDisplayHelpers.js';
 
 function padCliente8(value) {
@@ -964,7 +965,8 @@ export async function salvarCabecalhoProcesso(payload) {
     papelCliente: papelParteUiParaApi(payload.papelParte),
     audienciaData: toIsoFromBrDate(payload.audienciaData),
     audienciaHora: normalizarHoraAudienciaCampo(payload.audienciaHora),
-    audienciaTipo: String(payload.audienciaTipo ?? '').trim() || null,
+    audienciaTipo:
+      normalizarTipoAudienciaCanonico(String(payload.audienciaTipo ?? '').trim()) || null,
     avisoAudiencia: avisoAudienciaUiParaApi(payload.avisoAudiencia),
   };
   if (processoId) {
@@ -1519,7 +1521,9 @@ export function mapApiProcessoToUiShape(p) {
     papelParte: papelParteApiParaUi(p.papelCliente ?? p.papel_cliente),
     audienciaData: toBrFromIsoDate(p.audienciaData),
     audienciaHora: String(p.audienciaHora ?? '').trim(),
-    audienciaTipo: corrigirMojibakeUtf8(String(p.audienciaTipo ?? '').trim()),
+    audienciaTipo: normalizarTipoAudienciaCanonico(
+      corrigirMojibakeUtf8(String(p.audienciaTipo ?? '').trim())
+    ),
     avisoAudiencia: avisoAudienciaApiParaUi(p.avisoAudiencia ?? p.aviso_audiencia),
   };
 }
