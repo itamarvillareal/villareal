@@ -160,8 +160,6 @@ export function ImoveisCadastroView(props) {
     contaCorrenteTitle,
     onGerenciarIptu,
     onCatalogo,
-    catalogoDisabled,
-    catalogoTitle,
     onRelatorio,
     onFechar,
     onAbrirIptu,
