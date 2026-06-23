@@ -26,7 +26,10 @@ import br.com.vilareal.publicacao.infrastructure.persistence.repository.Publicac
 import br.com.vilareal.tarefa.api.dto.TarefaOperacionalWriteRequest;
 import br.com.vilareal.tarefa.application.TarefaOperacionalApplicationService;
 import br.com.vilareal.usuario.infrastructure.persistence.entity.UsuarioEntity;
+import br.com.vilareal.usuario.infrastructure.persistence.repository.UsuarioRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -56,6 +59,7 @@ public class TratarPublicacaoService {
     private final JuliaTriagemRepository juliaTriagemRepository;
     private final JuliaCaixaApplicationService juliaCaixaApplicationService;
     private final TarefaOperacionalApplicationService tarefaOperacionalApplicationService;
+    private final UsuarioRepository usuarioRepository;
     private final ObjectMapper objectMapper;
 
     public TratarPublicacaoService(
@@ -69,6 +73,7 @@ public class TratarPublicacaoService {
             JuliaTriagemRepository juliaTriagemRepository,
             JuliaCaixaApplicationService juliaCaixaApplicationService,
             TarefaOperacionalApplicationService tarefaOperacionalApplicationService,
+            UsuarioRepository usuarioRepository,
             ObjectMapper objectMapper) {
         this.publicacaoRepository = publicacaoRepository;
         this.publicacaoApplicationService = publicacaoApplicationService;
@@ -80,6 +85,7 @@ public class TratarPublicacaoService {
         this.juliaTriagemRepository = juliaTriagemRepository;
         this.juliaCaixaApplicationService = juliaCaixaApplicationService;
         this.tarefaOperacionalApplicationService = tarefaOperacionalApplicationService;
+        this.usuarioRepository = usuarioRepository;
         this.objectMapper = objectMapper;
     }
 
@@ -132,12 +138,13 @@ public class TratarPublicacaoService {
         statusReq.setStatus("TRATADA");
         publicacaoApplicationService.patchStatus(publicacaoId, statusReq);
 
-        String descricaoAndamento = resolverDescricaoAndamento(comando.observacaoFase(), pub);
+        String descricaoAndamento = resolverDescricaoAndamento(tipo, comando.observacaoFase(), pub);
         ProcessoAndamentoWriteRequest andamentoReq = new ProcessoAndamentoWriteRequest();
         andamentoReq.setOrigem(ORIGEM_ANDAMENTO);
         andamentoReq.setOrigemAutomatica(false);
         andamentoReq.setTitulo(truncarTitulo(descricaoAndamento));
         andamentoReq.setDetalhe(montarDetalheAndamento(pub, comando.observacaoFase()));
+        resolverUsuarioAtual().ifPresent(u -> andamentoReq.setUsuarioId(u.getId()));
         Long andamentoId = processoApplicationService.criarAndamento(processoId, andamentoReq).getId();
 
         boolean cardConcluido = false;
@@ -221,7 +228,7 @@ public class TratarPublicacaoService {
         }
         TarefaOperacionalWriteRequest req = new TarefaOperacionalWriteRequest();
         req.setTitulo("Contatar cliente sobre publicação");
-        req.setDescricao(resolverDescricaoAndamento(comando.observacaoFase(), pub));
+        req.setDescricao(resolverDescricaoAndamento(TratarPublicacaoTipo.CUMPRIR_DEPOIS, comando.observacaoFase(), pub));
         req.setClienteId(processo.getCliente().getId());
         req.setProcessoId(processo.getId());
         req.setPublicacaoId(pub.getId());
@@ -278,9 +285,27 @@ public class TratarPublicacaoService {
         return atual == null || nova.isBefore(atual);
     }
 
-    private static String resolverDescricaoAndamento(String observacaoFase, PublicacaoEntity pub) {
+    private Optional<UsuarioEntity> resolverUsuarioAtual() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || !StringUtils.hasText(auth.getName())) {
+            return Optional.empty();
+        }
+        return usuarioRepository.findWithPerfilByLoginIgnoreCase(auth.getName().trim());
+    }
+
+    private static String resolverDescricaoAndamento(
+            TratarPublicacaoTipo tipo, String observacaoFase, PublicacaoEntity pub) {
         if (StringUtils.hasText(observacaoFase)) {
             return observacaoFase.trim();
+        }
+        if (tipo == TratarPublicacaoTipo.INFORMATIVO) {
+            if (StringUtils.hasText(pub.getResumo())) {
+                return pub.getResumo().trim();
+            }
+            if (StringUtils.hasText(pub.getTitulo())) {
+                return pub.getTitulo().trim();
+            }
+            return "Tratamento de publicação";
         }
         if (StringUtils.hasText(pub.getResumo())) {
             return pub.getResumo().trim();

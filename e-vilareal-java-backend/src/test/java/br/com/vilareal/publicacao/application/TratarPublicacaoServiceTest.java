@@ -25,6 +25,7 @@ import br.com.vilareal.tarefa.api.dto.TarefaOperacionalResponse;
 import br.com.vilareal.tarefa.api.dto.TarefaOperacionalWriteRequest;
 import br.com.vilareal.tarefa.application.TarefaOperacionalApplicationService;
 import br.com.vilareal.usuario.infrastructure.persistence.entity.UsuarioEntity;
+import br.com.vilareal.usuario.infrastructure.persistence.repository.UsuarioRepository;
 import br.com.vilareal.usuario.model.TipoUsuario;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,8 +36,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -81,11 +85,14 @@ class TratarPublicacaoServiceTest {
     private JuliaCaixaApplicationService juliaCaixaApplicationService;
     @Mock
     private TarefaOperacionalApplicationService tarefaOperacionalApplicationService;
+    @Mock
+    private UsuarioRepository usuarioRepository;
 
     private TratarPublicacaoService service;
     private ProcessoEntity processo;
     private PublicacaoEntity publicacao;
     private UsuarioEntity responsavel;
+    private UsuarioEntity usuarioAtual;
 
     @BeforeEach
     void setUp() {
@@ -100,7 +107,17 @@ class TratarPublicacaoServiceTest {
                 juliaTriagemRepository,
                 juliaCaixaApplicationService,
                 tarefaOperacionalApplicationService,
+                usuarioRepository,
                 new ObjectMapper());
+
+        usuarioAtual = new UsuarioEntity();
+        usuarioAtual.setId(99L);
+        usuarioAtual.setLogin("itamar");
+        usuarioAtual.setTipo(TipoUsuario.HUMANO);
+        usuarioAtual.setAtivo(true);
+        SecurityContextHolder.getContext()
+                .setAuthentication(new UsernamePasswordAuthenticationToken("itamar", "x", List.of()));
+        when(usuarioRepository.findWithPerfilByLoginIgnoreCase("itamar")).thenReturn(Optional.of(usuarioAtual));
 
         ClienteEntity cliente = new ClienteEntity();
         cliente.setId(CLIENTE_ID);
@@ -196,6 +213,7 @@ class TratarPublicacaoServiceTest {
         assertThat(andamentoCap.getValue().getOrigem()).isEqualTo(TratarPublicacaoService.ORIGEM_ANDAMENTO);
         assertThat(andamentoCap.getValue().getOrigemAutomatica()).isFalse();
         assertThat(andamentoCap.getValue().getTitulo()).isEqualTo("Apenas informativo.");
+        assertThat(andamentoCap.getValue().getUsuarioId()).isEqualTo(99L);
 
         verify(juliaCaixaApplicationService)
                 .atualizarCaixa(eq(TRIAGEM_ID), eq(new JuliaCaixaPatchRequest("CONCLUIDO", null, null)));

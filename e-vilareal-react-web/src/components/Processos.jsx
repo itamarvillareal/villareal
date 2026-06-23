@@ -706,6 +706,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const processoApiIdRef = useRef(null);
   /** Geração de carregamento do histórico (evita «loading=false» no meio de outro GET). */
   const historicoApiCargaSeqRef = useRef(0);
+  const carregarHistoricoApiRef = useRef(async () => {});
+  const carregarProcessoApiAtualRef = useRef(async () => {});
   const [historicoApiCarregando, setHistoricoApiCarregando] = useState(false);
   const [publicacoesRelatorioItens, setPublicacoesRelatorioItens] = useState([]);
   const [publicacoesRelatorioMeta, setPublicacoesRelatorioMeta] = useState(null);
@@ -768,7 +770,12 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     const h = (ev) => {
       setPublicacoesRelatorioTick((t) => t + 1);
       if (featureFlags.useApiProcessos && ev?.detail?.recarregarProcesso) {
-        void carregarProcessoApiAtual();
+        historicoCarregadoParaProcessoRef.current = null;
+        const pid = processoApiIdRef.current;
+        if (pid) {
+          void carregarHistoricoApiRef.current(pid, carregarProcessoApiSeqRef.current);
+        }
+        void carregarProcessoApiAtualRef.current();
       }
     };
     window.addEventListener('vilareal:publicacoes-processo-relatorio-atualizado', h);
@@ -2650,6 +2657,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       }
     }
   }
+  carregarHistoricoApiRef.current = carregarHistoricoApi;
 
   async function carregarProcessoApiAtual() {
     if (!featureFlags.useApiProcessos) return;
@@ -2762,6 +2770,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       setApiError(e?.message || 'Falha ao carregar processo da API.');
     }
   }
+  carregarProcessoApiAtualRef.current = carregarProcessoApiAtual;
 
   async function sincronizarApiProcessoAtual(
     overrides = {},
