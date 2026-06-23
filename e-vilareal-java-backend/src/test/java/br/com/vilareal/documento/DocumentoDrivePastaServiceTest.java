@@ -21,6 +21,14 @@ class DocumentoDrivePastaServiceTest {
     }
 
     @Test
+    void formatarNomePastaImovel_usaNumeroPlanilhaEUnidade() {
+        assertThat(DocumentoDrivePastaService.formatarNomePastaImovel(43, "Unidade 1101 C", "Veredas do Bosque"))
+                .isEqualTo("43 - Unidade 1101 C");
+        assertThat(DocumentoDrivePastaService.formatarNomePastaImovel(2, null, "Avenida Parque"))
+                .isEqualTo("2 - Avenida Parque");
+    }
+
+    @Test
     void formatarNomePastaParteOposta_normalizaNome() {
         assertThat(DocumentoDrivePastaService.formatarNomePastaParteOposta("BEATRIZ MEDEIROS CINTRA"))
                 .isEqualTo("Beatriz Medeiros Cintra");

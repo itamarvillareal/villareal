@@ -96,7 +96,7 @@ export const processosBtnGhost =
   'inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 border border-gray-200 bg-white hover:bg-gray-50 transition-colors duration-150';
 
 const processosToolbarBtnBase =
-  'inline-flex w-full shrink-0 items-center justify-center gap-1.5 whitespace-nowrap px-3 py-2 rounded-xl text-sm font-semibold text-white shadow-md ring-1 ring-white/15 transition-all duration-150 disabled:opacity-50 disabled:pointer-events-none';
+  'inline-flex shrink-0 items-center justify-center gap-1 whitespace-nowrap px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white shadow-sm ring-1 ring-white/10 transition-all duration-150 disabled:opacity-50 disabled:pointer-events-none';
 
 /** Barra de ações do processo — botões sólidos com gradiente (modelo portal). */
 export const processosBtnToolbarPurple =
@@ -130,7 +130,10 @@ export const processosBtnToolbarRed =
   `${processosToolbarBtnBase} bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-400 hover:to-rose-500 shadow-red-500/25`;
 
 export const processosBtnToolbarRedacao =
-  `${processosToolbarBtnBase} bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 shadow-red-500/25`;
+  `${processosToolbarBtnBase} bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 shadow-red-500/20 px-2`;
+
+export const processosBtnToolbarPrimary =
+  `${processosToolbarBtnBase} bg-gradient-to-r from-emerald-700 to-green-800 hover:from-emerald-600 hover:to-green-700 shadow-emerald-500/25`;
 
 export const processosLinkClass =
   'text-sm font-medium text-teal-600 hover:text-teal-800 hover:underline bg-transparent border-0 p-0 cursor-pointer';
@@ -284,7 +287,7 @@ export function ProcessosToast({ message, variant = 'success', onClose }) {
 /** @param {{ cards: { variant: keyof typeof SUMMARY_VARIANTS, label: string, value: string, muted?: boolean, alert?: boolean, extra?: import('react').ReactNode, Icon: import('react').ComponentType<{ className?: string }> }[] }} props */
 export function ProcessosSummaryCards({ cards }) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
       {cards.map((c) => {
         const base = SUMMARY_VARIANTS[c.variant] ?? SUMMARY_VARIANTS.prazo;
         const Icon = c.Icon;
@@ -422,7 +425,13 @@ export function ProcessosStickyHeader({
       : 'Expandir banner'
     : bannerExpandido
       ? 'Recolher ações'
-      : 'Expandir ações';
+      : 'Mostrar ações';
+
+  const barraAcoes = temAcoes ? (
+    <div id="processos-acoes-toolbar" className="flex flex-wrap gap-1.5">
+      {actions}
+    </div>
+  ) : null;
 
   const badgesStatus = (
     <>
@@ -448,7 +457,7 @@ export function ProcessosStickyHeader({
     <div
       ref={headerRef}
       className={`sticky top-0 z-20 -mx-3 sm:-mx-4 px-3 sm:px-4 border-b border-indigo-200/60 backdrop-blur-md transition-shadow duration-300 ${
-        bannerCompactoMobile ? 'py-2 mb-2' : 'py-4 mb-5'
+        bannerCompactoMobile ? 'py-2 mb-2' : 'py-2.5 mb-3'
       } ${scrolled ? 'shadow-lg' : 'shadow-sm'} bg-gradient-to-br from-indigo-50 via-slate-50 to-slate-100`}
     >
       {bannerCompactoMobile ? (
@@ -494,90 +503,74 @@ export function ProcessosStickyHeader({
         </div>
       ) : (
         <>
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0 flex-1 space-y-1">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-indigo-600/90">Número CNJ</p>
-              <p
-                className={`font-mono font-bold text-indigo-900 break-all leading-tight ${
-                  isMobile ? 'text-lg' : 'text-2xl'
-                }`}
-                title={cnj !== '—' ? cnj : undefined}
-              >
-                {cnj}
-              </p>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 min-w-0">
+          <div className="flex items-start justify-between gap-2 sm:gap-3">
+            <div className="min-w-0 flex-1 space-y-0.5">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-indigo-600/90 shrink-0">
+                  CNJ
+                </span>
                 <p
-                  className={`min-w-0 text-slate-600 truncate ${isMobile ? 'text-base' : 'text-lg'}`}
-                  title={cliente || undefined}
+                  className={`font-mono font-bold text-indigo-900 break-all leading-tight ${
+                    isMobile ? 'text-base' : 'text-lg'
+                  }`}
+                  title={cnj !== '—' ? cnj : undefined}
                 >
-                  {cliente || '—'}
+                  {cnj}
                 </p>
-                {onEdicaoDesabilitadaChange ? (
-                  <div className="flex shrink-0 flex-col items-start gap-1">
-                    <span className="text-xs font-medium text-slate-500">Edição</span>
-                    <ChaveEdicaoOnOff
-                      edicaoHabilitada={!edicaoDesabilitada}
-                      onChange={(habilitada) => onEdicaoDesabilitadaChange(!habilitada)}
-                    />
-                    <span className="text-[11px] text-slate-400">
-                      {edicaoDesabilitada ? 'Somente leitura' : 'Campos liberados'}
-                    </span>
-                  </div>
-                ) : null}
               </div>
+              <p
+                className={`min-w-0 text-slate-600 truncate ${isMobile ? 'text-sm' : 'text-base'}`}
+                title={cliente || undefined}
+              >
+                {cliente || '—'}
+              </p>
             </div>
-            <div className="flex flex-wrap items-center gap-2 shrink-0 self-start">{badgesStatus}</div>
-          </div>
-          {temAcoes ? (
-            <div className="mt-3 flex flex-col gap-2 border-t border-indigo-200/40 pt-3">
-              <div className="flex items-center justify-between gap-2">
-                <button
-                  type="button"
-                  onClick={toggleBanner}
-                  className={`inline-flex items-center gap-1.5 rounded-lg border border-indigo-200/80 bg-white/80 font-medium text-indigo-900 shadow-sm transition-colors hover:bg-white ${
-                    isMobile ? 'min-h-11 flex-1 justify-center px-4 py-2.5 text-sm' : 'px-3 py-2 text-sm'
-                  }`}
-                  aria-expanded={bannerExpandido}
-                  aria-controls="processos-acoes-toolbar"
-                >
-                  {bannerExpandido ? (
-                    <ChevronUp className="h-4 w-4 shrink-0" aria-hidden />
-                  ) : (
-                    <ChevronDown className="h-4 w-4 shrink-0" aria-hidden />
-                  )}
-                  {rotuloToggle}
-                </button>
-                <button
-                  type="button"
-                  onClick={onFechar}
-                  className={`shrink-0 rounded-xl border border-gray-200 bg-white text-gray-600 transition-colors hover:bg-gray-50 ${
-                    isMobile ? 'flex min-h-11 min-w-11 items-center justify-center p-2.5' : 'p-2.5'
-                  }`}
-                  aria-label="Fechar"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              {bannerExpandido ? (
-                <div id="processos-acoes-toolbar" className="min-w-0 flex-1">
-                  <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-                    {actions}
-                  </div>
-                </div>
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 sm:gap-2">
+              {badgesStatus}
+              {onEdicaoDesabilitadaChange ? (
+                <ChaveEdicaoOnOff
+                  edicaoHabilitada={!edicaoDesabilitada}
+                  onChange={(habilitada) => onEdicaoDesabilitadaChange(!habilitada)}
+                  className="scale-[0.82] origin-right sm:scale-90"
+                />
               ) : null}
-            </div>
-          ) : (
-            <div className="mt-3 flex justify-end border-t border-indigo-200/40 pt-3">
               <button
                 type="button"
                 onClick={onFechar}
-                className="shrink-0 rounded-xl border border-gray-200 bg-white p-2.5 text-gray-600 transition-colors hover:bg-gray-50"
+                className="shrink-0 rounded-lg border border-gray-200 bg-white p-1.5 text-gray-600 transition-colors hover:bg-gray-50 sm:p-2"
                 aria-label="Fechar"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4 sm:w-[18px] sm:h-[18px]" />
               </button>
             </div>
-          )}
+          </div>
+          {temAcoes ? (
+            <div className="mt-2 border-t border-indigo-200/40 pt-2">
+              {isMobile ? (
+                <>
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={toggleBanner}
+                      className="inline-flex min-h-9 flex-1 items-center justify-center gap-1 rounded-lg border border-indigo-200/80 bg-white/80 px-3 py-1.5 text-xs font-medium text-indigo-900 shadow-sm transition-colors hover:bg-white"
+                      aria-expanded={bannerExpandido}
+                      aria-controls="processos-acoes-toolbar"
+                    >
+                      {bannerExpandido ? (
+                        <ChevronUp className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      ) : (
+                        <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      )}
+                      {rotuloToggle}
+                    </button>
+                  </div>
+                  {bannerExpandido ? barraAcoes : null}
+                </>
+              ) : (
+                barraAcoes
+              )}
+            </div>
+          ) : null}
         </>
       )}
     </div>

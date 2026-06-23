@@ -38,18 +38,35 @@ class NotificacaoMovimentacaoEmailRendererTest {
         m.setLegenda("Juntada de petição");
         m.setDataMovimentacao(LocalDateTime.of(2026, 6, 4, 15, 30));
 
-        String html = renderer.renderCorpoHtml("5059346-36.2026.8.09.0007", "Maria", List.of(m));
+        String html = renderer.renderCorpoHtml(
+                "5059346-36.2026.8.09.0007", "Maria", "Digittos Ltda", "Condomínio Torres", List.of(m));
 
         assertThat(html).contains("5059346-36.2026.8.09.0007");
         assertThat(html).contains("Maria");
+        assertThat(html).contains("Digittos Ltda");
+        assertThat(html).contains("Condomínio Torres");
+        assertThat(html).contains("Parte autora");
+        assertThat(html).contains("Parte ré");
         assertThat(html).contains("Juntada de petição");
         assertThat(html).contains("04/06/2026 15:30");
         assertThat(html).contains("PROJUDI");
     }
 
     @Test
-    void montarAssunto_formatoEsperado() {
-        assertThat(renderer.montarAssunto("CNJ-1", "Cliente X"))
+    void montarAssunto_usaAutorEReuQuandoDisponiveis() {
+        assertThat(renderer.montarAssunto("CNJ-1", "Cliente X", "Autor A", "Ré B"))
+                .isEqualTo("[Monitor] Nova movimentação — CNJ-1 (Autor A × Ré B)");
+    }
+
+    @Test
+    void montarAssunto_caiParaClienteSemPartes() {
+        assertThat(renderer.montarAssunto("CNJ-1", "Cliente X", "", ""))
+                .isEqualTo("[Monitor] Nova movimentação — CNJ-1 (Cliente X)");
+    }
+
+    @Test
+    void montarAssunto_formatoEsperadoLegado() {
+        assertThat(renderer.montarAssunto("CNJ-1", "Cliente X", null, null))
                 .isEqualTo("[Monitor] Nova movimentação — CNJ-1 (Cliente X)");
     }
 }

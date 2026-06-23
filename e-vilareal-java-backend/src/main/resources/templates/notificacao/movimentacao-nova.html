@@ -21,6 +21,8 @@
   <div class="meta">
     <p><strong>Processo (CNJ):</strong> <span th:text="${numeroCnj}">—</span></p>
     <p><strong>Cliente:</strong> <span th:text="${nomeCliente}">—</span></p>
+    <p><strong>Parte autora:</strong> <span th:text="${parteAutora}">—</span></p>
+    <p><strong>Parte ré:</strong> <span th:text="${parteRe}">—</span></p>
     <p th:if="${quantidade == 1}"><strong>Total:</strong> 1 movimentação nova nesta consulta.</p>
     <p th:if="${quantidade != 1}"><strong>Total:</strong> <span th:text="${quantidade}">0</span> movimentações novas nesta consulta.</p>
   </div>

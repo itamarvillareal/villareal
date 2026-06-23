@@ -159,6 +159,9 @@ export function ImoveisCadastroView(props) {
     contaCorrenteDisabled,
     contaCorrenteTitle,
     onGerenciarIptu,
+    onCatalogo,
+    catalogoDisabled,
+    catalogoTitle,
     onRelatorio,
     onFechar,
     onAbrirIptu,
@@ -287,6 +290,12 @@ export function ImoveisCadastroView(props) {
   }
 
   const showGerenciarIptu = featureFlags.useApiImoveis && FEATURE_IPTU_NOVO && Number(_apiImovelId) > 0;
+  const showCatalogo = featureFlags.useApiImoveis;
+  const catalogoDisabled =
+    !(Number(_apiImovelId) > 0) && !(Number.isFinite(Number(imovelId)) && Number(imovelId) >= 1);
+  const catalogoTitle = catalogoDisabled
+    ? 'Informe um imóvel válido ou salve o cadastro na API'
+    : 'Abrir pasta do imóvel no Google Drive';
 
   return (
     <>
@@ -312,6 +321,10 @@ export function ImoveisCadastroView(props) {
           contaCorrenteTitle={contaCorrenteTitle}
           onGerenciarIptu={onGerenciarIptu}
           showGerenciarIptu={showGerenciarIptu}
+          onCatalogo={onCatalogo}
+          showCatalogo={showCatalogo}
+          catalogoDisabled={catalogoDisabled}
+          catalogoTitle={catalogoTitle}
           onRelatorio={onRelatorio}
           showRelatorio={featureFlags.useApiImoveis}
           onFechar={onFechar}

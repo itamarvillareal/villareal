@@ -23,6 +23,7 @@ import {
 import { buscarCliente } from '../api/clientesService.js';
 import { featureFlags, FEATURE_IPTU_NOVO } from '../config/featureFlags.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
+import { obterLinkPastaImovel } from '../repositories/driveRepository.js';
 import { Field } from './ui/Field.jsx';
 import { imovelCorrespondeBusca } from './imoveis/imovelBusca.js';
 const inputClass = imoveisInputClass;
@@ -611,6 +612,27 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     setApiSuccess('Endereço copiado.');
   }
 
+  async function abrirCatalogoImovel() {
+    if (!featureFlags.useApiImoveis) return;
+    setApiError('');
+    setApiSuccess('');
+    try {
+      const idApi = _apiImovelId != null ? Number(_apiImovelId) : null;
+      const np = Number(imovelId);
+      const pasta = await obterLinkPastaImovel({
+        imovelId: Number.isFinite(idApi) && idApi >= 1 ? idApi : null,
+        numeroPlanilha: Number.isFinite(np) && np >= 1 ? np : null,
+      });
+      if (pasta?.webViewLink) {
+        window.open(pasta.webViewLink, '_blank', 'noopener,noreferrer');
+        return;
+      }
+      setApiError('Não foi possível abrir a pasta do imóvel no Drive.');
+    } catch (e) {
+      setApiError(e?.message || 'Falha ao abrir catálogo no Drive.');
+    }
+  }
+
   function onSelecionarImovelPesquisa(im) {
     const n = im.numeroPlanilha != null ? Number(im.numeroPlanilha) : Number(im.id);
     if (Number.isFinite(n) && n > 0) {
@@ -832,6 +854,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
             contaCorrenteDisabled={contaCorrenteDisabled}
             contaCorrenteTitle={contaCorrenteTitle}
             onGerenciarIptu={() => navigate(`/iptu/${_apiImovelId}`)}
+            onCatalogo={abrirCatalogoImovel}
             onRelatorio={() => navigate('/relatorio-imoveis')}
             onFechar={modoModal && onFecharModal ? onFecharModal : () => window.history.back()}
             onAbrirIptu={() => setShowModalIptu(true)}

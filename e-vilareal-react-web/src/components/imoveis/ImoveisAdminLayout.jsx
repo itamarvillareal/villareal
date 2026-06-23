@@ -11,6 +11,7 @@ import {
   ExternalLink,
   FileSpreadsheet,
   Flame,
+  FolderOpen,
   Home,
   KeyRound,
   Landmark,
@@ -285,6 +286,10 @@ export function AccordionSection({
  *   contaCorrenteTitle?: string,
  *   onGerenciarIptu?: () => void,
  *   showGerenciarIptu?: boolean,
+ *   onCatalogo?: () => void,
+ *   showCatalogo?: boolean,
+ *   catalogoDisabled?: boolean,
+ *   catalogoTitle?: string,
  *   onRelatorio?: () => void,
  *   showRelatorio?: boolean,
  *   onFechar: () => void,
@@ -304,6 +309,10 @@ export function ImoveisStickyHeader({
   contaCorrenteTitle,
   onGerenciarIptu,
   showGerenciarIptu,
+  onCatalogo,
+  showCatalogo,
+  catalogoDisabled,
+  catalogoTitle,
   onRelatorio,
   showRelatorio,
   onFechar,
@@ -367,6 +376,18 @@ export function ImoveisStickyHeader({
           {showGerenciarIptu && onGerenciarIptu ? (
             <button type="button" onClick={onGerenciarIptu} className={imoveisBtnSecondary}>
               Gerenciar IPTU
+            </button>
+          ) : null}
+          {showCatalogo && onCatalogo ? (
+            <button
+              type="button"
+              onClick={onCatalogo}
+              disabled={catalogoDisabled}
+              title={catalogoTitle}
+              className={imoveisBtnSecondary}
+            >
+              <FolderOpen className="w-4 h-4 shrink-0" aria-hidden />
+              Catálogo
             </button>
           ) : null}
           {showRelatorio && onRelatorio ? (

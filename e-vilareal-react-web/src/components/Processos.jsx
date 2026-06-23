@@ -136,6 +136,7 @@ import {
   processosBtnToolbarPurple,
   processosBtnToolbarRed,
   processosBtnToolbarRedacao,
+  processosBtnToolbarPrimary,
   processosBtnToolbarRose,
   processosBtnToolbarSky,
   processosBtnToolbarTeal,
@@ -2179,8 +2180,13 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     featureFlags.useApiProcessos &&
     (Number(processoApiId) > 0 || String(numeroProcessoNovo ?? '').trim() !== '');
 
+  const deveConsultarDrive =
+    featureFlags.useApiProcessos &&
+    (Number(processoApiId) > 0 ||
+      (String(codigoCliente ?? '').trim() !== '' && Number.isFinite(Number(processo))));
+
   useEffect(() => {
-    if (!podeGerarDocumento) {
+    if (!deveConsultarDrive) {
       setDriveConfigurado(false);
       return;
     }
@@ -2195,7 +2201,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     return () => {
       cancelado = true;
     };
-  }, [podeGerarDocumento]);
+  }, [deveConsultarDrive]);
 
   const handleGerarDocumento = useCallback(async () => {
     if (!podeGerarDocumento || gerandoDocNav) return;
@@ -3645,11 +3651,11 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                   }
                   className={processosBtnToolbarPurple}
                 >
-                  <Users className="w-4 h-4" aria-hidden />
+                  <Users className="w-3.5 h-3.5" aria-hidden />
                   Clientes
                 </button>
                 <button type="button" onClick={() => setModalRelatorioPublicacoes(true)} className={processosBtnToolbarTeal}>
-                  <Newspaper className="w-4 h-4" aria-hidden />
+                  <Newspaper className="w-3.5 h-3.5" aria-hidden />
                   Publicações
                 </button>
                 <button
@@ -3658,7 +3664,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                   onClick={() => setModalConsultaPeriodica(true)}
                   title="Agendamentos automáticos ao PROJUDI, monitor manual e destinatários de notificação"
                 >
-                  <CalendarClock className="w-4 h-4" aria-hidden />
+                  <CalendarClock className="w-3.5 h-3.5" aria-hidden />
                   Consulta periódica
                 </button>
                 <button
@@ -3670,124 +3676,142 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                   }}
                   title="Lançamentos do Financeiro com Cod. Cliente e Proc. iguais a este processo (qualquer classificação contábil no extrato)"
                 >
-                  <CircleDollarSign className="w-4 h-4" aria-hidden />
+                  <CircleDollarSign className="w-3.5 h-3.5" aria-hidden />
                   Conta Corrente
                 </button>
-                {processoApiId ? (
-                  <button
-                    type="button"
-                    className={processosBtnToolbarCyan}
-                    onClick={() =>
-                      navigate('/processos/recebiveis', {
-                        state: buildRouterStateChaveClienteProcesso(codigoCliente, processo, { processoApiId }),
-                      })
-                    }
-                    title="Parcelas de honorários e cobrança deste processo"
-                  >
-                    <Receipt className="w-4 h-4" aria-hidden />
-                    Recebíveis
-                  </button>
-                ) : null}
-                {podeGerarDocumento ? (
+                {featureFlags.useApiProcessos ? (
                   <>
                     <button
                       type="button"
-                      className={processosBtnToolbarOrange}
-                      disabled={gerandoDocNav || gerandoProcuracao || apiSaving}
-                      onClick={() => void handleGerarDocumento()}
-                      title="Gerar petição ou documento com dados deste processo"
+                      className={processosBtnToolbarSky}
+                      disabled={
+                        apiSaving ||
+                        buscandoMovimentacoes ||
+                        !driveConfigurado ||
+                        !Number(processoApiId) ||
+                        !String(numeroProcessoNovo ?? '').trim() ||
+                        tramitacaoBloqueiaObterMovimentacoes
+                      }
+                      onClick={() => void handleObterMovimentacoes()}
+                      title={
+                        !driveConfigurado
+                          ? 'Google Drive não configurado no servidor'
+                          : !Number(processoApiId)
+                            ? 'Processo ainda sem id na API — aguarde o carregamento ou salve o cadastro'
+                            : !String(numeroProcessoNovo ?? '').trim()
+                              ? 'Preencha o Nº Processo Novo (CNJ) para consultar movimentações'
+                              : tramitacaoBloqueiaObterMovimentacoes
+                                ? 'Processo em autos físicos — sem consulta automática.'
+                                : obterMovimentacoesViaPje
+                                  ? pjeAutomacaoTrt18
+                                    ? 'Dispara cópia integral PJe TRT18 (assíncrono) — acompanhe o badge No Drive'
+                                    : `PJe (${rotuloPjeTribunal(pjeTribunalNorm)}) — automação indisponível; registro salvo no cadastro`
+                                  : !tramitacaoNorm
+                                    ? 'Defina a tramitação dos autos para consultar movimentações'
+                                    : 'Consulta o PROJUDI agora (mesmo com acervo integral no pipeline automático; pode não trazer arquivos novos)'
+                      }
                     >
-                      <FileText className="w-4 h-4" aria-hidden />
+                      <CloudDownload className="w-3.5 h-3.5" aria-hidden />
+                      {buscandoMovimentacoes
+                        ? obterMovimentacoesViaPje
+                          ? 'Iniciando PJe…'
+                          : 'Consultando PROJUDI…'
+                        : 'Obter movimentações'}
+                    </button>
+                    <button
+                      type="button"
+                      className={processosBtnToolbarRose}
+                      disabled={apiSaving || !driveConfigurado || !Number(processoApiId)}
+                      onClick={() => setDriveExplorerAberto(true)}
+                      title={
+                        !driveConfigurado
+                          ? 'Google Drive não configurado no servidor'
+                          : !Number(processoApiId)
+                            ? 'Processo ainda sem id na API'
+                            : 'Arquivos do processo no Google Drive'
+                      }
+                    >
+                      <FolderOpen className="w-3.5 h-3.5" aria-hidden />
+                      Arquivos
+                    </button>
+                    <button
+                      type="button"
+                      className={processosBtnToolbarCyan}
+                      disabled={!Number(processoApiId)}
+                      onClick={() =>
+                        navigate('/processos/recebiveis', {
+                          state: buildRouterStateChaveClienteProcesso(codigoCliente, processo, { processoApiId }),
+                        })
+                      }
+                      title={
+                        Number(processoApiId)
+                          ? 'Parcelas de honorários e cobrança deste processo'
+                          : 'Disponível após o processo ter id na API'
+                      }
+                    >
+                      <Receipt className="w-3.5 h-3.5" aria-hidden />
+                      Recebíveis
+                    </button>
+                    <button
+                      type="button"
+                      className={processosBtnToolbarOrange}
+                      disabled={!podeGerarDocumento || gerandoDocNav || gerandoProcuracao || apiSaving}
+                      onClick={() => void handleGerarDocumento()}
+                      title={
+                        podeGerarDocumento
+                          ? 'Gerar petição ou documento com dados deste processo'
+                          : 'Informe o CNJ ou salve o processo na API'
+                      }
+                    >
+                      <FileText className="w-3.5 h-3.5" aria-hidden />
                       {gerandoDocNav ? 'Preparando…' : 'Gerar Documento'}
                     </button>
                     <button
                       type="button"
                       className={processosBtnToolbarIndigo}
-                      disabled={gerandoProcuracao || gerandoDocNav || apiSaving}
+                      disabled={!podeGerarDocumento || gerandoProcuracao || gerandoDocNav || apiSaving}
                       onClick={() => void handleGerarProcuracao()}
-                      title="Gerar procuração Ad Judicia da parte cliente"
+                      title={
+                        podeGerarDocumento
+                          ? 'Gerar procuração Ad Judicia da parte cliente'
+                          : 'Informe o CNJ ou salve o processo na API'
+                      }
                     >
-                      <FileSignature className="w-4 h-4" aria-hidden />
+                      <FileSignature className="w-3.5 h-3.5" aria-hidden />
                       {gerandoProcuracao ? 'Gerando…' : 'Procuração'}
                     </button>
-                    {driveConfigurado ? (
-                      <>
-                        <button
-                          type="button"
-                          className={processosBtnToolbarSky}
-                          disabled={
-                            apiSaving ||
-                            buscandoMovimentacoes ||
-                            !processoApiId ||
-                            !String(numeroProcessoNovo ?? '').trim() ||
-                            tramitacaoBloqueiaObterMovimentacoes
-                          }
-                          onClick={() => void handleObterMovimentacoes()}
-                          title={
-                            tramitacaoBloqueiaObterMovimentacoes
-                              ? 'Processo em autos físicos — sem consulta automática.'
-                              : obterMovimentacoesViaPje
-                                ? pjeAutomacaoTrt18
-                                  ? 'Dispara cópia integral PJe TRT18 (assíncrono) — acompanhe o badge No Drive'
-                                  : `PJe (${rotuloPjeTribunal(pjeTribunalNorm)}) — automação indisponível; registro salvo no cadastro`
-                                : !tramitacaoNorm
-                                  ? 'Defina a tramitação dos autos para consultar movimentações'
-                                  : 'Consulta o PROJUDI agora (mesmo com acervo integral no pipeline automático; pode não trazer arquivos novos)'
-                          }
-                        >
-                          <CloudDownload className="w-4 h-4" aria-hidden />
-                          {buscandoMovimentacoes
-                            ? obterMovimentacoesViaPje
-                              ? 'Iniciando PJe…'
-                              : 'Consultando PROJUDI…'
-                            : 'Obter movimentações'}
-                        </button>
-                        <button
-                          type="button"
-                          className={processosBtnToolbarRose}
-                          disabled={apiSaving}
-                          onClick={() => setDriveExplorerAberto(true)}
-                          title="Arquivos do processo no Google Drive"
-                        >
-                          <FolderOpen className="w-4 h-4" aria-hidden />
-                          Arquivos
-                        </button>
-                      </>
-                    ) : null}
+                    <button
+                      type="button"
+                      className={processosBtnToolbarCyan}
+                      disabled={
+                        !podeGerarDocumento ||
+                        !driveConfigurado ||
+                        apiSaving ||
+                        baixandoAutosIntegral ||
+                        !String(numeroProcessoNovo ?? '').trim()
+                      }
+                      onClick={() => void handleBaixarAutosIntegral()}
+                      title="Baixa PDF único juntando os documentos da pasta Movimentações no Drive"
+                    >
+                      <Download className="w-3.5 h-3.5" aria-hidden />
+                      {baixandoAutosIntegral ? 'Gerando PDF…' : 'Baixar processo integral'}
+                    </button>
+                    <button
+                      type="button"
+                      className={processosBtnToolbarRed}
+                      disabled={apiSaving || !podeGerarDocumento}
+                      onClick={() => setModalPeticionamentoProjudi(true)}
+                      title={
+                        String(numeroProcessoNovo ?? '').trim()
+                          ? 'Petições registradas para protocolo no PROJUDI (deste processo)'
+                          : 'Preencha o Nº Processo Novo (CNJ) para peticionar no PROJUDI'
+                      }
+                    >
+                      <Send className="w-3.5 h-3.5" aria-hidden />
+                      Peticionamento PROJUDI
+                    </button>
                   </>
                 ) : null}
-              {podeGerarDocumento && driveConfigurado ? (
-                <button
-                  type="button"
-                  className={processosBtnToolbarCyan}
-                  disabled={
-                    apiSaving ||
-                    baixandoAutosIntegral ||
-                    !String(numeroProcessoNovo ?? '').trim()
-                  }
-                  onClick={() => void handleBaixarAutosIntegral()}
-                  title="Baixa PDF único juntando os documentos da pasta Movimentações no Drive"
-                >
-                  <Download className="w-4 h-4" aria-hidden />
-                  {baixandoAutosIntegral ? 'Gerando PDF…' : 'Baixar processo integral'}
-                </button>
-              ) : null}
-              {podeGerarDocumento ? (
-                <button
-                  type="button"
-                  className={processosBtnToolbarRed}
-                  disabled={apiSaving}
-                  onClick={() => setModalPeticionamentoProjudi(true)}
-                  title={
-                    String(numeroProcessoNovo ?? '').trim()
-                      ? 'Petições registradas para protocolo no PROJUDI (deste processo)'
-                      : 'Preencha o Nº Processo Novo (número CNJ) para peticionar no PROJUDI'
-                  }
-                >
-                  <Send className="w-4 h-4" aria-hidden />
-                  Peticionamento PROJUDI
-                </button>
-              ) : null}
               <button
                 type="button"
                 onClick={() => {
@@ -3801,8 +3825,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                 <IconMaoEscrevendo />
               </button>
               {featureFlags.useApiTarefas ? (
-                <button type="button" onClick={abrirModalTarefaDoProcesso} className={processosBtnPrimary}>
-                  <ListTodo className="w-4 h-4" aria-hidden />
+                <button type="button" onClick={abrirModalTarefaDoProcesso} className={processosBtnToolbarPrimary}>
+                  <ListTodo className="w-3.5 h-3.5" aria-hidden />
                   Criar tarefa
                 </button>
               ) : null}

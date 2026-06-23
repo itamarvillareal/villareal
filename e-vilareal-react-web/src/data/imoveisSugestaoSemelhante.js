@@ -6,6 +6,7 @@ import {
   PAPEL_OUTRO,
   PAPEL_REPASSE,
 } from './imoveisAdministracaoFinanceiro.js';
+import { competenciaValida } from './imoveisReconciliacao.js';
 
 /** Chave estável para agrupar lançamentos com o mesmo valor (centavos, com sinal). */
 export function chaveValorSemelhante(valor) {
@@ -235,4 +236,49 @@ export function propagarSugestoesPorValorSemelhante({
 export function aplicarSugestoesSemelhantes(ctx) {
   const padroes = coletarPadroesClassificadosPorValor(ctx);
   return propagarSugestoesPorValorSemelhante({ ...ctx, padroes });
+}
+
+export function ehSugestaoAluguel(t, vinculosPorLancamento) {
+  const id = Number(t?.apiId);
+  if (Number.isFinite(id) && vinculosPorLancamento?.get?.(id)?.papel === 'ALUGUEL') return false;
+  return t?.classificacao?.papel === PAPEL_ALUGUEL && Number(t?.valor) > 0;
+}
+
+export function ehSugestaoRepasse(t, vinculosPorLancamento) {
+  const id = Number(t?.apiId);
+  if (Number.isFinite(id) && vinculosPorLancamento?.get?.(id)?.papel === 'REPASSE') return false;
+  return t?.classificacao?.papel === PAPEL_REPASSE && Number(t?.valor) < 0;
+}
+
+/** Lançamentos com sugestão automática (aluguel/repasse) prontos para vincular em lote. */
+export function coletarVinculosSugestaoPendentes({
+  transacoes = [],
+  vinculosPorLancamento,
+  refPorLancamento = {},
+  resolverRefMes,
+}) {
+  const itens = [];
+  let semMesValido = 0;
+
+  for (const t of transacoes) {
+    const id = Number(t?.apiId);
+    if (!Number.isFinite(id) || vinculosPorLancamento?.get?.(id)) continue;
+
+    let papel = null;
+    if (ehSugestaoRepasse(t, vinculosPorLancamento)) papel = 'REPASSE';
+    else if (ehSugestaoAluguel(t, vinculosPorLancamento)) papel = 'ALUGUEL';
+    if (!papel) continue;
+
+    const refMes =
+      refPorLancamento[id] ??
+      (typeof resolverRefMes === 'function' ? resolverRefMes(t, vinculosPorLancamento) : '') ??
+      '';
+    if (!competenciaValida(refMes)) {
+      semMesValido += 1;
+      continue;
+    }
+    itens.push({ lancamentoFinanceiroId: id, papel, competenciaMes: refMes });
+  }
+
+  return { itens, semMesValido };
 }

@@ -5,7 +5,10 @@ import br.com.vilareal.notificacao.api.dto.DestinatariosCanaisDto;
 import br.com.vilareal.notificacao.api.dto.NotificacaoResultado;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
+import br.com.vilareal.processo.application.ProcessoPartesVinculoTextoResolver;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
+import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoParteEntity;
+import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoParteRepository;
 import br.com.vilareal.whatsapp.service.WhatsAppSchedulerService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,16 +31,19 @@ public class NotificacaoMovimentacaoService {
     private final WhatsAppSchedulerService whatsAppSchedulerService;
     private final NotificacaoMovimentacaoEmailRenderer emailRenderer;
     private final NotificacaoEmailService notificacaoEmailService;
+    private final ProcessoParteRepository processoParteRepository;
 
     public NotificacaoMovimentacaoService(
             NotificacaoDestinatarioService notificacaoDestinatarioService,
             WhatsAppSchedulerService whatsAppSchedulerService,
             NotificacaoMovimentacaoEmailRenderer emailRenderer,
-            NotificacaoEmailService notificacaoEmailService) {
+            NotificacaoEmailService notificacaoEmailService,
+            ProcessoParteRepository processoParteRepository) {
         this.notificacaoDestinatarioService = notificacaoDestinatarioService;
         this.whatsAppSchedulerService = whatsAppSchedulerService;
         this.emailRenderer = emailRenderer;
         this.notificacaoEmailService = notificacaoEmailService;
+        this.processoParteRepository = processoParteRepository;
     }
 
     /**
@@ -54,12 +60,16 @@ public class NotificacaoMovimentacaoService {
             Long clienteId = processo.getCliente() != null ? processo.getCliente().getId() : null;
             String numeroCnj = StringUtils.hasText(processo.getNumeroCnj()) ? processo.getNumeroCnj().trim() : "—";
             String nomeCliente = resolverNomeCliente(processo);
+            List<ProcessoParteEntity> partes =
+                    processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(processoId);
+            String parteAutora = ProcessoPartesVinculoTextoResolver.parteAutora(processo, partes);
+            String parteRe = ProcessoPartesVinculoTextoResolver.parteRe(processo, partes);
             String resumo = NotificacaoMovimentacaoResumoBuilder.montarResumo(novas);
             String descricao = "Monitor PROJUDI — " + numeroCnj;
             List<MovimentacaoMonitoradaEntity> copiaNovas = List.copyOf(novas);
 
-            NotificacaoResultado resultadoEmail =
-                    enviarEmailNovidade(processoId, numeroCnj, nomeCliente, copiaNovas);
+            NotificacaoResultado resultadoEmail = enviarEmailNovidade(
+                    processoId, numeroCnj, nomeCliente, parteAutora, parteRe, copiaNovas);
 
             Thread.startVirtualThread(() -> {
                 try {
@@ -86,6 +96,8 @@ public class NotificacaoMovimentacaoService {
             Long processoId,
             String numeroCnj,
             String nomeCliente,
+            String parteAutora,
+            String parteRe,
             List<MovimentacaoMonitoradaEntity> novas) {
         DestinatariosCanaisDto destinatarios = notificacaoDestinatarioService.resolver(processoId);
         List<String> emails = destinatarios.email();
@@ -96,8 +108,9 @@ public class NotificacaoMovimentacaoService {
 
         String destinatariosCsv = emails.stream().collect(Collectors.joining(", "));
         try {
-            String assunto = emailRenderer.montarAssunto(numeroCnj, nomeCliente);
-            String corpoHtml = emailRenderer.renderCorpoHtml(numeroCnj, nomeCliente, novas);
+            String assunto = emailRenderer.montarAssunto(numeroCnj, nomeCliente, parteAutora, parteRe);
+            String corpoHtml =
+                    emailRenderer.renderCorpoHtml(numeroCnj, nomeCliente, parteAutora, parteRe, novas);
             notificacaoEmailService.enviar(emails, assunto, corpoHtml);
             return NotificacaoResultado.enviado(destinatariosCsv);
         } catch (Exception e) {

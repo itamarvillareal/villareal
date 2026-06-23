@@ -10,7 +10,7 @@ import {
   PAPEL_REPASSE,
   rotuloPapelAdministracao,
 } from '../../data/imoveisAdministracaoFinanceiro.js';
-import { aplicarSugestoesSemelhantes } from '../../data/imoveisSugestaoSemelhante.js';
+import { aplicarSugestoesSemelhantes, coletarVinculosSugestaoPendentes } from '../../data/imoveisSugestaoSemelhante.js';
 import { competenciaValida } from '../../data/imoveisReconciliacao.js';
 import {
   referenciaAluguelExtrato,
@@ -187,6 +187,7 @@ export function ImoveisContaCorrenteTrabalho({
   onConfirmarAluguel,
   onConfirmarRepasse,
   onConfirmarVinculoManual,
+  onAprovarTodasSugestoes,
   onMoverCompetencia,
   onDesvincular,
   onGerarRepasse,
@@ -198,6 +199,7 @@ export function ImoveisContaCorrenteTrabalho({
   const [descricaoOutrosPorLancamento, setDescricaoOutrosPorLancamento] = useState({});
   const [classificacaoExtra, setClassificacaoExtra] = useState({});
   const [msgSemelhantes, setMsgSemelhantes] = useState('');
+  const [msgAprovarSugestoes, setMsgAprovarSugestoes] = useState('');
   const [mostrarTodos, setMostrarTodos] = useState(true);
   const [busca, setBusca] = useState('');
 
@@ -215,6 +217,7 @@ export function ImoveisContaCorrenteTrabalho({
   useEffect(() => {
     setClassificacaoExtra({});
     setMsgSemelhantes('');
+    setMsgAprovarSugestoes('');
   }, [transacoes]);
 
   useEffect(() => {
@@ -222,6 +225,12 @@ export function ImoveisContaCorrenteTrabalho({
     const t = window.setTimeout(() => setMsgSemelhantes(''), 6000);
     return () => window.clearTimeout(t);
   }, [msgSemelhantes]);
+
+  useEffect(() => {
+    if (!msgAprovarSugestoes) return;
+    const t = window.setTimeout(() => setMsgAprovarSugestoes(''), 6000);
+    return () => window.clearTimeout(t);
+  }, [msgAprovarSugestoes]);
 
   function executarSugestoesSemelhantes() {
     const out = aplicarSugestoesSemelhantes({
@@ -315,6 +324,28 @@ export function ImoveisContaCorrenteTrabalho({
     }
     return n;
   }, [listaEfetiva, vinculosPorLancamento]);
+
+  const sugestoesPendentes = useMemo(() => {
+    return coletarVinculosSugestaoPendentes({
+      transacoes: visiveis,
+      vinculosPorLancamento,
+      refPorLancamento,
+      resolverRefMes: (t) =>
+        referenciaAluguelExtrato(t, vinculosPorLancamento, mesReferenciaLancamentoParaRelatorio)?.chave ||
+        mesDaDataBr(t?.data) ||
+        '',
+    });
+  }, [visiveis, vinculosPorLancamento, refPorLancamento]);
+
+  async function executarAprovarTodasSugestoes() {
+    if (!onAprovarTodasSugestoes || sugestoesPendentes.itens.length === 0) return;
+    if (sugestoesPendentes.semMesValido > 0) {
+      setMsgAprovarSugestoes(
+        `${sugestoesPendentes.semMesValido} sugest${sugestoesPendentes.semMesValido === 1 ? 'ão' : 'ões'} ignorada${sugestoesPendentes.semMesValido === 1 ? '' : 's'} por falta de ref. mês.`,
+      );
+    }
+    await onAprovarTodasSugestoes(sugestoesPendentes.itens);
+  }
 
   function celulaRefMes(t) {
     const id = t?.apiId != null ? Number(t.apiId) : NaN;
@@ -641,6 +672,24 @@ export function ImoveisContaCorrenteTrabalho({
             <RefreshCw className="w-3.5 h-3.5" aria-hidden />
             Sugerir semelhantes
           </button>
+          {onAprovarTodasSugestoes && contratoId ? (
+            <button
+              type="button"
+              disabled={salvando || sugestoesPendentes.itens.length === 0}
+              onClick={() => void executarAprovarTodasSugestoes()}
+              title="Vincula de uma vez todas as sugestões de aluguel e repasse visíveis na tabela"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 disabled:opacity-40"
+            >
+              {salvando ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
+              ) : (
+                <Check className="w-3.5 h-3.5" aria-hidden />
+              )}
+              {salvando
+                ? 'Vinculando…'
+                : `Aprovar sugestões${sugestoesPendentes.itens.length > 0 ? ` (${sugestoesPendentes.itens.length})` : ''}`}
+            </button>
+          ) : null}
           {filtroCompetencia ? (
             <>
               <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-indigo-100 text-indigo-900 text-[11px] font-medium">
@@ -670,8 +719,14 @@ export function ImoveisContaCorrenteTrabalho({
             {msgSemelhantes}
           </p>
         ) : null}
+        {msgAprovarSugestoes ? (
+          <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+            {msgAprovarSugestoes}
+          </p>
+        ) : null}
         <p className="text-[11px] text-slate-500">
-          Classifique um lançamento (ou vincule) e use <strong>Sugerir semelhantes</strong> para propagar ao mesmo valor.
+          Use <strong>Aprovar sugestões</strong> para vincular de uma vez os lançamentos com sugestão de aluguel/repasse.
+          Classifique um lançamento e use <strong>Sugerir semelhantes</strong> para propagar ao mesmo valor.
           Em <strong>Débito/Crédito (classificar)</strong>, escolha o tipo, informe a descrição em{' '}
           <strong>Outros</strong>, preencha <strong>Ref. mês</strong> e clique <strong>Vincular</strong>.
         </p>

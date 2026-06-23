@@ -12,6 +12,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ProcessoPartesVinculoTextoResolverTest {
 
     @Test
+    void parteAutoraRe_porPoloJuridico() {
+        ProcessoEntity processo = processoComPapel("REQUERIDO");
+        List<ProcessoParteEntity> partes = List.of(
+                parte("AUTOR", "DIGITTOS LTDA", null),
+                parte("REU", "CONDOMINIO RESIDENCIAL TORRES DO MIRANTE", null));
+
+        assertThat(ProcessoPartesVinculoTextoResolver.parteAutora(processo, partes)).isEqualTo("DIGITTOS LTDA");
+        assertThat(ProcessoPartesVinculoTextoResolver.parteRe(processo, partes))
+                .isEqualTo("CONDOMINIO RESIDENCIAL TORRES DO MIRANTE");
+    }
+
+    @Test
     void parteOposta_clienteRequeridoNoReu_retornaAutor() {
         ProcessoEntity processo = processoComPapel("REQUERIDO");
         List<ProcessoParteEntity> partes = List.of(

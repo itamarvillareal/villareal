@@ -3,6 +3,7 @@ import {
   aplicarSugestoesSemelhantes,
   chaveValorSemelhante,
   coletarPadroesClassificadosPorValor,
+  coletarVinculosSugestaoPendentes,
 } from './imoveisSugestaoSemelhante.js';
 import { PAPEL_ALUGUEL, PAPEL_DEBITO, PAPEL_REPASSE } from './imoveisAdministracaoFinanceiro.js';
 
@@ -53,5 +54,20 @@ describe('imoveisSugestaoSemelhante', () => {
     });
 
     expect(padroes.get('-1312.00')?.classificacao.papel).toBe(PAPEL_ALUGUEL);
+  });
+
+  it('coleta sugestões de aluguel e repasse com ref. mês', () => {
+    const transacoes = [
+      { apiId: 1, valor: 1654.76, classificacao: { papel: PAPEL_ALUGUEL } },
+      { apiId: 2, valor: -1350, classificacao: { papel: PAPEL_REPASSE } },
+      { apiId: 3, valor: -52.25, classificacao: { papel: PAPEL_DEBITO } },
+    ];
+    const out = coletarVinculosSugestaoPendentes({
+      transacoes,
+      vinculosPorLancamento: new Map(),
+      refPorLancamento: { 1: '2022-07', 2: '2022-07' },
+    });
+    expect(out.itens).toHaveLength(2);
+    expect(out.itens.map((i) => i.papel).sort()).toEqual(['ALUGUEL', 'REPASSE']);
   });
 });

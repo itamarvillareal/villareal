@@ -28,22 +28,45 @@ public class NotificacaoMovimentacaoEmailRenderer {
         this.properties = properties;
     }
 
-    public String montarAssunto(String numeroCnj, String nomeCliente) {
+    public String montarAssunto(String numeroCnj, String nomeCliente, String parteAutora, String parteRe) {
         String prefixo = properties.getAssuntoPrefixo() != null ? properties.getAssuntoPrefixo().trim() : "";
         String cnj = StringUtils.hasText(numeroCnj) ? numeroCnj.trim() : "—";
-        String cliente = StringUtils.hasText(nomeCliente) ? nomeCliente.trim() : "Cliente";
-        String titulo = prefixo + " Nova movimentação — " + cnj + " (" + cliente + ")";
+        String rotulo = montarRotuloProcesso(nomeCliente, parteAutora, parteRe);
+        String titulo = prefixo + " Nova movimentação — " + cnj + " (" + rotulo + ")";
         return titulo.strip();
     }
 
     public String renderCorpoHtml(
-            String numeroCnj, String nomeCliente, List<MovimentacaoMonitoradaEntity> novas) {
+            String numeroCnj,
+            String nomeCliente,
+            String parteAutora,
+            String parteRe,
+            List<MovimentacaoMonitoradaEntity> novas) {
         Context context = new Context(Locale.forLanguageTag("pt-BR"));
         context.setVariable("numeroCnj", StringUtils.hasText(numeroCnj) ? numeroCnj.trim() : "—");
         context.setVariable("nomeCliente", StringUtils.hasText(nomeCliente) ? nomeCliente.trim() : "Cliente");
+        context.setVariable("parteAutora", textoOuTraco(parteAutora));
+        context.setVariable("parteRe", textoOuTraco(parteRe));
         context.setVariable("movimentacoes", montarLinhas(novas));
         context.setVariable("quantidade", novas != null ? novas.size() : 0);
         return templateEngine.process(TEMPLATE, context);
+    }
+
+    static String montarRotuloProcesso(String nomeCliente, String parteAutora, String parteRe) {
+        if (StringUtils.hasText(parteAutora) && StringUtils.hasText(parteRe)) {
+            return parteAutora.trim() + " × " + parteRe.trim();
+        }
+        if (StringUtils.hasText(parteAutora)) {
+            return parteAutora.trim();
+        }
+        if (StringUtils.hasText(parteRe)) {
+            return parteRe.trim();
+        }
+        return StringUtils.hasText(nomeCliente) ? nomeCliente.trim() : "Cliente";
+    }
+
+    private static String textoOuTraco(String valor) {
+        return StringUtils.hasText(valor) ? valor.trim() : "—";
     }
 
     static List<MovimentacaoEmailLinha> montarLinhas(List<MovimentacaoMonitoradaEntity> novas) {

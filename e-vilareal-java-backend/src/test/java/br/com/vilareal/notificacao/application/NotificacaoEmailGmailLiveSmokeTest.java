@@ -52,8 +52,9 @@ class NotificacaoEmailGmailLiveSmokeTest {
         m.setLegenda("Processo Arquivado");
         m.setDataMovimentacao(LocalDateTime.of(2026, 6, 4, 10, 0));
 
-        String assunto = emailRenderer.montarAssunto(numeroCnj, nomeCliente);
-        String corpo = emailRenderer.renderCorpoHtml(numeroCnj, nomeCliente, List.of(m));
+        String assunto = emailRenderer.montarAssunto(numeroCnj, nomeCliente, "Autor Smoke", "Ré Smoke");
+        String corpo = emailRenderer.renderCorpoHtml(
+                numeroCnj, nomeCliente, "Autor Smoke", "Ré Smoke", List.of(m));
 
         notificacaoEmailService.enviar(List.of("itamarvillareal@gmail.com"), assunto, corpo);
 

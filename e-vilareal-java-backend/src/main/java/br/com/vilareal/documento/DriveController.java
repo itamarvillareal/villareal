@@ -120,6 +120,28 @@ public class DriveController {
         }
     }
 
+    @GetMapping("/pasta-imovel")
+    @Operation(summary = "Retorna link e ID da pasta do imóvel no Drive (cria se necessário)")
+    public ResponseEntity<DrivePastaProcessoDto> obterPastaImovel(
+            @RequestParam(required = false) Long imovelId,
+            @RequestParam(required = false) Integer numeroPlanilha) {
+        if (!googleDriveService.isConfigurado()) {
+            return ResponseEntity.status(503).build();
+        }
+        try {
+            DrivePastaProcessoDto pasta = documentoDrivePastaService.resolverPastaImovel(imovelId, numeroPlanilha);
+            if (pasta == null || !StringUtils.hasText(pasta.pastaId())) {
+                return ResponseEntity.notFound().build();
+            }
+            return ResponseEntity.ok()
+                    .cacheControl(CacheControl.noStore())
+                    .body(pasta);
+        } catch (Exception e) {
+            log.warn("Erro ao obter pasta do imóvel no Drive: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
     @GetMapping("/pasta-info")
     @Operation(summary = "Retorna a pasta e seu pai imediato (para navegar/subir de nível no painel)")
     public ResponseEntity<DrivePastaInfoDto> obterInfoPasta(@RequestParam String pastaId) {

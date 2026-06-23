@@ -7,6 +7,7 @@ import br.com.vilareal.notificacao.domain.NotificacaoEnvioStatus;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
+import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoParteRepository;
 import br.com.vilareal.whatsapp.service.WhatsAppSchedulerService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,6 +37,9 @@ class NotificacaoMovimentacaoServiceTest {
     @Mock
     private NotificacaoEmailService notificacaoEmailService;
 
+    @Mock
+    private ProcessoParteRepository processoParteRepository;
+
     private NotificacaoMovimentacaoService service;
 
     @BeforeEach
@@ -44,7 +48,8 @@ class NotificacaoMovimentacaoServiceTest {
                 notificacaoDestinatarioService,
                 whatsAppSchedulerService,
                 emailRenderer,
-                notificacaoEmailService);
+                notificacaoEmailService,
+                processoParteRepository);
     }
 
     @Test
@@ -53,9 +58,10 @@ class NotificacaoMovimentacaoServiceTest {
         ProcessoEntity processo = processoComCliente();
         when(notificacaoDestinatarioService.resolver(10L))
                 .thenReturn(new DestinatariosCanaisDto(List.of(), List.of("eu@test.com")));
-        when(emailRenderer.montarAssunto(anyString(), anyString()))
+        when(processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(10L)).thenReturn(List.of());
+        when(emailRenderer.montarAssunto(anyString(), anyString(), anyString(), anyString()))
                 .thenReturn("[Monitor] Nova movimentação — CNJ (Maria)");
-        when(emailRenderer.renderCorpoHtml(anyString(), anyString(), anyList()))
+        when(emailRenderer.renderCorpoHtml(anyString(), anyString(), anyString(), anyString(), anyList()))
                 .thenReturn("<p>Decisão</p>");
 
         NotificacaoResultado resultado = service.notificarNovidade(processo, List.of(nova));
@@ -75,6 +81,7 @@ class NotificacaoMovimentacaoServiceTest {
         ProcessoEntity processo = processoComCliente();
         when(notificacaoDestinatarioService.resolver(10L))
                 .thenReturn(new DestinatariosCanaisDto(List.of("+5562911110001"), List.of()));
+        when(processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(10L)).thenReturn(List.of());
 
         NotificacaoResultado resultado =
                 service.notificarNovidade(processo, List.of(movimentacao("1", "x")));
@@ -88,8 +95,10 @@ class NotificacaoMovimentacaoServiceTest {
         ProcessoEntity processo = processoComCliente();
         when(notificacaoDestinatarioService.resolver(10L))
                 .thenReturn(new DestinatariosCanaisDto(List.of(), List.of("a@b.com")));
-        when(emailRenderer.montarAssunto(anyString(), anyString())).thenReturn("assunto");
-        when(emailRenderer.renderCorpoHtml(anyString(), anyString(), anyList())).thenReturn("<p>x</p>");
+        when(processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(10L)).thenReturn(List.of());
+        when(emailRenderer.montarAssunto(anyString(), anyString(), anyString(), anyString())).thenReturn("assunto");
+        when(emailRenderer.renderCorpoHtml(anyString(), anyString(), anyString(), anyString(), anyList()))
+                .thenReturn("<p>x</p>");
         doThrow(new RuntimeException("gmail down")).when(notificacaoEmailService).enviar(any(), any(), any());
 
         NotificacaoResultado resultado =
@@ -116,8 +125,10 @@ class NotificacaoMovimentacaoServiceTest {
         when(notificacaoDestinatarioService.resolver(10L))
                 .thenReturn(new DestinatariosCanaisDto(
                         List.of("+5562911110001", "+5562911110002"), List.of("eu@test.com")));
-        when(emailRenderer.montarAssunto(anyString(), anyString())).thenReturn("assunto");
-        when(emailRenderer.renderCorpoHtml(anyString(), anyString(), anyList())).thenReturn("<p>ok</p>");
+        when(processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(10L)).thenReturn(List.of());
+        when(emailRenderer.montarAssunto(anyString(), anyString(), anyString(), anyString())).thenReturn("assunto");
+        when(emailRenderer.renderCorpoHtml(anyString(), anyString(), anyString(), anyString(), anyList()))
+                .thenReturn("<p>ok</p>");
 
         service.notificarNovidade(processo, List.of(movimentacao("2", "Juntada")));
 
@@ -130,11 +141,12 @@ class NotificacaoMovimentacaoServiceTest {
     void enviarEmailNovidade_apenasEmail_semWhatsapp() throws Exception {
         when(notificacaoDestinatarioService.resolver(10L))
                 .thenReturn(new DestinatariosCanaisDto(List.of(), List.of("a@b.com")));
-        when(emailRenderer.montarAssunto(anyString(), anyString())).thenReturn("assunto");
-        when(emailRenderer.renderCorpoHtml(anyString(), anyString(), anyList())).thenReturn("<p>ok</p>");
+        when(emailRenderer.montarAssunto(anyString(), anyString(), anyString(), anyString())).thenReturn("assunto");
+        when(emailRenderer.renderCorpoHtml(anyString(), anyString(), anyString(), anyString(), anyList()))
+                .thenReturn("<p>ok</p>");
 
         NotificacaoResultado resultado =
-                service.enviarEmailNovidade(10L, "CNJ", "Cliente", List.of(movimentacao("1", "x")));
+                service.enviarEmailNovidade(10L, "CNJ", "Cliente", "Autor X", "Ré Y", List.of(movimentacao("1", "x")));
 
         assertThat(resultado.status()).isEqualTo(NotificacaoEnvioStatus.ENVIADO);
         verify(notificacaoEmailService).enviar(any(), eq("assunto"), eq("<p>ok</p>"));

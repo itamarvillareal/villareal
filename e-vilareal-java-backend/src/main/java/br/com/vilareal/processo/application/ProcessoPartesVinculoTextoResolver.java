@@ -61,6 +61,16 @@ public final class ProcessoPartesVinculoTextoResolver {
         return resolverTextos(processo, partes).getParteOposta();
     }
 
+    /** Nomes agregados das partes no polo jurídico autor/requerente. */
+    public static String parteAutora(ProcessoEntity processo, List<ProcessoParteEntity> partes) {
+        return formatarListaComConjuncaoE(coletarNomesPorPoloJuridico(partes, true));
+    }
+
+    /** Nomes agregados das partes no polo jurídico réu/requerido. */
+    public static String parteRe(ProcessoEntity processo, List<ProcessoParteEntity> partes) {
+        return formatarListaComConjuncaoE(coletarNomesPorPoloJuridico(partes, false));
+    }
+
     /** Primeira pessoa cadastrada no lado «parte cliente» do processo (contratante de honorários). */
     public static Long primeiraPessoaIdParteCliente(ProcessoEntity processo, List<ProcessoParteEntity> partes) {
         if (partes == null || partes.isEmpty()) {
@@ -234,6 +244,36 @@ public final class ProcessoPartesVinculoTextoResolver {
     private static String montarTextoPartesListagem(
             ProcessoEntity processo, List<ProcessoParteEntity> partes, boolean ladoCliente) {
         return formatarListaComConjuncaoE(coletarNomesPartesListagem(processo, partes, ladoCliente));
+    }
+
+    private static List<String> coletarNomesPorPoloJuridico(List<ProcessoParteEntity> partes, boolean ladoAutor) {
+        if (partes == null || partes.isEmpty()) {
+            return List.of();
+        }
+        List<String> nomes = new ArrayList<>();
+        for (ProcessoParteEntity p : partes) {
+            if (ladoAutor ? !poloEhAutorJuridico(p.getPolo()) : !poloEhReuJuridico(p.getPolo())) {
+                continue;
+            }
+            String rotulo = rotuloParteListagem(p);
+            if (StringUtils.hasText(rotulo)) {
+                nomes.add(rotulo);
+            }
+        }
+        return nomes;
+    }
+
+    private static boolean poloEhAutorJuridico(String polo) {
+        String p = normalizarPoloParaComparacao(polo);
+        return p.contains("AUTOR") || p.contains("REQUERENTE");
+    }
+
+    private static boolean poloEhReuJuridico(String polo) {
+        if (poloEhAutorJuridico(polo)) {
+            return false;
+        }
+        String p = normalizarPoloParaComparacao(polo);
+        return p.contains("REU") || p.contains("REQUERIDO");
     }
 
     private static List<String> coletarNomesPartesListagem(

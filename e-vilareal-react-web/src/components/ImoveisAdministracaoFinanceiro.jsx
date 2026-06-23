@@ -443,6 +443,50 @@ export function ImoveisAdministracaoFinanceiro() {
     }
   }
 
+  async function confirmarTodasSugestoes(itens) {
+    if (!contratoId || !Array.isArray(itens) || itens.length === 0) return;
+    setSalvandoReconc(true);
+    setErroReconc('');
+    setSucesso('');
+    try {
+      const saved = await vincularReconciliacaoApi(contratoId, itens);
+      setVinculosContrato((prev) => mergeVinculosRespostaApi(prev, saved));
+      for (const item of itens) {
+        marcarLinhaVinculada(item.lancamentoFinanceiroId);
+      }
+      setMatriz((prev) => {
+        if (!prev?.meses) return prev;
+        let meses = prev.meses;
+        for (const item of itens.filter((i) => i.papel === 'ALUGUEL')) {
+          const lancId = Number(item.lancamentoFinanceiroId);
+          const vinculoSalvo = saved?.find((s) => Number(s.lancamentoFinanceiroId) === lancId);
+          meses = meses.map((m) =>
+            m.competencia === item.competenciaMes
+              ? {
+                  ...m,
+                  estado: 'VINCULADO',
+                  aluguelVinculado: {
+                    lancamentoFinanceiroId: lancId,
+                    vinculoId: vinculoSalvo?.id,
+                    valor: vinculoSalvo?.valor,
+                  },
+                }
+              : m,
+          );
+        }
+        return { ...prev, meses };
+      });
+      const n = saved?.length ?? itens.length;
+      setSucesso(`${n} sugest${n === 1 ? 'ão' : 'ões'} vinculada${n === 1 ? '' : 's'}.`);
+      await recarregarReconciliacaoDados();
+      recarregar();
+    } catch (e) {
+      setErroReconc(e?.message || 'Falha ao vincular sugestões em lote.');
+    } finally {
+      setSalvandoReconc(false);
+    }
+  }
+
   async function moverCompetenciaVinculo(vinc, novaCompetencia) {
     if (!contratoId || !vinc?.lancamentoFinanceiroId || !competenciaValida(novaCompetencia)) return;
     const papel = String(vinc?.papel ?? 'ALUGUEL').toUpperCase();
@@ -741,6 +785,7 @@ export function ImoveisAdministracaoFinanceiro() {
                     onConfirmarAluguel={confirmarAluguel}
                     onConfirmarRepasse={confirmarRepasse}
                     onConfirmarVinculoManual={confirmarVinculoManual}
+                    onAprovarTodasSugestoes={confirmarTodasSugestoes}
                     onMoverCompetencia={moverCompetenciaVinculo}
                     onDesvincular={desvincularAluguel}
                     onGerarRepasse={gerarRepassesInternos}

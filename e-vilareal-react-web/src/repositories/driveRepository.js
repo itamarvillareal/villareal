@@ -50,6 +50,19 @@ export async function obterLinkPasta(codigoCliente, numeroInterno) {
 }
 
 /**
+ * @param {{ imovelId?: number|null, numeroPlanilha?: number|null }} params
+ * @returns {Promise<{ pastaId: string, webViewLink: string, nomePasta: string, caminho: string }>}
+ */
+export async function obterLinkPastaImovel({ imovelId, numeroPlanilha } = {}) {
+  const query = {};
+  const idApi = Number(imovelId);
+  const np = Number(numeroPlanilha);
+  if (Number.isFinite(idApi) && idApi >= 1) query.imovelId = idApi;
+  else if (Number.isFinite(np) && np >= 1) query.numeroPlanilha = np;
+  return request('/api/drive/pasta-imovel', { query });
+}
+
+/**
  * Retorna a pasta e seu pai imediato (para subir de nível no painel).
  * @param {string} pastaId
  * @returns {Promise<{ id: string, nome: string, paiId: string|null, paiNome: string|null }>}

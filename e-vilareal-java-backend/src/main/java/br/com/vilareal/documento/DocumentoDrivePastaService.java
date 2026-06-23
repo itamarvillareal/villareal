@@ -1,6 +1,8 @@
 package br.com.vilareal.documento;
 
 import br.com.vilareal.common.exception.ResourceNotFoundException;
+import br.com.vilareal.imovel.api.dto.ImovelResponse;
+import br.com.vilareal.imovel.application.ImovelApplicationService;
 import br.com.vilareal.pessoa.application.ClienteResolverService;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
@@ -40,6 +42,7 @@ public class DocumentoDrivePastaService {
     private final ProcessoRepository processoRepository;
     private final ProcessoParteRepository processoParteRepository;
     private final GoogleDriveService googleDriveService;
+    private final ImovelApplicationService imovelApplicationService;
 
     public DocumentoDrivePastaService(
             ClienteResolverService clienteResolverService,
@@ -47,13 +50,15 @@ public class DocumentoDrivePastaService {
             PessoaRepository pessoaRepository,
             ProcessoRepository processoRepository,
             ProcessoParteRepository processoParteRepository,
-            GoogleDriveService googleDriveService) {
+            GoogleDriveService googleDriveService,
+            ImovelApplicationService imovelApplicationService) {
         this.clienteResolverService = clienteResolverService;
         this.clienteCodigoPessoaResolver = clienteCodigoPessoaResolver;
         this.pessoaRepository = pessoaRepository;
         this.processoRepository = processoRepository;
         this.processoParteRepository = processoParteRepository;
         this.googleDriveService = googleDriveService;
+        this.imovelApplicationService = imovelApplicationService;
     }
 
     @Transactional(readOnly = true)
@@ -320,6 +325,28 @@ public class DocumentoDrivePastaService {
     }
 
     @Transactional(readOnly = true)
+    public DrivePastaProcessoDto resolverPastaImovel(Long imovelIdApi, Integer numeroPlanilha) throws Exception {
+        if (!googleDriveService.isConfigurado()) {
+            return null;
+        }
+        ImovelResponse imovel;
+        if (imovelIdApi != null && imovelIdApi > 0) {
+            imovel = imovelApplicationService.buscarImovel(imovelIdApi);
+        } else if (numeroPlanilha != null && numeroPlanilha > 0) {
+            imovel = imovelApplicationService.buscarImovelPorNumeroPlanilha(numeroPlanilha, null, null);
+        } else {
+            return null;
+        }
+        int numero = imovel.getNumeroPlanilha() != null ? imovel.getNumeroPlanilha() : 0;
+        String nomePasta = formatarNomePastaImovel(numero, imovel.getUnidade(), imovel.getCondominio());
+        String pastaId = googleDriveService.encontrarOuCriarPastaPublic(
+                nomePasta, googleDriveService.getImoveisFolderId());
+        String webViewLink = googleDriveService.obterWebViewLink(pastaId);
+        String caminho = "Imóveis / " + nomePasta;
+        return new DrivePastaProcessoDto(pastaId, webViewLink, nomePasta, caminho);
+    }
+
+    @Transactional(readOnly = true)
     Optional<ProcessoEntity> buscarProcessoEntity(String codigoCliente, int numeroInterno) {
         if (numeroInterno < 0 || !StringUtils.hasText(codigoCliente)) {
             return Optional.empty();
@@ -358,6 +385,18 @@ public class DocumentoDrivePastaService {
                 ? QualificacaoPessoaUtil.normalizarNome(nomePessoa.trim())
                 : "Sem Nome";
         return GoogleDriveService.sanitizarNomePasta(codigo + " - " + nome);
+    }
+
+    static String formatarNomePastaImovel(Integer numeroPlanilha, String unidade, String condominio) {
+        int numero = numeroPlanilha != null && numeroPlanilha > 0 ? numeroPlanilha : 0;
+        String rotulo = "Sem identificação";
+        if (StringUtils.hasText(unidade)) {
+            rotulo = unidade.trim();
+        } else if (StringUtils.hasText(condominio)) {
+            rotulo = condominio.trim();
+        }
+        String prefixo = numero > 0 ? String.valueOf(numero) : "000";
+        return GoogleDriveService.sanitizarNomePasta(prefixo + " - " + rotulo);
     }
 
     static String formatarNomePastaProcesso(Integer numeroInterno) {
