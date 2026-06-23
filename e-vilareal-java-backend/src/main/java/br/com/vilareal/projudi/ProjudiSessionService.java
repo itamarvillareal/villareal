@@ -98,29 +98,48 @@ public class ProjudiSessionService {
     // ------------------------------------------------------------------
 
     /**
-     * Devolve uma sessão válida: reaproveita a do cache se mais nova que o TTL,
-     * senão tenta cookies persistidos em disco; por último autentica. A autenticação
-     * é serializada por credencial (lock por credencialId) para nunca disparar dois
-     * OTP em paralelo.
+     * Devolve uma sessão válida: reaproveita cache ou cookies persistidos enquanto houver
+     * atividade com sucesso nos últimos {@code projudi.session.ttl-min} minutos; autentica
+     * somente se expirada por inatividade ou ausente. Novo login por erro de sessão
+     * (tela de login) continua nos métodos GET/POST autenticados.
      */
     public ProjudiSession getSessao(Long credencialId) {
         if (credencialId == null) {
             throw new BusinessRuleException("credencialId é obrigatório.");
         }
         ProjudiSession atual = cache.get(credencialId);
-        if (sessaoValidaEmMemoria(atual)) {
+        if (sessaoValidaPorAtividade(atual)) {
+            logarReaproveitamentoSemLogin(credencialId, atual, "cache");
             return atual;
         }
         Object lock = locks.computeIfAbsent(credencialId, k -> new Object());
         synchronized (lock) {
             ProjudiSession revalidada = cache.get(credencialId);
-            if (sessaoValidaEmMemoria(revalidada)) {
+            if (sessaoValidaPorAtividade(revalidada)) {
+                logarReaproveitamentoSemLogin(credencialId, revalidada, "cache");
                 return revalidada;
             }
             Optional<ProjudiSession> restaurada = restaurarSessaoPersistida(credencialId);
+            if (restaurada.isPresent() && sessaoValidaPorAtividade(restaurada.get())) {
+                ProjudiSession sessao = restaurada.get();
+                cache.put(credencialId, sessao);
+                logarReaproveitamentoSemLogin(credencialId, sessao, "persistida");
+                return sessao;
+            }
             if (restaurada.isPresent()) {
-                cache.put(credencialId, restaurada.get());
-                return restaurada.get();
+                log.info(
+                        "PROJUDI novo login (credencialId={}): sessão persistida expirada por inatividade ({} min, limite {} min).",
+                        credencialId,
+                        minutosDesdeUltimaAtividade(restaurada.get()),
+                        ttlMin);
+                sessionStore.apagar(credencialId);
+            } else if (atual != null || revalidada != null) {
+                log.info(
+                        "PROJUDI novo login (credencialId={}): sessão em memória expirada por inatividade (limite {} min).",
+                        credencialId,
+                        ttlMin);
+            } else {
+                log.info("PROJUDI novo login (credencialId={}): nenhuma sessão válida encontrada.", credencialId);
             }
             ProjudiSession nova = autenticar(credencialId);
             cache.put(credencialId, nova);
@@ -149,12 +168,44 @@ public class ProjudiSessionService {
         }
         HttpClient client = novoHttpClient(cookieManager);
         Instant autenticadoEm = data.autenticadoEm() != null ? data.autenticadoEm() : Instant.now();
-        return new ProjudiSession(client, cookieManager, autenticadoEm, cpf, true);
+        Instant ultimaAtividade = data.ultimaAtividadeEm() != null ? data.ultimaAtividadeEm() : autenticadoEm;
+        return new ProjudiSession(client, cookieManager, autenticadoEm, ultimaAtividade, cpf, true);
     }
 
-    private boolean sessaoValidaEmMemoria(ProjudiSession s) {
-        return s != null
-                && Duration.between(s.autenticadoEm(), Instant.now()).toMinutes() < ttlMin;
+    static boolean sessaoValidaPorAtividade(ProjudiSession s, long ttlMinutos) {
+        if (s == null) {
+            return false;
+        }
+        Instant referencia = s.ultimaAtividadeEm() != null ? s.ultimaAtividadeEm() : s.autenticadoEm();
+        if (referencia == null) {
+            return false;
+        }
+        return Duration.between(referencia, Instant.now()).toMinutes() < ttlMinutos;
+    }
+
+    private boolean sessaoValidaPorAtividade(ProjudiSession s) {
+        return sessaoValidaPorAtividade(s, ttlMin);
+    }
+
+    private long segundosDesdeUltimaAtividade(ProjudiSession s) {
+        Instant referencia = s.ultimaAtividadeEm() != null ? s.ultimaAtividadeEm() : s.autenticadoEm();
+        return referencia == null ? -1L : Duration.between(referencia, Instant.now()).getSeconds();
+    }
+
+    private long minutosDesdeUltimaAtividade(ProjudiSession s) {
+        Instant referencia = s.ultimaAtividadeEm() != null ? s.ultimaAtividadeEm() : s.autenticadoEm();
+        return referencia == null ? -1L : Duration.between(referencia, Instant.now()).toMinutes();
+    }
+
+    private void logarReaproveitamentoSemLogin(Long credencialId, ProjudiSession sessao, String origem) {
+        log.info(
+                "PROJUDI sessão reaproveitada ({}, credencialId={}, inativo há {}s, login há {}s).",
+                origem,
+                credencialId,
+                segundosDesdeUltimaAtividade(sessao),
+                sessao.autenticadoEm() == null
+                        ? -1L
+                        : Duration.between(sessao.autenticadoEm(), Instant.now()).getSeconds());
     }
 
     private void invalidar(Long credencialId) {
@@ -179,11 +230,16 @@ public class ProjudiSessionService {
         }
     }
 
-    private void registrarReaproveitamentoSeAplicavel(Long credencialId, ProjudiSession sessao) {
-        if (sessao.carregadaDoDisco()) {
-            log.info("PROJUDI sessão reaproveitada (persistida) (cpf={}).", mascararCpf(sessao.cpf()));
-            cache.put(credencialId, sessao.comOrigemMemoria());
-        }
+    /** Registra acesso com sucesso ao PROJUDI e renova a janela de inatividade ({@code ttl-min}). */
+    private void registrarAtividadeSucesso(Long credencialId, ProjudiSession sessao) {
+        Instant agora = Instant.now();
+        ProjudiSession atualizada = sessao.comAtividadeRegistrada(agora);
+        cache.put(credencialId, atualizada);
+        sessionStore.salvar(credencialId, atualizada);
+        log.debug(
+                "PROJUDI atividade registrada (credencialId={}, cpf={}).",
+                credencialId,
+                mascararCpf(sessao.cpf()));
     }
 
     // ------------------------------------------------------------------
@@ -201,7 +257,10 @@ public class ProjudiSessionService {
 
         RespostaProjudi resp = toResposta(getRaw(sessao.client(), uri));
         if (pareceNaoLogado(resp.body())) {
-            log.info("PROJUDI sessão inválida/ausente -> novo login (cpf={}).", mascararCpf(sessao.cpf()));
+            log.info(
+                    "PROJUDI resposta de login — tentando novo login (credencialId={}, cpf={}).",
+                    credencialId,
+                    mascararCpf(sessao.cpf()));
             invalidar(credencialId);
             sessao = reautenticar(credencialId);
             resp = toResposta(getRaw(sessao.client(), uri));
@@ -209,8 +268,9 @@ public class ProjudiSessionService {
                 throw new IllegalStateException(
                         "Acesso PROJUDI continuou na tela de login após reautenticação.");
             }
+            registrarAtividadeSucesso(credencialId, sessao);
         } else {
-            registrarReaproveitamentoSeAplicavel(credencialId, sessao);
+            registrarAtividadeSucesso(credencialId, sessao);
         }
         log.info("GET autenticado PROJUDI ok (cpf={}, status={}, url={}).",
                 mascararCpf(sessao.cpf()), resp.statusCode(), uri);
@@ -227,7 +287,10 @@ public class ProjudiSessionService {
 
         HttpResponse<byte[]> resp = getBytes(sessao.client(), uri);
         if (corpoPareceNaoLogado(resp.body())) {
-            log.info("PROJUDI sessão inválida/ausente -> novo login (cpf={}).", mascararCpf(sessao.cpf()));
+            log.info(
+                    "PROJUDI resposta de login — tentando novo login (credencialId={}, cpf={}).",
+                    credencialId,
+                    mascararCpf(sessao.cpf()));
             invalidar(credencialId);
             sessao = reautenticar(credencialId);
             resp = getBytes(sessao.client(), uri);
@@ -235,8 +298,9 @@ public class ProjudiSessionService {
                 throw new IllegalStateException(
                         "Download PROJUDI continuou na tela de login após reautenticação.");
             }
+            registrarAtividadeSucesso(credencialId, sessao);
         } else {
-            registrarReaproveitamentoSeAplicavel(credencialId, sessao);
+            registrarAtividadeSucesso(credencialId, sessao);
         }
         log.info("GET autenticado (bytes) PROJUDI ok (cpf={}, status={}, bytes={}, url={}).",
                 mascararCpf(sessao.cpf()), resp.statusCode(),
@@ -253,7 +317,10 @@ public class ProjudiSessionService {
 
         RespostaProjudi resp = toResposta(getAjaxRaw(sessao.client(), uri));
         if (pareceNaoLogado(resp.body())) {
-            log.info("PROJUDI sessão inválida/ausente -> novo login (cpf={}).", mascararCpf(sessao.cpf()));
+            log.info(
+                    "PROJUDI resposta de login — tentando novo login (credencialId={}, cpf={}).",
+                    credencialId,
+                    mascararCpf(sessao.cpf()));
             invalidar(credencialId);
             sessao = reautenticar(credencialId);
             resp = toResposta(getAjaxRaw(sessao.client(), uri));
@@ -261,8 +328,9 @@ public class ProjudiSessionService {
                 throw new IllegalStateException(
                         "Acesso AJAX PROJUDI continuou na tela de login após reautenticação.");
             }
+            registrarAtividadeSucesso(credencialId, sessao);
         } else {
-            registrarReaproveitamentoSeAplicavel(credencialId, sessao);
+            registrarAtividadeSucesso(credencialId, sessao);
         }
         log.info("GET AJAX autenticado PROJUDI ok (cpf={}, status={}, url={}).",
                 mascararCpf(sessao.cpf()), resp.statusCode(), uri);
@@ -278,7 +346,10 @@ public class ProjudiSessionService {
 
         RespostaProjudi resp = toResposta(getRawComReferer(sessao.client(), uri, referer));
         if (pareceNaoLogado(resp.body())) {
-            log.info("PROJUDI sessão inválida/ausente -> novo login (cpf={}).", mascararCpf(sessao.cpf()));
+            log.info(
+                    "PROJUDI resposta de login — tentando novo login (credencialId={}, cpf={}).",
+                    credencialId,
+                    mascararCpf(sessao.cpf()));
             invalidar(credencialId);
             sessao = reautenticar(credencialId);
             resp = toResposta(getRawComReferer(sessao.client(), uri, referer));
@@ -286,8 +357,9 @@ public class ProjudiSessionService {
                 throw new IllegalStateException(
                         "Acesso PROJUDI continuou na tela de login após reautenticação.");
             }
+            registrarAtividadeSucesso(credencialId, sessao);
         } else {
-            registrarReaproveitamentoSeAplicavel(credencialId, sessao);
+            registrarAtividadeSucesso(credencialId, sessao);
         }
         log.info("GET autenticado PROJUDI ok (cpf={}, status={}, url={}).",
                 mascararCpf(sessao.cpf()), resp.statusCode(), uri);
@@ -303,7 +375,10 @@ public class ProjudiSessionService {
 
         RespostaProjudi resp = toResposta(getAjaxRawComReferer(sessao.client(), uri, referer));
         if (pareceNaoLogado(resp.body())) {
-            log.info("PROJUDI sessão inválida/ausente -> novo login (cpf={}).", mascararCpf(sessao.cpf()));
+            log.info(
+                    "PROJUDI resposta de login — tentando novo login (credencialId={}, cpf={}).",
+                    credencialId,
+                    mascararCpf(sessao.cpf()));
             invalidar(credencialId);
             sessao = reautenticar(credencialId);
             resp = toResposta(getAjaxRawComReferer(sessao.client(), uri, referer));
@@ -311,8 +386,9 @@ public class ProjudiSessionService {
                 throw new IllegalStateException(
                         "Acesso AJAX PROJUDI continuou na tela de login após reautenticação.");
             }
+            registrarAtividadeSucesso(credencialId, sessao);
         } else {
-            registrarReaproveitamentoSeAplicavel(credencialId, sessao);
+            registrarAtividadeSucesso(credencialId, sessao);
         }
         log.info("GET AJAX autenticado PROJUDI ok (cpf={}, status={}, url={}).",
                 mascararCpf(sessao.cpf()), resp.statusCode(), uri);
@@ -377,6 +453,8 @@ public class ProjudiSessionService {
                     path,
                     resp.statusCode(),
                     truncar(resp.body(), 500));
+        } else if (!pareceNaoLogado(resp.body())) {
+            registrarAtividadeSucesso(credencialId, sessao);
         }
         log.info("POST peticionamento PROJUDI (cpf={}, path={}, status={}, location={}).",
                 mascararCpf(sessao.cpf()), path, resp.statusCode(),
@@ -400,7 +478,10 @@ public class ProjudiSessionService {
         // (corpo já inclui QuantidadeRegistrosPagina alto p/ trazer TODAS as movimentações)
         RespostaProjudi resp = toResposta(postBuscaProcessoRaw(sessao.client(), BUSCA_PROCESSO_PATH, corpo));
         if (pareceNaoLogado(resp.body())) {
-            log.info("PROJUDI sessão inválida/ausente -> novo login (cpf={}).", mascararCpf(sessao.cpf()));
+            log.info(
+                    "PROJUDI resposta de login — tentando novo login (credencialId={}, cpf={}).",
+                    credencialId,
+                    mascararCpf(sessao.cpf()));
             invalidar(credencialId);
             sessao = reautenticar(credencialId);
             resp = toResposta(postBuscaProcessoRaw(sessao.client(), BUSCA_PROCESSO_PATH, corpo));
@@ -408,8 +489,9 @@ public class ProjudiSessionService {
                 throw new IllegalStateException(
                         "Consulta PROJUDI continuou na tela de login após reautenticação.");
             }
+            registrarAtividadeSucesso(credencialId, sessao);
         } else {
-            registrarReaproveitamentoSeAplicavel(credencialId, sessao);
+            registrarAtividadeSucesso(credencialId, sessao);
         }
         log.info("Consulta de processo PROJUDI (cpf={}, status={}).",
                 mascararCpf(sessao.cpf()), resp.statusCode());
@@ -517,7 +599,8 @@ public class ProjudiSessionService {
 
     private ProjudiSession finalizarAutenticacao(
             Long credencialId, HttpClient client, CookieManager cookieManager, String cpf) {
-        ProjudiSession sessao = new ProjudiSession(client, cookieManager, Instant.now(), cpf, false);
+        Instant agora = Instant.now();
+        ProjudiSession sessao = new ProjudiSession(client, cookieManager, agora, agora, cpf, false);
         sessionStore.salvar(credencialId, sessao);
         return sessao;
     }
@@ -790,17 +873,18 @@ public class ProjudiSessionService {
 
     /**
      * Sessão autenticada de uma credencial: HttpClient isolado (com CookieManager
-     * próprio), instante de autenticação e CPF (para log mascarado).
+     * próprio), instante de autenticação, última atividade com sucesso e CPF (para log mascarado).
      */
     public record ProjudiSession(
             HttpClient client,
             CookieManager cookieManager,
             Instant autenticadoEm,
+            Instant ultimaAtividadeEm,
             String cpf,
             boolean carregadaDoDisco) {
 
-        ProjudiSession comOrigemMemoria() {
-            return new ProjudiSession(client, cookieManager, autenticadoEm, cpf, false);
+        ProjudiSession comAtividadeRegistrada(Instant quando) {
+            return new ProjudiSession(client, cookieManager, autenticadoEm, quando, cpf, false);
         }
     }
 }

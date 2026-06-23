@@ -72,7 +72,7 @@ class ProjudiSessionStore {
             for (HttpCookie cookie : sessao.cookieManager().getCookieStore().getCookies()) {
                 snapshots.add(CookieSnapshot.from(cookie));
             }
-            SessaoPersistida data = new SessaoPersistida(sessao.autenticadoEm(), snapshots);
+            SessaoPersistida data = new SessaoPersistida(sessao.autenticadoEm(), sessao.ultimaAtividadeEm(), snapshots);
             Path arquivo = arquivoCredencial(credencialId);
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(arquivo.toFile(), data);
             protegerArquivo(arquivo);
@@ -115,7 +115,7 @@ class ProjudiSessionStore {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record SessaoPersistida(Instant autenticadoEm, List<CookieSnapshot> cookies) {}
+    record SessaoPersistida(Instant autenticadoEm, Instant ultimaAtividadeEm, List<CookieSnapshot> cookies) {}
 
     record CookieSnapshot(
             String name,
