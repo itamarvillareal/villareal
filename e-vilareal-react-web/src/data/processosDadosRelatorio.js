@@ -170,6 +170,7 @@ export const TIPOS_AUDIENCIA = [
   'Conciliação',
   'Instrução',
   'Administrativa',
+  'Perícia',
   'Sessão de Julgamento',
 ];
 
