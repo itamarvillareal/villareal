@@ -132,11 +132,10 @@ public class ProjudiPeticaoService {
         String complementoIso = encIso8859(complemento == null ? "" : complemento);
         long epochMillis = System.currentTimeMillis();
 
-        emitir(progresso, "Conectando ao PROJUDI e autenticando…");
-        sessionService.invalidarSessao(credencialId);
+        emitir(progresso, "Conectando ao PROJUDI…");
 
         try {
-            // 1) busca — estabelece processo na sessão (faz login + localiza o processo)
+            // 1) busca — reaproveita sessão em cache/disco (TTL projudi.session.ttl-min); login+OTP só se expirada
             emitir(progresso, "Buscando o processo…");
             var busca = sessionService.buscarProcessoConsulta(credencialId, processo);
             if (pareceFalhaLeitura(busca.statusCode(), busca.body())) {
@@ -276,7 +275,6 @@ public class ProjudiPeticaoService {
                         processo,
                         arquivos.size(),
                         nomesGerados.values());
-                sessionService.invalidarSessao(credencialId);
                 return new ResultadoProtocoloPeticao(
                         true,
                         "Passos 1–10 concluídos com sucesso (Concluir não executado).",

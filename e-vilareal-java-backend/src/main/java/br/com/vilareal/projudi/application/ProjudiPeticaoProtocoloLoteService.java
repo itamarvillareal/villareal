@@ -412,8 +412,14 @@ public class ProjudiPeticaoProtocoloLoteService {
     }
 
     private List<ResultadoItemLote> executarLoteSequencial(List<Long> peticaoIds) {
+        List<List<Long>> grupos = agruparPorJuntada(peticaoIds);
+        if (grupos.size() > 1) {
+            log.info(
+                    "Protocolo em lote: {} juntada(s) — sessão PROJUDI reaproveitada entre processos da mesma credencial.",
+                    grupos.size());
+        }
         Map<Long, ResultadoItemLote> porId = new LinkedHashMap<>();
-        for (List<Long> grupo : agruparPorJuntada(peticaoIds)) {
+        for (List<Long> grupo : grupos) {
             porId.putAll(processarGrupoJuntada(grupo));
         }
         List<ResultadoItemLote> resultados = new ArrayList<>(peticaoIds.size());

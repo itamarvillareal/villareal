@@ -162,7 +162,7 @@ public class ProjudiSessionService {
         sessionStore.apagar(credencialId);
     }
 
-    /** Descarta cookies persistidos — use antes/depois de validação ou protocolo para evitar rascunho sujo. */
+    /** Descarta cookies persistidos — use quando a sessão expirou ou o fluxo de petição ficou inconsistente. */
     public void invalidarSessao(Long credencialId) {
         if (credencialId == null) {
             return;
