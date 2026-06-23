@@ -13,24 +13,29 @@ import {
 import { padCliente } from '../data/processosDadosRelatorio.js';
 import {
   gerarAlertasAdministracaoImovel,
+  mesReferenciaLancamentoParaRelatorio,
   PAPEL_ALUGUEL,
   PAPEL_DESPESA_REPASSAR,
+  PAPEL_REPASSE,
   rotuloPapelAdministracao,
 } from '../data/imoveisAdministracaoFinanceiro.js';
 import {
   contarPendenciasMatriz,
   itemMatrizPorCompetencia,
+  referenciaAluguelExtrato,
 } from '../data/imoveisAluguelChecklist.js';
 import {
   carregarPainelAdministracaoImovel,
   desvincularReconciliacaoApi,
   gerarRepassesInternosApi,
+  listarVinculosReconciliacaoApi,
   obterMatrizCompetenciasApi,
   obterResultadoImovelApi,
   vincularReconciliacaoApi,
 } from '../repositories/imoveisRepository.js';
 import {
   competenciaAtual,
+  competenciaValida,
   repasseEsperado,
   statusRepasseInfo,
 } from '../data/imoveisReconciliacao.js';
@@ -106,6 +111,7 @@ export function ImoveisAdministracaoFinanceiro() {
 
   const [competencia, setCompetencia] = useState(() => competenciaAtual());
   const [matriz, setMatriz] = useState(null);
+  const [vinculosContrato, setVinculosContrato] = useState([]);
   const [carregandoMatriz, setCarregandoMatriz] = useState(false);
   const [resultado, setResultado] = useState(null);
   const [salvandoReconc, setSalvandoReconc] = useState(false);
@@ -162,21 +168,31 @@ export function ImoveisAdministracaoFinanceiro() {
 
   const pendenciasMatriz = useMemo(() => contarPendenciasMatriz(matriz?.meses), [matriz?.meses]);
 
-  /** Mapa lancamentoId → vínculo ALUGUEL (para coluna do extrato). */
-  const vinculoAluguelPorLancamento = useMemo(() => {
+  const competenciaRange = useMemo(() => {
+    const min = contratoVigenteApi?.dataInicio ? String(contratoVigenteApi.dataInicio).slice(0, 7) : undefined;
+    const max = contratoVigenteApi?.dataFim ? String(contratoVigenteApi.dataFim).slice(0, 7) : undefined;
+    return { min, max };
+  }, [contratoVigenteApi]);
+
+  /** lancamentoFinanceiroId → { papel, competenciaMes, vinculoId } */
+  const vinculosPorLancamento = useMemo(() => {
     const map = new Map();
-    for (const m of matriz?.meses || []) {
-      const v = m?.aluguelVinculado;
-      if (v?.lancamentoFinanceiroId) {
-        map.set(Number(v.lancamentoFinanceiroId), m.competencia);
-      }
+    for (const v of vinculosContrato || []) {
+      const id = Number(v?.lancamentoFinanceiroId);
+      if (!Number.isFinite(id)) continue;
+      map.set(id, {
+        vinculoId: v.id,
+        papel: v.papel,
+        competenciaMes: v.competenciaMes,
+      });
     }
     return map;
-  }, [matriz?.meses]);
+  }, [vinculosContrato]);
 
   useEffect(() => {
     if (!featureFlags.useApiImoveis || !contratoId) {
       setMatriz(null);
+      setVinculosContrato([]);
       setResultado(null);
       return;
     }
@@ -185,11 +201,13 @@ export function ImoveisAdministracaoFinanceiro() {
     setCarregandoMatriz(true);
     Promise.all([
       obterMatrizCompetenciasApi(contratoId, { meses: 18 }),
+      listarVinculosReconciliacaoApi(contratoId),
       obterResultadoImovelApi(contratoId, { competencia }),
     ])
-      .then(([mat, res]) => {
+      .then(([mat, vinculos, res]) => {
         if (!ativo) return;
         setMatriz(mat || null);
+        setVinculosContrato(Array.isArray(vinculos) ? vinculos : []);
         setResultado(res || null);
         if (mat?.meses?.length && !mat.meses.some((m) => m.competencia === competencia)) {
           const primeiraPendente = mat.meses.find((m) => m.estado !== 'VINCULADO');
@@ -223,6 +241,10 @@ export function ImoveisAdministracaoFinanceiro() {
 
   async function confirmarAluguel(candidato, comp) {
     if (!contratoId || !candidato?.lancamentoFinanceiroId) return;
+    if (!competenciaValida(comp)) {
+      setErroReconc('Informe o mês de referência (AAAA-MM) antes de confirmar.');
+      return;
+    }
     setSalvandoReconc(true);
     setErroReconc('');
     setSucesso('');
@@ -234,10 +256,34 @@ export function ImoveisAdministracaoFinanceiro() {
           competenciaMes: comp,
         },
       ]);
-      setSucesso(`Aluguel de ${comp} vinculado.`);
+      setSucesso(`Aluguel vinculado · ref. ${comp}.`);
+      setCompetencia(comp);
       recarregarReconciliacao();
     } catch (e) {
       setErroReconc(e?.message || 'Falha ao vincular aluguel.');
+    } finally {
+      setSalvandoReconc(false);
+    }
+  }
+
+  async function moverCompetenciaAluguel(vinc, novaCompetencia) {
+    if (!contratoId || !vinc?.lancamentoFinanceiroId || !competenciaValida(novaCompetencia)) return;
+    setSalvandoReconc(true);
+    setErroReconc('');
+    setSucesso('');
+    try {
+      await vincularReconciliacaoApi(contratoId, [
+        {
+          lancamentoFinanceiroId: vinc.lancamentoFinanceiroId,
+          papel: 'ALUGUEL',
+          competenciaMes: novaCompetencia,
+        },
+      ]);
+      setSucesso(`Referência movida para ${novaCompetencia}.`);
+      setCompetencia(novaCompetencia);
+      recarregarReconciliacao();
+    } catch (e) {
+      setErroReconc(e?.message || 'Falha ao alterar a referência do mês.');
     } finally {
       setSalvandoReconc(false);
     }
@@ -327,25 +373,48 @@ export function ImoveisAdministracaoFinanceiro() {
   }, [location.hash, painel, contratoId]);
 
   function rotuloVinculoExtrato(t) {
-    const id = t.apiId != null ? Number(t.apiId) : NaN;
-    const compVinc = Number.isFinite(id) ? vinculoAluguelPorLancamento.get(id) : null;
-    if (compVinc) {
-      return (
-        <span className="text-emerald-800 font-semibold text-xs">
-          Aluguel ✓ ({compVinc})
-        </span>
-      );
-    }
+    const ref = referenciaAluguelExtrato(t, vinculosPorLancamento, mesReferenciaLancamentoParaRelatorio);
     const { papel } = t.classificacao || {};
+    const id = t.apiId != null ? Number(t.apiId) : NaN;
+    const vinc = Number.isFinite(id) ? vinculosPorLancamento.get(id) : null;
+
+    if (vinc?.papel === 'ALUGUEL' || (ref?.vinculado && ref?.papel === 'ALUGUEL')) {
+      return <span className="text-emerald-800 font-semibold text-xs">Aluguel ✓ vinculado</span>;
+    }
+    if (vinc?.papel === 'REPASSE' || (ref?.vinculado && ref?.papel === 'REPASSE')) {
+      return <span className="text-slate-800 font-semibold text-xs">Repasse ✓ vinculado</span>;
+    }
     if (papel === PAPEL_ALUGUEL) {
       return (
         <span className="text-amber-800 text-xs">
-          Sugestão: aluguel <span className="font-normal text-amber-700">(não vinculado)</span>
+          Sugestão: aluguel <span className="font-normal">(não vinculado)</span>
+        </span>
+      );
+    }
+    if (papel === PAPEL_REPASSE) {
+      return (
+        <span className="text-amber-800 text-xs">
+          Sugestão: repasse <span className="font-normal">(não vinculado)</span>
+        </span>
+      );
+    }
+    return <span className="text-slate-600 text-xs">{rotuloPapelAdministracao(papel)}</span>;
+  }
+
+  function celulaRefMesExtrato(t) {
+    const ref = referenciaAluguelExtrato(t, vinculosPorLancamento, mesReferenciaLancamentoParaRelatorio);
+    if (!ref) return <span className="text-slate-400 text-xs">—</span>;
+    if (ref.vinculado) {
+      return (
+        <span className="text-emerald-800 text-xs font-semibold tabular-nums" title={`Competência ${ref.chave}`}>
+          {ref.rotulo}
         </span>
       );
     }
     return (
-      <span className="text-slate-600 text-xs">{rotuloPapelAdministracao(papel)}</span>
+      <span className="text-amber-800 text-xs tabular-nums" title="Sugestão pelo mês do pagamento — confirme no checklist">
+        {ref.rotulo} <span className="font-normal text-amber-700">(sug.)</span>
+      </span>
     );
   }
 
@@ -493,7 +562,10 @@ export function ImoveisAdministracaoFinanceiro() {
                     repasseInterno={matriz?.repasseInterno ?? resultado?.repasseInterno}
                     salvando={salvandoReconc}
                     gerandoRepasses={gerandoRepasses}
+                    competenciaMin={competenciaRange.min}
+                    competenciaMax={competenciaRange.max}
                     onConfirmarAluguel={confirmarAluguel}
+                    onMoverCompetencia={moverCompetenciaAluguel}
                     onDesvincular={desvincularAluguel}
                     onGerarRepasse={gerarRepassesInternos}
                   />
@@ -582,24 +654,25 @@ export function ImoveisAdministracaoFinanceiro() {
               >
                 <div id="extrato-imoveis" className="pt-3 scroll-mt-4">
                   <p className="text-xs text-slate-500 mb-3">
-                    Coluna <strong>Vínculo</strong> mostra aluguéis confirmados na reconciliação. &quot;Sugestão&quot; é
-                    apenas heurística — ainda precisa vincular no checklist acima.
+                    <strong>Ref. mês</strong> = competência do aluguel/repasse. Verde = vinculado na reconciliação;
+                    âmbar = sugestão pelo mês do pagamento (confirme no checklist acima).
                   </p>
                   <div className="overflow-x-auto rounded border border-slate-200">
-                    <table className="w-full text-left border-collapse min-w-[800px]">
+                    <table className="w-full text-left border-collapse min-w-[880px]">
                       <thead>
                         <tr>
                           <th className={th}>Data</th>
                           <th className={th}>Banco</th>
                           <th className={th}>Descrição</th>
                           <th className={`${th} text-right`}>Valor</th>
+                          <th className={th}>Ref. mês</th>
                           <th className={th}>Vínculo</th>
                         </tr>
                       </thead>
                       <tbody>
                         {painel.transacoes.length === 0 ? (
                           <tr>
-                            <td colSpan={5} className={`${td} text-center text-slate-500 py-6`}>
+                            <td colSpan={6} className={`${td} text-center text-slate-500 py-6`}>
                               Sem movimentações.
                             </td>
                           </tr>
@@ -608,10 +681,26 @@ export function ImoveisAdministracaoFinanceiro() {
                             const isDesp =
                               t.classificacao?.papel === PAPEL_DESPESA_REPASSAR ||
                               t.classificacao?.despesaRepassarAoLocador;
+                            const ref = referenciaAluguelExtrato(
+                              t,
+                              vinculosPorLancamento,
+                              mesReferenciaLancamentoParaRelatorio,
+                            );
+                            const rowClass = isDesp
+                              ? 'bg-orange-50/60'
+                              : ref?.papel === 'ALUGUEL' || t.classificacao?.papel === PAPEL_ALUGUEL
+                                ? ref?.vinculado
+                                  ? 'bg-emerald-50/40'
+                                  : 'bg-amber-50/30'
+                                : ref?.papel === 'REPASSE' || t.classificacao?.papel === PAPEL_REPASSE
+                                  ? ref?.vinculado
+                                    ? 'bg-slate-50/80'
+                                    : 'bg-amber-50/20'
+                                  : '';
                             return (
                               <tr
                                 key={`${t.apiId ?? t.numero}-${t.nomeBanco}-${t.data}-${idx}`}
-                                className={isDesp ? 'bg-orange-50/60' : ''}
+                                className={rowClass}
                               >
                                 <td className={`${td} tabular-nums whitespace-nowrap`}>{t.data}</td>
                                 <td className={`${td} text-xs`}>{t.nomeBanco}</td>
@@ -621,6 +710,7 @@ export function ImoveisAdministracaoFinanceiro() {
                                 >
                                   {formatBRL(t.valor)}
                                 </td>
+                                <td className={td}>{celulaRefMesExtrato(t)}</td>
                                 <td className={td}>{rotuloVinculoExtrato(t)}</td>
                               </tr>
                             );

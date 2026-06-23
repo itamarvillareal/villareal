@@ -119,6 +119,12 @@ public class LocacoesController {
         return despesaCondominioAutoConciliacaoService.conciliarCondominioAutomatico(competencia);
     }
 
+    @GetMapping("/{contratoId}/reconciliacao/vinculos")
+    @Operation(summary = "Vínculos de reconciliação do contrato (aluguel/repasse/despesa por lançamento)")
+    public List<ReconciliacaoVinculoResponse> listarVinculosReconciliacao(@PathVariable Long contratoId) {
+        return reconciliacaoService.listarVinculosContrato(contratoId);
+    }
+
     @GetMapping("/{contratoId}/reconciliacao/matriz-competencias")
     @Operation(
             summary = "Checklist de competências para classificar aluguéis",

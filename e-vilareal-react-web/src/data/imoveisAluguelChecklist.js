@@ -63,3 +63,36 @@ export function contarPendenciasMatriz(meses) {
 export function itemMatrizPorCompetencia(meses, competencia) {
   return (Array.isArray(meses) ? meses : []).find((m) => m?.competencia === competencia) ?? null;
 }
+
+/**
+ * Referência de mês para aluguel/repasse no extrato.
+ * Vinculado → competência do backend; identificado por heurística → mês do pagamento (sugestão).
+ */
+export function referenciaAluguelExtrato(transacao, vinculosPorLancamento, mesReferenciaFn) {
+  const id = transacao?.apiId != null ? Number(transacao.apiId) : NaN;
+  const v = Number.isFinite(id) ? vinculosPorLancamento?.get(id) : null;
+  const papelVinc = String(v?.papel ?? '').toUpperCase();
+
+  if (v?.competenciaMes && (papelVinc === 'ALUGUEL' || papelVinc === 'REPASSE')) {
+    return {
+      chave: v.competenciaMes,
+      rotulo: rotuloCompetenciaCurta(v.competenciaMes),
+      vinculado: true,
+      papel: papelVinc,
+    };
+  }
+
+  const papelHeur = transacao?.classificacao?.papel;
+  if (papelHeur === 'aluguel' || papelHeur === 'repasse') {
+    const mes = typeof mesReferenciaFn === 'function' ? mesReferenciaFn(transacao) : null;
+    if (mes?.chave) {
+      return {
+        chave: mes.chave,
+        rotulo: rotuloCompetenciaCurta(mes.chave),
+        vinculado: false,
+        papel: papelHeur === 'aluguel' ? 'ALUGUEL' : 'REPASSE',
+      };
+    }
+  }
+  return null;
+}

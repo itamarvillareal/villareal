@@ -1468,6 +1468,15 @@ export async function obterMatrizCompetenciasApi(contratoId, { meses = 18 } = {}
   });
 }
 
+/** Vínculos persistidos (ALUGUEL/REPASSE/DESPESA) com competência por lançamento. */
+export async function listarVinculosReconciliacaoApi(contratoId) {
+  if (!featureFlags.useApiImoveis) return [];
+  const id = Number(contratoId);
+  if (!id) return [];
+  const rows = await request(`/api/locacoes/${id}/reconciliacao/vinculos`);
+  return Array.isArray(rows) ? rows : [];
+}
+
 /** Cache em memória (sessão) para não repetir dezenas de GET ao aprovar/descartar. */
 let cacheCadastroSugestoesVinculo = null;
 let cacheCadastroSugestoesVinculoTs = 0;

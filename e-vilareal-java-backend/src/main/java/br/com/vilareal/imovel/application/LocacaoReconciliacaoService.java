@@ -899,6 +899,15 @@ public class LocacaoReconciliacaoService {
                 itens);
     }
 
+    /** Todos os vínculos do contrato (para extrato: ref. mês por lançamento). */
+    @Transactional(readOnly = true)
+    public List<ReconciliacaoVinculoResponse> listarVinculosContrato(Long contratoId) {
+        requireContrato(contratoId);
+        return vinculoRepository.findByContratoLocacao_IdOrderByCompetenciaMesAscIdAsc(contratoId).stream()
+                .map(v -> toVinculoResponse(v, false))
+                .toList();
+    }
+
     private MatrizCompetenciaAluguelVinculadoResponse toAluguelVinculadoMatriz(
             LocacaoRepasseLancamentoEntity vinculo, LancamentoFinanceiroEntity lancamento) {
         return new MatrizCompetenciaAluguelVinculadoResponse(
