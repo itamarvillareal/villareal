@@ -7,7 +7,7 @@
  * FALLBACK hardcoded (segurança de transição) caso o fetch demore ou falhe.
  *
  * O fallback reproduz exatamente o que era implícito em `financeiroData.js`:
- *   9/17/18 = MANUAL (sem extrato); 900 = VIRTUAL (repasse interno, sem extrato); demais = REAL (com extrato).
+ *   9/17/18 = MANUAL (sem extrato); 900 = VIRTUAL (repasse interno, com extrato); demais = REAL (com extrato).
  *
  * O fallback sai na FASE C.
  */
@@ -17,7 +17,7 @@ export const CONTA_CLASSIFICACAO_FALLBACK = Object.freeze({
   9: { tipo: 'MANUAL', temExtrato: false },
   17: { tipo: 'MANUAL', temExtrato: false },
   18: { tipo: 'MANUAL', temExtrato: false },
-  900: { tipo: 'VIRTUAL', temExtrato: false },
+  900: { tipo: 'VIRTUAL', temExtrato: true },
 });
 
 /** Default para qualquer conta não listada no fallback: real, com extrato (coerente com o backend). */
@@ -62,7 +62,7 @@ export function isContaManual(numeroBanco, classificacaoPorNumero) {
   return classificacaoConta(numeroBanco, classificacaoPorNumero).tipo === 'MANUAL';
 }
 
-/** Conta virtual (repasse interno; fora da conciliação por extrato). */
+/** Conta virtual (repasse interno; extrato espelhado débito/crédito, sem importação bancária). */
 export function isContaVirtual(numeroBanco, classificacaoPorNumero) {
   return classificacaoConta(numeroBanco, classificacaoPorNumero).tipo === 'VIRTUAL';
 }

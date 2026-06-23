@@ -19,6 +19,8 @@ public record ReconciliacaoResultadoResponse(
         BigDecimal taxaEfetivaPercent,
         BigDecimal taxaEsperadaPercent,
         StatusRepasse statusRepasse,
+        /** {@code true} quando o locador é cliente próprio (repasse via conta virtual 900). */
+        boolean repasseInterno,
         String locadorNome,
         String dadosBancariosRepasse,
         List<ReconciliacaoResultadoCompetenciaResponse> porCompetencia) {

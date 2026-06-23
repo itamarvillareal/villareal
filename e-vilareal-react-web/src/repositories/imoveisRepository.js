@@ -1447,6 +1447,27 @@ export async function listarRepassesPendentesApi({ ate } = {}) {
   });
 }
 
+/** Gera repasses internos (par débito/crédito na conta 900) para ALUGUELs vinculados sem REPASSE. */
+export async function gerarRepassesInternosApi(contratoId, { competencia } = {}) {
+  if (!featureFlags.useApiImoveis) return { repassesGerados: 0, repassesJaExistentes: 0, alugueisSemRepasse: 0 };
+  const id = Number(contratoId);
+  if (!id) throw new Error('Contrato inválido.');
+  return request(`/api/locacoes/${id}/reconciliacao/gerar-repasses-internos`, {
+    method: 'POST',
+    query: { competencia: competencia || undefined },
+  });
+}
+
+/** Checklist mês a mês: aluguel vinculado ou candidatos por competência. */
+export async function obterMatrizCompetenciasApi(contratoId, { meses = 18 } = {}) {
+  if (!featureFlags.useApiImoveis) return null;
+  const id = Number(contratoId);
+  if (!id) return null;
+  return request(`/api/locacoes/${id}/reconciliacao/matriz-competencias`, {
+    query: { meses: meses || undefined },
+  });
+}
+
 /** Cache em memória (sessão) para não repetir dezenas de GET ao aprovar/descartar. */
 let cacheCadastroSugestoesVinculo = null;
 let cacheCadastroSugestoesVinculoTs = 0;

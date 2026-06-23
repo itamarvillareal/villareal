@@ -119,6 +119,16 @@ public class LocacoesController {
         return despesaCondominioAutoConciliacaoService.conciliarCondominioAutomatico(competencia);
     }
 
+    @GetMapping("/{contratoId}/reconciliacao/matriz-competencias")
+    @Operation(
+            summary = "Checklist de competências para classificar aluguéis",
+            description =
+                    "Por mês: aluguel vinculado ou créditos candidatos. Base da UI de classificação mensal.")
+    public MatrizCompetenciasResponse matrizCompetencias(
+            @PathVariable Long contratoId, @RequestParam(required = false, defaultValue = "18") Integer meses) {
+        return reconciliacaoService.matrizCompetencias(contratoId, meses);
+    }
+
     @GetMapping("/{contratoId}/reconciliacao/sugestoes")
     @Operation(summary = "Sugestões de papel (ALUGUEL/REPASSE/DESPESA) para os lançamentos do imóvel")
     public List<ReconciliacaoSugestaoItemResponse> sugestoesReconciliacao(
@@ -140,6 +150,17 @@ public class LocacoesController {
             @PathVariable Long contratoId, @PathVariable Long vinculoId) {
         reconciliacaoService.desvincular(contratoId, vinculoId);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{contratoId}/reconciliacao/gerar-repasses-internos")
+    @Operation(
+            summary = "Gerar repasses internos (imóvel próprio)",
+            description =
+                    "Cria par débito + crédito na conta virtual 900 para cada ALUGUEL vinculado ainda "
+                            + "sem REPASSE. Idempotente. Disparo manual (não automático ao vincular).")
+    public GerarRepassesInternosResponse gerarRepassesInternos(
+            @PathVariable Long contratoId, @RequestParam(required = false) String competencia) {
+        return reconciliacaoService.gerarRepassesInternosContrato(contratoId, competencia);
     }
 
     @GetMapping("/{contratoId}/resultado")

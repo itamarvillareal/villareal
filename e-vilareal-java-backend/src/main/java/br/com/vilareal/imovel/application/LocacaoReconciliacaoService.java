@@ -17,6 +17,11 @@ import br.com.vilareal.financeiro.infrastructure.persistence.repository.Lancamen
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.imovel.api.dto.ConciliarAlugueisAutomaticoResponse;
+import br.com.vilareal.imovel.api.dto.GerarRepassesInternosResponse;
+import br.com.vilareal.imovel.api.dto.MatrizCompetenciasResponse;
+import br.com.vilareal.imovel.api.dto.MatrizCompetenciasResponse.MatrizCompetenciaAluguelVinculadoResponse;
+import br.com.vilareal.imovel.api.dto.MatrizCompetenciasResponse.MatrizCompetenciaCandidatoResponse;
+import br.com.vilareal.imovel.api.dto.MatrizCompetenciasResponse.MatrizCompetenciaItemResponse;
 import br.com.vilareal.imovel.api.dto.CreditoCandidatoAluguelItem;
 import br.com.vilareal.imovel.api.dto.ReconciliacaoResultadoResponse;
 import br.com.vilareal.imovel.api.dto.ReconciliacaoResultadoResponse.ReconciliacaoResultadoCompetenciaResponse;
@@ -76,8 +81,7 @@ public class LocacaoReconciliacaoService {
     /** Conta contábil "A" (Escritório) — toda administração de imóvel flui aqui. */
     private static final String CODIGO_CONTA_ADMINISTRACAO = "A";
 
-    /** Banco virtual dos lançamentos automáticos de repasse interno — sem extrato, fora da conciliação. */
-    /** Tipo da conta bancária virtual de repasse interno (sem extrato, fora da conciliação). */
+    /** Banco virtual dos lançamentos automáticos de repasse interno (extrato no Financeiro). */
     private static final String TIPO_CONTA_REPASSE_INTERNO = "VIRTUAL";
     /** Origem dos lançamentos gerados automaticamente. */
     private static final String ORIGEM_AUTO = "AUTO";
@@ -404,9 +408,9 @@ public class LocacaoReconciliacaoService {
     }
 
     /**
-     * Ponto ÚNICO de criação de vínculo: upsert por (contrato, lançamento, papel) e, quando o papel
-     * é ALUGUEL, dispara o repasse interno (imóvel próprio). Usado por {@link #vincular} e pela
-     * convergência do "Aprovar" ({@link #registrarAluguelClassificado}).
+     * Ponto ÚNICO de criação de vínculo: upsert por (contrato, lançamento, papel). Usado por
+     * {@link #vincular} e pela convergência do "Aprovar" ({@link #registrarAluguelClassificado}).
+     * O repasse interno (imóvel próprio) NÃO é gerado aqui — use {@link #gerarRepassesInternosContrato}.
      */
     private LocacaoRepasseLancamentoEntity criarVinculoComGatilho(
             ContratoLocacaoEntity contrato, LancamentoFinanceiroEntity lancamento,
@@ -440,12 +444,6 @@ public class LocacaoReconciliacaoService {
         }
 
         entity = vinculoRepository.save(entity);
-
-        // Imóvel próprio (VRV/Itamar): ao reconhecer o ALUGUEL, gera o repasse internamente
-        // (não há repasse bancário real). Idempotente e reversível.
-        if (entity.getPapel() == PapelReconciliacao.ALUGUEL) {
-            gerarRepasseInternoSeProprio(entity, contrato);
-        }
         return entity;
     }
 
@@ -732,24 +730,27 @@ public class LocacaoReconciliacaoService {
                         .filter(v -> v.getPapel() == PapelReconciliacao.ALUGUEL)
                         .toList();
         // Débitos esperados = lançamento de cada vínculo REPASSE ligado por FK real (V115) a um
-        // ALUGUEL deste contrato. Sem parse de string.
-        Set<Long> debitosEsperados = new java.util.HashSet<>();
+        // ALUGUEL deste contrato. Créditos de contrapartida têm numero_lancamento AUTO-REP-{id}-C.
+        Set<Long> lancamentosEsperados = new java.util.HashSet<>();
         for (LocacaoRepasseLancamentoEntity a : alugueis) {
             vinculoRepository.findByOrigemAluguelVinculo_IdAndPapel(a.getId(), PapelReconciliacao.REPASSE)
                     .map(LocacaoRepasseLancamentoEntity::getLancamentoFinanceiro)
-                    .map(LancamentoFinanceiroEntity::getId)
-                    .ifPresent(debitosEsperados::add);
+                    .ifPresent(debito -> {
+                        lancamentosEsperados.add(debito.getId());
+                        lancamentoRepository
+                                .findByNumeroLancamento(numeroCreditoRepasseInterno(a.getId()))
+                                .ifPresent(c -> lancamentosEsperados.add(c.getId()));
+                    });
         }
 
-        // 1) Remove APENAS os lançamentos AUTO (banco virtual) indesejados: créditos na conta I,
-        //    débitos órfãos e qualquer AUTO que não seja o débito atualmente ligado a um ALUGUEL.
-        //    Os débitos esperados (corretos ou não) são tratados por vínculo no passo 2.
+        // 1) Remove APENAS lançamentos AUTO (banco virtual) indesejados: órfãos ou modelo antigo
+        //    (só débito sem crédito / sem grupo). Os pares esperados são tratados no passo 2.
         Integer numeroBancoVirtual = contaRepasseInterno().getNumeroBanco();
         List<LancamentoFinanceiroEntity> autosIndesejados =
                 lancamentoRepository.findByProcessoId(processoId).stream()
                         .filter(l -> ORIGEM_AUTO.equals(l.getOrigem())
                                 && numeroBancoVirtual.equals(l.getNumeroBanco()))
-                        .filter(l -> !debitosEsperados.contains(l.getId()))
+                        .filter(l -> !lancamentosEsperados.contains(l.getId()))
                         .toList();
         int removidosIndesejados = removerLancamentosComVinculos(contratoId, autosIndesejados);
 
@@ -767,6 +768,159 @@ public class LocacaoReconciliacaoService {
     }
 
     /**
+     * Gera repasses internos (par débito + crédito na conta virtual 900) para vínculos de ALUGUEL
+     * ainda sem REPASSE. Disparo manual (botão na tela). Idempotente por vínculo de ALUGUEL.
+     *
+     * @param competencia opcional (AAAA-MM); {@code null} = todas as competências com ALUGUEL pendente
+     */
+    @Transactional
+    public GerarRepassesInternosResponse gerarRepassesInternosContrato(Long contratoId, String competencia) {
+        ContratoLocacaoEntity contrato = requireContrato(contratoId);
+        if (!isImovelProprio(contrato)) {
+            throw new BusinessRuleException(
+                    "Repasse interno só se aplica a imóveis de clientes próprios (cliente.proprio).");
+        }
+        String competenciaFiltro = StringUtils.hasText(competencia) ? parseCompetencia(competencia).toString() : null;
+
+        List<LocacaoRepasseLancamentoEntity> alugueis =
+                vinculoRepository.findByContratoLocacao_IdOrderByCompetenciaMesAscIdAsc(contratoId).stream()
+                        .filter(v -> v.getPapel() == PapelReconciliacao.ALUGUEL)
+                        .filter(v -> competenciaFiltro == null
+                                || competenciaFiltro.equals(chaveCompetencia(v.getCompetenciaMes())))
+                        .toList();
+
+        int gerados = 0;
+        int jaExistentes = 0;
+        int semRepasse = 0;
+        for (LocacaoRepasseLancamentoEntity aluguel : alugueis) {
+            Optional<LocacaoRepasseLancamentoEntity> repasseOpt =
+                    vinculoRepository.findByOrigemAluguelVinculo_IdAndPapel(aluguel.getId(), PapelReconciliacao.REPASSE);
+            if (repasseOpt.isPresent()) {
+                jaExistentes++;
+                sincronizarCompetenciaParRepasseInterno(aluguel, repasseOpt.get().getLancamentoFinanceiro());
+                continue;
+            }
+            BigDecimal repasse = repasseEsperadoDoAluguel(contrato, aluguel);
+            if (repasse.signum() <= 0) {
+                continue;
+            }
+            semRepasse++;
+            gerarParRepasseInterno(aluguel, contrato);
+            gerados++;
+        }
+
+        log.info("[reconciliacao-imovel] gerar-repasses-internos contrato={} competencia={} gerados={} jaExistentes={}",
+                contratoId, competenciaFiltro, gerados, jaExistentes);
+        return new GerarRepassesInternosResponse(contratoId, competenciaFiltro, gerados, jaExistentes, semRepasse);
+    }
+
+    /**
+     * Checklist mês a mês: aluguel já vinculado ou créditos candidatos na competência.
+     * Usado pela tela de classificação de aluguéis (substitui navegação competência a competência).
+     */
+    @Transactional(readOnly = true)
+    public MatrizCompetenciasResponse matrizCompetencias(Long contratoId, Integer mesesParam) {
+        ContratoLocacaoEntity contrato = requireContrato(contratoId);
+        int meses = mesesParam != null && mesesParam > 0 ? Math.min(mesesParam, 36) : 18;
+
+        YearMonth ate = YearMonth.now();
+        YearMonth de = ate.minusMonths(meses - 1L);
+        if (contrato.getDataInicio() != null) {
+            YearMonth ci = YearMonth.from(contrato.getDataInicio());
+            if (ci.isAfter(de)) {
+                de = ci;
+            }
+        }
+        if (contrato.getDataFim() != null) {
+            YearMonth cf = YearMonth.from(contrato.getDataFim());
+            if (cf.isBefore(ate)) {
+                ate = cf;
+            }
+        }
+
+        BigDecimal taxaEsperada = taxaEsperadaPercent(contrato);
+        List<LocacaoRepasseLancamentoEntity> todosVinculos =
+                vinculoRepository.findByContratoLocacao_IdOrderByCompetenciaMesAscIdAsc(contratoId);
+
+        Map<String, List<LocacaoRepasseLancamentoEntity>> porCompetencia = new HashMap<>();
+        for (LocacaoRepasseLancamentoEntity v : todosVinculos) {
+            porCompetencia.computeIfAbsent(chaveCompetencia(v.getCompetenciaMes()), k -> new ArrayList<>()).add(v);
+        }
+
+        List<MatrizCompetenciaItemResponse> itens = new ArrayList<>();
+        for (YearMonth ym = ate; !ym.isBefore(de); ym = ym.minusMonths(1)) {
+            String comp = ym.toString();
+            List<LocacaoRepasseLancamentoEntity> vincComp = porCompetencia.getOrDefault(comp, List.of());
+
+            Optional<LocacaoRepasseLancamentoEntity> aluguelV = vincComp.stream()
+                    .filter(v -> v.getPapel() == PapelReconciliacao.ALUGUEL)
+                    .findFirst();
+
+            ReconciliacaoResultadoCompetenciaResponse resComp = calcularCompetencia(comp, vincComp, taxaEsperada);
+
+            if (aluguelV.isPresent()) {
+                LancamentoFinanceiroEntity l = aluguelV.get().getLancamentoFinanceiro();
+                itens.add(new MatrizCompetenciaItemResponse(
+                        comp,
+                        "VINCULADO",
+                        toAluguelVinculadoMatriz(aluguelV.get(), l),
+                        List.of(),
+                        resComp.aluguelRecebido(),
+                        resComp.statusRepasse()));
+            } else {
+                List<MatrizCompetenciaCandidatoResponse> candidatos =
+                        sugerir(contratoId, comp).stream()
+                                .filter(s -> !s.jaVinculado())
+                                .filter(s -> s.natureza() != null
+                                        && NaturezaLancamento.CREDITO.name().equalsIgnoreCase(s.natureza()))
+                                .filter(s -> s.papelSugerido() == PapelReconciliacao.ALUGUEL)
+                                .map(this::toCandidatoMatriz)
+                                .toList();
+                String estado = candidatos.isEmpty()
+                        ? "SEM_CANDIDATO"
+                        : candidatos.size() == 1 ? "CANDIDATO_UNICO" : "CANDIDATOS_MULTIPLOS";
+                itens.add(new MatrizCompetenciaItemResponse(
+                        comp,
+                        estado,
+                        null,
+                        candidatos,
+                        BigDecimal.ZERO,
+                        StatusRepasse.PENDENTE));
+            }
+        }
+
+        return new MatrizCompetenciasResponse(
+                contratoId,
+                contrato.getValorAluguel(),
+                contrato.getDiaVencimentoAluguel(),
+                isImovelProprio(contrato),
+                de.toString(),
+                ate.toString(),
+                itens);
+    }
+
+    private MatrizCompetenciaAluguelVinculadoResponse toAluguelVinculadoMatriz(
+            LocacaoRepasseLancamentoEntity vinculo, LancamentoFinanceiroEntity lancamento) {
+        return new MatrizCompetenciaAluguelVinculadoResponse(
+                vinculo.getId(),
+                lancamento != null ? lancamento.getId() : null,
+                lancamento != null ? lancamento.getDataLancamento() : null,
+                lancamento != null ? lancamento.getDescricao() : null,
+                lancamento != null && lancamento.getValor() != null ? lancamento.getValor().abs() : null);
+    }
+
+    private MatrizCompetenciaCandidatoResponse toCandidatoMatriz(ReconciliacaoSugestaoItemResponse s) {
+        return new MatrizCompetenciaCandidatoResponse(
+                s.lancamentoFinanceiroId(),
+                s.data(),
+                s.descricao(),
+                s.valor() != null ? s.valor().abs() : null,
+                s.confianca(),
+                s.origem(),
+                s.classificaAoConfirmar());
+    }
+
+    /**
      * Garante o débito de repasse correto para um vínculo de ALUGUEL. NO-OP (retorna {@code false}) se o
      * débito já está correto — preserva o id. Remove+regenera se errado; gera se ausente (retorna {@code true}).
      */
@@ -780,24 +934,50 @@ public class LocacaoReconciliacaoService {
 
         if (repasseOpt.isPresent()) {
             LancamentoFinanceiroEntity debito = repasseOpt.get().getLancamentoFinanceiro();
-            if (debito != null && debitoRepasseCorreto(debito, repasseEsperado, dataEsperada)) {
+            if (parRepasseInternoCorreto(debito, aluguel.getId(), repasseEsperado, dataEsperada)) {
                 return false; // já correto → NO-OP, não troca id
             }
             // errado → remove o par (vínculo REPASSE + débito) para regenerar
             removerRepasseInterno(contratoId, aluguel.getId());
         }
-        gerarRepasseInternoSeProprio(aluguel, contrato); // ausente/removido → gera o débito correto
+        gerarParRepasseInterno(aluguel, contrato); // ausente/removido → gera o par correto
         return true;
     }
 
-    /** Um débito de repasse está correto se: DEBITO na conta A, data = data do aluguel, sem grupo, VINCULADO, valor = repasseEsperado. */
+    /** Par de repasse correto: débito + crédito na conta virtual, mesmo grupo, data = data do aluguel. */
+    private boolean parRepasseInternoCorreto(
+            LancamentoFinanceiroEntity debito,
+            Long aluguelVinculoId,
+            BigDecimal repasseEsperado,
+            LocalDate dataEsperada) {
+        if (debito == null || !debitoRepasseCorreto(debito, aluguelVinculoId, repasseEsperado, dataEsperada)) {
+            return false;
+        }
+        Optional<LancamentoFinanceiroEntity> creditoOpt =
+                lancamentoRepository.findByNumeroLancamento(numeroCreditoRepasseInterno(aluguelVinculoId));
+        if (creditoOpt.isEmpty()) {
+            return false;
+        }
+        LancamentoFinanceiroEntity credito = creditoOpt.get();
+        return credito.getNatureza() == NaturezaLancamento.CREDITO
+                && credito.getValor() != null
+                && credito.getValor().compareTo(repasseEsperado) == 0
+                && dataEsperada != null
+                && dataEsperada.equals(credito.getDataLancamento())
+                && grupoRepasseInterno(aluguelVinculoId).equals(credito.getGrupoCompensacao());
+    }
+
+    /** Um débito de repasse está correto se: DEBITO conta A, banco virtual, data = aluguel, grupo pareado, valor ok. */
     private boolean debitoRepasseCorreto(
-            LancamentoFinanceiroEntity debito, BigDecimal repasseEsperado, LocalDate dataEsperada) {
+            LancamentoFinanceiroEntity debito,
+            Long aluguelVinculoId,
+            BigDecimal repasseEsperado,
+            LocalDate dataEsperada) {
         return debito.getNatureza() == NaturezaLancamento.DEBITO
                 && debito.getContaContabil() != null
                 && CODIGO_CONTA_ADMINISTRACAO.equalsIgnoreCase(debito.getContaContabil().getCodigo())
                 && dataEsperada != null && dataEsperada.equals(debito.getDataLancamento())
-                && !StringUtils.hasText(debito.getGrupoCompensacao())
+                && grupoRepasseInterno(aluguelVinculoId).equals(debito.getGrupoCompensacao())
                 && debito.getEtapa() == EtapaLancamento.VINCULADO
                 && debito.getValor() != null && debito.getValor().compareTo(repasseEsperado) == 0;
     }
@@ -889,30 +1069,22 @@ public class LocacaoReconciliacaoService {
     // --------------------------------------------------------------------- repasse interno (imóvel próprio)
 
     /**
-     * Gera o repasse interno para um vínculo de ALUGUEL em imóvel próprio (idempotente).
+     * Gera o par de repasse interno (débito + crédito na conta virtual 900) para um vínculo de
+     * ALUGUEL em imóvel próprio (idempotente).
      *
-     * <p>O repasse é representado SOMENTE por um DÉBITO na conta A (origem AUTO, banco virtual sem
-     * extrato), vinculado como {@code papel=REPASSE}. NÃO há crédito na conta I nem partida dobrada
-     * (sem {@code grupo_compensacao} soma-zero): é um débito classificado normal.
-     *
-     * <p>A {@code data_lancamento} do débito é a data REAL do recebimento do aluguel (nunca 01/MM,
-     * para o repasse não anteceder o crédito). A competência acompanha a do ALUGUEL (e a
-     * {@code data_competencia}), movendo junto quando reatribuída na tela.
+     * <p>O débito é vinculado como {@code papel=REPASSE}. O crédito é a contrapartida no extrato
+     * virtual (mesmo {@code grupo_compensacao}, soma zero na conta 900).
      */
-    private void gerarRepasseInternoSeProprio(LocacaoRepasseLancamentoEntity aluguelVinculo, ContratoLocacaoEntity contrato) {
+    private void gerarParRepasseInterno(LocacaoRepasseLancamentoEntity aluguelVinculo, ContratoLocacaoEntity contrato) {
         if (!isImovelProprio(contrato)) {
             return;
         }
-        // Idempotência por FK real: já existe vínculo REPASSE apontando para este ALUGUEL? (V115)
         Optional<LocacaoRepasseLancamentoEntity> repasseExistente =
                 vinculoRepository.findByOrigemAluguelVinculo_IdAndPapel(aluguelVinculo.getId(), PapelReconciliacao.REPASSE);
         if (repasseExistente.isPresent()) {
-            // Débito já existe (1 por vínculo de ALUGUEL). Se a competência do ALUGUEL mudou
-            // (reatribuição na tela), sincroniza o débito e o vínculo REPASSE.
-            sincronizarCompetenciaDoDebito(aluguelVinculo, repasseExistente.get().getLancamentoFinanceiro());
+            sincronizarCompetenciaParRepasseInterno(aluguelVinculo, repasseExistente.get().getLancamentoFinanceiro());
             return;
         }
-        String numeroDebito = numeroDebitoRepasseInterno(aluguelVinculo.getId());
 
         BigDecimal repasse = repasseEsperadoDoAluguel(contrato, aluguelVinculo);
         if (repasse.signum() <= 0) {
@@ -921,16 +1093,29 @@ public class LocacaoReconciliacaoService {
 
         ClienteEntity cliente = clienteDoImovel(contrato);
         ProcessoEntity processo = processoAtivoDoContrato(contrato);
-        // data_lancamento = data real do recebimento do aluguel (nunca 01/MM, nunca antes do crédito).
         LocalDate dataLancamento = dataLancamentoDoAluguel(aluguelVinculo);
-        // data_competencia acompanha a competência do ALUGUEL (move junto quando reatribuída).
         LocalDate dataCompetencia = competenciaParaData(aluguelVinculo.getCompetenciaMes(), dataLancamento);
         String compLabel = StringUtils.hasText(aluguelVinculo.getCompetenciaMes()) ? aluguelVinculo.getCompetenciaMes() : "";
+        String grupo = grupoRepasseInterno(aluguelVinculo.getId());
+        Long clienteId = cliente != null ? cliente.getId() : null;
 
-        LancamentoFinanceiroEntity debito = novoDebitoRepasseInterno(
+        LancamentoFinanceiroEntity debito = novoLancamentoRepasseInterno(
+                NaturezaLancamento.DEBITO,
                 repasse, cliente, processo, dataLancamento, dataCompetencia,
-                ("Repasse interno (imóvel próprio) " + compLabel).trim(), numeroDebito);
+                ("Repasse interno (imóvel próprio) " + compLabel).trim(),
+                numeroDebitoRepasseInterno(aluguelVinculo.getId()),
+                grupo,
+                EtapaLancamento.VINCULADO);
         lancamentoRepository.save(debito);
+
+        LancamentoFinanceiroEntity credito = novoLancamentoRepasseInterno(
+                NaturezaLancamento.CREDITO,
+                repasse, cliente, processo, dataLancamento, dataCompetencia,
+                ("Contrapartida repasse interno " + compLabel).trim(),
+                numeroCreditoRepasseInterno(aluguelVinculo.getId()),
+                grupo,
+                EtapaLancamento.calcular(CODIGO_CONTA_ADMINISTRACAO, grupo, clienteId));
+        lancamentoRepository.save(credito);
 
         LocacaoRepasseLancamentoEntity repasseVinculo = new LocacaoRepasseLancamentoEntity();
         repasseVinculo.setContratoLocacao(contrato);
@@ -938,17 +1123,16 @@ public class LocacaoReconciliacaoService {
         repasseVinculo.setPapel(PapelReconciliacao.REPASSE);
         repasseVinculo.setCompetenciaMes(aluguelVinculo.getCompetenciaMes());
         repasseVinculo.setValor(repasse);
-        repasseVinculo.setOrigemAluguelVinculo(aluguelVinculo); // FK real -> ALUGUEL de origem (V115)
+        repasseVinculo.setOrigemAluguelVinculo(aluguelVinculo);
         vinculoRepository.save(repasseVinculo);
 
-        log.info("[reconciliacao-imovel] REPASSE-INTERNO (débito) gerado contrato={} aluguelVinculo={} repasse={} debitoA={} data={}",
-                contrato.getId(), aluguelVinculo.getId(), repasse, debito.getId(), dataLancamento);
+        log.info("[reconciliacao-imovel] REPASSE-INTERNO (par D/C) contrato={} aluguelVinculo={} repasse={} debito={} credito={} data={}",
+                contrato.getId(), aluguelVinculo.getId(), repasse, debito.getId(), credito.getId(), dataLancamento);
     }
 
     /**
-     * Remove o débito de repasse interno (lançamento + vínculo REPASSE) gerado por um vínculo de
-     * ALUGUEL. Acha o REPASSE pela FK real {@code origem_aluguel_vinculo_id} (V115), segue o
-     * {@code lancamento_financeiro_id} e apaga débito + vínculo. Zero parse de string.
+     * Remove o par de repasse interno (débito + crédito + vínculo REPASSE) gerado por um vínculo de
+     * ALUGUEL.
      */
     private void removerRepasseInterno(Long contratoId, Long aluguelVinculoId) {
         Optional<LocacaoRepasseLancamentoEntity> repasseOpt =
@@ -963,28 +1147,44 @@ public class LocacaoReconciliacaoService {
         if (debito != null) {
             lancamentoRepository.delete(debito);
         }
+        lancamentoRepository.findByNumeroLancamento(numeroCreditoRepasseInterno(aluguelVinculoId))
+                .ifPresent(lancamentoRepository::delete);
         log.info("[reconciliacao-imovel] REPASSE-INTERNO removido contrato={} aluguelVinculo={} debito={}",
                 contratoId, aluguelVinculoId, debito != null ? debito.getId() : null);
     }
 
     /**
-     * Mantém o débito de repasse interno na mesma competência do ALUGUEL após uma reatribuição na tela.
-     * Só a competência muda ({@code data_competencia} + vínculo REPASSE + rótulo); a
-     * {@code data_lancamento} permanece = data real do recebimento do aluguel.
+     * Mantém débito e crédito de repasse interno na mesma competência do ALUGUEL após reatribuição.
      */
-    private void sincronizarCompetenciaDoDebito(
+    private void sincronizarCompetenciaParRepasseInterno(
             LocacaoRepasseLancamentoEntity aluguelVinculo, LancamentoFinanceiroEntity debito) {
+        if (debito == null) {
+            return;
+        }
         String competencia = aluguelVinculo.getCompetenciaMes();
         if (!StringUtils.hasText(competencia)) {
             return;
         }
         LocalDate dataComp = competenciaParaData(competencia, null);
+        String descDebito = ("Repasse interno (imóvel próprio) " + competencia).trim();
+        String descCredito = ("Contrapartida repasse interno " + competencia).trim();
         boolean mudou = false;
         if (dataComp != null && !dataComp.equals(debito.getDataCompetencia())) {
             debito.setDataCompetencia(dataComp);
-            debito.setDescricao(("Repasse interno (imóvel próprio) " + competencia).trim());
+            debito.setDescricao(descDebito);
             lancamentoRepository.save(debito);
             mudou = true;
+        }
+        Optional<LancamentoFinanceiroEntity> creditoOpt =
+                lancamentoRepository.findByNumeroLancamento(numeroCreditoRepasseInterno(aluguelVinculo.getId()));
+        if (creditoOpt.isPresent()) {
+            LancamentoFinanceiroEntity credito = creditoOpt.get();
+            if (dataComp != null && !dataComp.equals(credito.getDataCompetencia())) {
+                credito.setDataCompetencia(dataComp);
+                credito.setDescricao(descCredito);
+                lancamentoRepository.save(credito);
+                mudou = true;
+            }
         }
         for (LocacaoRepasseLancamentoEntity v : vinculoRepository
                 .findByContratoLocacao_IdAndLancamentoFinanceiro_IdIn(
@@ -1023,20 +1223,19 @@ public class LocacaoReconciliacaoService {
     }
 
     /**
-     * Cria o DÉBITO de repasse interno (conta A, banco virtual sem extrato, origem AUTO).
-     * Sem {@code grupo_compensacao} (não é par balanceado) e etapa {@code VINCULADO} (débito
-     * classificado vinculado como REPASSE) — fica fora do relatório de compensação soma-zero.
+     * Cria um lançamento AUTO na conta virtual de repasse interno (par débito/crédito no extrato 900).
      */
-    private LancamentoFinanceiroEntity novoDebitoRepasseInterno(
+    private LancamentoFinanceiroEntity novoLancamentoRepasseInterno(
+            NaturezaLancamento natureza,
             BigDecimal valor, ClienteEntity cliente, ProcessoEntity processo,
             LocalDate dataLancamento, LocalDate dataCompetencia,
-            String descricao, String numeroLancamento) {
+            String descricao, String numeroLancamento, String grupoCompensacao,
+            EtapaLancamento etapa) {
         ContaBancariaEntity contaVirtual = contaRepasseInterno();
         LancamentoFinanceiroEntity l = new LancamentoFinanceiroEntity();
         l.setContaContabil(contaAdministracao());
         l.setClienteEntidade(cliente);
         l.setProcesso(processo);
-        // B2: numero_banco/banco_nome do débito vêm da conta VIRTUAL (não mais de constante 900).
         l.setNumeroBanco(contaVirtual.getNumeroBanco());
         l.setBancoNome(contaVirtual.getBancoNome());
         l.setContaBancaria(contaVirtual);
@@ -1045,18 +1244,16 @@ public class LocacaoReconciliacaoService {
         l.setDataCompetencia(dataCompetencia);
         l.setDescricao(descricao);
         l.setValor(valor);
-        l.setNatureza(NaturezaLancamento.DEBITO);
+        l.setNatureza(natureza);
         l.setOrigem(ORIGEM_AUTO);
         l.setStatus("ATIVO");
-        l.setGrupoCompensacao(null);
-        l.setEtapa(EtapaLancamento.VINCULADO);
+        l.setGrupoCompensacao(grupoCompensacao);
+        l.setEtapa(etapa);
         return l;
     }
 
     /**
-     * Conta bancária VIRTUAL do repasse interno (banco virtual sem extrato, fora da conciliação).
-     * Espera-se EXATAMENTE uma; caso contrário falha claro como erro de seed/config (não há mais
-     * fallback para o 900 hardcoded — V116 semeia a 900 como VIRTUAL).
+     * Conta bancária VIRTUAL do repasse interno (extrato no Financeiro, banco 900).
      */
     private ContaBancariaEntity contaRepasseInterno() {
         List<ContaBancariaEntity> virtuais = contaBancariaRepository.findByTipo(TIPO_CONTA_REPASSE_INTERNO);
@@ -1079,9 +1276,19 @@ public class LocacaoReconciliacaoService {
         return fallback != null ? fallback : LocalDate.now();
     }
 
+    /** Chave determinística do grupo de compensação do par de repasse interno. */
+    private static String grupoRepasseInterno(Long aluguelVinculoId) {
+        return PREFIXO_GRUPO_REPASSE_INTERNO + aluguelVinculoId;
+    }
+
     /** Chave determinística do débito de repasse interno (idempotência/reversão por vínculo de ALUGUEL). */
     private static String numeroDebitoRepasseInterno(Long aluguelVinculoId) {
         return PREFIXO_GRUPO_REPASSE_INTERNO + aluguelVinculoId + "-D";
+    }
+
+    /** Chave determinística do crédito de contrapartida no extrato virtual. */
+    private static String numeroCreditoRepasseInterno(Long aluguelVinculoId) {
+        return PREFIXO_GRUPO_REPASSE_INTERNO + aluguelVinculoId + "-C";
     }
 
     // ----------------------------------------------------------------------------------------- (D)
@@ -1133,6 +1340,7 @@ public class LocacaoReconciliacaoService {
                 taxaEfetivaPercent(total),
                 taxaEsperada,
                 statusTotal,
+                isImovelProprio(contrato),
                 nomePessoa(contrato.getLocadorPessoa()),
                 contrato.getDadosBancariosRepasseJson(),
                 detalhe);

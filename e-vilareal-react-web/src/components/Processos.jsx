@@ -4814,7 +4814,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
               </button>
             </footer>
           </div>
-      </div>
 
       {modalTramitacaoAberto && (
         <div
@@ -6187,6 +6186,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
           onClose={() => setDriveExplorerAberto(false)}
         />
       ) : null}
+    </div>
     </div>
   );
 }

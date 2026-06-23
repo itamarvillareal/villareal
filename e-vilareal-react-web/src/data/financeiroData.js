@@ -100,6 +100,7 @@ const BANCO_TO_NUMERO = {
   'LANÇ EM DINHEIRO': 17, 'LANÇ MANUAIS (2)': 18,
   'BTG': 21, 'ITI': 22, 'Itaú Empresas': 23,
   'BTG Banking': 24, 'BTG (2)': 25, 'CORA': 26, 'BTG JA': 27, 'BTG RACHEL': 28, 'Sicoob VRV': 29,
+  'REPASSE INTERNO': 900,
 };
 
 /** Ordem fixa no topo da lista de bancos (sidebar Financeiro); demais mantêm ordenação por volume. */

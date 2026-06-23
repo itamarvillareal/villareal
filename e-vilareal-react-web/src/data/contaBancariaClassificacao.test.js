@@ -13,7 +13,7 @@ const RESPOSTA_ENDPOINT = [
   { numeroBanco: 9, bancoNome: 'LANÇ MANUAIS', tipo: 'MANUAL', temExtrato: false, ativo: true },
   { numeroBanco: 17, bancoNome: 'LANÇ EM DINHEIRO', tipo: 'MANUAL', temExtrato: false, ativo: true },
   { numeroBanco: 18, bancoNome: 'LANÇ MANUAIS (2)', tipo: 'MANUAL', temExtrato: false, ativo: true },
-  { numeroBanco: 900, bancoNome: 'REPASSE INTERNO', tipo: 'VIRTUAL', temExtrato: false, ativo: true },
+  { numeroBanco: 900, bancoNome: 'REPASSE INTERNO', tipo: 'VIRTUAL', temExtrato: true, ativo: true },
 ];
 
 describe('buildClassificacaoContasPorNumero', () => {
@@ -21,7 +21,7 @@ describe('buildClassificacaoContasPorNumero', () => {
     const map = buildClassificacaoContasPorNumero(RESPOSTA_ENDPOINT);
     expect(map[1]).toMatchObject({ tipo: 'REAL', temExtrato: true });
     expect(map[9]).toMatchObject({ tipo: 'MANUAL', temExtrato: false });
-    expect(map[900]).toMatchObject({ tipo: 'VIRTUAL', temExtrato: false });
+    expect(map[900]).toMatchObject({ tipo: 'VIRTUAL', temExtrato: true });
   });
 
   it('usa o fallback hardcoded quando a resposta é vazia/ausente', () => {
@@ -45,10 +45,11 @@ describe('helpers de classificação — endpoint e fallback dão o mesmo result
     }
   });
 
-  it('900 = VIRTUAL, sem extrato', () => {
+  it('900 = VIRTUAL, com extrato (repasse interno)', () => {
     expect(isContaVirtual(900, doEndpoint)).toBe(true);
-    expect(contaTemExtrato(900, doEndpoint)).toBe(false);
+    expect(contaTemExtrato(900, doEndpoint)).toBe(true);
     expect(isContaVirtual(900, semEndpoint)).toBe(true);
+    expect(contaTemExtrato(900, semEndpoint)).toBe(true);
   });
 
   it('conta real = REAL, com extrato; desconhecida usa default REAL/extrato', () => {

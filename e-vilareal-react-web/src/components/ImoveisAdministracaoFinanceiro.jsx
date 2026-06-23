@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
+  ChevronDown,
+  ChevronUp,
   RefreshCw,
   Landmark,
   FolderOpen,
@@ -11,37 +13,31 @@ import {
 import { padCliente } from '../data/processosDadosRelatorio.js';
 import {
   gerarAlertasAdministracaoImovel,
-  nomeContaPorLetra,
-  PAPEL_CREDITO,
-  PAPEL_DEBITO,
+  PAPEL_ALUGUEL,
   PAPEL_DESPESA_REPASSAR,
-  processoEhAdministracaoImovel,
   rotuloPapelAdministracao,
 } from '../data/imoveisAdministracaoFinanceiro.js';
-import { ImoveisSugestoesVinculoPanel } from './imoveis/ImoveisSugestoesVinculoPanel.jsx';
+import {
+  contarPendenciasMatriz,
+  itemMatrizPorCompetencia,
+} from '../data/imoveisAluguelChecklist.js';
 import {
   carregarPainelAdministracaoImovel,
   desvincularReconciliacaoApi,
+  gerarRepassesInternosApi,
+  obterMatrizCompetenciasApi,
   obterResultadoImovelApi,
-  recarregarSomentePainelFinanceiroImovel,
-  sugerirReconciliacaoApi,
   vincularReconciliacaoApi,
 } from '../repositories/imoveisRepository.js';
 import {
-  agruparLinhasReconciliacao,
   competenciaAtual,
-  competenciaValida,
-  confiancaInfo,
-  descricaoAdocao,
-  linhasReconciliacaoFromSugestoes,
-  montarPayloadVinculos,
-  PAPEIS_RECONCILIACAO,
   repasseEsperado,
-  rotuloPapelReconciliacao,
   statusRepasseInfo,
 } from '../data/imoveisReconciliacao.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
+import { ImoveisAluguelChecklist } from './imoveis/ImoveisAluguelChecklist.jsx';
+import { ImoveisPendenciasAluguel } from './imoveis/ImoveisPendenciasAluguel.jsx';
 
 function formatBRL(n) {
   const v = Number(n);
@@ -49,9 +45,7 @@ function formatBRL(n) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 }
 
-/** Valores negativos em vermelho. */
 function corValorNegativo(n) {
-  // `important` (sufixo `!`, sintaxe Tailwind v4) garante prioridade sobre o `text-slate-800` da base `td`.
   return Number(n) < 0 ? 'text-red-600!' : '';
 }
 
@@ -76,6 +70,29 @@ function KpiResultado({ titulo, valor, sub, tom = 'slate' }) {
   );
 }
 
+function SecaoColapsavel({ titulo, subtitulo, aberto, onToggle, children }) {
+  return (
+    <div className="bg-white rounded-lg border border-slate-300 shadow-sm overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left hover:bg-slate-50/80"
+      >
+        <div>
+          <h2 className="text-sm font-semibold text-slate-800">{titulo}</h2>
+          {subtitulo ? <p className="text-xs text-slate-500 mt-0.5">{subtitulo}</p> : null}
+        </div>
+        {aberto ? (
+          <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
+        ) : (
+          <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" aria-hidden />
+        )}
+      </button>
+      {aberto ? <div className="px-4 pb-4 border-t border-slate-100">{children}</div> : null}
+    </div>
+  );
+}
+
 export function ImoveisAdministracaoFinanceiro() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -87,25 +104,18 @@ export function ImoveisAdministracaoFinanceiro() {
   const [painelApi, setPainelApi] = useState(null);
   const [contratoVigenteApi, setContratoVigenteApi] = useState(null);
 
-  // Reconciliação (Fase B) — verdade vem do backend.
   const [competencia, setCompetencia] = useState(() => competenciaAtual());
-  const [modoPeriodo, setModoPeriodo] = useState(false);
-  const [periodoInicio, setPeriodoInicio] = useState('');
-  const [periodoFim, setPeriodoFim] = useState('');
+  const [matriz, setMatriz] = useState(null);
+  const [carregandoMatriz, setCarregandoMatriz] = useState(false);
   const [resultado, setResultado] = useState(null);
-  const [carregandoResultado, setCarregandoResultado] = useState(false);
-  const [sugestoes, setSugestoes] = useState([]);
-  const [carregandoSugestoes, setCarregandoSugestoes] = useState(false);
-  const [papeisEditados, setPapeisEditados] = useState({});
-  const [selecionadas, setSelecionadas] = useState(() => new Set());
   const [salvandoReconc, setSalvandoReconc] = useState(false);
+  const [gerandoRepasses, setGerandoRepasses] = useState(false);
   const [erroReconc, setErroReconc] = useState('');
   const [reconcTick, setReconcTick] = useState(0);
-  // Competência editável por vínculo de ALUGUEL (chave = lancamentoFinanceiroId). O draft persiste
-  // entre recargas para refletir a competência movida (o backend não expõe a competência crua do vínculo).
-  const [competenciaVinculoDraft, setCompetenciaVinculoDraft] = useState({});
+  const [resultadoAberto, setResultadoAberto] = useState(false);
+  const [extratoAberto, setExtratoAberto] = useState(false);
+  const [detalhesAbertos, setDetalhesAbertos] = useState(false);
 
-  /** Nº do imóvel na planilha (col. A) — mesmo valor exibido no cadastro e no relatório. */
   const imovelId = useMemo(() => {
     const st = location.state && typeof location.state === 'object' ? location.state : null;
     const fromState = st?.imovelId != null ? Number(st.imovelId) : NaN;
@@ -127,7 +137,6 @@ export function ImoveisAdministracaoFinanceiro() {
   }, [location.state, location.search]);
 
   const mock = useMemo(() => imovelUi, [imovelUi]);
-
   const codigoStr = mock ? String(mock.codigo ?? '').trim() : '';
   const procStr = mock ? String(mock.proc ?? '').trim() : '';
   const vinculoOk = codigoStr !== '' && procStr !== '';
@@ -138,181 +147,109 @@ export function ImoveisAdministracaoFinanceiro() {
     return gerarAlertasAdministracaoImovel(mock, painel.porMes, painel.mesesOrdenados);
   }, [painel, mock]);
 
-  const ehAdm = vinculoOk && processoEhAdministracaoImovel(codigoStr, procStr, { assumirAdm: true });
-  const painelFonteApi = painel?.fonte === 'api' && featureFlags.useApiFinanceiro;
-
   const recarregar = useCallback(() => setRefreshTick((t) => t + 1), []);
-
-  /** Após aprovar vínculo: só atualiza extrato/conta corrente, sem travar a página inteira. */
-  const atualizarExtratoAposVinculo = useCallback(() => {
-    if (!vinculoOk) return;
-    void recarregarSomentePainelFinanceiroImovel({ imovelId, imovelIdApi }).then((painel) => {
-      if (painel) setPainelApi(painel);
-    });
-  }, [imovelId, imovelIdApi, vinculoOk]);
+  const recarregarReconciliacao = useCallback(() => setReconcTick((t) => t + 1), []);
 
   const contratoId = useMemo(() => {
     const n = Number(mock?._apiContratoId);
     return Number.isFinite(n) && n > 0 ? n : null;
   }, [mock]);
 
-  const recarregarReconciliacao = useCallback(() => setReconcTick((t) => t + 1), []);
+  const itemCompetenciaAtiva = useMemo(
+    () => itemMatrizPorCompetencia(matriz?.meses, competencia),
+    [matriz?.meses, competencia],
+  );
 
-  // Range opcional (AAAA-MM) para o seletor de competência: período do contrato vigente.
-  const competenciaRange = useMemo(() => {
-    const min = contratoVigenteApi?.dataInicio ? String(contratoVigenteApi.dataInicio).slice(0, 7) : undefined;
-    const max = contratoVigenteApi?.dataFim ? String(contratoVigenteApi.dataFim).slice(0, 7) : undefined;
-    return { min, max };
-  }, [contratoVigenteApi]);
+  const pendenciasMatriz = useMemo(() => contarPendenciasMatriz(matriz?.meses), [matriz?.meses]);
 
-  // Limpa os drafts ao trocar de contrato (evita carregar competências de outro imóvel).
-  useEffect(() => {
-    setCompetenciaVinculoDraft({});
-  }, [contratoId]);
+  /** Mapa lancamentoId → vínculo ALUGUEL (para coluna do extrato). */
+  const vinculoAluguelPorLancamento = useMemo(() => {
+    const map = new Map();
+    for (const m of matriz?.meses || []) {
+      const v = m?.aluguelVinculado;
+      if (v?.lancamentoFinanceiroId) {
+        map.set(Number(v.lancamentoFinanceiroId), m.competencia);
+      }
+    }
+    return map;
+  }, [matriz?.meses]);
 
   useEffect(() => {
     if (!featureFlags.useApiImoveis || !contratoId) {
+      setMatriz(null);
       setResultado(null);
-      setSugestoes([]);
       return;
     }
     let ativo = true;
     setErroReconc('');
-    setCarregandoResultado(true);
-    setCarregandoSugestoes(true);
-    const queryResultado =
-      modoPeriodo && periodoInicio && periodoFim
-        ? { inicio: periodoInicio, fim: periodoFim }
-        : { competencia };
+    setCarregandoMatriz(true);
     Promise.all([
-      obterResultadoImovelApi(contratoId, queryResultado),
-      sugerirReconciliacaoApi(contratoId, competencia),
+      obterMatrizCompetenciasApi(contratoId, { meses: 18 }),
+      obterResultadoImovelApi(contratoId, { competencia }),
     ])
-      .then(([res, sug]) => {
+      .then(([mat, res]) => {
         if (!ativo) return;
+        setMatriz(mat || null);
         setResultado(res || null);
-        const linhas = linhasReconciliacaoFromSugestoes(sug);
-        setSugestoes(linhas);
-        setPapeisEditados((prev) => {
-          const next = {};
-          for (const l of linhas) {
-            const id = l.lancamentoFinanceiroId;
-            next[id] = prev[id] || l.papelVinculado || l.papelSugerido || 'ALUGUEL';
-          }
-          return next;
-        });
-        // Semeia a competência editável dos aluguéis vinculados; preserva o que já foi movido nesta sessão.
-        setCompetenciaVinculoDraft((prev) => {
-          const next = { ...prev };
-          for (const l of linhas) {
-            if (l.jaVinculado && l.papelVinculado === 'ALUGUEL') {
-              const id = l.lancamentoFinanceiroId;
-              if (next[id] == null) next[id] = l.competenciaSugerida || '';
-            }
-          }
-          return next;
-        });
-        setSelecionadas(new Set());
+        if (mat?.meses?.length && !mat.meses.some((m) => m.competencia === competencia)) {
+          const primeiraPendente = mat.meses.find((m) => m.estado !== 'VINCULADO');
+          setCompetencia(primeiraPendente?.competencia ?? mat.meses[0]?.competencia ?? competencia);
+        }
       })
       .catch((e) => {
         if (!ativo) return;
-        setErroReconc(e?.message || 'Falha ao carregar a reconciliação.');
+        setErroReconc(e?.message || 'Falha ao carregar classificação de aluguéis.');
       })
       .finally(() => {
-        if (!ativo) return;
-        setCarregandoResultado(false);
-        setCarregandoSugestoes(false);
+        if (ativo) setCarregandoMatriz(false);
       });
     return () => {
       ativo = false;
     };
-  }, [contratoId, competencia, modoPeriodo, periodoInicio, periodoFim, reconcTick]);
+  }, [contratoId, reconcTick]);
 
-  function setPapelLinha(id, papel) {
-    setPapeisEditados((s) => ({ ...s, [id]: papel }));
-  }
+  useEffect(() => {
+    if (!featureFlags.useApiImoveis || !contratoId || !competencia) return;
+    let ativo = true;
+    obterResultadoImovelApi(contratoId, { competencia })
+      .then((res) => {
+        if (ativo) setResultado(res || null);
+      })
+      .catch(() => {});
+    return () => {
+      ativo = false;
+    };
+  }, [contratoId, competencia]);
 
-  function toggleSelecionada(id) {
-    setSelecionadas((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  async function aplicarVinculos(itens) {
-    const payload = montarPayloadVinculos(itens);
-    if (payload.length === 0 || !contratoId) return;
-    setSalvandoReconc(true);
-    setErroReconc('');
-    try {
-      await vincularReconciliacaoApi(contratoId, payload);
-      recarregarReconciliacao();
-    } catch (e) {
-      setErroReconc(e?.message || 'Falha ao confirmar vínculo.');
-    } finally {
-      setSalvandoReconc(false);
-    }
-  }
-
-  function confirmarLinha(linha) {
-    void aplicarVinculos([
-      {
-        lancamentoFinanceiroId: linha.lancamentoFinanceiroId,
-        papel: papeisEditados[linha.lancamentoFinanceiroId] || linha.papelSugerido,
-        competenciaMes: competencia,
-      },
-    ]);
-  }
-
-  function confirmarLote() {
-    const itens = sugestoes
-      .filter((l) => selecionadas.has(l.lancamentoFinanceiroId) && !l.jaVinculado)
-      .map((l) => ({
-        lancamentoFinanceiroId: l.lancamentoFinanceiroId,
-        papel: papeisEditados[l.lancamentoFinanceiroId] || l.papelSugerido,
-        competenciaMes: competencia,
-      }));
-    void aplicarVinculos(itens);
-  }
-
-  async function moverCompetenciaAluguel(linha, novaCompetencia) {
-    if (!contratoId || !linha?.lancamentoFinanceiroId) return;
-    const id = linha.lancamentoFinanceiroId;
-    const anterior = competenciaVinculoDraft[id] ?? linha.competenciaSugerida ?? '';
-    if (!competenciaValida(novaCompetencia)) {
-      setErroReconc('Informe uma competência válida (AAAA-MM).');
-      return;
-    }
-    if (novaCompetencia === anterior) return;
-    // Atualização otimista do campo; revertida em caso de erro.
-    setCompetenciaVinculoDraft((s) => ({ ...s, [id]: novaCompetencia }));
+  async function confirmarAluguel(candidato, comp) {
+    if (!contratoId || !candidato?.lancamentoFinanceiroId) return;
     setSalvandoReconc(true);
     setErroReconc('');
     setSucesso('');
     try {
-      // Upsert: mesmo lançamento + papel ALUGUEL com a nova competência. O backend atualiza o
-      // vínculo (não cria outro) e move o par de repasse interno junto (sincronizarCompetenciaDoPar).
       await vincularReconciliacaoApi(contratoId, [
-        { lancamentoFinanceiroId: Number(id), papel: 'ALUGUEL', competenciaMes: novaCompetencia },
+        {
+          lancamentoFinanceiroId: candidato.lancamentoFinanceiroId,
+          papel: 'ALUGUEL',
+          competenciaMes: comp,
+        },
       ]);
-      setSucesso(`Competência movida para ${novaCompetencia}`);
+      setSucesso(`Aluguel de ${comp} vinculado.`);
       recarregarReconciliacao();
     } catch (e) {
-      setCompetenciaVinculoDraft((s) => ({ ...s, [id]: anterior }));
-      setErroReconc(e?.message || 'Falha ao mover a competência.');
+      setErroReconc(e?.message || 'Falha ao vincular aluguel.');
     } finally {
       setSalvandoReconc(false);
     }
   }
 
-  async function desvincularLinha(linha) {
-    if (!linha?.vinculoId || !contratoId) return;
+  async function desvincularAluguel(vinculoId) {
+    if (!contratoId || !vinculoId) return;
     setSalvandoReconc(true);
     setErroReconc('');
     try {
-      await desvincularReconciliacaoApi(contratoId, linha.vinculoId);
+      await desvincularReconciliacaoApi(contratoId, vinculoId);
+      setSucesso('Vínculo removido.');
       recarregarReconciliacao();
     } catch (e) {
       setErroReconc(e?.message || 'Falha ao desvincular.');
@@ -321,146 +258,31 @@ export function ImoveisAdministracaoFinanceiro() {
     }
   }
 
-  const gruposReconc = useMemo(() => agruparLinhasReconciliacao(sugestoes), [sugestoes]);
-
-  function renderLinhaReconc(l, adocao) {
-    const conf = confiancaInfo(l.confianca);
-    const papelAtual = papeisEditados[l.lancamentoFinanceiroId] || l.papelSugerido || 'ALUGUEL';
-    // Exibe o valor com o sinal do lançamento (DÉBITO/saída = negativo), igual ao extrato.
-    // A sugestão traz o valor sempre positivo; o sinal real vem da natureza.
-    const valorExibicao =
-      String(l.natureza ?? '').toUpperCase() === 'DEBITO'
-        ? -Math.abs(Number(l.valor) || 0)
-        : Number(l.valor) || 0;
-    return (
-      <tr
-        key={l.lancamentoFinanceiroId}
-        className={l.jaVinculado ? 'bg-emerald-50/40' : adocao ? 'bg-amber-50/30' : ''}
-      >
-        <td className={td}>
-          <input
-            type="checkbox"
-            checked={selecionadas.has(l.lancamentoFinanceiroId)}
-            onChange={() => toggleSelecionada(l.lancamentoFinanceiroId)}
-            disabled={l.jaVinculado || salvandoReconc}
-            aria-label={`Selecionar lançamento ${l.lancamentoFinanceiroId}`}
-          />
-        </td>
-        <td className={`${td} tabular-nums whitespace-nowrap`}>
-          {l.data ? String(l.data).slice(0, 10) : '—'}
-        </td>
-        <td className={td}>
-          <div>{l.descricao || '—'}</div>
-          {adocao ? (
-            <div className="text-[11px] text-amber-800 mt-0.5">{descricaoAdocao(l, papelAtual)}</div>
-          ) : null}
-        </td>
-        <td className={`${td} text-right tabular-nums whitespace-nowrap ${corValorNegativo(valorExibicao)}`}>{formatBRL(valorExibicao)}</td>
-        <td className={td}>
-          <select
-            value={papelAtual}
-            onChange={(e) => setPapelLinha(l.lancamentoFinanceiroId, e.target.value)}
-            disabled={l.jaVinculado || salvandoReconc}
-            className="rounded border border-slate-300 px-2 py-1 text-xs"
-          >
-            {PAPEIS_RECONCILIACAO.map((p) => (
-              <option key={p} value={p}>
-                {rotuloPapelReconciliacao(p)}
-              </option>
-            ))}
-          </select>
-        </td>
-        <td className={td}>
-          <span
-            className={`inline-flex items-center px-2 py-0.5 rounded border text-[11px] font-medium ${conf.cls}`}
-          >
-            {conf.label}
-          </span>
-        </td>
-        <td className={td}>
-          {l.jaVinculado ? (
-            <div className="flex flex-col gap-1">
-              <span className="text-[11px] text-emerald-800 font-medium">
-                Vinculado: {rotuloPapelReconciliacao(l.papelVinculado)}
-              </span>
-              {l.papelVinculado === 'ALUGUEL' ? (
-                <label className="flex items-center gap-1 text-[10px] font-medium text-slate-500">
-                  Competência
-                  <input
-                    type="month"
-                    value={competenciaVinculoDraft[l.lancamentoFinanceiroId] ?? l.competenciaSugerida ?? ''}
-                    min={competenciaRange.min}
-                    max={competenciaRange.max}
-                    disabled={salvandoReconc}
-                    onChange={(e) => void moverCompetenciaAluguel(l, e.target.value)}
-                    className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px] tabular-nums disabled:opacity-50"
-                    aria-label={`Mover competência do aluguel ${l.lancamentoFinanceiroId}`}
-                  />
-                </label>
-              ) : null}
-            </div>
-          ) : adocao ? (
-            <span className="text-[11px] text-amber-800 font-medium">Adotar ao confirmar</span>
-          ) : (
-            <span className="text-[11px] text-slate-500">A vincular</span>
-          )}
-        </td>
-        <td className={td}>
-          {l.jaVinculado ? (
-            <button
-              type="button"
-              disabled={salvandoReconc}
-              onClick={() => void desvincularLinha(l)}
-              className="px-2 py-0.5 rounded border border-red-300 text-red-700 text-[11px] font-medium hover:bg-red-50 disabled:opacity-40"
-            >
-              Desvincular
-            </button>
-          ) : (
-            <button
-              type="button"
-              disabled={salvandoReconc}
-              onClick={() => confirmarLinha(l)}
-              className={`px-2 py-0.5 rounded border text-[11px] font-medium disabled:opacity-40 ${
-                adocao
-                  ? 'border-amber-400 text-amber-900 hover:bg-amber-50'
-                  : 'border-indigo-300 text-indigo-800 hover:bg-indigo-50'
-              }`}
-            >
-              {adocao ? 'Adotar e confirmar' : 'Confirmar'}
-            </button>
-          )}
-        </td>
-      </tr>
-    );
-  }
-
-  function renderTabelaReconc(linhas, adocao) {
-    return (
-      <div className="overflow-x-auto rounded border border-slate-200">
-        <table className="w-full text-left border-collapse min-w-[920px]">
-          <thead>
-            <tr>
-              <th className={`${th} w-8`} aria-label="Selecionar" />
-              <th className={th}>Data</th>
-              <th className={th}>Descrição</th>
-              <th className={`${th} text-right`}>Valor</th>
-              <th className={th}>Papel</th>
-              <th className={th}>Confiança</th>
-              <th className={th}>Status</th>
-              <th className={th}>Ações</th>
-            </tr>
-          </thead>
-          <tbody>{linhas.map((l) => renderLinhaReconc(l, adocao))}</tbody>
-        </table>
-      </div>
-    );
+  async function gerarRepassesInternos(comp) {
+    if (!contratoId) return;
+    setGerandoRepasses(true);
+    setErroReconc('');
+    setSucesso('');
+    try {
+      const resp = await gerarRepassesInternosApi(contratoId, { competencia: comp });
+      const n = Number(resp?.repassesGerados) || 0;
+      setSucesso(
+        n > 0
+          ? `${n} repasse${n === 1 ? '' : 's'} gerado${n === 1 ? '' : 's'} na conta REPASSE INTERNO.`
+          : 'Nenhum repasse pendente nesta competência.',
+      );
+      recarregarReconciliacao();
+    } catch (e) {
+      setErroReconc(e?.message || 'Falha ao gerar repasses internos.');
+    } finally {
+      setGerandoRepasses(false);
+    }
   }
 
   useEffect(() => {
     let ativo = true;
     setCarregando(true);
     setErro('');
-    setSucesso('');
     void carregarPainelAdministracaoImovel({ imovelId, imovelIdApi })
       .then((r) => {
         if (!ativo) return;
@@ -480,24 +302,13 @@ export function ImoveisAdministracaoFinanceiro() {
     };
   }, [imovelId, imovelIdApi, refreshTick]);
 
-  // CRUD de repasse/despesa LEGADO (locacao_repasse/locacao_despesa) removido — C9/A8.
-  // O caixa real é reconciliado via locacao_repasse_lancamento (sugestões/vínculos/resultado).
-
-  useEffect(() => {
-    const q = new URLSearchParams(location.search || '');
-    if (q.get('aba') === 'repassar') {
-      navigate('/acoes-do-dia', { replace: true });
-    }
-  }, [location.search, navigate]);
-
   useEffect(() => {
     const st = location.state && typeof location.state === 'object' ? location.state : null;
-    if (!st?.focoReconciliacao) return;
-    setCompetencia(competenciaAtual());
-    setModoPeriodo(false);
+    if (st?.focoReconciliacao) {
+      setCompetencia(competenciaAtual());
+    }
   }, [location.state]);
 
-  // Rola até a âncora apenas UMA vez na chegada. Sem o guard, recargas do painel re-disparavam o scroll.
   const jaRolouParaAncoraRef = useRef(false);
   useEffect(() => {
     if (jaRolouParaAncoraRef.current) return;
@@ -515,471 +326,302 @@ export function ImoveisAdministracaoFinanceiro() {
     window.requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   }, [location.hash, painel, contratoId]);
 
+  function rotuloVinculoExtrato(t) {
+    const id = t.apiId != null ? Number(t.apiId) : NaN;
+    const compVinc = Number.isFinite(id) ? vinculoAluguelPorLancamento.get(id) : null;
+    if (compVinc) {
+      return (
+        <span className="text-emerald-800 font-semibold text-xs">
+          Aluguel ✓ ({compVinc})
+        </span>
+      );
+    }
+    const { papel } = t.classificacao || {};
+    if (papel === PAPEL_ALUGUEL) {
+      return (
+        <span className="text-amber-800 text-xs">
+          Sugestão: aluguel <span className="font-normal text-amber-700">(não vinculado)</span>
+        </span>
+      );
+    }
+    return (
+      <span className="text-slate-600 text-xs">{rotuloPapelAdministracao(papel)}</span>
+    );
+  }
+
   return (
     <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] p-4">
-      <div className="max-w-[1400px] mx-auto space-y-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <button
-              type="button"
-              onClick={() =>
-                navigate('/imoveis', {
-                  state: mock ? { numeroPlanilha: mock.imovelId } : { imovelId },
-                })
-              }
-              className="p-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 shadow-sm shrink-0 mt-0.5"
-              aria-label="Voltar ao cadastro do imóvel"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div>
-              <h1 className="text-xl font-bold text-slate-800 flex items-center gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-violet-700 text-white shadow-lg shadow-indigo-500/25 shrink-0">
-                  <Landmark className="w-5 h-5" aria-hidden />
-                </span>
-                <span className="bg-gradient-to-r from-indigo-800 to-violet-800 dark:from-indigo-200 dark:to-violet-200 bg-clip-text text-transparent">
-                  Financeiro da locação
-                </span>
-              </h1>
-              <p className="text-sm text-slate-600 mt-1 max-w-3xl">
-                Movimentações são as mesmas da <strong>Conta Corrente</strong> em Processos e do módulo{' '}
-                <strong>Financeiro</strong> (Cod. cliente + Proc.).
-                {painelFonteApi ? (
-                  <>
-                    {' '}
-                    Com a <strong>API financeira</strong> ativa, o extrato abaixo vem do servidor (não da cópia local do
-                    navegador).
-                  </>
-                ) : null}{' '}
-                A remuneração do escritório é calculada aqui; não há lançamento explícito só para isso no extrato.
-              </p>
+      <div className="max-w-[1200px] mx-auto space-y-4">
+        {/* Cabeçalho compacto */}
+        <div className="sticky top-0 z-20 -mx-4 px-4 py-3 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
+          <div className="max-w-[1200px] mx-auto flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <button
+                type="button"
+                onClick={() =>
+                  navigate('/imoveis', {
+                    state: mock ? { numeroPlanilha: mock.imovelId } : { imovelId },
+                  })
+                }
+                className="p-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 shrink-0"
+                aria-label="Voltar"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <div className="min-w-0">
+                <h1 className="text-base font-bold text-slate-800 truncate flex items-center gap-2">
+                  <Landmark className="w-4 h-4 text-indigo-600 shrink-0" aria-hidden />
+                  {String(mock?.unidade || mock?.condominio || `Imóvel ${imovelId}`).trim()}
+                </h1>
+                <p className="text-xs text-slate-600 truncate">
+                  {mock?.inquilino ? `${mock.inquilino} · ` : ''}
+                  {mock?.valorLocacao ? `Aluguel ${mock.valorLocacao}` : ''}
+                  {vinculoOk ? ` · Cod. ${padCliente(codigoStr)} · Proc. ${procStr}` : ''}
+                </p>
+              </div>
             </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={recarregar}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
-            >
-              <RefreshCw className="w-4 h-4" aria-hidden />
-              Atualizar extrato
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                navigate('/processos', {
-                  state: buildRouterStateChaveClienteProcesso(padCliente(codigoStr || '1'), procStr || '1'),
-                })
-              }
-              disabled={!vinculoOk}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md border border-slate-400 bg-white text-slate-800 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
-            >
-              <FolderOpen className="w-4 h-4" aria-hidden />
-              Abrir Processos
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                navigate('/financeiro', {
-                  state: {
-                    financeiroConciliacaoHonorarios: {
-                      rotulo: `Imóvel ${imovelId}`,
-                      ...buildRouterStateChaveClienteProcesso(padCliente(codigoStr || '1'), procStr || '1'),
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  recarregar();
+                  recarregarReconciliacao();
+                }}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-slate-300 bg-white text-slate-700 text-xs hover:bg-slate-50"
+              >
+                <RefreshCw className="w-3.5 h-3.5" aria-hidden />
+                Atualizar
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  navigate('/processos', {
+                    state: buildRouterStateChaveClienteProcesso(padCliente(codigoStr || '1'), procStr || '1'),
+                  })
+                }
+                disabled={!vinculoOk}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-slate-300 bg-white text-xs disabled:opacity-50"
+              >
+                <FolderOpen className="w-3.5 h-3.5" aria-hidden />
+                Processos
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  navigate('/financeiro', {
+                    state: {
+                      financeiroConciliacaoHonorarios: {
+                        rotulo: `Imóvel ${imovelId}`,
+                        ...buildRouterStateChaveClienteProcesso(padCliente(codigoStr || '1'), procStr || '1'),
+                      },
                     },
-                  },
-                })
-              }
-              disabled={!vinculoOk}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md border border-emerald-600 bg-emerald-50 text-emerald-900 text-sm font-medium hover:bg-emerald-100 disabled:opacity-50"
-            >
-              <CircleDollarSign className="w-4 h-4" aria-hidden />
-              Abrir Financeiro
-            </button>
+                  })
+                }
+                disabled={!vinculoOk}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-emerald-600 bg-emerald-50 text-emerald-900 text-xs font-medium disabled:opacity-50"
+              >
+                <CircleDollarSign className="w-3.5 h-3.5" aria-hidden />
+                Financeiro
+              </button>
+            </div>
           </div>
         </div>
 
-        {(carregando || erro || sucesso) && (
-          <div className="bg-white rounded-lg border border-slate-300 shadow-sm p-3 text-sm">
-            {carregando ? <p className="text-indigo-700">Carregando painel de administração...</p> : null}
+        {(carregando || erro || sucesso || erroReconc) && (
+          <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm space-y-1">
+            {carregando ? <p className="text-indigo-700">Carregando…</p> : null}
             {erro ? <p className="text-red-700">{erro}</p> : null}
+            {erroReconc ? <p className="text-red-700">{erroReconc}</p> : null}
             {sucesso ? <p className="text-emerald-700">{sucesso}</p> : null}
           </div>
         )}
 
         {!mock && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-900">
-            Imóvel <strong>{imovelId}</strong> sem cadastro na API ou vínculo inválido.{' '}
+            Imóvel <strong>{imovelId}</strong> sem cadastro.{' '}
             <button type="button" className="underline font-medium" onClick={() => navigate('/imoveis')}>
               Voltar
             </button>
           </div>
         )}
 
-        {mock && (
+        {mock && !vinculoOk && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800">
+            Preencha <strong>Código</strong> e <strong>Proc.</strong> no cadastro do imóvel.
+          </div>
+        )}
+
+        {mock && vinculoOk && (
           <>
-            <div className="bg-white rounded-lg border border-slate-300 shadow-sm p-4 space-y-3">
-              <p className="text-sm font-semibold text-slate-800">Vínculo obrigatório (cliente + processo)</p>
-              <div className="grid gap-3 sm:grid-cols-3 text-sm">
-                <div className="min-w-0 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Unidade</p>
-                  <p className="mt-0.5 font-medium text-slate-900 break-words">
-                    {String(mock.unidade || mock.condominio || '—').trim() || '—'}
-                  </p>
-                  {mock.condominio && mock.unidade && String(mock.condominio).trim() !== String(mock.unidade).trim() ? (
-                    <p className="text-xs text-slate-500 mt-0.5 break-words">{mock.condominio}</p>
-                  ) : null}
-                </div>
-                <div className="min-w-0 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Locador</p>
-                  <p className="mt-0.5 font-medium text-slate-900 break-words">
-                    {String(mock.proprietario || '—').trim() || '—'}
-                  </p>
-                  <p className="text-xs text-slate-600 mt-0.5 font-mono tabular-nums">
-                    {vinculoOk ? (
-                      <>
-                        Cod. {padCliente(codigoStr)} · Proc. {procStr}
-                      </>
-                    ) : (
-                      'Cod. e Proc. não preenchidos no cadastro'
-                    )}
-                  </p>
-                </div>
-                <div className="min-w-0 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Locatário</p>
-                  <p className="mt-0.5 font-medium text-slate-900 break-words">
-                    {String(mock.inquilino || '—').trim() || '—'}
-                  </p>
-                  {mock.valorLocacao || mock.diaPagAluguel ? (
-                    <p className="text-xs text-slate-600 mt-0.5">
-                      {mock.valorLocacao ? <>Aluguel {String(mock.valorLocacao)}</> : null}
-                      {mock.valorLocacao && mock.diaPagAluguel ? ' · ' : null}
-                      {mock.diaPagAluguel ? <>venc. dia {String(mock.diaPagAluguel).padStart(2, '0')}</> : null}
-                    </p>
-                  ) : null}
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
+            {pendenciasMatriz > 0 ? (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-950 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden />
                 <span>
-                  <span className="text-slate-500">Nº imóvel (planilha):</span>{' '}
-                  <strong className="tabular-nums text-slate-800">{imovelId}</strong>
+                  <strong>{pendenciasMatriz}</strong> competência{pendenciasMatriz === 1 ? '' : 's'} sem aluguel
+                  vinculado — comece pelo mês em destaque abaixo.
                 </span>
-                {featureFlags.useApiImoveis && mock._apiImovelId ? (
-                  <span className="w-full sm:w-auto">
-                    Referência API: imóvel <span className="font-mono tabular-nums">{mock._apiImovelId}</span>
-                    {mock._apiContratoId != null ? (
-                      <>
-                        {' '}
-                        · contrato vigente <span className="font-mono tabular-nums">{mock._apiContratoId}</span>
-                      </>
-                    ) : null}
-                    {mock._apiClienteId != null ? (
-                      <>
-                        {' '}
-                        · cliente <span className="font-mono tabular-nums">{mock._apiClienteId}</span>
-                      </>
-                    ) : null}
-                    {mock._apiProcessoId != null ? (
-                      <>
-                        {' '}
-                        · processo <span className="font-mono tabular-nums">{mock._apiProcessoId}</span>
-                      </>
-                    ) : null}
-                  </span>
-                ) : null}
               </div>
-              {featureFlags.useApiImoveis && contratoVigenteApi ? (
-                <p className="text-xs text-slate-600 mt-2 pt-2 border-t border-slate-100">
-                  <strong>Contrato vigente</strong> usado para repasses/despesas: id{' '}
-                  <span className="font-mono tabular-nums">{contratoVigenteApi.id}</span> · {contratoVigenteApi.status}
-                  {contratoVigenteApi.dataInicio ? ` · início ${String(contratoVigenteApi.dataInicio).slice(0, 10)}` : ''}
-                  {contratoVigenteApi.dataFim
-                    ? ` · fim ${String(contratoVigenteApi.dataFim).slice(0, 10)}`
-                    : ' · fim —'}
-                  . Regra: priorizar VIGENTE com período cobrindo a data de hoje; senão VIGENTE mais recente; senão RASCUNHO;
-                  ver documentação da estabilização.
-                </p>
-              ) : null}
-              {!vinculoOk && (
-                <p className="text-sm text-red-700">
-                  Preencha <strong>Código</strong> e <strong>Proc.</strong> no cadastro do imóvel para liberar o financeiro
-                  da locação.
-                </p>
-              )}
-              {ehAdm && (
-                <p className="text-xs text-teal-800 bg-teal-50 border border-teal-100 rounded px-2 py-1.5">
-                  Processo reconhecido como <strong>administração de imóvel</strong> (par cadastro + mock). Despesas com
-                  tag <code className="text-[11px]">[ADM_IMOVEL:DESPESA_REPASSAR]</code> ou classificação compatível são
-                  destacadas para desconto no repasse ao locador.
-                </p>
-              )}
-            </div>
+            ) : null}
 
-            <ImoveisSugestoesVinculoPanel
-              imovelIdContexto={vinculoOk ? imovelId : null}
-              onAprovado={atualizarExtratoAposVinculo}
-              estrategia="melhorPorLancamento"
-              limite={50}
-            />
+            {alertas.length > 0 && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50/90 p-3 text-sm text-amber-950">
+                <ul className="list-disc pl-5 space-y-0.5">
+                  {alertas.map((a, i) => (
+                    <li key={`${a.tipo}-${a.mes}-${i}`}>{a.texto}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
-            {!vinculoOk || !painel ? null : (
-              <>
-                {alertas.length > 0 && (
-                  <div
-                    className="rounded-lg border border-amber-300 bg-amber-50/90 p-4 space-y-2"
-                    role="status"
-                    aria-live="polite"
-                  >
-                    <p className="text-sm font-semibold text-amber-950 flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden />
-                      Alertas (conta corrente vinculada)
-                    </p>
-                    <ul className="list-disc pl-5 text-sm text-amber-950 space-y-1">
-                      {alertas.map((a, i) => (
-                        <li key={`${a.tipo}-${a.mes}-${i}`}>{a.texto}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                <div
-                  id="reconciliacao-imoveis"
-                  className="bg-white rounded-lg border border-slate-300 shadow-sm p-4 space-y-3 scroll-mt-4"
-                >
-                  <div className="flex flex-wrap items-end gap-3">
-                    <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
-                      Competência
-                      <input
-                        type="month"
-                        value={competencia}
-                        onChange={(e) => setCompetencia(e.target.value)}
-                        className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-                      />
-                    </label>
-                    <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer pb-1">
-                      <input
-                        type="checkbox"
-                        checked={modoPeriodo}
-                        onChange={(e) => setModoPeriodo(e.target.checked)}
-                      />
-                      Resultado por período
-                    </label>
-                    {modoPeriodo ? (
-                      <>
-                        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
-                          De
-                          <input
-                            type="month"
-                            value={periodoInicio}
-                            onChange={(e) => setPeriodoInicio(e.target.value)}
-                            className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-                          />
-                        </label>
-                        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
-                          Até
-                          <input
-                            type="month"
-                            value={periodoFim}
-                            onChange={(e) => setPeriodoFim(e.target.value)}
-                            className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-                          />
-                        </label>
-                      </>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={recarregarReconciliacao}
-                      className="ml-auto inline-flex items-center gap-1.5 px-3 py-2 rounded-md border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
-                    >
-                      <RefreshCw
-                        className={`w-4 h-4 ${carregandoResultado || carregandoSugestoes ? 'animate-spin' : ''}`}
-                        aria-hidden
-                      />
-                      Atualizar
-                    </button>
-                  </div>
-                  {erroReconc ? <p className="text-sm text-red-700">{erroReconc}</p> : null}
-                  {!contratoId ? (
-                    <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
-                      Sem contrato vigente na API para este imóvel — cadastre um contrato de locação para reconciliar o
-                      caixa real e calcular o resultado.
-                    </p>
-                  ) : null}
+            {!contratoId ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                Sem contrato vigente — cadastre um contrato de locação para classificar aluguéis.
+              </div>
+            ) : (
+              <div id="reconciliacao-imoveis" className="space-y-4 scroll-mt-4">
+                <div className="grid gap-4 lg:grid-cols-[minmax(280px,360px)_1fr]">
+                  <ImoveisAluguelChecklist
+                    meses={matriz?.meses}
+                    competenciaAtiva={competencia}
+                    onSelecionarCompetencia={setCompetencia}
+                    valorAluguelContrato={matriz?.valorAluguelContrato ?? contratoVigenteApi?.valorAluguel}
+                    carregando={carregandoMatriz}
+                  />
+                  <ImoveisPendenciasAluguel
+                    competencia={competencia}
+                    itemMatriz={itemCompetenciaAtiva}
+                    repasseInterno={matriz?.repasseInterno ?? resultado?.repasseInterno}
+                    salvando={salvandoReconc}
+                    gerandoRepasses={gerandoRepasses}
+                    onConfirmarAluguel={confirmarAluguel}
+                    onDesvincular={desvincularAluguel}
+                    onGerarRepasse={gerarRepassesInternos}
+                  />
                 </div>
 
-                {contratoId && resultado ? (
-                  <div className="bg-white rounded-lg border border-slate-300 shadow-sm p-4 space-y-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <h2 className="text-sm font-semibold text-slate-800">
-                        Resultado{' '}
-                        {modoPeriodo && periodoInicio && periodoFim
-                          ? `· ${periodoInicio} a ${periodoFim}`
-                          : `· ${competencia}`}
-                      </h2>
-                      {(() => {
-                        const info = statusRepasseInfo(resultado.statusRepasse);
-                        return (
-                          <span
-                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-semibold ${info.cls}`}
-                          >
-                            {info.label}
-                          </span>
-                        );
-                      })()}
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                      <KpiResultado titulo="Aluguel recebido" valor={formatBRL(resultado.aluguelRecebido)} tom="emerald" />
-                      <KpiResultado titulo="Repassado" valor={formatBRL(resultado.repassado)} tom="slate" />
-                      <KpiResultado titulo="Despesas" valor={formatBRL(resultado.despesas)} tom="orange" />
-                      <KpiResultado
-                        titulo="Resultado escritório"
-                        valor={formatBRL(resultado.resultadoEscritorio)}
-                        tom="teal"
-                      />
-                      <KpiResultado
-                        titulo="Taxa efetiva × nominal"
-                        valor={`${resultado.taxaEfetivaPercent != null ? Number(resultado.taxaEfetivaPercent).toFixed(2) : '—'}%`}
-                        sub={`nominal ${resultado.taxaEsperadaPercent != null ? Number(resultado.taxaEsperadaPercent).toFixed(2) : '—'}%`}
-                        tom="indigo"
-                      />
-                    </div>
-                    {String(resultado.statusRepasse).toUpperCase() === 'DIVERGENTE' ? (
-                      <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
-                        Esperado <strong>{formatBRL(repasseEsperado(resultado))}</strong> · real{' '}
-                        <strong>{formatBRL(resultado.repassado)}</strong> (recebido − taxa nominal − despesas).
-                      </p>
-                    ) : null}
-                    <p className="text-[11px] text-slate-500">
-                      Números calculados <strong>somente do que foi reconciliado</strong> com o caixa — sem dedução por
-                      heurística.
-                    </p>
-                  </div>
-                ) : null}
-
-                {contratoId ? (
-                  <div className="bg-white rounded-lg border border-slate-300 shadow-sm p-4 space-y-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <h2 className="text-sm font-semibold text-slate-800">Reconciliação · {competencia}</h2>
-                        <p className="text-xs text-slate-500">
-                          Confirme o papel sugerido (ou troque) para alimentar o resultado acima. Lançamentos
-                          sem processo aparecem em <strong>A adotar</strong> e são classificados (conta A + cliente +
-                          processo) ao confirmar.
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        disabled={salvandoReconc || selecionadas.size === 0}
-                        onClick={confirmarLote}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-40"
-                      >
-                        Confirmar selecionados ({selecionadas.size})
-                      </button>
-                    </div>
-                    {carregandoSugestoes ? (
-                      <p className="text-xs text-slate-500 py-6 text-center">Carregando sugestões…</p>
-                    ) : sugestoes.length === 0 ? (
-                      <p className="text-xs text-slate-500 py-6 text-center">
-                        Nenhum lançamento candidato nesta competência.
-                      </p>
-                    ) : (
-                      <div className="space-y-4">
-                        <div className="space-y-1.5">
-                          <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-wide">
-                            Lançamentos do imóvel ({gruposReconc.doImovel.length})
-                          </h3>
-                          {gruposReconc.doImovel.length === 0 ? (
-                            <p className="text-[11px] text-slate-400">Nenhum lançamento já no processo do imóvel.</p>
-                          ) : (
-                            renderTabelaReconc(gruposReconc.doImovel, false)
-                          )}
-                        </div>
-                        {gruposReconc.aAdotar.length > 0 ? (
-                          <div className="space-y-1.5">
-                            <h3 className="text-xs font-semibold text-amber-800 uppercase tracking-wide">
-                              A adotar · sem processo ({gruposReconc.aAdotar.length})
-                            </h3>
-                            <p className="text-[11px] text-amber-700">
-                              Pagamentos que existem no caixa mas estão sem processo. Confirmar é uma escrita: o
-                              lançamento será classificado em conta A com o cliente e o processo do imóvel.
-                            </p>
-                            {renderTabelaReconc(gruposReconc.aAdotar, true)}
-                          </div>
+                {resultado ? (
+                  <SecaoColapsavel
+                    titulo="Resumo financeiro"
+                    subtitulo={`Competência ${competencia}`}
+                    aberto={resultadoAberto}
+                    onToggle={() => setResultadoAberto((v) => !v)}
+                  >
+                    <div className="pt-3 space-y-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {(() => {
+                          const info = statusRepasseInfo(resultado.statusRepasse);
+                          return (
+                            <span
+                              className={`inline-flex px-3 py-1 rounded-full border text-xs font-semibold ${info.cls}`}
+                            >
+                              {info.label}
+                            </span>
+                          );
+                        })()}
+                        {resultado.repasseInterno ? (
+                          <span className="text-[11px] text-teal-800">Imóvel próprio · repasse via conta virtual</span>
                         ) : null}
                       </div>
-                    )}
-                  </div>
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                        <KpiResultado titulo="Aluguel recebido" valor={formatBRL(resultado.aluguelRecebido)} tom="emerald" />
+                        <KpiResultado titulo="Repassado" valor={formatBRL(resultado.repassado)} tom="slate" />
+                        <KpiResultado titulo="Despesas" valor={formatBRL(resultado.despesas)} tom="orange" />
+                        <KpiResultado
+                          titulo="Resultado escritório"
+                          valor={formatBRL(resultado.resultadoEscritorio)}
+                          tom="teal"
+                        />
+                        <KpiResultado
+                          titulo="Taxa efetiva"
+                          valor={`${resultado.taxaEfetivaPercent != null ? Number(resultado.taxaEfetivaPercent).toFixed(2) : '—'}%`}
+                          sub={`nominal ${resultado.taxaEsperadaPercent != null ? Number(resultado.taxaEsperadaPercent).toFixed(2) : '—'}%`}
+                          tom="indigo"
+                        />
+                      </div>
+                      {String(resultado.statusRepasse).toUpperCase() === 'DIVERGENTE' ? (
+                        <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                          Esperado <strong>{formatBRL(repasseEsperado(resultado))}</strong> · real{' '}
+                          <strong>{formatBRL(resultado.repassado)}</strong>
+                        </p>
+                      ) : null}
+                    </div>
+                  </SecaoColapsavel>
                 ) : null}
 
-                <div id="extrato-imoveis" className="bg-white rounded-lg border border-slate-300 shadow-sm p-4 scroll-mt-4">
-                  <h2 className="text-sm font-semibold text-slate-800 mb-1">Conta corrente do imóvel</h2>
+                <SecaoColapsavel
+                  titulo="Detalhes do imóvel e contrato"
+                  aberto={detalhesAbertos}
+                  onToggle={() => setDetalhesAbertos((v) => !v)}
+                >
+                  <div className="pt-3 grid gap-3 sm:grid-cols-3 text-sm">
+                    <div className="rounded border border-slate-100 bg-slate-50/80 px-3 py-2">
+                      <p className="text-[11px] font-semibold uppercase text-slate-500">Locador</p>
+                      <p className="font-medium">{mock.proprietario || '—'}</p>
+                    </div>
+                    <div className="rounded border border-slate-100 bg-slate-50/80 px-3 py-2">
+                      <p className="text-[11px] font-semibold uppercase text-slate-500">Locatário</p>
+                      <p className="font-medium">{mock.inquilino || '—'}</p>
+                    </div>
+                    <div className="rounded border border-slate-100 bg-slate-50/80 px-3 py-2">
+                      <p className="text-[11px] font-semibold uppercase text-slate-500">Contrato API</p>
+                      <p className="font-mono text-xs">
+                        id {contratoVigenteApi?.id ?? contratoId} · {contratoVigenteApi?.status ?? '—'}
+                      </p>
+                    </div>
+                  </div>
+                </SecaoColapsavel>
+              </div>
+            )}
+
+            {painel ? (
+              <SecaoColapsavel
+                titulo="Conta corrente completa"
+                subtitulo={`${painel.transacoes?.length ?? 0} lançamentos · Cod. ${padCliente(codigoStr)} · Proc. ${procStr}`}
+                aberto={extratoAberto}
+                onToggle={() => setExtratoAberto((v) => !v)}
+              >
+                <div id="extrato-imoveis" className="pt-3 scroll-mt-4">
                   <p className="text-xs text-slate-500 mb-3">
-                    {painelFonteApi
-                      ? 'Todos os lançamentos de crédito ou débito (banco e cartão) com o mesmo Cod. cliente e Proc.'
-                      : 'Lista espelhada do extrato local no navegador.'}{' '}
-                    Nada é ocultado por tipo: repasse, aluguel, despesa ou outro — o papel na última coluna é orientação para você classificar.
+                    Coluna <strong>Vínculo</strong> mostra aluguéis confirmados na reconciliação. &quot;Sugestão&quot; é
+                    apenas heurística — ainda precisa vincular no checklist acima.
                   </p>
                   <div className="overflow-x-auto rounded border border-slate-200">
-                    <table className="w-full text-left border-collapse min-w-[960px]">
+                    <table className="w-full text-left border-collapse min-w-[800px]">
                       <thead>
                         <tr>
                           <th className={th}>Data</th>
-                          <th className={th}>Banco / cartão</th>
-                          <th className={th}>Conta contábil</th>
+                          <th className={th}>Banco</th>
                           <th className={th}>Descrição</th>
-                          <th className={th}>Detalhe / classificação</th>
                           <th className={`${th} text-right`}>Valor</th>
-                          <th className={th}>Papel (locação)</th>
+                          <th className={th}>Vínculo</th>
                         </tr>
                       </thead>
                       <tbody>
                         {painel.transacoes.length === 0 ? (
                           <tr>
-                            <td colSpan={7} className={`${td} text-slate-500 text-center py-6`}>
-                              Sem movimentações vinculadas.
+                            <td colSpan={5} className={`${td} text-center text-slate-500 py-6`}>
+                              Sem movimentações.
                             </td>
                           </tr>
                         ) : (
                           painel.transacoes.map((t, idx) => {
-                            const { papel, despesaRepassarAoLocador } = t.classificacao;
-                            const isDesp = papel === PAPEL_DESPESA_REPASSAR || despesaRepassarAoLocador;
-                            const rowClass = isDesp
-                              ? 'bg-orange-50/80'
-                              : papel === PAPEL_CREDITO
-                                ? 'bg-emerald-50/50'
-                                : papel === PAPEL_DEBITO
-                                  ? 'bg-slate-50/80'
-                                  : '';
+                            const isDesp =
+                              t.classificacao?.papel === PAPEL_DESPESA_REPASSAR ||
+                              t.classificacao?.despesaRepassarAoLocador;
                             return (
-                              <tr key={`${t.apiId ?? t.numero}-${t.nomeBanco}-${t.data}-${idx}`} className={rowClass}>
+                              <tr
+                                key={`${t.apiId ?? t.numero}-${t.nomeBanco}-${t.data}-${idx}`}
+                                className={isDesp ? 'bg-orange-50/60' : ''}
+                              >
                                 <td className={`${td} tabular-nums whitespace-nowrap`}>{t.data}</td>
-                                <td className={td}>
-                                  {t.nomeBanco}
-                                  {t.origemExtrato === 'cartao' ? (
-                                    <span className="ml-1 text-[10px] text-slate-500">(cartão)</span>
-                                  ) : null}
-                                </td>
-                                <td className={`${td} text-xs`}>{nomeContaPorLetra(t.letra)}</td>
+                                <td className={`${td} text-xs`}>{t.nomeBanco}</td>
                                 <td className={td}>{t.descricao}</td>
-                                <td className={`${td} text-xs max-w-[220px]`}>
-                                  {t.descricaoDetalhada || t.categoria || '—'}
-                                </td>
-                                <td className={`${td} text-right tabular-nums font-medium whitespace-nowrap ${corValorNegativo(t.valor)}`}>
+                                <td
+                                  className={`${td} text-right tabular-nums font-medium whitespace-nowrap ${corValorNegativo(t.valor)}`}
+                                >
                                   {formatBRL(t.valor)}
                                 </td>
-                                <td className={td}>
-                                  <span
-                                    className={`inline-flex flex-col gap-0.5 text-xs ${
-                                      isDesp ? 'text-orange-900 font-semibold' : 'text-slate-700'
-                                    }`}
-                                  >
-                                    {rotuloPapelAdministracao(papel)}
-                                    {isDesp && (
-                                      <span className="text-[10px] font-normal uppercase tracking-wide text-orange-800">
-                                        Despesa a repassar ao locador
-                                      </span>
-                                    )}
-                                  </span>
-                                </td>
+                                <td className={td}>{rotuloVinculoExtrato(t)}</td>
                               </tr>
                             );
                           })
@@ -988,8 +630,8 @@ export function ImoveisAdministracaoFinanceiro() {
                     </table>
                   </div>
                 </div>
-              </>
-            )}
+              </SecaoColapsavel>
+            ) : null}
           </>
         )}
       </div>
