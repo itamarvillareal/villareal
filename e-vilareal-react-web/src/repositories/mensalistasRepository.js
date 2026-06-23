@@ -1,5 +1,7 @@
 import { request } from '../api/httpClient.js';
 import { featureFlags } from '../config/featureFlags.js';
+import { formatValorMoedaCampo } from '../utils/moneyBr.js';
+import { parseValorMonetarioBr } from '../utils/parseValorMonetarioBr.js';
 
 function mapApiToUi(data) {
   if (!data || typeof data !== 'object') return null;
@@ -8,7 +10,7 @@ function mapApiToUi(data) {
     clienteId: data.clienteId ?? null,
     clienteNome: data.clienteNome ?? '',
     codigoCliente: data.codigoCliente ?? '',
-    valor: data.valor != null ? String(data.valor) : '',
+    valor: data.valor != null ? formatValorMoedaCampo(data.valor) : '',
     diaVencimento: data.diaVencimento ?? 10,
     dataInicio: data.dataInicio ?? '',
     dataFim: data.dataFim ?? '',
@@ -32,9 +34,10 @@ export async function buscarMensalistaPorCliente(clienteId) {
 }
 
 export async function salvarMensalista(payload) {
+  const valorNum = parseValorMonetarioBr(payload.valor);
   const body = {
     clienteId: Number(payload.clienteId),
-    valor: Number(String(payload.valor ?? '').replace(',', '.')),
+    valor: valorNum != null ? valorNum : 0,
     diaVencimento: Number(payload.diaVencimento),
     dataInicio: payload.dataInicio,
     dataFim: payload.dataFim || null,

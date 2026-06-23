@@ -65,6 +65,8 @@ import {
   buscarMensalistaPorCliente,
   salvarMensalista,
 } from '../repositories/mensalistasRepository.js';
+import { formatValorMoedaCampo } from '../utils/moneyBr.js';
+import { parseValorMonetarioBr as parseValorMonetarioBrUtil } from '../utils/parseValorMonetarioBr.js';
 import {
   buscarClientePorCodigo,
   buscarProcessoPorChaveNatural,
@@ -106,6 +108,13 @@ function hojeIsoLocal() {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+function editarValorMensalCampo(texto) {
+  const raw = String(texto ?? '');
+  if (!raw.trim()) return '';
+  const n = parseValorMonetarioBrUtil(raw);
+  return n != null ? formatValorMoedaCampo(n) : raw;
 }
 
 let __ultimoListaClientesLog = 0;
@@ -894,8 +903,8 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     if (snapshot.carregando || snapshot.salvando) return;
     if (!snapshot.ativo && !snapshot.cadastrado) return;
     if (snapshot.ativo) {
-      const valorNum = Number(String(snapshot.valor ?? '').replace(',', '.'));
-      if (!Number.isFinite(valorNum) || valorNum < 0.01) return;
+      const valorNum = parseValorMonetarioBrUtil(snapshot.valor);
+      if (valorNum == null || valorNum < 0.01) return;
     }
     setMensalista((m) => ({ ...m, salvando: true, erro: '' }));
     try {
@@ -2232,8 +2241,10 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                             inputMode="decimal"
                             value={mensalista.valor}
                             disabled={edicaoDesabilitada}
-                            onChange={(e) => setMensalista((m) => ({ ...m, valor: e.target.value }))}
-                            placeholder="1500,00"
+                            onChange={(e) =>
+                              setMensalista((m) => ({ ...m, valor: editarValorMensalCampo(e.target.value) }))
+                            }
+                            placeholder="0,00"
                             className={`${inputClass} ${edicaoDesabilitada ? 'bg-slate-50' : ''}`}
                           />
                         </div>

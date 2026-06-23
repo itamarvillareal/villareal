@@ -16,4 +16,9 @@ describe('formatValorMoedaCampo', () => {
   it('normaliza 1605.6 para campo', () => {
     expect(formatValorMoedaCampo('1605.6')).toBe('1.605,60');
   });
+
+  it('normaliza valor inteiro da API', () => {
+    expect(formatValorMoedaCampo('5648')).toBe('5.648,00');
+    expect(formatValorMoedaCampo(5648)).toBe('5.648,00');
+  });
 });
