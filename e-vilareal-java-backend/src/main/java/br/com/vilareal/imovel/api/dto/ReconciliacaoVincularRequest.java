@@ -13,5 +13,7 @@ public record ReconciliacaoVincularRequest(@NotEmpty @Valid List<Item> vinculos)
     public record Item(
             @NotNull Long lancamentoFinanceiroId,
             @NotNull PapelReconciliacao papel,
-            String competenciaMes) {}
+            String competenciaMes,
+            /** Rótulo opcional da classificação manual (IPTU, condomínio, texto livre em "Outros"). */
+            String rotuloClassificacao) {}
 }

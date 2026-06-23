@@ -26,6 +26,7 @@ function IconeEstado({ icon }) {
  *   onSelecionarCompetencia: (comp: string) => void,
  *   valorAluguelContrato?: number | null,
  *   carregando?: boolean,
+ *   modoFiltro?: boolean,
  * }} props
  */
 export function ImoveisAluguelChecklist({
@@ -34,6 +35,7 @@ export function ImoveisAluguelChecklist({
   onSelecionarCompetencia,
   valorAluguelContrato,
   carregando = false,
+  modoFiltro = false,
 }) {
   const lista = Array.isArray(meses) ? meses : [];
 
@@ -56,10 +58,14 @@ export function ImoveisAluguelChecklist({
   return (
     <div className="rounded-lg border border-slate-300 bg-white shadow-sm overflow-hidden">
       <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/80">
-        <h2 className="text-sm font-semibold text-slate-800">Aluguéis por competência</h2>
+        <h2 className="text-sm font-semibold text-slate-800">
+          {modoFiltro ? 'Filtro por competência' : 'Aluguéis por competência'}
+        </h2>
         <p className="text-xs text-slate-500 mt-0.5">
-          Clique no mês para classificar. Esperado:{' '}
-          <strong>{formatBRL(valorAluguelContrato)}</strong> por mês (contrato vigente).
+          {modoFiltro
+            ? 'Selecione o mês para filtrar a conta corrente e classificar na linha do lançamento.'
+            : 'Clique no mês para classificar.'}{' '}
+          Esperado: <strong>{formatBRL(valorAluguelContrato)}</strong> por mês (contrato vigente).
         </p>
       </div>
       <ul className="divide-y divide-slate-100 max-h-[min(420px,50vh)] overflow-y-auto">
@@ -109,7 +115,7 @@ export function ImoveisAluguelChecklist({
                     </p>
                   ) : item.candidatos?.length > 1 ? (
                     <p className="text-xs text-amber-800 mt-0.5">
-                      {item.candidatos.length} créditos candidatos — escolha abaixo
+                      {item.candidatos.length} créditos candidatos — classifique na conta corrente
                     </p>
                   ) : (
                     <p className="text-xs text-slate-400 mt-0.5">Nenhum crédito compatível encontrado</p>

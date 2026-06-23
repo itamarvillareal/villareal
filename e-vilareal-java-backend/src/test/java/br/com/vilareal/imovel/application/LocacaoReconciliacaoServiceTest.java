@@ -124,7 +124,7 @@ class LocacaoReconciliacaoServiceTest {
         when(vinculoRepository.save(any())).thenAnswer(inv -> withId(inv.getArgument(0), 77L));
 
         ReconciliacaoVincularRequest req = new ReconciliacaoVincularRequest(
-                List.of(new ReconciliacaoVincularRequest.Item(10L, PapelReconciliacao.ALUGUEL, "2026-03")));
+                List.of(new ReconciliacaoVincularRequest.Item(10L, PapelReconciliacao.ALUGUEL, "2026-03", null)));
 
         List<ReconciliacaoVinculoResponse> out = service.vincular(CONTRATO_ID, req);
 
@@ -153,7 +153,7 @@ class LocacaoReconciliacaoServiceTest {
                 .thenReturn(Optional.of(existente));
 
         ReconciliacaoVincularRequest req = new ReconciliacaoVincularRequest(
-                List.of(new ReconciliacaoVincularRequest.Item(10L, PapelReconciliacao.ALUGUEL, "2026-03")));
+                List.of(new ReconciliacaoVincularRequest.Item(10L, PapelReconciliacao.ALUGUEL, "2026-03", null)));
 
         List<ReconciliacaoVinculoResponse> out = service.vincular(CONTRATO_ID, req);
 
@@ -542,7 +542,7 @@ class LocacaoReconciliacaoServiceTest {
         when(vinculoRepository.save(any())).thenAnswer(inv -> withId(inv.getArgument(0), 88L));
 
         ReconciliacaoVincularRequest req = new ReconciliacaoVincularRequest(
-                List.of(new ReconciliacaoVincularRequest.Item(60L, PapelReconciliacao.ALUGUEL, "2026-05")));
+                List.of(new ReconciliacaoVincularRequest.Item(60L, PapelReconciliacao.ALUGUEL, "2026-05", null)));
 
         List<ReconciliacaoVinculoResponse> out = service.vincular(CONTRATO_ID, req);
 
@@ -570,7 +570,7 @@ class LocacaoReconciliacaoServiceTest {
         when(lancamentoRepository.findById(70L)).thenReturn(Optional.of(outro));
 
         ReconciliacaoVincularRequest req = new ReconciliacaoVincularRequest(
-                List.of(new ReconciliacaoVincularRequest.Item(70L, PapelReconciliacao.ALUGUEL, "2026-05")));
+                List.of(new ReconciliacaoVincularRequest.Item(70L, PapelReconciliacao.ALUGUEL, "2026-05", null)));
 
         assertThatThrownBy(() -> service.vincular(CONTRATO_ID, req))
                 .isInstanceOf(BusinessRuleException.class);
@@ -592,7 +592,7 @@ class LocacaoReconciliacaoServiceTest {
         when(vinculoRepository.save(any())).thenAnswer(inv -> withId(inv.getArgument(0), 77L));
 
         service.vincular(CONTRATO_ID, new ReconciliacaoVincularRequest(
-                List.of(new ReconciliacaoVincularRequest.Item(10L, PapelReconciliacao.ALUGUEL, "2026-05"))));
+                List.of(new ReconciliacaoVincularRequest.Item(10L, PapelReconciliacao.ALUGUEL, "2026-05", null))));
 
         verify(lancamentoRepository, never()).save(any());
         verify(vinculoRepository, times(1)).save(any());
@@ -642,7 +642,7 @@ class LocacaoReconciliacaoServiceTest {
         when(vinculoRepository.save(any())).thenAnswer(inv -> withId(inv.getArgument(0), 77L));
 
         service.vincular(CONTRATO_ID, new ReconciliacaoVincularRequest(
-                List.of(new ReconciliacaoVincularRequest.Item(10L, PapelReconciliacao.ALUGUEL, "2026-05"))));
+                List.of(new ReconciliacaoVincularRequest.Item(10L, PapelReconciliacao.ALUGUEL, "2026-05", null))));
 
         verify(lancamentoRepository, never()).save(any()); // nenhum lançamento gerado
         verify(vinculoRepository, times(1)).save(any());    // só o vínculo de ALUGUEL
@@ -660,7 +660,7 @@ class LocacaoReconciliacaoServiceTest {
         when(vinculoRepository.save(any())).thenAnswer(inv -> withId(inv.getArgument(0), 77L));
 
         service.vincular(CONTRATO_ID, new ReconciliacaoVincularRequest(
-                List.of(new ReconciliacaoVincularRequest.Item(10L, PapelReconciliacao.ALUGUEL, "2026-05"))));
+                List.of(new ReconciliacaoVincularRequest.Item(10L, PapelReconciliacao.ALUGUEL, "2026-05", null))));
 
         verify(lancamentoRepository, never()).save(any());
         verify(vinculoRepository, times(1)).save(any());

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
+  Check,
   ChevronDown,
   ChevronUp,
   RefreshCw,
@@ -11,19 +12,8 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { padCliente } from '../data/processosDadosRelatorio.js';
-import {
-  gerarAlertasAdministracaoImovel,
-  mesReferenciaLancamentoParaRelatorio,
-  PAPEL_ALUGUEL,
-  PAPEL_DESPESA_REPASSAR,
-  PAPEL_REPASSE,
-  rotuloPapelAdministracao,
-} from '../data/imoveisAdministracaoFinanceiro.js';
-import {
-  contarPendenciasMatriz,
-  itemMatrizPorCompetencia,
-  referenciaAluguelExtrato,
-} from '../data/imoveisAluguelChecklist.js';
+import { gerarAlertasAdministracaoImovel } from '../data/imoveisAdministracaoFinanceiro.js';
+import { contarPendenciasMatriz, itemMatrizPorCompetencia } from '../data/imoveisAluguelChecklist.js';
 import {
   carregarPainelAdministracaoImovel,
   desvincularReconciliacaoApi,
@@ -42,6 +32,7 @@ import {
 import { featureFlags } from '../config/featureFlags.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
 import { ImoveisAluguelChecklist } from './imoveis/ImoveisAluguelChecklist.jsx';
+import { ImoveisContaCorrenteTrabalho } from './imoveis/ImoveisContaCorrenteTrabalho.jsx';
 import { ImoveisPendenciasAluguel } from './imoveis/ImoveisPendenciasAluguel.jsx';
 
 function formatBRL(n) {
@@ -54,9 +45,6 @@ function corValorNegativo(n) {
   return Number(n) < 0 ? 'text-red-600!' : '';
 }
 
-const th = 'px-3 py-2 text-left text-xs font-semibold text-slate-700 border-b border-slate-200 bg-slate-100 whitespace-nowrap';
-const td = 'px-3 py-2 text-sm text-slate-800 border-b border-slate-100 align-top';
-
 const KPI_TONS = {
   emerald: 'text-emerald-800',
   slate: 'text-slate-800',
@@ -64,6 +52,25 @@ const KPI_TONS = {
   teal: 'text-teal-800',
   indigo: 'text-indigo-800',
 };
+
+function mergeVinculosRespostaApi(vinculosAtuais, respostaApi) {
+  const map = new Map(
+    (vinculosAtuais || []).map((v) => [Number(v.lancamentoFinanceiroId), v]),
+  );
+  for (const n of respostaApi || []) {
+    const lid = Number(n.lancamentoFinanceiroId);
+    if (!Number.isFinite(lid)) continue;
+    map.set(lid, {
+      ...n,
+      id: n.id,
+      lancamentoFinanceiroId: lid,
+      papel: n.papel,
+      competenciaMes: n.competenciaMes,
+      rotuloClassificacao: n.rotuloClassificacao ?? null,
+    });
+  }
+  return [...map.values()];
+}
 
 function KpiResultado({ titulo, valor, sub, tom = 'slate' }) {
   return (
@@ -119,8 +126,11 @@ export function ImoveisAdministracaoFinanceiro() {
   const [erroReconc, setErroReconc] = useState('');
   const [reconcTick, setReconcTick] = useState(0);
   const [resultadoAberto, setResultadoAberto] = useState(false);
-  const [extratoAberto, setExtratoAberto] = useState(false);
   const [detalhesAbertos, setDetalhesAbertos] = useState(false);
+  const [alertasAbertos, setAlertasAbertos] = useState(false);
+  const [filtroCompetencia, setFiltroCompetencia] = useState(null);
+  const [vinculandoLancamentoId, setVinculandoLancamentoId] = useState(null);
+  const [linhasVinculadasRecentes, setLinhasVinculadasRecentes] = useState(() => new Set());
 
   const imovelId = useMemo(() => {
     const st = location.state && typeof location.state === 'object' ? location.state : null;
@@ -161,12 +171,42 @@ export function ImoveisAdministracaoFinanceiro() {
     return Number.isFinite(n) && n > 0 ? n : null;
   }, [mock]);
 
-  const itemCompetenciaAtiva = useMemo(
-    () => itemMatrizPorCompetencia(matriz?.meses, competencia),
-    [matriz?.meses, competencia],
+  const recarregarReconciliacaoDados = useCallback(
+    async (compRef) => {
+      if (!featureFlags.useApiImoveis || !contratoId) return;
+      const comp = compRef ?? competencia;
+      const [mat, vinculos, res] = await Promise.all([
+        obterMatrizCompetenciasApi(contratoId, { meses: 18 }),
+        listarVinculosReconciliacaoApi(contratoId),
+        obterResultadoImovelApi(contratoId, { competencia: comp }),
+      ]);
+      setMatriz(mat || null);
+      setVinculosContrato(Array.isArray(vinculos) ? vinculos : []);
+      setResultado(res || null);
+    },
+    [contratoId, competencia],
   );
 
+  const marcarLinhaVinculada = useCallback((lancamentoId) => {
+    const id = Number(lancamentoId);
+    if (!Number.isFinite(id)) return;
+    setLinhasVinculadasRecentes((prev) => new Set(prev).add(id));
+    window.setTimeout(() => {
+      setLinhasVinculadasRecentes((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }, 5000);
+  }, []);
+
   const pendenciasMatriz = useMemo(() => contarPendenciasMatriz(matriz?.meses), [matriz?.meses]);
+
+  const competenciaAtiva = filtroCompetencia ?? competencia;
+  const itemCompetenciaAtiva = useMemo(
+    () => itemMatrizPorCompetencia(matriz?.meses, competenciaAtiva),
+    [matriz?.meses, competenciaAtiva],
+  );
 
   const competenciaRange = useMemo(() => {
     const min = contratoVigenteApi?.dataInicio ? String(contratoVigenteApi.dataInicio).slice(0, 7) : undefined;
@@ -184,10 +224,17 @@ export function ImoveisAdministracaoFinanceiro() {
         vinculoId: v.id,
         papel: v.papel,
         competenciaMes: v.competenciaMes,
+        rotuloClassificacao: v.rotuloClassificacao ?? null,
       });
     }
     return map;
   }, [vinculosContrato]);
+
+  useEffect(() => {
+    if (!sucesso) return;
+    const t = window.setTimeout(() => setSucesso(''), 8000);
+    return () => window.clearTimeout(t);
+  }, [sucesso]);
 
   useEffect(() => {
     if (!featureFlags.useApiImoveis || !contratoId) {
@@ -245,29 +292,161 @@ export function ImoveisAdministracaoFinanceiro() {
       setErroReconc('Informe o mês de referência (AAAA-MM) antes de confirmar.');
       return;
     }
+    const lancId = Number(candidato.lancamentoFinanceiroId);
+    setVinculandoLancamentoId(lancId);
     setSalvandoReconc(true);
     setErroReconc('');
     setSucesso('');
     try {
-      await vincularReconciliacaoApi(contratoId, [
+      const saved = await vincularReconciliacaoApi(contratoId, [
         {
-          lancamentoFinanceiroId: candidato.lancamentoFinanceiroId,
+          lancamentoFinanceiroId: lancId,
           papel: 'ALUGUEL',
           competenciaMes: comp,
         },
       ]);
+      setVinculosContrato((prev) => mergeVinculosRespostaApi(prev, saved));
+      marcarLinhaVinculada(lancId);
+      setMatriz((prev) => {
+        if (!prev?.meses) return prev;
+        const vinculoSalvo = saved?.[0];
+        return {
+          ...prev,
+          meses: prev.meses.map((m) =>
+            m.competencia === comp
+              ? {
+                  ...m,
+                  estado: 'VINCULADO',
+                  aluguelVinculado: {
+                    lancamentoFinanceiroId: lancId,
+                    vinculoId: vinculoSalvo?.id,
+                    valor: vinculoSalvo?.valor ?? candidato.valor,
+                    data: candidato.data,
+                    descricao: candidato.descricao,
+                  },
+                }
+              : m,
+          ),
+        };
+      });
       setSucesso(`Aluguel vinculado · ref. ${comp}.`);
       setCompetencia(comp);
-      recarregarReconciliacao();
+      setFiltroCompetencia(comp);
+      await recarregarReconciliacaoDados(comp);
+      recarregar();
     } catch (e) {
       setErroReconc(e?.message || 'Falha ao vincular aluguel.');
     } finally {
+      setVinculandoLancamentoId(null);
       setSalvandoReconc(false);
     }
   }
 
-  async function moverCompetenciaAluguel(vinc, novaCompetencia) {
+  async function confirmarRepasse(candidato, comp) {
+    if (!contratoId || !candidato?.lancamentoFinanceiroId) return;
+    if (!competenciaValida(comp)) {
+      setErroReconc('Informe o mês de referência (AAAA-MM) antes de confirmar.');
+      return;
+    }
+    const lancId = Number(candidato.lancamentoFinanceiroId);
+    setVinculandoLancamentoId(lancId);
+    setSalvandoReconc(true);
+    setErroReconc('');
+    setSucesso('');
+    try {
+      const saved = await vincularReconciliacaoApi(contratoId, [
+        {
+          lancamentoFinanceiroId: lancId,
+          papel: 'REPASSE',
+          competenciaMes: comp,
+        },
+      ]);
+      setVinculosContrato((prev) => mergeVinculosRespostaApi(prev, saved));
+      marcarLinhaVinculada(lancId);
+      setSucesso(`Repasse vinculado · ref. ${comp}.`);
+      setCompetencia(comp);
+      setFiltroCompetencia(comp);
+      await recarregarReconciliacaoDados(comp);
+      recarregar();
+    } catch (e) {
+      setErroReconc(e?.message || 'Falha ao vincular repasse.');
+    } finally {
+      setVinculandoLancamentoId(null);
+      setSalvandoReconc(false);
+    }
+  }
+
+  async function confirmarVinculoManual(candidato, papel, comp, rotuloClassificacao = null) {
+    if (!contratoId || !candidato?.lancamentoFinanceiroId) return;
+    const papelApi = String(papel ?? '').toUpperCase();
+    if (papelApi !== 'ALUGUEL' && papelApi !== 'REPASSE' && papelApi !== 'DESPESA') {
+      setErroReconc('Escolha o tipo do lançamento antes de vincular.');
+      return;
+    }
+    if (!competenciaValida(comp)) {
+      setErroReconc('Informe o mês de referência (AAAA-MM) antes de confirmar.');
+      return;
+    }
+    const rotulo = String(rotuloClassificacao ?? '').trim() || null;
+    const lancId = Number(candidato.lancamentoFinanceiroId);
+    setVinculandoLancamentoId(lancId);
+    setSalvandoReconc(true);
+    setErroReconc('');
+    setSucesso('');
+    try {
+      const saved = await vincularReconciliacaoApi(contratoId, [
+        {
+          lancamentoFinanceiroId: lancId,
+          papel: papelApi,
+          competenciaMes: comp,
+          rotuloClassificacao: rotulo,
+        },
+      ]);
+      setVinculosContrato((prev) => mergeVinculosRespostaApi(prev, saved));
+      marcarLinhaVinculada(lancId);
+      if (papelApi === 'ALUGUEL') {
+        setMatriz((prev) => {
+          if (!prev?.meses) return prev;
+          const vinculoSalvo = saved?.[0];
+          return {
+            ...prev,
+            meses: prev.meses.map((m) =>
+              m.competencia === comp
+                ? {
+                    ...m,
+                    estado: 'VINCULADO',
+                    aluguelVinculado: {
+                      lancamentoFinanceiroId: lancId,
+                      vinculoId: vinculoSalvo?.id,
+                      valor: vinculoSalvo?.valor ?? candidato.valor,
+                      data: candidato.data,
+                      descricao: candidato.descricao,
+                    },
+                  }
+                : m,
+            ),
+          };
+        });
+      }
+      const rotuloSucesso =
+        rotulo || (papelApi === 'ALUGUEL' ? 'Aluguel' : papelApi === 'REPASSE' ? 'Repasse' : 'Despesa');
+      setSucesso(`${rotuloSucesso} vinculado · ref. ${comp}.`);
+      setCompetencia(comp);
+      setFiltroCompetencia(comp);
+      await recarregarReconciliacaoDados(comp);
+      recarregar();
+    } catch (e) {
+      setErroReconc(e?.message || 'Falha ao vincular lançamento.');
+    } finally {
+      setVinculandoLancamentoId(null);
+      setSalvandoReconc(false);
+    }
+  }
+
+  async function moverCompetenciaVinculo(vinc, novaCompetencia) {
     if (!contratoId || !vinc?.lancamentoFinanceiroId || !competenciaValida(novaCompetencia)) return;
+    const papel = String(vinc?.papel ?? 'ALUGUEL').toUpperCase();
+    if (papel !== 'ALUGUEL' && papel !== 'REPASSE' && papel !== 'DESPESA') return;
     setSalvandoReconc(true);
     setErroReconc('');
     setSucesso('');
@@ -275,13 +454,15 @@ export function ImoveisAdministracaoFinanceiro() {
       await vincularReconciliacaoApi(contratoId, [
         {
           lancamentoFinanceiroId: vinc.lancamentoFinanceiroId,
-          papel: 'ALUGUEL',
+          papel,
           competenciaMes: novaCompetencia,
         },
       ]);
       setSucesso(`Referência movida para ${novaCompetencia}.`);
       setCompetencia(novaCompetencia);
+      setFiltroCompetencia(novaCompetencia);
       recarregarReconciliacao();
+      recarregar();
     } catch (e) {
       setErroReconc(e?.message || 'Falha ao alterar a referência do mês.');
     } finally {
@@ -297,6 +478,7 @@ export function ImoveisAdministracaoFinanceiro() {
       await desvincularReconciliacaoApi(contratoId, vinculoId);
       setSucesso('Vínculo removido.');
       recarregarReconciliacao();
+      recarregar();
     } catch (e) {
       setErroReconc(e?.message || 'Falha ao desvincular.');
     } finally {
@@ -318,6 +500,7 @@ export function ImoveisAdministracaoFinanceiro() {
           : 'Nenhum repasse pendente nesta competência.',
       );
       recarregarReconciliacao();
+      recarregar();
     } catch (e) {
       setErroReconc(e?.message || 'Falha ao gerar repasses internos.');
     } finally {
@@ -372,58 +555,12 @@ export function ImoveisAdministracaoFinanceiro() {
     window.requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   }, [location.hash, painel, contratoId]);
 
-  function rotuloVinculoExtrato(t) {
-    const ref = referenciaAluguelExtrato(t, vinculosPorLancamento, mesReferenciaLancamentoParaRelatorio);
-    const { papel } = t.classificacao || {};
-    const id = t.apiId != null ? Number(t.apiId) : NaN;
-    const vinc = Number.isFinite(id) ? vinculosPorLancamento.get(id) : null;
-
-    if (vinc?.papel === 'ALUGUEL' || (ref?.vinculado && ref?.papel === 'ALUGUEL')) {
-      return <span className="text-emerald-800 font-semibold text-xs">Aluguel ✓ vinculado</span>;
-    }
-    if (vinc?.papel === 'REPASSE' || (ref?.vinculado && ref?.papel === 'REPASSE')) {
-      return <span className="text-slate-800 font-semibold text-xs">Repasse ✓ vinculado</span>;
-    }
-    if (papel === PAPEL_ALUGUEL) {
-      return (
-        <span className="text-amber-800 text-xs">
-          Sugestão: aluguel <span className="font-normal">(não vinculado)</span>
-        </span>
-      );
-    }
-    if (papel === PAPEL_REPASSE) {
-      return (
-        <span className="text-amber-800 text-xs">
-          Sugestão: repasse <span className="font-normal">(não vinculado)</span>
-        </span>
-      );
-    }
-    return <span className="text-slate-600 text-xs">{rotuloPapelAdministracao(papel)}</span>;
-  }
-
-  function celulaRefMesExtrato(t) {
-    const ref = referenciaAluguelExtrato(t, vinculosPorLancamento, mesReferenciaLancamentoParaRelatorio);
-    if (!ref) return <span className="text-slate-400 text-xs">—</span>;
-    if (ref.vinculado) {
-      return (
-        <span className="text-emerald-800 text-xs font-semibold tabular-nums" title={`Competência ${ref.chave}`}>
-          {ref.rotulo}
-        </span>
-      );
-    }
-    return (
-      <span className="text-amber-800 text-xs tabular-nums" title="Sugestão pelo mês do pagamento — confirme no checklist">
-        {ref.rotulo} <span className="font-normal text-amber-700">(sug.)</span>
-      </span>
-    );
-  }
-
   return (
     <div className="min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] p-4">
-      <div className="max-w-[1200px] mx-auto space-y-4">
+      <div className="max-w-[1400px] mx-auto space-y-4">
         {/* Cabeçalho compacto */}
         <div className="sticky top-0 z-20 -mx-4 px-4 py-3 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
-          <div className="max-w-[1200px] mx-auto flex flex-wrap items-center justify-between gap-3">
+          <div className="max-w-[1400px] mx-auto flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <button
                 type="button"
@@ -496,12 +633,21 @@ export function ImoveisAdministracaoFinanceiro() {
           </div>
         </div>
 
-        {(carregando || erro || sucesso || erroReconc) && (
+        {sucesso ? (
+          <div
+            className="rounded-lg border-2 border-emerald-400 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 flex items-center gap-2 shadow-sm"
+            role="status"
+          >
+            <Check className="w-5 h-5 shrink-0 text-emerald-600" aria-hidden />
+            <span className="font-medium">{sucesso}</span>
+          </div>
+        ) : null}
+
+        {(carregando || erro || erroReconc) && (
           <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm space-y-1">
             {carregando ? <p className="text-indigo-700">Carregando…</p> : null}
             {erro ? <p className="text-red-700">{erro}</p> : null}
             {erroReconc ? <p className="text-red-700">{erroReconc}</p> : null}
-            {sucesso ? <p className="text-emerald-700">{sucesso}</p> : null}
           </div>
         )}
 
@@ -527,54 +673,101 @@ export function ImoveisAdministracaoFinanceiro() {
                 <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden />
                 <span>
                   <strong>{pendenciasMatriz}</strong> competência{pendenciasMatriz === 1 ? '' : 's'} sem aluguel
-                  vinculado — comece pelo mês em destaque abaixo.
+                  vinculado — filtre e classifique na conta corrente.
                 </span>
               </div>
             ) : null}
-
-            {alertas.length > 0 && (
-              <div className="rounded-lg border border-amber-300 bg-amber-50/90 p-3 text-sm text-amber-950">
-                <ul className="list-disc pl-5 space-y-0.5">
-                  {alertas.map((a, i) => (
-                    <li key={`${a.tipo}-${a.mes}-${i}`}>{a.texto}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
 
             {!contratoId ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
                 Sem contrato vigente — cadastre um contrato de locação para classificar aluguéis.
               </div>
-            ) : (
+            ) : null}
+
+            {painel ? (
               <div id="reconciliacao-imoveis" className="space-y-4 scroll-mt-4">
-                <div className="grid gap-4 lg:grid-cols-[minmax(280px,360px)_1fr]">
-                  <ImoveisAluguelChecklist
-                    meses={matriz?.meses}
-                    competenciaAtiva={competencia}
-                    onSelecionarCompetencia={setCompetencia}
-                    valorAluguelContrato={matriz?.valorAluguelContrato ?? contratoVigenteApi?.valorAluguel}
-                    carregando={carregandoMatriz}
-                  />
-                  <ImoveisPendenciasAluguel
-                    competencia={competencia}
-                    itemMatriz={itemCompetenciaAtiva}
+                <div className="grid gap-4 xl:grid-cols-[minmax(240px,280px)_1fr] xl:items-start">
+                  {contratoId ? (
+                    <div className="space-y-2 xl:sticky xl:top-24 xl:self-start">
+                      <ImoveisAluguelChecklist
+                        meses={matriz?.meses}
+                        competenciaAtiva={competenciaAtiva}
+                        onSelecionarCompetencia={(comp) => {
+                          setCompetencia(comp);
+                          setFiltroCompetencia(comp);
+                        }}
+                        valorAluguelContrato={matriz?.valorAluguelContrato ?? contratoVigenteApi?.valorAluguel}
+                        carregando={carregandoMatriz}
+                        modoFiltro
+                      />
+                      {filtroCompetencia ? (
+                        <button
+                          type="button"
+                          onClick={() => setFiltroCompetencia(null)}
+                          className="w-full text-center text-xs text-indigo-700 hover:underline py-1"
+                        >
+                          Limpar filtro · ver conta corrente inteira
+                        </button>
+                      ) : null}
+                      <ImoveisPendenciasAluguel
+                        competencia={competenciaAtiva}
+                        itemMatriz={itemCompetenciaAtiva}
+                        repasseInterno={matriz?.repasseInterno ?? resultado?.repasseInterno}
+                        salvando={salvandoReconc}
+                        vinculandoLancamentoId={vinculandoLancamentoId}
+                        gerandoRepasses={gerandoRepasses}
+                        competenciaMin={competenciaRange.min}
+                        competenciaMax={competenciaRange.max}
+                        onConfirmarAluguel={confirmarAluguel}
+                        onMoverCompetencia={moverCompetenciaVinculo}
+                        onDesvincular={desvincularAluguel}
+                        onGerarRepasse={gerarRepassesInternos}
+                      />
+                    </div>
+                  ) : null}
+                  <ImoveisContaCorrenteTrabalho
+                    transacoes={painel.transacoes}
+                    vinculosPorLancamento={vinculosPorLancamento}
+                    vinculandoLancamentoId={vinculandoLancamentoId}
+                    linhasVinculadasRecentes={linhasVinculadasRecentes}
+                    filtroCompetencia={filtroCompetencia}
+                    onLimparFiltro={() => setFiltroCompetencia(null)}
+                    competenciaMin={competenciaRange.min}
+                    competenciaMax={competenciaRange.max}
+                    contratoId={contratoId}
                     repasseInterno={matriz?.repasseInterno ?? resultado?.repasseInterno}
                     salvando={salvandoReconc}
                     gerandoRepasses={gerandoRepasses}
-                    competenciaMin={competenciaRange.min}
-                    competenciaMax={competenciaRange.max}
                     onConfirmarAluguel={confirmarAluguel}
-                    onMoverCompetencia={moverCompetenciaAluguel}
+                    onConfirmarRepasse={confirmarRepasse}
+                    onConfirmarVinculoManual={confirmarVinculoManual}
+                    onMoverCompetencia={moverCompetenciaVinculo}
                     onDesvincular={desvincularAluguel}
                     onGerarRepasse={gerarRepassesInternos}
+                    codigoCliente={padCliente(codigoStr)}
+                    proc={procStr}
                   />
                 </div>
 
-                {resultado ? (
+                {alertas.length > 0 ? (
+                  <SecaoColapsavel
+                    titulo="Alertas do extrato"
+                    subtitulo={`${alertas.length} aviso${alertas.length === 1 ? '' : 's'} — meses sem aluguel ou repasse identificado`}
+                    aberto={alertasAbertos}
+                    onToggle={() => setAlertasAbertos((v) => !v)}
+                  >
+                    <ul className="pt-2 max-h-48 overflow-y-auto list-disc pl-5 space-y-0.5 text-sm text-amber-950">
+                      {alertas.map((a, i) => (
+                        <li key={`${a.tipo}-${a.mes}-${i}`}>{a.texto}</li>
+                      ))}
+                    </ul>
+                  </SecaoColapsavel>
+                ) : null}
+
+                {contratoId && resultado ? (
                   <SecaoColapsavel
                     titulo="Resumo financeiro"
-                    subtitulo={`Competência ${competencia}`}
+                    subtitulo={`Competência ${filtroCompetencia ?? competencia}`}
                     aberto={resultadoAberto}
                     onToggle={() => setResultadoAberto((v) => !v)}
                   >
@@ -620,107 +813,31 @@ export function ImoveisAdministracaoFinanceiro() {
                   </SecaoColapsavel>
                 ) : null}
 
-                <SecaoColapsavel
-                  titulo="Detalhes do imóvel e contrato"
-                  aberto={detalhesAbertos}
-                  onToggle={() => setDetalhesAbertos((v) => !v)}
-                >
-                  <div className="pt-3 grid gap-3 sm:grid-cols-3 text-sm">
-                    <div className="rounded border border-slate-100 bg-slate-50/80 px-3 py-2">
-                      <p className="text-[11px] font-semibold uppercase text-slate-500">Locador</p>
-                      <p className="font-medium">{mock.proprietario || '—'}</p>
+                {contratoId ? (
+                  <SecaoColapsavel
+                    titulo="Detalhes do imóvel e contrato"
+                    aberto={detalhesAbertos}
+                    onToggle={() => setDetalhesAbertos((v) => !v)}
+                  >
+                    <div className="pt-3 grid gap-3 sm:grid-cols-3 text-sm">
+                      <div className="rounded border border-slate-100 bg-slate-50/80 px-3 py-2">
+                        <p className="text-[11px] font-semibold uppercase text-slate-500">Locador</p>
+                        <p className="font-medium">{mock.proprietario || '—'}</p>
+                      </div>
+                      <div className="rounded border border-slate-100 bg-slate-50/80 px-3 py-2">
+                        <p className="text-[11px] font-semibold uppercase text-slate-500">Locatário</p>
+                        <p className="font-medium">{mock.inquilino || '—'}</p>
+                      </div>
+                      <div className="rounded border border-slate-100 bg-slate-50/80 px-3 py-2">
+                        <p className="text-[11px] font-semibold uppercase text-slate-500">Contrato API</p>
+                        <p className="font-mono text-xs">
+                          id {contratoVigenteApi?.id ?? contratoId} · {contratoVigenteApi?.status ?? '—'}
+                        </p>
+                      </div>
                     </div>
-                    <div className="rounded border border-slate-100 bg-slate-50/80 px-3 py-2">
-                      <p className="text-[11px] font-semibold uppercase text-slate-500">Locatário</p>
-                      <p className="font-medium">{mock.inquilino || '—'}</p>
-                    </div>
-                    <div className="rounded border border-slate-100 bg-slate-50/80 px-3 py-2">
-                      <p className="text-[11px] font-semibold uppercase text-slate-500">Contrato API</p>
-                      <p className="font-mono text-xs">
-                        id {contratoVigenteApi?.id ?? contratoId} · {contratoVigenteApi?.status ?? '—'}
-                      </p>
-                    </div>
-                  </div>
-                </SecaoColapsavel>
+                  </SecaoColapsavel>
+                ) : null}
               </div>
-            )}
-
-            {painel ? (
-              <SecaoColapsavel
-                titulo="Conta corrente completa"
-                subtitulo={`${painel.transacoes?.length ?? 0} lançamentos · Cod. ${padCliente(codigoStr)} · Proc. ${procStr}`}
-                aberto={extratoAberto}
-                onToggle={() => setExtratoAberto((v) => !v)}
-              >
-                <div id="extrato-imoveis" className="pt-3 scroll-mt-4">
-                  <p className="text-xs text-slate-500 mb-3">
-                    <strong>Ref. mês</strong> = competência do aluguel/repasse. Verde = vinculado na reconciliação;
-                    âmbar = sugestão pelo mês do pagamento (confirme no checklist acima).
-                  </p>
-                  <div className="overflow-x-auto rounded border border-slate-200">
-                    <table className="w-full text-left border-collapse min-w-[880px]">
-                      <thead>
-                        <tr>
-                          <th className={th}>Data</th>
-                          <th className={th}>Banco</th>
-                          <th className={th}>Descrição</th>
-                          <th className={`${th} text-right`}>Valor</th>
-                          <th className={th}>Ref. mês</th>
-                          <th className={th}>Vínculo</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {painel.transacoes.length === 0 ? (
-                          <tr>
-                            <td colSpan={6} className={`${td} text-center text-slate-500 py-6`}>
-                              Sem movimentações.
-                            </td>
-                          </tr>
-                        ) : (
-                          painel.transacoes.map((t, idx) => {
-                            const isDesp =
-                              t.classificacao?.papel === PAPEL_DESPESA_REPASSAR ||
-                              t.classificacao?.despesaRepassarAoLocador;
-                            const ref = referenciaAluguelExtrato(
-                              t,
-                              vinculosPorLancamento,
-                              mesReferenciaLancamentoParaRelatorio,
-                            );
-                            const rowClass = isDesp
-                              ? 'bg-orange-50/60'
-                              : ref?.papel === 'ALUGUEL' || t.classificacao?.papel === PAPEL_ALUGUEL
-                                ? ref?.vinculado
-                                  ? 'bg-emerald-50/40'
-                                  : 'bg-amber-50/30'
-                                : ref?.papel === 'REPASSE' || t.classificacao?.papel === PAPEL_REPASSE
-                                  ? ref?.vinculado
-                                    ? 'bg-slate-50/80'
-                                    : 'bg-amber-50/20'
-                                  : '';
-                            return (
-                              <tr
-                                key={`${t.apiId ?? t.numero}-${t.nomeBanco}-${t.data}-${idx}`}
-                                className={rowClass}
-                              >
-                                <td className={`${td} tabular-nums whitespace-nowrap`}>{t.data}</td>
-                                <td className={`${td} text-xs`}>{t.nomeBanco}</td>
-                                <td className={td}>{t.descricao}</td>
-                                <td
-                                  className={`${td} text-right tabular-nums font-medium whitespace-nowrap ${corValorNegativo(t.valor)}`}
-                                >
-                                  {formatBRL(t.valor)}
-                                </td>
-                                <td className={td}>{celulaRefMesExtrato(t)}</td>
-                                <td className={td}>{rotuloVinculoExtrato(t)}</td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </SecaoColapsavel>
             ) : null}
           </>
         )}

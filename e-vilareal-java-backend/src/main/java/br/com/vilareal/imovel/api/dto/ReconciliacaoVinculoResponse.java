@@ -17,4 +17,6 @@ public record ReconciliacaoVinculoResponse(
         String contaCodigoAplicada,
         Long processoAplicadoId,
         /** {@code AUTO} quando criado pela conciliação automática; {@code null} = manual. */
-        String origem) {}
+        String origem,
+        /** Rótulo livre da classificação manual, quando informado. */
+        String rotuloClassificacao) {}

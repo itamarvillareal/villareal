@@ -1337,6 +1337,17 @@ export async function carregarPainelAdministracaoImovel({ imovelId, imovelIdApi,
   }
 
   const vinculoOk = codigo !== '' && proc !== '';
+
+  let contratos = [];
+  let contratoVigente = null;
+  if (featureFlags.useApiImoveis && imovel?._apiImovelId) {
+    contratos = await request('/api/locacoes/contratos', { query: { imovelId: imovel._apiImovelId } });
+    contratoVigente = selecionarContratoVigente(Array.isArray(contratos) ? contratos : []);
+    if (contratoVigente?.id) {
+      imovel = { ...imovel, _apiContratoId: contratoVigente.id };
+    }
+  }
+
   let painelFinanceiro = null;
   if (vinculoOk) {
     const cod8 = padCliente8(codigo);
@@ -1353,17 +1364,11 @@ export async function carregarPainelAdministracaoImovel({ imovelId, imovelIdApi,
     } else {
       transacoes = getTransacoesContaCorrenteCompleto(codigo, proc);
     }
-    painelFinanceiro = montarPainelAdministracaoImovelDeTransacoes(transacoes, codigo, proc, { fonte });
-  }
-
-  let contratos = [];
-  let contratoVigente = null;
-  if (featureFlags.useApiImoveis && imovel?._apiImovelId) {
-    contratos = await request('/api/locacoes/contratos', { query: { imovelId: imovel._apiImovelId } });
-    contratoVigente = selecionarContratoVigente(Array.isArray(contratos) ? contratos : []);
-    if (contratoVigente?.id) {
-      imovel = { ...imovel, _apiContratoId: contratoVigente.id };
-    }
+    painelFinanceiro = montarPainelAdministracaoImovelDeTransacoes(transacoes, codigo, proc, {
+      fonte,
+      valorAluguelContrato: contratoVigente?.valorAluguel ?? imovel?.valorLocacao ?? null,
+      nomeInquilino: imovel?.inquilino ?? contratoVigente?.inquilinoNome ?? null,
+    });
   }
 
   return {
@@ -1407,6 +1412,7 @@ export async function vincularReconciliacaoApi(contratoId, vinculos) {
       lancamentoFinanceiroId: Number(v.lancamentoFinanceiroId),
       papel: String(v.papel).toUpperCase(),
       competenciaMes: v.competenciaMes || null,
+      rotuloClassificacao: v.rotuloClassificacao ? String(v.rotuloClassificacao).trim() : null,
     }));
   if (itens.length === 0) return [];
   const rows = await request(`/api/locacoes/${id}/reconciliacao/vincular`, {

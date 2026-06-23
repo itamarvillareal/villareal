@@ -401,7 +401,7 @@ public class LocacaoReconciliacaoService {
             }
 
             LocacaoRepasseLancamentoEntity entity =
-                    criarVinculoComGatilho(contrato, lancamento, item.papel(), item.competenciaMes(), null);
+                    criarVinculoComGatilho(contrato, lancamento, item.papel(), item.competenciaMes(), null, item.rotuloClassificacao());
             saida.add(toVinculoResponse(entity, adotado));
         }
         return saida;
@@ -415,12 +415,18 @@ public class LocacaoReconciliacaoService {
     private LocacaoRepasseLancamentoEntity criarVinculoComGatilho(
             ContratoLocacaoEntity contrato, LancamentoFinanceiroEntity lancamento,
             PapelReconciliacao papel, String competenciaMes) {
-        return criarVinculoComGatilho(contrato, lancamento, papel, competenciaMes, null);
+        return criarVinculoComGatilho(contrato, lancamento, papel, competenciaMes, null, null);
     }
 
     private LocacaoRepasseLancamentoEntity criarVinculoComGatilho(
             ContratoLocacaoEntity contrato, LancamentoFinanceiroEntity lancamento,
             PapelReconciliacao papel, String competenciaMes, String origemVinculo) {
+        return criarVinculoComGatilho(contrato, lancamento, papel, competenciaMes, origemVinculo, null);
+    }
+
+    private LocacaoRepasseLancamentoEntity criarVinculoComGatilho(
+            ContratoLocacaoEntity contrato, LancamentoFinanceiroEntity lancamento,
+            PapelReconciliacao papel, String competenciaMes, String origemVinculo, String rotuloClassificacao) {
         Optional<LocacaoRepasseLancamentoEntity> existente = vinculoRepository
                 .findByContratoLocacao_IdAndLancamentoFinanceiro_IdAndPapel(
                         contrato.getId(), lancamento.getId(), papel);
@@ -442,6 +448,7 @@ public class LocacaoReconciliacaoService {
         if (StringUtils.hasText(origemVinculo)) {
             entity.setOrigem(origemVinculo.trim());
         }
+        entity.setRotuloClassificacao(trimToNull(rotuloClassificacao));
 
         entity = vinculoRepository.save(entity);
         return entity;
@@ -692,7 +699,7 @@ public class LocacaoReconciliacaoService {
                     ? YearMonth.from(l.getDataLancamento()).toString()
                     : null;
             itens.add(new ReconciliacaoVincularRequest.Item(
-                    l.getId(), PapelReconciliacao.ALUGUEL, competencia));
+                    l.getId(), PapelReconciliacao.ALUGUEL, competencia, null));
         }
         if (itens.isEmpty()) {
             log.info("[reconciliacao-imovel] backfill: contrato={} sem créditos de aluguel a vincular.", contratoId);
@@ -1737,7 +1744,8 @@ public class LocacaoReconciliacaoService {
                 adotado,
                 contaCodigo,
                 processoId,
-                e.getOrigem());
+                e.getOrigem(),
+                e.getRotuloClassificacao());
     }
 
     private static String trimToNull(String s) {

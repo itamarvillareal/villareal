@@ -5,8 +5,10 @@ import { TablePaginationBar } from './ui/TablePaginationBar.jsx';
 import { MODULOS_PERMISSAO } from '../data/usuarioPermissoesStorage.js';
 import { TIPOS_ACAO_AUDITORIA } from '../services/auditoriaCliente.js';
 import { getUsuariosAtivos } from '../data/agendaPersistenciaData.js';
-import { rotuloUsuarioSelectComTipo } from '../data/usuarioDisplayHelpers.js';
+import { getNomeExibicaoUsuario, rotuloUsuarioSelectComTipo } from '../data/usuarioDisplayHelpers.js';
 import { AutorUsuarioExibicao } from './ui/AutorUsuarioExibicao.jsx';
+import { AtividadeProdutividadeChart } from './atividade/AtividadeProdutividadeChart.jsx';
+import { calcularHorasAtivasPorDia, preencherPeriodo } from './atividade/atividadeProdutividadeUtils.js';
 
 function isoDateDiasAtras(dias) {
   const d = new Date();
@@ -70,8 +72,14 @@ export function Atividade() {
   const [data, setData] = useState(null);
   const [detalhe, setDetalhe] = useState(null);
   const [exportando, setExportando] = useState(false);
+  const [chartLoading, setChartLoading] = useState(false);
+  const [pontosProdutividade, setPontosProdutividade] = useState([]);
 
   const usuarios = useMemo(() => getUsuariosAtivos() ?? [], []);
+  const usuarioSelecionado = useMemo(
+    () => (usuarios || []).find((u) => String(u.id) === String(usuarioId)),
+    [usuarios, usuarioId]
+  );
 
   const filtrosApi = useMemo(
     () => ({
@@ -103,6 +111,35 @@ export function Atividade() {
   useEffect(() => {
     carregar();
   }, [carregar, reloadKey]);
+
+  useEffect(() => {
+    if (!usuarioId) {
+      setPontosProdutividade([]);
+      setChartLoading(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setChartLoading(true);
+      try {
+        const linhas = await coletarExportacao(filtrosApi, 5000);
+        if (cancelled) return;
+        const pontos = preencherPeriodo(
+          calcularHorasAtivasPorDia(linhas),
+          filtrosApi.dataInicio,
+          filtrosApi.dataFim
+        );
+        setPontosProdutividade(pontos);
+      } catch {
+        if (!cancelled) setPontosProdutividade([]);
+      } finally {
+        if (!cancelled) setChartLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [usuarioId, filtrosApi, reloadKey]);
 
   const totalPages = Math.max(0, data?.totalPages ?? 0);
   const totalElements = data?.totalElements ?? 0;
@@ -300,6 +337,19 @@ export function Atividade() {
 
         {erro && (
           <div className="rounded-lg border border-red-200 bg-red-50 text-red-800 text-sm px-4 py-3">{erro}</div>
+        )}
+
+        {usuarioId ? (
+          <AtividadeProdutividadeChart
+            pontos={pontosProdutividade}
+            loading={chartLoading}
+            nomeUsuario={getNomeExibicaoUsuario(usuarioSelecionado)}
+          />
+        ) : (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white/60 px-4 py-3 text-sm text-slate-600">
+            Selecione um colaborador no filtro <span className="font-medium">Usuário</span> e clique em{' '}
+            <span className="font-medium">Filtrar</span> para ver o gráfico de produtividade (horas por dia).
+          </div>
         )}
 
         <div className="bg-white/95 backdrop-blur-sm rounded-2xl border border-slate-200/90 shadow-xl ring-1 ring-indigo-500/10 overflow-hidden">

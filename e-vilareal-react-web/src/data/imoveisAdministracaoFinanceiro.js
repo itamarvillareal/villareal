@@ -187,11 +187,77 @@ function pareceCreditoAluguelAdministracaoImovel(txt, valor) {
   return false;
 }
 
+function tokensNomeRelevantes(nome) {
+  return String(nome ?? '')
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .split(/\W+/)
+    .filter((t) => t.length >= 3);
+}
+
+/** Pelo menos um token significativo do nome (ex.: inquilino) aparece no texto do lançamento. */
+export function nomeCompativelLancamento(texto, nomeReferencia) {
+  const tokens = tokensNomeRelevantes(nomeReferencia);
+  if (!tokens.length) return false;
+  const txt = String(texto ?? '')
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '');
+  return tokens.some((t) => txt.includes(t));
+}
+
+/** Faixa compatível com aluguel do contrato (mesma regra do backend: 10% ou R$ 50). */
+export function valorCompativelAluguelContrato(valor, valorReferencia) {
+  const v = Number(valor);
+  const ref = Number(valorReferencia);
+  if (!Number.isFinite(v) || v <= 0 || !Number.isFinite(ref) || ref <= 0) return false;
+  const diff = Math.abs(v - ref);
+  const limite = Math.max(ref * 0.1, 50);
+  return diff <= limite;
+}
+
+/**
+ * Crédito compatível com aluguel por valor do contrato + sinal do inquilino (PIX, nome, etc.).
+ * @param {{ valorAluguelReferencia?: number, nomeInquilino?: string, valorModalAluguel?: number }} ctx
+ */
+function creditoCompativelAluguelPorContrato(txt, valor, ctx = {}) {
+  const refs = [ctx.valorAluguelReferencia, ctx.valorModalAluguel]
+    .map(Number)
+    .filter((n) => Number.isFinite(n) && n > 0);
+  if (!refs.length) return false;
+  const valorOk = refs.some((ref) => valorCompativelAluguelContrato(valor, ref));
+  if (!valorOk) return false;
+  if (pareceCreditoAluguelAdministracaoImovel(txt, valor)) return true;
+  if (ctx.nomeInquilino && nomeCompativelLancamento(txt, ctx.nomeInquilino)) return true;
+  return false;
+}
+
+/** Valor modal de créditos já classificados como aluguel no extrato (ex.: 1707,83 recorrente). */
+function calcularValorModalAluguelExtrato(transacoes) {
+  const freq = new Map();
+  for (const t of transacoes ?? []) {
+    if (Number(t?.valor) <= 0 || t?.classificacao?.papel !== PAPEL_ALUGUEL) continue;
+    const v = Math.round(Number(t.valor) * 100) / 100;
+    freq.set(v, (freq.get(v) ?? 0) + 1);
+  }
+  let best = null;
+  let bestN = 0;
+  for (const [v, n] of freq) {
+    if (n > bestN) {
+      best = v;
+      bestN = n;
+    }
+  }
+  return best;
+}
+
 /**
  * Classifica um lançamento para a visão de locação (não cria lançamentos novos).
  * Heurísticas só aplicam quando o processo é reconhecido como administração de imóvel.
+ * @param {{ valorAluguelReferencia?: number, nomeInquilino?: string, valorModalAluguel?: number }} [ctx]
  */
-export function classificarLancamentoAdministracaoImovel(t, codigoCliente, proc) {
+export function classificarLancamentoAdministracaoImovel(t, codigoCliente, proc, ctx = {}) {
   const txt = textoClassificacao(t);
   const porTag = papelPorTag(txt);
   if (porTag) {
@@ -210,6 +276,9 @@ export function classificarLancamentoAdministracaoImovel(t, codigoCliente, proc)
   const v = Number(t.valor);
   if (v > 0 && pareceCreditoAluguelAdministracaoImovel(txt, v)) {
     return { papel: PAPEL_ALUGUEL, motivo: 'heuristica', despesaRepassarAoLocador: false };
+  }
+  if (v > 0 && creditoCompativelAluguelPorContrato(txt, v, ctx)) {
+    return { papel: PAPEL_ALUGUEL, motivo: 'valor_inquilino', despesaRepassarAoLocador: false };
   }
   const pareceRepasse =
     v < 0 &&
@@ -291,10 +360,37 @@ export function mesAnteriorChaveYYYYMM(chaveMesYYYYMM) {
  * }}
  */
 export function montarPainelAdministracaoImovelDeTransacoes(transacoesRaw, codigoCliente, proc, opts = {}) {
-  const transacoes = (transacoesRaw || []).map((t) => ({
+  const ctxBase = {
+    valorAluguelReferencia: parseValorMonetarioBr(opts.valorAluguelContrato),
+    nomeInquilino: String(opts.nomeInquilino ?? '').trim() || undefined,
+  };
+
+  const transacoesPasso1 = (transacoesRaw || []).map((t) => ({
     ...t,
-    classificacao: classificarLancamentoAdministracaoImovel(t, codigoCliente, proc),
+    classificacao: classificarLancamentoAdministracaoImovel(t, codigoCliente, proc, ctxBase),
   }));
+
+  const valorModal = calcularValorModalAluguelExtrato(transacoesPasso1);
+  const ctx = { ...ctxBase, valorModalAluguel: valorModal ?? undefined };
+
+  const transacoes =
+    valorModal != null
+      ? transacoesPasso1.map((t) => {
+          if (t.classificacao?.papel !== PAPEL_CREDITO || Number(t.valor) <= 0) return t;
+          const txt = textoClassificacao(t);
+          if (creditoCompativelAluguelPorContrato(txt, Number(t.valor), ctx)) {
+            return {
+              ...t,
+              classificacao: {
+                papel: PAPEL_ALUGUEL,
+                motivo: 'valor_modal_inquilino',
+                despesaRepassarAoLocador: false,
+              },
+            };
+          }
+          return t;
+        })
+      : transacoesPasso1;
 
   const porMes = new Map();
 

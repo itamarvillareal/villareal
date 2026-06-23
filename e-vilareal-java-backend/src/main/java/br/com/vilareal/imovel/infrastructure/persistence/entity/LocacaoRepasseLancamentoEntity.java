@@ -46,6 +46,10 @@ public class LocacaoRepasseLancamentoEntity {
     @Column(length = 20)
     private String origem;
 
+    /** Rótulo livre escolhido na classificação manual (ex.: IPTU, condomínio, outros). */
+    @Column(name = "rotulo_classificacao", length = 120)
+    private String rotuloClassificacao;
+
     /**
      * FK real (self-ref) do repasse interno → vínculo de ALUGUEL que o originou (V115). Só populado
      * em vínculos {@code papel=REPASSE} gerados automaticamente (imóvel próprio). É a fonte de

@@ -25,6 +25,7 @@ export function ImoveisPendenciasAluguel({
   itemMatriz,
   repasseInterno,
   salvando,
+  vinculandoLancamentoId = null,
   gerandoRepasses,
   competenciaMin,
   competenciaMax,
@@ -161,6 +162,7 @@ export function ImoveisPendenciasAluguel({
               const refMes = refPorLancamento[id] ?? competencia ?? '';
               const mesPagamento = mesDaData(c.data);
               const refDiferentePagamento = mesPagamento && refMes && mesPagamento !== refMes;
+              const emVinculo = vinculandoLancamentoId === id;
 
               return (
                 <tr key={id} className={adocao ? 'bg-amber-50/40' : ''}>
@@ -203,7 +205,7 @@ export function ImoveisPendenciasAluguel({
                   <td className={td}>
                     <button
                       type="button"
-                      disabled={salvando || !competenciaValida(refMes)}
+                      disabled={salvando || emVinculo || !competenciaValida(refMes)}
                       onClick={() => onConfirmarAluguel(c, refMes)}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-40 whitespace-nowrap"
                       title={
@@ -212,8 +214,8 @@ export function ImoveisPendenciasAluguel({
                           : 'Informe ref. mês válida (AAAA-MM)'
                       }
                     >
-                      {salvando ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden /> : null}
-                      Confirmar · ref. {rotuloCompetenciaCurta(refMes) || '—'}
+                      {emVinculo ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden /> : null}
+                      {emVinculo ? 'Vinculando…' : `Confirmar · ref. ${rotuloCompetenciaCurta(refMes) || '—'}`}
                     </button>
                   </td>
                 </tr>

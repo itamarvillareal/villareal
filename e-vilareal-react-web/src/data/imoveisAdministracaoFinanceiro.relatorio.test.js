@@ -14,6 +14,7 @@ import {
   linhaRelatorioFinanceiroFromCadastro,
   mesAnteriorChaveYYYYMM,
   montarLinhasRelatorioFinanceiroImoveisExtrato,
+  montarPainelAdministracaoImovelDeTransacoes,
   paresCodProcComLancamentosNoMes,
   resolverNumeroImovelParCodProc,
 } from './imoveisAdministracaoFinanceiro.js';
@@ -89,6 +90,41 @@ describe('classificarLancamentoAdministracaoImovel / extrairTotaisFinanceirosMes
       20,
     );
     expect(c.papel).toBe('credito');
+  });
+
+  it('classifica PIX do inquilino com valor próximo do aluguel como aluguel', () => {
+    const c = classificarLancamentoAdministracaoImovel(
+      {
+        data: '10/06/2026',
+        descricao: 'PIX TRANSF Neemias10 06',
+        valor: 1707.83,
+      },
+      '1',
+      '1',
+      { valorAluguelReferencia: 1750, nomeInquilino: 'NEEMIAS RODRIGUES BORGES' },
+    );
+    expect(c.papel).toBe('aluguel');
+  });
+
+  it('segunda passagem usa valor modal de aluguéis já identificados no extrato', () => {
+    const transacoes = [
+      {
+        data: '13/04/2026',
+        descricao: 'Neemias Rodrigues Borges',
+        valor: 1707.83,
+      },
+      {
+        data: '10/06/2026',
+        descricao: 'PIX TRANSF Neemias10 06',
+        valor: 1707.83,
+      },
+    ];
+    const painel = montarPainelAdministracaoImovelDeTransacoes(transacoes, '1', '1', {
+      valorAluguelContrato: '1.750,00',
+      nomeInquilino: 'NEEMIAS RODRIGUES BORGES',
+    });
+    const jun = painel.transacoes.find((t) => t.data === '10/06/2026');
+    expect(jun?.classificacao?.papel).toBe('aluguel');
   });
 
   it('classifica PIX TRANSF negativo como repasse (793/20)', () => {
