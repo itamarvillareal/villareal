@@ -6,6 +6,7 @@ import { parseValorMonetarioBr } from '../../src/utils/parseValorMonetarioBr.js'
 import {
   formatCampoMonetarioTxt,
   tituloFromCamposTaxa,
+  tituloFromDebitoPayload,
 } from '../../src/data/calculosDebitosTitulos.js';
 /** Defaults mínimos (evita puxar repositório/API no script Node). */
 const DEFAULTS_PAINEL_CALCULO = {
@@ -140,6 +141,12 @@ export function montarDebitosETitulosDesdeTxt(rodada) {
   }
 
   return { debitos, titulos };
+}
+
+/** Garante um título por débito (paridade import txt → API). */
+export function titulosFromDebitosPayload(debitos) {
+  if (!Array.isArray(debitos)) return [];
+  return debitos.map((d) => tituloFromDebitoPayload(d)).filter((t) => t != null);
 }
 
 /**

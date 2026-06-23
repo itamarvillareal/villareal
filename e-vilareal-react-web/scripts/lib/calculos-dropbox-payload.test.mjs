@@ -65,6 +65,23 @@ test('149/186/1 lê taxa honorários 20% de 00000149.1.95.1.186.txt', () => {
   assert.equal(montarPanelConfigDesdeTxt(rodada).honorariosValor, '20 %');
 });
 
+test('578/134: snapshot em todas as dimensões grava titulosGravadosAceito completo', async () => {
+  const bundle = carregarBundleCalculosCliente(578);
+  for (const [dim, esperado] of [
+    [0, 65],
+    [1, 36],
+    [2, 92],
+  ]) {
+    const rodada = bundle.porRodada.get(`00000578|134|${dim}`);
+    assert.ok(rodada, `rodada dim ${dim}`);
+    const p = await montarPayloadRodadaComRecalculo(rodada, {});
+    assert.equal(p.debitos?.length, esperado, `debitos dim ${dim}`);
+    assert.equal(p.titulos?.length, esperado, `titulos dim ${dim}`);
+    assert.equal(p.titulosGravadosAceito?.length, esperado, `gravados dim ${dim}`);
+    assert.equal(p.meta?.recalculado, false, `modo snapshot dim ${dim}`);
+  }
+});
+
 test('recálculo 149/76/2 inclui linhas 2 e 3 só com valor (sem vencimento)', async () => {
   const { carregarBundleCalculosCliente, montarPayloadRodadaComRecalculo } = await import(
     './calculos-dropbox-txt.mjs'

@@ -18,6 +18,7 @@ import {
   montarDebitosETitulosDesdeTxt,
   montarPanelConfigDesdeTxt,
   montarParcelasDesdeTxt,
+  titulosFromDebitosPayload,
 } from './calculos-dropbox-payload.mjs';
 
 export const PASTA_CALCULOS = 'Calculos';
@@ -448,6 +449,16 @@ export function diagnosticarRodadaImport(rodada, payload) {
     }
   }
 
+  const qtdDebitos = payload?.debitos?.length ?? 0;
+  const qtdTitulos = payload?.titulos?.length ?? 0;
+  const qtdGravados = payload?.titulosGravadosAceito?.length ?? 0;
+  if (qtdDebitos > 0 && qtdTitulos !== qtdDebitos) {
+    avisos.push(`titulos (${qtdTitulos}) divergem de debitos (${qtdDebitos})`);
+  }
+  if (temSnapshotGravado && qtdDebitos > 0 && qtdGravados !== qtdDebitos) {
+    avisos.push(`titulosGravadosAceito (${qtdGravados}) incompleto vs debitos (${qtdDebitos})`);
+  }
+
   return {
     aceito,
     temSnapshotGravado,
@@ -535,7 +546,9 @@ export async function montarPayloadRodadaComRecalculo(rodada, opts = {}) {
  */
 function montarPayloadRodadaPlanilhaSnapshot(rodada, ctx) {
   const aceito = ctx.aceito;
-  const { debitos, titulos } = montarDebitosETitulosDesdeTxt(rodada);
+  const { debitos } = montarDebitosETitulosDesdeTxt(rodada);
+  const titulos = titulosFromDebitosPayload(debitos);
+  const temSnapshotGravado = rodadaTemSnapshotGravadoTxt(rodada);
   const { parcelas, maxNumeroParcela } = montarParcelasDesdeTxt(rodada);
   const procCampos = montarCamposRodadaProcessoDesdeTxt(rodada);
   const panelConfig = montarPanelConfigDesdeTxt(rodada);
@@ -546,13 +559,18 @@ function montarPayloadRodadaPlanilhaSnapshot(rodada, ctx) {
     quantidadeParcelasInformada = String(qtdNum).padStart(2, '0');
   }
 
+  const gravarTitulosImutaveis =
+    titulos.length > 0 && (aceito || temSnapshotGravado);
+
   return {
     parcelamentoAceito: aceito,
     parcelas,
     debitos,
     titulos,
-    /** Cópia imutável dos títulos aceitos (txt/Excel) — a UI não deve recalcular por cima. */
-    titulosGravadosAceito: aceito && titulos.length ? titulos.map((t) => ({ ...t })) : undefined,
+    /** Snapshot txt/Excel — UI usa lista completa (não paginada) mesmo sem aceite global 105. */
+    titulosGravadosAceito: gravarTitulosImutaveis
+      ? titulos.map((t) => ({ ...t }))
+      : undefined,
     panelConfig,
     quantidadeParcelasInformada,
     taxaJurosParcelamento: procCampos.taxaJurosParcelamento,

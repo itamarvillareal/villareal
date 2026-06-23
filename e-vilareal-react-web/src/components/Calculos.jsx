@@ -1049,10 +1049,10 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
         }
         return t;
       });
+    if (Array.isArray(gravados) && gravados.length > 0) {
+      return mapTitulosAceitos(gravados);
+    }
     if (calculoTravadoAceito) {
-      if (Array.isArray(gravados) && gravados.length > 0) {
-        return mapTitulosAceitos(gravados);
-      }
       const fallback = Array.isArray(rodadaAtual.titulos) ? rodadaAtual.titulos : [];
       if (fallback.some((t) => String(t?.valorInicial ?? '').trim() !== '')) {
         return mapTitulosAceitos(fallback);
@@ -1063,9 +1063,9 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     return Array.isArray(t) ? t : [];
   }, [rodadaAtual, calculoTravadoAceito]);
 
-  // Corrige estado persistido se um recálculo antigo sobrescreveu títulos com cálculo aceito.
+  // Corrige estado persistido se um recálculo antigo sobrescreveu títulos gravados (aceito ou snapshot txt).
   useEffect(() => {
-    if (!calculoTravadoAceito || modoAlteracao) return;
+    if (modoAlteracao) return;
     setRodadasState((prev) => {
       const cur = prev[rodadaKey];
       if (!cur) return prev;
@@ -1089,7 +1089,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
         [rodadaKey]: { ...cur, titulos: gravados.map((t) => ({ ...t })) },
       };
     });
-  }, [rodadaKey, calculoTravadoAceito, modoAlteracao, parcelamentoAceitoRodadaAtual]);
+  }, [rodadaKey, modoAlteracao, parcelamentoAceitoRodadaAtual]);
 
   const parcelas = Array.isArray(rodadaAtual.parcelas) ? rodadaAtual.parcelas : gerarParcelasMock();
   const quantidadeParcelasInformada = rodadaAtual.quantidadeParcelasInformada ?? '00';

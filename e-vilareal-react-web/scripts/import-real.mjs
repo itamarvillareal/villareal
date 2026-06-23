@@ -10,7 +10,9 @@
  *   - Vínculo imóvel `0.89.1` (por processo, via import-processo-txt: garantir imóvel por cliente+planilha + POST /api/imoveis/{id}/processos)
  *   - Partes do processo (`Proc/…/90` e `95` por proc) — `import-processo-partes-txt.mjs`
  *     (90/95 = lado cliente/oposta no VBA; com `REQUERIDO` o polo jurídico é invertido na API)
- *   - Cálculos / débitos (`Calculos/…` → API rodadas) — `import-calculos-txt.mjs` (por defeito; `--sem-calculos` omite)
+ *   - Cálculos / débitos (`Calculos/…` → API rodadas) — `import-calculos-txt.mjs` (por defeito; `--sem-calculos` omite).
+ *     Importa **todas as dimensões** com ficheiros txt (0, 1, 2, …), sincroniza titulos[] com debitos[] e
+ *     grava titulosGravadosAceito quando há snapshot no txt (não só dim 0 aceita).
  *   - Processos em falta na API são criados automaticamente (stub) após pessoa/cliente existir na API
  *
  * Uso:
@@ -36,6 +38,8 @@
  *   --sem-zerar              (legado) Igual ao defeito — mantido por compatibilidade
  *   --aplicar-correcao-historico  Corrige txt (índice 14) antes do histórico (lento; por defeito não)
  *   --base=PATH              Raiz «Banco de Dados»
+ *   --base-url=URL           API (defeito: VILAREAL_API_BASE ou localhost:8080)
+ *   --vps                    Usa API de produção (portal.villarealadvocacia.adv.br)
  *   --relatorio=JSON         Relatório final da execução
  *   --amostra-processos=N    Em --dry-run, quantos processos pré-visualizar (defeito: 3; 0 = nenhum)
  *   --sem-verificacao        Não executa verificação txt↔API/MySQL após --aplicar (não recomendado)
@@ -114,6 +118,7 @@ export function parseArgs(argv) {
     baseUrl: resolverBaseUrlImport(),
     semVerificacao: false,
     continuarApesarFalhas: false,
+    vps: false,
   };
 
   for (const a of argv) {
@@ -153,8 +158,13 @@ export function parseArgs(argv) {
       const n = Number(a.slice(20));
       if (Number.isFinite(n) && n >= 0) out.amostraProcessosDryRun = Math.trunc(n);
     } else if (a.startsWith('--base-url=')) out.baseUrl = a.slice(11).replace(/\/$/, '');
+    else if (a === '--vps') out.vps = true;
     else if (a === '--sem-verificacao') out.semVerificacao = true;
     else if (a === '--continuar-apesar-falhas') out.continuarApesarFalhas = true;
+  }
+
+  if (out.vps && !argv.some((a) => a.startsWith('--base-url='))) {
+    out.baseUrl = resolverBaseUrlImport(process.env, { vps: true });
   }
 
   return out;
@@ -268,6 +278,7 @@ function argsCalculosCliente(opts) {
     `--base=${opts.base}`,
     `--login=${opts.login}`,
     ...argsBaseUrl(opts),
+    '--limite-rodadas=0',
   ];
   if (opts.senha) args.push(`--senha=${opts.senha}`);
   if (opts.dryRun) args.push('--dry-run');

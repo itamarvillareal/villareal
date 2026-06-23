@@ -7,7 +7,7 @@
  * Uso:
  *   node scripts/import-calculos-txt.mjs --cliente=728 --dry-run
  *   node scripts/import-calculos-txt.mjs --cliente=728 --processo=702 --dimensao=0 --dry-run
- *   node scripts/import-calculos-txt.mjs --cliente=728 --aplicar
+ *   node scripts/import-calculos-txt.mjs --cliente=728 --aplicar --vps
  *
  * Credenciais: `.env.import.local` (como import-real / import-calculos-planilha)
  *
@@ -21,6 +21,7 @@
  *   --relatorio=JSON      Grava resumo JSON
  *   --limite-rodadas=N    Em dry-run, máximo de rodadas detalhadas (defeito 30)
  *   --strict              Aborta se alguma rodada falhar validação de fidelidade ao txt
+ *   --vps                 API de produção (portal.villarealadvocacia.adv.br)
  *
  * Fidelidade ao legado:
  *   - Lê config da dimensão `{cod8}.{dim}.129.1.txt` (honorários %), 130, 131, 132, 149
@@ -61,6 +62,7 @@ function parseArgs(argv) {
     relatorio: null,
     limiteRodadas: 30,
     strict: false,
+    vps: false,
   };
   for (const a of argv) {
     if (a === '--dry-run') out.dryRun = true;
@@ -79,6 +81,10 @@ function parseArgs(argv) {
     else if (a.startsWith('--relatorio=')) out.relatorio = a.slice(12);
     else if (a.startsWith('--limite-rodadas=')) out.limiteRodadas = Math.max(0, Number(a.slice(17)) || 0);
     else if (a === '--strict') out.strict = true;
+    else if (a === '--vps') out.vps = true;
+  }
+  if (out.vps && !argv.some((a) => a.startsWith('--base-url='))) {
+    out.baseUrl = resolverBaseUrlImport(process.env, { vps: true });
   }
   return out;
 }
@@ -97,12 +103,46 @@ async function loginApi(baseUrl, login, senha) {
   return token;
 }
 
-async function getRodada(baseUrl, token, cod8, proc, dim) {
+async function getRodadaCompleta(baseUrl, token, cod8, proc, dim) {
   const url = `${baseUrl}/api/calculos/rodadas/${cod8}/${proc}/${dim}`;
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
   });
-  return { ok: res.ok, status: res.status };
+  if (!res.ok) {
+    return { ok: false, status: res.status, body: null };
+  }
+  const txt = await res.text();
+  let body = null;
+  try {
+    body = txt ? JSON.parse(txt) : null;
+  } catch {
+    body = null;
+  }
+  return { ok: true, status: res.status, body };
+}
+
+/** Confere débitos, títulos e titulosGravadosAceito após PUT (import completo por dimensão). */
+function verificarRodadaPersistida(item) {
+  /** @type {string[]} */
+  const issues = [];
+  const expDeb = item.debitos;
+  const expTit = item.titulos;
+  const expGrav = item.payload?.titulosGravadosAceito?.length ?? 0;
+  const raw = item._persistido;
+  if (!raw || typeof raw !== 'object') {
+    issues.push('GET sem corpo');
+    return issues;
+  }
+  const deb = Array.isArray(raw.debitos) ? raw.debitos.length : 0;
+  const tit = Array.isArray(raw.titulos) ? raw.titulos.length : 0;
+  const grav = Array.isArray(raw.titulosGravadosAceito) ? raw.titulosGravadosAceito.length : 0;
+
+  if (expDeb > 0 && deb !== expDeb) issues.push(`debitos ${deb}/${expDeb}`);
+  if (expTit > 0 && tit !== expTit) issues.push(`titulos ${tit}/${expTit}`);
+  if (expGrav > 0 && grav !== expGrav) issues.push(`gravados ${grav}/${expGrav}`);
+  if (expDeb > 0 && tit !== deb) issues.push('titulos≠debitos no banco');
+
+  return issues;
 }
 
 async function putRodada(baseUrl, token, item) {
@@ -143,6 +183,7 @@ async function filtrarRodadas(bundle, opts) {
       ficheiros: rodada.paths.length,
       debitos: payload.debitos?.length ?? 0,
       titulos: payload.titulos?.length ?? 0,
+      gravados: payload.titulosGravadosAceito?.length ?? 0,
       parcelas: payload.parcelas?.length ?? 0,
       payload,
     });
@@ -171,6 +212,7 @@ async function main() {
   const dir = dirCalculosCliente(codNum, opts.base);
 
   console.log(`[import-calculos-txt] cliente=${cod8} dir=${dir}`);
+  console.log(`[import-calculos-txt] API=${opts.baseUrl}`);
   if (!fs.existsSync(dir)) {
     console.error('[import-calculos-txt] pasta Calculos do cliente não existe');
     process.exit(1);
@@ -212,7 +254,7 @@ async function main() {
       .filter(Boolean)
       .join(' ');
     console.log(
-      `  ${it.key} aceito=${it.aceito ? 'SIM' : 'nao'} ${extras} ficheiros=${it.ficheiros} titulos=${it.titulos} debitos=${it.debitos} parcelas=${it.parcelas}`,
+      `  ${it.key} aceito=${it.aceito ? 'SIM' : 'nao'} ${extras} ficheiros=${it.ficheiros} titulos=${it.titulos} debitos=${it.debitos} gravados=${it.gravados ?? 0} parcelas=${it.parcelas}`,
     );
     for (const av of it.avisos) {
       console.warn(`    [AVISO] ${av}`);
@@ -269,17 +311,44 @@ async function main() {
   let ok = 0;
   let falhas = 0;
   let persistenciaFalhas = 0;
+  let verificacaoFalhas = 0;
+  /** @type {Array<{ key: string, issues: string[] }>} */
+  const verificacaoDetalhe = [];
   for (const it of items) {
+    if (it.debitos > 0) {
+      const pg = it.payload;
+      if (pg?.titulos?.length !== it.debitos) {
+        falhas++;
+        console.warn(`[FALHA] ${it.key} payload titulos (${pg?.titulos?.length}) ≠ debitos (${it.debitos})`);
+        continue;
+      }
+      const expGrav = pg?.titulosGravadosAceito?.length ?? 0;
+      if (expGrav > 0 && expGrav !== it.debitos) {
+        falhas++;
+        console.warn(`[FALHA] ${it.key} titulosGravadosAceito (${expGrav}) ≠ debitos (${it.debitos})`);
+        continue;
+      }
+    }
+
     const r = await putRodada(opts.baseUrl, token, it);
     if (r.ok) {
-      const ver = await getRodada(opts.baseUrl, token, it.cod8, it.numeroProcesso, it.dimensao);
-      if (ver.ok) {
-        ok++;
-        console.log(`[OK] ${it.key}`);
-      } else {
+      const ver = await getRodadaCompleta(opts.baseUrl, token, it.cod8, it.numeroProcesso, it.dimensao);
+      if (!ver.ok || !ver.body) {
         persistenciaFalhas++;
         console.warn(`[FALHA] ${it.key} PUT ok mas GET ${ver.status} — rodada ausente na API`);
+        continue;
       }
+      it._persistido = ver.body;
+      const issues = it.debitos > 0 ? verificarRodadaPersistida(it) : [];
+      if (issues.length) {
+        verificacaoFalhas++;
+        verificacaoDetalhe.push({ key: it.key, issues });
+        console.warn(`[FALHA] ${it.key} verificação pós-PUT: ${issues.join('; ')}`);
+        continue;
+      }
+      ok++;
+      const gravInfo = it.gravados > 0 ? ` gravados=${it.gravados}` : '';
+      console.log(`[OK] ${it.key} titulos=${it.titulos} debitos=${it.debitos}${gravInfo}`);
     } else {
       falhas++;
       console.warn(`[FALHA] ${it.key} HTTP ${r.status} ${r.body}`);
@@ -288,15 +357,17 @@ async function main() {
   resumo.putOk = ok;
   resumo.putFalhas = falhas;
   resumo.persistenciaFalhas = persistenciaFalhas;
+  resumo.verificacaoFalhas = verificacaoFalhas;
+  resumo.verificacaoDetalhe = verificacaoDetalhe;
   console.log(
-    `[import-calculos-txt] PUT ok=${ok} falhas=${falhas} persistencia=${persistenciaFalhas}`,
+    `[import-calculos-txt] PUT ok=${ok} falhas=${falhas} persistencia=${persistenciaFalhas} verificacao=${verificacaoFalhas}`,
   );
 
   if (opts.relatorio) {
     fs.writeFileSync(opts.relatorio, `${JSON.stringify(resumo, null, 2)}\n`);
   }
 
-  if (falhas > 0 || persistenciaFalhas > 0) process.exit(1);
+  if (falhas > 0 || persistenciaFalhas > 0 || verificacaoFalhas > 0) process.exit(1);
 }
 
 main().catch((e) => {
