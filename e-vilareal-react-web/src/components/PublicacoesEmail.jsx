@@ -665,10 +665,27 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
   const alterarStatus = async (row, status) => {
     setErr('');
     setMsgOk('');
+    const publicacaoId = idPublicacaoLinha(row);
     try {
-      await alterarStatusPublicacao(row._apiId ?? row.id, status, 'Atualização na tela de publicações por email.');
+      await alterarStatusPublicacao(publicacaoId, status, 'Atualização na tela de publicações por email.');
+      const linhaAtualizada = aplicarStatusTratamentoNaLinhaPublicacao(row, status);
+      const permaneceVisivel =
+        (filtroVinculo !== 'nao_vinculados' || linhaAtualizada.statusVinculo !== 'vinculado') &&
+        (!filtroStatus ||
+          (filtroStatus === 'NAO_TRATADO'
+            ? linhaAtualizada._statusTratamento === 'PENDENTE' ||
+              linhaAtualizada._statusTratamento === 'VINCULADA'
+            : linhaAtualizada._statusTratamento === filtroStatus));
+      if (permaneceVisivel) {
+        aplicarStatusNaLista(publicacaoId, status);
+      } else {
+        const idStr = String(publicacaoId);
+        setRows((prev) => prev.filter((r) => String(idPublicacaoLinha(r)) !== idStr));
+        setModalPublicacao((prev) => (prev && String(idPublicacaoLinha(prev)) === idStr ? null : prev));
+        setExpandidoId((prev) => (prev != null && String(prev) === idStr ? null : prev));
+      }
+      notificarPublicacoesAtualizadas({ publicacaoId, statusTratamento: status });
       setMsgOk(`Status atualizado para ${STATUS_LABEL[status] || status}.`);
-      await carregar();
     } catch (e) {
       setErr(mensagemErroAmigavel(e, 'atualizar o status'));
     }

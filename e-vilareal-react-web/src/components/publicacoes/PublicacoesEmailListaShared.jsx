@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Check,
   CircleOff,
@@ -122,6 +123,23 @@ export function BadgeStatusVinculo({ row }) {
   );
 }
 
+function calcularPosicaoMenuFlutuante(anchorEl, menuEl) {
+  const gap = 4;
+  const pad = 8;
+  const r = anchorEl.getBoundingClientRect();
+  const menuW = menuEl?.offsetWidth ?? 208;
+  const menuH = menuEl?.offsetHeight ?? 200;
+  const espacoAbaixo = window.innerHeight - r.bottom - pad;
+  const espacoAcima = r.top - pad;
+  const abrirAcima = espacoAbaixo < menuH + gap && espacoAcima > espacoAbaixo;
+
+  let top = abrirAcima ? r.top - gap - menuH : r.bottom + gap;
+  let left = r.right - menuW;
+  left = Math.max(pad, Math.min(left, window.innerWidth - menuW - pad));
+  top = Math.max(pad, Math.min(top, window.innerHeight - menuH - pad));
+  return { top, left };
+}
+
 function MenuAcoesPublicacaoEmail({
   aberto,
   onFechar,
@@ -133,6 +151,18 @@ function MenuAcoesPublicacaoEmail({
   anchorRef,
 }) {
   const menuRef = useRef(null);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+
+  const atualizarPosicao = useCallback(() => {
+    const anchor = anchorRef.current;
+    if (!anchor || typeof window === 'undefined') return;
+    setPos(calcularPosicaoMenuFlutuante(anchor, menuRef.current));
+  }, [anchorRef]);
+
+  useLayoutEffect(() => {
+    if (!aberto) return;
+    atualizarPosicao();
+  }, [aberto, atualizarPosicao]);
 
   useEffect(() => {
     if (!aberto) return undefined;
@@ -167,19 +197,25 @@ function MenuAcoesPublicacaoEmail({
           : list[(idx <= 0 ? list.length : idx) - 1];
       next?.focus();
     };
+    const onReflow = () => atualizarPosicao();
     document.addEventListener('mousedown', onDocMouseDown);
     document.addEventListener('keydown', onDocKeyDown);
+    window.addEventListener('scroll', onReflow, true);
+    window.addEventListener('resize', onReflow);
     const t = requestAnimationFrame(() => {
+      atualizarPosicao();
       menuRef.current?.querySelector('[role="menuitem"]')?.focus();
     });
     return () => {
       cancelAnimationFrame(t);
       document.removeEventListener('mousedown', onDocMouseDown);
       document.removeEventListener('keydown', onDocKeyDown);
+      window.removeEventListener('scroll', onReflow, true);
+      window.removeEventListener('resize', onReflow);
     };
-  }, [aberto, onFechar, anchorRef]);
+  }, [aberto, onFechar, anchorRef, atualizarPosicao]);
 
-  if (!aberto) return null;
+  if (!aberto || typeof document === 'undefined') return null;
 
   const itemClass =
     'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100 focus:bg-slate-100 focus:outline-none dark:text-slate-200 dark:hover:bg-white/10 dark:focus:bg-white/10';
@@ -189,13 +225,14 @@ function MenuAcoesPublicacaoEmail({
     onFechar();
   };
 
-  return (
+  return createPortal(
     <div
       ref={menuRef}
       id={menuId}
       role="menu"
       aria-orientation="vertical"
-      className="absolute right-0 top-full z-30 mt-1 w-52 rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-white/10 dark:bg-[#141922]"
+      style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999 }}
+      className="w-52 rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-white/10 dark:bg-[#141922]"
       onClick={(e) => e.stopPropagation()}
     >
       <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Vínculo</p>
@@ -216,7 +253,8 @@ function MenuAcoesPublicacaoEmail({
         <CircleOff className="h-3.5 w-3.5 shrink-0 text-slate-500" aria-hidden />
         Ignorar
       </button>
-    </div>
+    </div>,
+    document.body
   );
 }
 

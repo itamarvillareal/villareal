@@ -597,6 +597,16 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
     };
   }, [idPessoaParaVinculos, listaClientesCodigo, processosVinculo]);
 
+  const abrirProcessoVinculo = useCallback(
+    (row) => {
+      setModalVinculosSistema(false);
+      navigate('/processos', {
+        state: buildRouterStateChaveClienteProcesso(padCliente8Nav(row.codCliente), row.proc ?? ''),
+      });
+    },
+    [navigate],
+  );
+
   useEffect(() => {
     if (modo !== 'listar') return;
     // Garante índice dentro dos limites quando a lista é filtrada.
@@ -2545,6 +2555,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-slate-800 mb-2">Processos (parte cliente / oposta)</h3>
+                <p className="text-xs text-slate-500 mb-2">Duplo clique na linha abre o processo.</p>
                 {carregandoProcessosVinculo ? (
                   <div className="flex items-center gap-2 text-sm text-slate-500">
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -2567,22 +2578,19 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {vinculosClienteProc.processos.map((row, idx) => (
-                          <tr key={`${row.codCliente}-${row.proc}-${idx}`} className="hover:bg-slate-50/80">
+                          <tr
+                            key={`${row.codCliente}-${row.proc}-${idx}`}
+                            className="hover:bg-slate-50/80 cursor-pointer"
+                            title="Duplo clique para abrir o processo"
+                            onDoubleClick={() => abrirProcessoVinculo(row)}
+                          >
                             <td className="px-3 py-2 text-slate-700">{row.codCliente}</td>
                             <td className="px-3 py-2 text-slate-700">{row.proc}</td>
                             <td className="px-3 py-2 text-slate-600">{row.papeis}</td>
                             <td className="px-3 py-2 text-right">
                               <button
                                 type="button"
-                                onClick={() => {
-                                  setModalVinculosSistema(false);
-                                  navigate('/processos', {
-                                    state: buildRouterStateChaveClienteProcesso(
-                                      padCliente8Nav(row.codCliente),
-                                      row.proc ?? ''
-                                    ),
-                                  });
-                                }}
+                                onClick={() => abrirProcessoVinculo(row)}
                                 className="text-blue-600 hover:underline text-sm font-medium"
                               >
                                 Processos

@@ -360,6 +360,11 @@ function queryLancamentosPaginados(filtros = {}) {
     semGrupoCompensacao: filtros.semGrupoCompensacao === true ? true : undefined,
     ano: filtros.ano ?? undefined,
     mes: filtros.mes ?? undefined,
+    codigoCliente: filtros.codigoCliente ?? undefined,
+    numeroInternoProcesso:
+      filtros.numeroInternoProcesso != null && filtros.numeroInternoProcesso !== ''
+        ? Number(filtros.numeroInternoProcesso)
+        : undefined,
   };
 }
 

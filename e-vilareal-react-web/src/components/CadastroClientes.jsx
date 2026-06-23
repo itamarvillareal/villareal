@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Search,
@@ -72,6 +72,21 @@ import {
   mergeCadastroClientesProcessosComApi,
   salvarCabecalhoProcesso,
 } from '../repositories/processosRepository.js';
+
+const ProcessosLazy = lazy(() =>
+  import('./Processos.jsx').then((m) => ({ default: m.Processos }))
+);
+
+function mensalistaPersistivelKey(m) {
+  return JSON.stringify({
+    ativo: Boolean(m?.ativo),
+    valor: String(m?.valor ?? '').trim(),
+    diaVencimento: String(m?.diaVencimento ?? ''),
+    dataInicio: String(m?.dataInicio ?? ''),
+    dataFim: String(m?.dataFim ?? ''),
+    cadastrado: Boolean(m?.cadastrado),
+  });
+}
 
 const MENSALISTA_ESTADO_VAZIO = {
   cadastrado: false,
@@ -481,6 +496,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   const [modalConfigCalculoAberto, setModalConfigCalculoAberto] = useState(false);
   const [modalCobrancaAutomaticaAberto, setModalCobrancaAutomaticaAberto] = useState(false);
   const [modalWhatsAppAberto, setModalWhatsAppAberto] = useState(false);
+  const [contaCorrenteEmbed, setContaCorrenteEmbed] = useState(null);
   const [mensalista, setMensalista] = useState(MENSALISTA_ESTADO_VAZIO);
   const [modalEscolherPessoa, setModalEscolherPessoa] = useState(false);
   const [buscaPessoaModal, setBuscaPessoaModal] = useState('');
@@ -514,6 +530,11 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   const skipInitialPersistApiRef = useRef(true);
   /** Idem para modo local (processos + cadastro em localStorage). */
   const skipInitialPersistLocalRef = useRef(true);
+  /** Não persiste mensalista ao carregar dados da API (só após edição do usuário). */
+  const skipInitialPersistMensalistaRef = useRef(true);
+  const mensalistaPersistidoKeyRef = useRef('');
+  const mensalistaRef = useRef(mensalista);
+  mensalistaRef.current = mensalista;
   /** Evita sobrescrever nome/CPF ao carregar cliente por código (persistido/mock). */
   const pularSincPorCargaClienteRef = useRef(false);
   const primeiraSincPessoaRef = useRef(true);
@@ -836,9 +857,10 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
         if (cancelled) return;
         if (!data) {
           setMensalista({ ...MENSALISTA_ESTADO_VAZIO, carregando: false });
+          mensalistaPersistidoKeyRef.current = mensalistaPersistivelKey(MENSALISTA_ESTADO_VAZIO);
           return;
         }
-        setMensalista({
+        const carregado = {
           cadastrado: true,
           ativo: data.ativo !== false,
           valor: data.valor ?? '',
@@ -848,7 +870,9 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
           carregando: false,
           salvando: false,
           erro: '',
-        });
+        };
+        setMensalista(carregado);
+        mensalistaPersistidoKeyRef.current = mensalistaPersistivelKey(carregado);
       } catch (err) {
         if (!cancelled) {
           setMensalista((m) => ({
@@ -866,6 +890,13 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
 
   const salvarMensalistaAtual = useCallback(async () => {
     if (!featureFlags.useApiClientes || edicaoDesabilitada) return;
+    const snapshot = mensalistaRef.current;
+    if (snapshot.carregando || snapshot.salvando) return;
+    if (!snapshot.ativo && !snapshot.cadastrado) return;
+    if (snapshot.ativo) {
+      const valorNum = Number(String(snapshot.valor ?? '').replace(',', '.'));
+      if (!Number.isFinite(valorNum) || valorNum < 0.01) return;
+    }
     setMensalista((m) => ({ ...m, salvando: true, erro: '' }));
     try {
       const clientePk = await resolveClientePkAtual();
@@ -875,11 +906,6 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
           salvando: false,
           erro: 'Salve o cliente na API antes de cadastrar mensalista.',
         }));
-        return;
-      }
-      const snapshot = mensalista;
-      if (!snapshot.ativo && !snapshot.cadastrado) {
-        setMensalista((m) => ({ ...m, salvando: false }));
         return;
       }
       const dataInicio = snapshot.dataInicio || hojeIsoLocal();
@@ -902,6 +928,14 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
         salvando: false,
         erro: '',
       });
+      mensalistaPersistidoKeyRef.current = mensalistaPersistivelKey({
+        cadastrado: true,
+        ativo: saved.ativo !== false,
+        valor: saved.valor ?? '',
+        diaVencimento: String(saved.diaVencimento ?? 10),
+        dataInicio: saved.dataInicio ?? dataInicio,
+        dataFim: saved.dataFim ?? '',
+      });
     } catch (err) {
       setMensalista((m) => ({
         ...m,
@@ -909,7 +943,39 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
         erro: String(err?.message ?? 'Erro ao salvar mensalista'),
       }));
     }
-  }, [edicaoDesabilitada, mensalista, resolveClientePkAtual]);
+  }, [edicaoDesabilitada, resolveClientePkAtual]);
+
+  useEffect(() => {
+    skipInitialPersistMensalistaRef.current = true;
+    mensalistaPersistidoKeyRef.current = '';
+  }, [codigo]);
+
+  useEffect(() => {
+    if (!featureFlags.useApiClientes || !formularioClienteAberto) return undefined;
+    if (skipInitialPersistMensalistaRef.current) {
+      skipInitialPersistMensalistaRef.current = false;
+      return undefined;
+    }
+    if (edicaoDesabilitada || mensalista.carregando) return undefined;
+    const key = mensalistaPersistivelKey(mensalista);
+    if (key === mensalistaPersistidoKeyRef.current) return undefined;
+    const t = window.setTimeout(() => {
+      void salvarMensalistaAtual();
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [
+    codigo,
+    formularioClienteAberto,
+    edicaoDesabilitada,
+    mensalista.carregando,
+    mensalista.ativo,
+    mensalista.valor,
+    mensalista.diaVencimento,
+    mensalista.dataInicio,
+    mensalista.dataFim,
+    mensalista.cadastrado,
+    salvarMensalistaAtual,
+  ]);
 
   /** Após o índice leve carregar, revalida só se o cabeçalho ainda não veio do índice. */
   useEffect(() => {
@@ -1204,7 +1270,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     navigate('/processos', { state: buildRouterStateChaveClienteProcesso(padCliente8(codigo), procNumero ?? '') });
   }
 
-  /** Abre Processos com modal Conta Corrente em modo Proc. 0 (mensalista / geral do cliente). */
+  /** Abre a Conta Corrente Proc. 0 em overlay, sem sair do cadastro de clientes. */
   function abrirContaCorrenteProcZero() {
     const cod = padCliente8(codigo);
     const n = Number(normalizarCodigoCliente(codigo));
@@ -1212,7 +1278,10 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
       window.alert('Informe um código de cliente válido.');
       return;
     }
-    navigate('/processos', { state: buildRouterStateChaveClienteProcesso(cod, 0) });
+    setContaCorrenteEmbed({
+      revision: Date.now(),
+      routerState: buildRouterStateChaveClienteProcesso(cod, 0, { contaCorrenteSomente: true }),
+    });
   }
 
   /** Próximo índice de processo (1…n) para este cliente na lista local. */
@@ -2022,7 +2091,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                 type="button"
                 onClick={abrirContaCorrenteProcZero}
                 className={classesBotaoSecao('emerald')}
-                title="Lançamentos do Financeiro com este Cod. Cliente e Proc. 0 (mensalistas / não vinculados a um processo específico). Abre a tela Processos com a janela da conta corrente."
+                title="Lançamentos do Financeiro com este Cod. Cliente e Proc. 0 (mensalistas / não vinculados a um processo específico)."
               >
                 <Wallet className={classesIconeSecao('emerald', false)} aria-hidden />
                 Conta Corrente (Proc. 0)
@@ -2119,21 +2188,12 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                       Gera pagamento RECEBER (MENSALIDADE) mensal no quadro /recebiveis
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    disabled={edicaoDesabilitada || mensalista.salvando || mensalista.carregando || !mensalista.ativo}
-                    onClick={() => void salvarMensalistaAtual()}
-                    className={`${btnPrimarioForte} !min-h-9 !px-3 !py-1.5 !text-xs`}
-                  >
-                    {mensalista.salvando ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                        Salvando…
-                      </>
-                    ) : (
-                      'Salvar mensalista'
-                    )}
-                  </button>
+                  {mensalista.salvando ? (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-50">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                      Salvando…
+                    </span>
+                  ) : null}
                 </div>
               </div>
               <div className="p-3 sm:p-4 space-y-3">
@@ -2743,6 +2803,17 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
           </div>
         </div>
       )}
+
+      {contaCorrenteEmbed ? (
+        <Suspense fallback={null}>
+          <ProcessosLazy
+            key={contaCorrenteEmbed.revision}
+            embedIntent={contaCorrenteEmbed.routerState}
+            embedIntentRevision={contaCorrenteEmbed.revision}
+            onFecharEmbed={() => setContaCorrenteEmbed(null)}
+          />
+        </Suspense>
+      ) : null}
 
       {toastDocCliente?.mensagem ? (
         <div

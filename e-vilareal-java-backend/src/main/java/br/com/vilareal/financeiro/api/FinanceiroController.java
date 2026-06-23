@@ -220,6 +220,8 @@ public class FinanceiroController {
             @RequestParam(value = "contaCodigos", required = false) String contaCodigos,
             @RequestParam(value = "contaCodigosExcluir", required = false) Boolean contaCodigosExcluir,
             @RequestParam(value = "cadastroPlenitude", required = false) String cadastroPlenitude,
+            @RequestParam(value = "codigoCliente", required = false) String codigoCliente,
+            @RequestParam(value = "numeroInternoProcesso", required = false) Integer numeroInternoProcesso,
             @PageableDefault(size = 20, sort = "dataLancamento", direction = Sort.Direction.ASC) Pageable pageable) {
         EtapaLancamento etapaEnum = null;
         if (etapa != null && !etapa.isBlank()) {
@@ -241,6 +243,8 @@ public class FinanceiroController {
                 contaCodigos,
                 contaCodigosExcluir,
                 cadastroPlenitude,
+                codigoCliente,
+                numeroInternoProcesso,
                 pageable);
     }
 
@@ -271,6 +275,8 @@ public class FinanceiroController {
             @RequestParam(value = "contaCodigos", required = false) String contaCodigos,
             @RequestParam(value = "contaCodigosExcluir", required = false) Boolean contaCodigosExcluir,
             @RequestParam(value = "cadastroPlenitude", required = false) String cadastroPlenitude,
+            @RequestParam(value = "codigoCliente", required = false) String codigoCliente,
+            @RequestParam(value = "numeroInternoProcesso", required = false) Integer numeroInternoProcesso,
             @PageableDefault(size = 20, sort = "dataLancamento", direction = Sort.Direction.ASC) Pageable pageable) {
         EtapaLancamento etapaEnum = null;
         if (etapa != null && !etapa.isBlank()) {
@@ -292,6 +298,8 @@ public class FinanceiroController {
                 contaCodigos,
                 contaCodigosExcluir,
                 cadastroPlenitude,
+                codigoCliente,
+                numeroInternoProcesso,
                 pageable);
     }
 

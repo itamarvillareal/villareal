@@ -5,6 +5,8 @@ import { featureFlags } from '../../../config/featureFlags.js';
 import {
   buildContaToLetraMerge,
   loadPersistedContasContabeisExtrasFinanceiro,
+  normalizarCodigoClienteFinanceiro,
+  normalizarProcFinanceiro,
 } from '../../../data/financeiroData.js';
 import {
   listarContasFinanceiro,
@@ -47,6 +49,10 @@ export function ConsolidadoPage() {
   const [filtroEtapa, setFiltroEtapa] = useState('');
   const [buscaLocal, setBuscaLocal] = useState('');
   const [buscaDebounced, setBuscaDebounced] = useState('');
+  const [filtroCodLocal, setFiltroCodLocal] = useState('');
+  const [filtroProcLocal, setFiltroProcLocal] = useState('');
+  const [filtroCodDebounced, setFiltroCodDebounced] = useState('');
+  const [filtroProcDebounced, setFiltroProcDebounced] = useState('');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(50);
   const [contasApi, setContasApi] = useState([]);
@@ -121,17 +127,39 @@ export function ConsolidadoPage() {
 
   useEffect(() => {
     setFiltroEtapa('');
+    if (codigoAtivo !== 'A') {
+      setFiltroCodLocal('');
+      setFiltroProcLocal('');
+    }
   }, [codigoAtivo]);
 
   useEffect(() => {
     setPage(0);
     setSelectedIds(new Set());
-  }, [filtroEtapa, buscaDebounced]);
+  }, [filtroEtapa, buscaDebounced, filtroCodDebounced, filtroProcDebounced]);
 
   useEffect(() => {
     const t = window.setTimeout(() => setBuscaDebounced(buscaLocal.trim()), BUSCA_DEBOUNCE_MS);
     return () => window.clearTimeout(t);
   }, [buscaLocal]);
+
+  useEffect(() => {
+    const t = window.setTimeout(
+      () => setFiltroCodDebounced(normalizarCodigoClienteFinanceiro(filtroCodLocal)),
+      BUSCA_DEBOUNCE_MS,
+    );
+    return () => window.clearTimeout(t);
+  }, [filtroCodLocal]);
+
+  useEffect(() => {
+    const t = window.setTimeout(
+      () => setFiltroProcDebounced(normalizarProcFinanceiro(filtroProcLocal)),
+      BUSCA_DEBOUNCE_MS,
+    );
+    return () => window.clearTimeout(t);
+  }, [filtroProcLocal]);
+
+  const filtroChaveAtivo = Boolean(filtroCodDebounced || filtroProcDebounced !== '');
 
   useEffect(() => {
     if (!featureFlags.useApiFinanceiro || !contaContabilId) {
@@ -160,6 +188,10 @@ export function ConsolidadoPage() {
         size: pageSize,
         sort: 'dataLancamento,desc',
         busca: buscaDebounced || undefined,
+        ...(codigoAtivo === 'A' && filtroCodDebounced ? { codigoCliente: filtroCodDebounced } : {}),
+        ...(codigoAtivo === 'A' && filtroProcDebounced !== ''
+          ? { numeroInternoProcesso: Number(filtroProcDebounced) }
+          : {}),
         ...filtroApi,
       },
       { signal: ac.signal },
@@ -177,7 +209,18 @@ export function ConsolidadoPage() {
       })
       .finally(() => setLoadingTable(false));
     return () => ac.abort();
-  }, [contaContabilId, codigoAtivo, mes, page, pageSize, contaToLetra, filtroEtapa, buscaDebounced]);
+  }, [
+    contaContabilId,
+    codigoAtivo,
+    mes,
+    page,
+    pageSize,
+    contaToLetra,
+    filtroEtapa,
+    buscaDebounced,
+    filtroCodDebounced,
+    filtroProcDebounced,
+  ]);
 
   const resumoPagina = useMemo(() => {
     let creditos = 0;
@@ -287,6 +330,46 @@ export function ConsolidadoPage() {
               onChange={setFiltroEtapa}
               modoEscritorio={codigoAtivo === 'A'}
             />
+            {codigoAtivo === 'A' ? (
+              <>
+                <label
+                  className={`flex w-[5.5rem] items-center gap-1 px-2 py-0.5 rounded-md border text-xs ${
+                    filtroCodDebounced
+                      ? 'border-amber-300 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-700'
+                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80'
+                  }`}
+                >
+                  <span className="text-slate-500 shrink-0">Cód.</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={filtroCodLocal}
+                    onChange={(e) => setFiltroCodLocal(e.target.value)}
+                    placeholder="…"
+                    className="w-full min-w-0 bg-transparent border-0 text-slate-900 dark:text-slate-100 focus:outline-none"
+                    aria-label="Filtrar por código do cliente"
+                  />
+                </label>
+                <label
+                  className={`flex w-[4.5rem] items-center gap-1 px-2 py-0.5 rounded-md border text-xs ${
+                    filtroProcDebounced !== ''
+                      ? 'border-amber-300 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-700'
+                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80'
+                  }`}
+                >
+                  <span className="text-slate-500 shrink-0">Proc.</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={filtroProcLocal}
+                    onChange={(e) => setFiltroProcLocal(e.target.value)}
+                    placeholder="…"
+                    className="w-full min-w-0 bg-transparent border-0 text-slate-900 dark:text-slate-100 focus:outline-none"
+                    aria-label="Filtrar por número do processo"
+                  />
+                </label>
+              </>
+            ) : null}
             <label
               className={`flex min-w-[160px] flex-1 max-w-md items-center gap-1.5 px-2 py-0.5 rounded-md border ${
                 buscaDebounced
@@ -305,7 +388,7 @@ export function ConsolidadoPage() {
               />
             </label>
             <span className="text-xs text-slate-500 ml-auto shrink-0">
-              {buscaDebounced ? (
+              {buscaDebounced || filtroChaveAtivo ? (
                 <>
                   {totalElements.toLocaleString('pt-BR')} encontrado{totalElements === 1 ? '' : 's'}
                   {rows.length > 0 ? (

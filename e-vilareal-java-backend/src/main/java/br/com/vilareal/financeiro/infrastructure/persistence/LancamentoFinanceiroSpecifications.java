@@ -4,7 +4,9 @@ import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.financeiro.domain.FinanceiroCadastroPlenitude;
 import br.com.vilareal.financeiro.domain.StatusLancamento;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
+import br.com.vilareal.processo.application.ClienteCodigoPessoaResolver;
 import jakarta.persistence.criteria.JoinType;
+import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.math.BigDecimal;
@@ -432,6 +434,61 @@ public final class LancamentoFinanceiroSpecifications {
             LocalDate inicio = LocalDate.of(ano, 1, 1);
             LocalDate fim = LocalDate.of(ano, 12, 31);
             return cb.between(root.get("dataLancamento"), inicio, fim);
+        };
+    }
+
+    /**
+     * Filtro por código de cliente exibido (coluna Cod. Cliente), alinhado à Conta Corrente do processo.
+     * Aceita PK de {@code cliente}, {@code codigo_cliente} normalizado ou {@code pessoa_ref} legado.
+     */
+    public static Specification<LancamentoFinanceiroEntity> comCodigoClienteExibicao(
+            String codigoNormOito, Long clientePk, Long pessoaIdResolvida) {
+        if ((codigoNormOito == null || codigoNormOito.isBlank()) && clientePk == null && pessoaIdResolvida == null) {
+            return null;
+        }
+        return (root, query, cb) -> {
+            List<Predicate> preds = new ArrayList<>();
+            if (clientePk != null) {
+                var clienteJoin = root.join("clienteEntidade", JoinType.LEFT);
+                preds.add(cb.equal(clienteJoin.get("id"), clientePk));
+            }
+            if (codigoNormOito != null && !codigoNormOito.isBlank()) {
+                var clienteJoin = root.join("clienteEntidade", JoinType.LEFT);
+                preds.add(cb.equal(clienteJoin.get("codigoCliente"), codigoNormOito));
+                String compact = ClienteCodigoPessoaResolver.compactarChaveSoDigitos(codigoNormOito);
+                if (!compact.equals(codigoNormOito)) {
+                    preds.add(cb.equal(clienteJoin.get("codigoCliente"), compact));
+                }
+            }
+            if (pessoaIdResolvida != null) {
+                var pessoaJoin = root.join("pessoaRef", JoinType.LEFT);
+                preds.add(cb.equal(pessoaJoin.get("id"), pessoaIdResolvida));
+            }
+            if (preds.isEmpty()) {
+                return cb.disjunction();
+            }
+            return cb.or(preds.toArray(Predicate[]::new));
+        };
+    }
+
+    /**
+     * Filtro por proc. exibido (coluna Proc.): {@code processo.numero_interno} ou {@code grupo_compensacao}.
+     */
+    public static Specification<LancamentoFinanceiroEntity> comProcExibicao(Integer numeroInterno) {
+        if (numeroInterno == null) {
+            return null;
+        }
+        return (root, query, cb) -> {
+            var processoJoin = root.join("processo", JoinType.LEFT);
+            if (numeroInterno == 0) {
+                return cb.or(
+                        cb.equal(root.get("grupoCompensacao"), "0"),
+                        cb.isNull(processoJoin.get("numeroInterno")),
+                        cb.equal(processoJoin.get("numeroInterno"), 0));
+            }
+            Predicate porProcesso = cb.equal(processoJoin.get("numeroInterno"), numeroInterno);
+            Predicate porGrupo = cb.equal(root.get("grupoCompensacao"), String.valueOf(numeroInterno));
+            return cb.or(porProcesso, porGrupo);
         };
     }
 }

@@ -23,7 +23,10 @@ export async function buscarMensalistaPorCliente(clienteId) {
     const data = await request(`/api/mensalistas/cliente/${id}`);
     return mapApiToUi(data);
   } catch (err) {
-    if (String(err?.message || '').includes('404')) return null;
+    const msg = String(err?.message || '').toLowerCase();
+    if (msg.includes('404') || msg.includes('não encontrado') || msg.includes('nao encontrado')) {
+      return null;
+    }
     throw err;
   }
 }

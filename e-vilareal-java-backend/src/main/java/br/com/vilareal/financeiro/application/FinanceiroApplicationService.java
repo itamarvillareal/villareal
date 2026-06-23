@@ -21,6 +21,7 @@ import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.processo.application.ClienteCodigoPessoaResolver;
+import br.com.vilareal.processo.application.CodigoClienteUtil;
 import br.com.vilareal.pessoa.application.TitularPessoaRefHelper;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
@@ -31,8 +32,10 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
@@ -153,6 +156,8 @@ public class FinanceiroApplicationService {
                 null,
                 null,
                 null,
+                null,
+                null,
                 PageRequest.of(0, LISTAGEM_SEM_PAGINACAO_MAX, ORDEM_LANCAMENTOS));
         if (page.getTotalElements() > LISTAGEM_SEM_PAGINACAO_MAX) {
             log.warn(
@@ -180,6 +185,8 @@ public class FinanceiroApplicationService {
             String contaCodigos,
             Boolean contaCodigosExcluir,
             String cadastroPlenitude,
+            String codigoCliente,
+            Integer numeroInternoProcesso,
             Pageable pageable) {
         var codigos = LancamentoFinanceiroSpecifications.parseContaCodigosParam(contaCodigos);
         boolean excluir = Boolean.TRUE.equals(contaCodigosExcluir);
@@ -199,6 +206,7 @@ public class FinanceiroApplicationService {
                 codigos,
                 excluir,
                 cadastroPlenitude);
+        spec = spec.and(comChaveNaturalContaCorrente(codigoCliente, numeroInternoProcesso));
         return lancamentoRepository.findAll(spec, pageable).map(this::toLancamentoResponse);
     }
 
@@ -219,6 +227,8 @@ public class FinanceiroApplicationService {
             String contaCodigos,
             Boolean contaCodigosExcluir,
             String cadastroPlenitude,
+            String codigoCliente,
+            Integer numeroInternoProcesso,
             Pageable pageable) {
         var codigos = LancamentoFinanceiroSpecifications.parseContaCodigosParam(contaCodigos);
         boolean excluir = Boolean.TRUE.equals(contaCodigosExcluir);
@@ -238,6 +248,7 @@ public class FinanceiroApplicationService {
                 codigos,
                 excluir,
                 cadastroPlenitude);
+        spec = spec.and(comChaveNaturalContaCorrente(codigoCliente, numeroInternoProcesso));
         return lancamentoRepository.findAll(spec, pageable).map(this::toExtratoListItem);
     }
 
@@ -751,6 +762,32 @@ public class FinanceiroApplicationService {
             return null;
         }
         return clienteResolverService.buscarPorId(clienteIdParam).getId();
+    }
+
+    /** Filtro Cod. Cliente + Proc. (colunas da Conta Corrente), alinhado ao frontend legado. */
+    private Specification<LancamentoFinanceiroEntity> comChaveNaturalContaCorrente(
+            String codigoCliente, Integer numeroInternoProcesso) {
+        if (!StringUtils.hasText(codigoCliente) && numeroInternoProcesso == null) {
+            return (root, query, cb) -> null;
+        }
+        Specification<LancamentoFinanceiroEntity> spec = Specification.where(null);
+        if (StringUtils.hasText(codigoCliente)) {
+            String norm = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(codigoCliente.trim());
+            Long clientePk = clienteResolverService
+                    .encontrarClientePorCodigo(codigoCliente)
+                    .map(ClienteEntity::getId)
+                    .orElse(null);
+            Long pessoaId = clienteCodigoPessoaResolver
+                    .resolverPessoaIdComFallbackCliente(codigoCliente)
+                    .orElse(null);
+            Specification<LancamentoFinanceiroEntity> codSpec =
+                    LancamentoFinanceiroSpecifications.comCodigoClienteExibicao(norm, clientePk, pessoaId);
+            spec = spec.and(codSpec != null ? codSpec : (root, query, cb) -> cb.disjunction());
+        }
+        if (numeroInternoProcesso != null) {
+            spec = spec.and(LancamentoFinanceiroSpecifications.comProcExibicao(numeroInternoProcesso));
+        }
+        return spec;
     }
 
     private ContaContabilResponse toContaResponse(ContaContabilEntity e) {

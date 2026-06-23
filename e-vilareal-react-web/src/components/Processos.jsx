@@ -475,6 +475,15 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const isEmbedded = embedIntent !== undefined && embedIntent !== null;
   const intentStateForHydration = isEmbedded ? embedIntent : location.state;
   const intentRevisionForHydration = isEmbedded ? String(embedIntentRevision) : location.key;
+  const contaCorrenteSomenteEmbed = useMemo(
+    () =>
+      Boolean(
+        intentStateForHydration &&
+          typeof intentStateForHydration === 'object' &&
+          intentStateForHydration.contaCorrenteSomente === true
+      ),
+    [intentStateForHydration]
+  );
 
   const [codigoCliente, setCodigoCliente] = useState(
     () => resolverSelecaoInicialProcessos(isEmbedded ? null : location).codigoCliente,
@@ -490,6 +499,12 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   /** Abre Conta Corrente em modo Proc. 0 quando o Financeiro envia proc 0 (mensalista). Declarado cedo para o efeito abaixo. */
   const [contaCorrenteModo, setContaCorrenteModo] = useState('processo');
   const [modalContaCorrente, setModalContaCorrente] = useState(false);
+  const fecharModalContaCorrente = useCallback(() => {
+    setModalContaCorrente(false);
+    if (contaCorrenteSomenteEmbed && typeof onFecharEmbed === 'function') {
+      onFecharEmbed();
+    }
+  }, [contaCorrenteSomenteEmbed, onFecharEmbed]);
   const [resumoContaCorrenteApi, setResumoContaCorrenteApi] = useState(null);
   const [resumoContaCorrenteApiErro, setResumoContaCorrenteApiErro] = useState('');
   /** Lista do modal Conta Corrente quando a API financeira é a fonte de verdade (evita extrato local obsoleto após zerar). */
@@ -710,7 +725,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   useCloseOnEscape(modalAgendaAudiencia.aberto, fecharModalAgendaAudiencia);
   useCloseOnEscape(!!modalVinculoPartes, () => setModalVinculoPartes(null));
   useCloseOnEscape(!!informacaoModal, () => setInformacaoModal(null));
-  useCloseOnEscape(modalContaCorrente, () => setModalContaCorrente(false));
+  useCloseOnEscape(modalContaCorrente, fecharModalContaCorrente);
   useCloseOnEscape(modalTramitacaoAberto, fecharModalTramitacao);
   useCloseOnEscape(modalAcoesRedacaoAberto, () => setModalAcoesRedacaoAberto(false));
   useCloseOnEscape(modalAgendaLoteAberto, () => setModalAgendaLoteAberto(false));
@@ -3587,14 +3602,22 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
   return (
     <div
-      className={`${isEmbedded ? 'min-h-0 w-full' : 'min-h-full'} bg-slate-100`}
+      className={
+        contaCorrenteSomenteEmbed
+          ? 'contents'
+          : `${isEmbedded ? 'min-h-0 w-full' : 'min-h-full'} bg-slate-100`
+      }
     >
-      <div className={`max-w-[1400px] mx-auto px-3 sm:px-4 py-4 ${isEmbedded ? 'min-w-0' : ''}`}>
+      <div
+        className={`max-w-[1400px] mx-auto px-3 sm:px-4 py-4 ${isEmbedded ? 'min-w-0' : ''} ${contaCorrenteSomenteEmbed ? '!p-0 !max-w-none' : ''}`}
+      >
         <ProcessosToast
           message={historicoToast?.message}
           variant={historicoToast?.variant ?? 'success'}
           onClose={() => setHistoricoToast(null)}
         />
+        {!contaCorrenteSomenteEmbed ? (
+        <>
         <ProcessosStickyHeader
           numeroCnj={numeroProcessoNovo}
           cliente={cliente}
@@ -5512,6 +5535,9 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         </div>
       )}
 
+        </>
+        ) : null}
+
       {/* Janela Conta Corrente: lançamentos dos extratos vinculados a cliente + proc. (Financeiro) */}
       {modalContaCorrente && (() => {
         const processoContaCorrenteEfetivo = contaCorrenteModo === 'proc0' ? 0 : processo;
@@ -5574,7 +5600,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         const qtdCcSel = ccSelecionados.size;
         return (
         <div
-          className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/50 p-0 md:items-center md:p-4"
+          className={`fixed inset-0 ${contaCorrenteSomenteEmbed ? 'z-[80]' : 'z-50'} flex items-stretch justify-center bg-black/50 p-0 md:items-center md:p-4`}
           role="dialog"
           aria-modal="true"
           aria-labelledby="modal-conta-corrente-titulo"
@@ -5588,7 +5614,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                 type="button"
                 className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 md:hidden"
                 aria-label="Voltar"
-                onClick={() => setModalContaCorrente(false)}
+                onClick={() => void fecharModalContaCorrente()}
               >
                 <ChevronLeft className="h-6 w-6" aria-hidden />
               </button>
@@ -5601,7 +5627,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
               </h2>
               <button
                 type="button"
-                onClick={() => setModalContaCorrente(false)}
+                onClick={() => void fecharModalContaCorrente()}
                 className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
                 aria-label="Fechar"
               >
@@ -5830,7 +5856,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                             onDoubleClick={() => {
                               if (ccModoVincular) return;
                               if (!linha.nomeBanco || linha.numero == null || !linha.data) return;
-                              setModalContaCorrente(false);
+                              fecharModalContaCorrente();
                               navigate('/financeiro', {
                                 state: {
                                   financeiroContaCorrenteLinha: {
@@ -5989,7 +6015,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
               <div className="flex justify-center px-4 pb-4 pt-4 md:px-0">
                 <button
                   type="button"
-                  onClick={() => setModalContaCorrente(false)}
+                  onClick={() => void fecharModalContaCorrente()}
                   className="min-h-11 w-full rounded border border-slate-300 bg-white px-8 py-2 text-sm text-slate-700 hover:bg-slate-50 md:w-auto"
                 >
                   OK
