@@ -14,7 +14,7 @@ import {
   ehTituloHistoricoSistemaLegado,
 } from '../domain/historicoTituloLegadoSistema.js';
 import { normalizarTipoAudienciaCanonico } from '../data/processosDadosRelatorio.js';
-import { getNomeExibicaoUsuario, isAssistenteIaUsuario } from '../data/usuarioDisplayHelpers.js';
+import { salvarResponseComoArquivo } from '../utils/streamFileDownload.js';
 
 function padCliente8(value) {
   const d = String(value ?? '').replace(/\D/g, '');
@@ -609,8 +609,9 @@ export async function prepararAssinarAguardandoProtocolo(processos, credencialId
 
 /**
  * ZIP com PDFs pendentes do lote preparado (nomes canônicos + manifest informativo).
+ * Grava em disco via stream quando possível — evita OOM (Chrome erro 5) com lotes grandes.
  * @param {number[]} peticaoIds
- * @returns {Promise<{ blob: Blob, filename: string }>}
+ * @returns {Promise<{ filename: string, streamed: boolean }>}
  */
 export async function baixarZipLoteAguardandoProtocolo(peticaoIds) {
   const ids = (Array.isArray(peticaoIds) ? peticaoIds : []).filter((id) => id != null);
@@ -623,6 +624,7 @@ export async function baixarZipLoteAguardandoProtocolo(peticaoIds) {
     headers: {
       ...buildDefaultApiHeaders(),
       'Content-Type': 'application/json',
+      Accept: 'application/zip',
     },
     body: JSON.stringify({ peticaoIds: ids }),
   });
@@ -636,11 +638,7 @@ export async function baixarZipLoteAguardandoProtocolo(peticaoIds) {
     }
     throw new Error(msg);
   }
-  const blob = await res.blob();
-  const disposition = res.headers.get('Content-Disposition') || '';
-  const match = /filename="([^"]+)"/i.exec(disposition);
-  const filename = match?.[1] || 'assinar-aguardando-protocolo.zip';
-  return { blob, filename };
+  return salvarResponseComoArquivo(res, { fallbackFilename: 'assinar-aguardando-protocolo.zip' });
 }
 
 /**
@@ -1596,10 +1594,10 @@ export async function listarPdfsMovimentacoes(processoId) {
  * Consolida apenas os PDFs selecionados (ordem de fileIds preservada).
  * @param {number|string} processoId
  * @param {string[]} fileIds
- * @param {{ numeroCnj?: string }} [_options] reservado (sem fallback autos-integral)
- * @returns {Promise<{ blob: Blob, filename: string }>}
+ * @param {{ numeroCnj?: string, streamToDisk?: boolean }} [options]
+ * @returns {Promise<{ blob?: Blob, filename: string, avisos?: string|null, streamed?: boolean }>}
  */
-export async function consolidarMovimentacoesPdfSelecionados(processoId, fileIds, _options = {}) {
+export async function consolidarMovimentacoesPdfSelecionados(processoId, fileIds, options = {}) {
   const id = Number(processoId);
   if (!Number.isFinite(id) || id <= 0) {
     throw new Error('Processo não identificado.');
@@ -1610,10 +1608,12 @@ export async function consolidarMovimentacoesPdfSelecionados(processoId, fileIds
   }
   const fallbackFilename = `Movimentacoes_Consolidado_${id}.pdf`;
   const path = `/api/processos/${id}/movimentacoes/consolidar-pdf`;
-  const mapResultado = ({ blob, filename, responseHeaders }) => ({
-    blob,
-    filename,
-    avisos: responseHeaders?.get('X-Movimentacoes-Consolidado-Avisos') ?? null,
+  const streamToDisk = options.streamToDisk === true;
+  const mapResultado = (result) => ({
+    blob: result.blob,
+    filename: result.filename,
+    avisos: result.responseHeaders?.get('X-Movimentacoes-Consolidado-Avisos') ?? null,
+    streamed: result.streamed,
   });
   try {
     return mapResultado(
@@ -1621,6 +1621,7 @@ export async function consolidarMovimentacoesPdfSelecionados(processoId, fileIds
         method: 'POST',
         body: { fileIds: ids },
         fallbackFilename,
+        streamToDisk,
       }),
     );
   } catch (e) {
@@ -1629,6 +1630,7 @@ export async function consolidarMovimentacoesPdfSelecionados(processoId, fileIds
       await requestBlob(path, {
         query: { fileId: ids },
         fallbackFilename,
+        streamToDisk,
       }),
     );
   }
@@ -1645,22 +1647,29 @@ export async function consolidarMovimentacoesPdfSelecionados(processoId, fileIds
 export async function consolidarMovimentacoesPdf(processoId, options = {}) {
   const id = Number(processoId);
   const numeroCnj = String(options?.numeroCnj ?? '').trim();
+  const streamToDisk = options.streamToDisk === true;
   if (!Number.isFinite(id) || id <= 0) {
     if (numeroCnj) {
-      const { blob, filename } = await baixarAutosIntegralProcesso(numeroCnj);
-      return { blob, filename };
+      return baixarAutosIntegralProcesso(numeroCnj);
     }
     throw new Error('Processo não identificado.');
   }
   try {
-    return await baixarPdfApiGet(
+    const result = await requestBlob(
       `/api/processos/${id}/movimentacoes/consolidar-pdf`,
-      `Movimentacoes_Consolidado_${id}.pdf`
+      {
+        fallbackFilename: `Movimentacoes_Consolidado_${id}.pdf`,
+        streamToDisk,
+      },
     );
+    return {
+      blob: result.blob,
+      filename: result.filename,
+      streamed: result.streamed,
+    };
   } catch (e) {
     if (endpointConsolidarPdfAusente(e) && numeroCnj) {
-      const { blob, filename } = await baixarAutosIntegralProcesso(numeroCnj);
-      return { blob, filename };
+      return baixarAutosIntegralProcesso(numeroCnj);
     }
     throw e;
   }
@@ -1671,12 +1680,13 @@ export async function baixarAutosIntegralProcesso(numeroCnj) {
   if (!numero) {
     throw new Error('Informe o número CNJ do processo.');
   }
-  const { blob, filename, responseHeaders } = await requestBlob('/api/processos/autos-integral', {
+  const { filename, streamed, responseHeaders } = await requestBlob('/api/processos/autos-integral', {
     query: { numero },
     fallbackFilename: `${numero} - Autos.pdf`,
+    streamToDisk: true,
   });
   const avisos = responseHeaders?.get('X-Autos-Integral-Avisos') ?? null;
-  return { blob, filename, avisos };
+  return { filename, avisos, streamed };
 }
 
 /**

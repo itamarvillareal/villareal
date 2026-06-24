@@ -40,19 +40,10 @@ async function postPdf(path, body, { signal } = {}) {
   return res.blob();
 }
 
+import { dispararDownloadBlob } from '../utils/streamFileDownload.js';
+
 export function downloadPdfBlob(blob, filename) {
-  const url = window.URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.rel = 'noopener';
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => {
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
-  }, 1000);
+  dispararDownloadBlob(blob, filename);
 }
 
 export function nomeArquivoPeticaoPdf(sufixo) {

@@ -297,10 +297,13 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, processoId
     setErro('');
     try {
       const cnj = String(numeroCnj ?? '').trim();
-      const { blob, filename, avisos } = await consolidarMovimentacoesPdfSelecionados(id, fileIds, {
+      const { blob, filename, avisos, streamed } = await consolidarMovimentacoesPdfSelecionados(id, fileIds, {
         numeroCnj: cnj,
+        streamToDisk: true,
       });
-      downloadPdfBlob(blob, filename);
+      if (!streamed && blob) {
+        downloadPdfBlob(blob, filename);
+      }
       setModalSelecaoAberto(false);
       setFiltroNome('');
       const msgAvisos = avisos ? String(avisos).trim() : '';

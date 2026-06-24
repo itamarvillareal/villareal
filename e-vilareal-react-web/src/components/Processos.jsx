@@ -2300,8 +2300,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     setBaixandoAutosIntegral(true);
     setApiError('');
     try {
-      const { blob, filename, avisos } = await baixarAutosIntegralProcesso(cnj);
-      downloadPdfBlob(blob, filename);
+      const { avisos } = await baixarAutosIntegralProcesso(cnj);
       if (avisos) {
         showProcessoToast(`Autos integral baixado com avisos: ${avisos}`, 'warning');
       }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X, ClipboardList, ChevronUp, ChevronDown, Loader2 } from 'lucide-react';
 import { useUsuarioPerfil } from '../hooks/useUsuarioPerfil.js';
@@ -48,12 +48,14 @@ import { padCliente8Nav } from './cadastro-pessoas/cadastroPessoasNavUtils.js';
 import { agruparConsultasRealizadasPorProcesso } from '../domain/historicoTituloLegadoSistema.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
-import { exportarReusClienteParaExcel } from '../services/relatorioReusClienteExcel.js';
 import { getContextoAuditoriaUsuario, registrarAuditoria } from '../services/auditoriaCliente.js';
 import { chaveNumeroProcessoBuscaDiagnostico } from '../domain/normalizarNumeroProcessoBuscaDiagnostico.js';
 import { ModalResultadoHistoricoLista } from './diagnosticos/ModalResultadoHistoricoLista.jsx';
 import { ModalResultadoPrazoFatal } from './diagnosticos/ModalResultadoPrazoFatal.jsx';
-import { ProcessoEmbedModal } from './ProcessoEmbedModal.jsx';
+
+const ProcessoEmbedModal = lazy(() =>
+  import('./ProcessoEmbedModal.jsx').then((m) => ({ default: m.ProcessoEmbedModal })),
+);
 
 /** Delay antes de chamar a API enquanto o usuário digita (ms). */
 const DEBOUNCE_BUSCA_PESSOA_API_MS = 320;
@@ -397,6 +399,7 @@ export function Diagnosticos() {
     setRelatorioCarregando(true);
     setReusExcelCarregando(true);
     try {
+      const { exportarReusClienteParaExcel } = await import('../services/relatorioReusClienteExcel.js');
       const res = await exportarReusClienteParaExcel(raw, (ev) => {
         setReusExcelProgresso(`A processar… ${ev.atual} de ${ev.total}`);
       });
@@ -518,6 +521,7 @@ export function Diagnosticos() {
   }
 
   useEffect(() => {
+    if (!idPessoaBuscaDiag || clientesCodigosLista.length > 0) return;
     let c = true;
     void listarClientesIndiceCadastro()
       .then((list) => {
@@ -529,7 +533,7 @@ export function Diagnosticos() {
     return () => {
       c = false;
     };
-  }, []);
+  }, [idPessoaBuscaDiag, clientesCodigosLista.length]);
 
   useEffect(() => {
     if (modalPrazoFatalAberto) setDataPrazoFatal(hojeDdMmYyyy());
@@ -704,13 +708,7 @@ export function Diagnosticos() {
       setPrepararAssinarResultado(preparado);
       const ids = Array.isArray(preparado?.peticaoIds) ? preparado.peticaoIds : [];
       try {
-        const { blob, filename } = await baixarZipLoteAguardandoProtocolo(ids);
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(url);
+        await baixarZipLoteAguardandoProtocolo(ids);
       } catch (zipErr) {
         const msg = mensagemErroAmigavel(zipErr, 'gerar o ZIP para assinar');
         setPrepararAssinarErro(msg);
@@ -2018,7 +2016,8 @@ export function Diagnosticos() {
               <p className="text-xs text-slate-500">
                 Cada «Preparar e baixar» busca os PDFs de novo na pasta <strong>Assinar</strong> do
                 Drive e descarta preparações anteriores (pendentes ou não concluídas). PDFs já
-                protocolados no PROJUDI não entram no lote.
+                protocolados no PROJUDI não entram no lote. Arquivos grandes abrem o diálogo
+                «Salvar como» do navegador (evita queda da aba por falta de memória).
               </p>
               <label className="block">
                 <span className="text-xs font-medium text-slate-500">Credencial PROJUDI</span>
@@ -2444,7 +2443,11 @@ export function Diagnosticos() {
         onOpenProcesso={abrirProcessoPorItem}
       />
 
-      <ProcessoEmbedModal embed={processoEmbed} onFechar={() => setProcessoEmbed(null)} />
+      {processoEmbed ? (
+        <Suspense fallback={null}>
+          <ProcessoEmbedModal embed={processoEmbed} onFechar={() => setProcessoEmbed(null)} />
+        </Suspense>
+      ) : null}
     </div>
   );
 }

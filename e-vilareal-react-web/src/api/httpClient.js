@@ -2,7 +2,7 @@ import { API_BASE_URL } from './config.js';
 import { buildDefaultApiHeaders } from './apiAuthHeaders.js';
 import { getAccessToken } from './authTokenStorage.js';
 import { buildAuditoriaHeaders } from '../services/auditoriaCliente.js';
-import { parseApiJsonResponse } from './parseApiResponse.js';
+import { salvarResponseComoArquivo } from '../utils/streamFileDownload.js';
 
 function buildUrl(path, query) {
   const qs = query
@@ -60,6 +60,7 @@ export async function requestBlob(
     fallbackFilename = 'download.bin',
     logoutOn401 = false,
     signal,
+    streamToDisk = false,
   } = {},
 ) {
   const authTokenSnapshotAtRequest = getAccessToken();
@@ -111,6 +112,11 @@ export async function requestBlob(
     const err = new Error(message);
     err.status = response.status;
     throw err;
+  }
+
+  if (streamToDisk) {
+    const saved = await salvarResponseComoArquivo(response, { fallbackFilename });
+    return { ...saved, responseHeaders: response.headers };
   }
 
   const blob = await response.blob();
