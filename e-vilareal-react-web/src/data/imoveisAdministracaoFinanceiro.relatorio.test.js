@@ -5,6 +5,7 @@ import {
   buildRelatorioFinanceiroImoveisMes,
   calcularHonorariosValor,
   calcularRepasseEsperado,
+  calcularRepasseEsperadoAposRecebimento,
   chaveParCodProc,
   classificarLancamentoAdministracaoImovel,
   construirIndiceImoveisPorCodProc,
@@ -146,6 +147,23 @@ describe('classificarLancamentoAdministracaoImovel / extrairTotaisFinanceirosMes
     });
     expect(totais.totalAluguel).toBe(1707.83);
     expect(totais.dataPrimeiroAluguel).toBe('10/06/2026');
+  });
+
+  it('extrairTotaisFinanceirosMes conta aluguel vinculado mesmo sem heurística no extrato', () => {
+    const vinculos = new Map([
+      [999, { papel: 'ALUGUEL', competenciaMes: '2026-06' }],
+    ]);
+    const totais = extrairTotaisFinanceirosMes(
+      [{ apiId: 999, data: '10/06/2026', descricao: 'PIX TRANSF Neemias10 06', valor: 1707.83 }],
+      '793',
+      10,
+      '2026-06',
+      {
+        valorAluguelContrato: '1.750,00',
+        vinculosPorLancamento: vinculos,
+      },
+    );
+    expect(totais.totalAluguel).toBe(1707.83);
   });
 
   it('classifica PIX TRANSF negativo como repasse (793/20)', () => {
@@ -312,9 +330,13 @@ describe('buildRelatorioFinanceiroImoveisMes', () => {
 });
 
 describe('honorários e repasse previsto', () => {
-  it('calcula 10% sobre aluguel recebido no mês', () => {
+  it('calcula honorários sobre valor nominal do contrato', () => {
     expect(calcularHonorariosValor(2300, 10)).toBe(230);
     expect(calcularRepasseEsperado(2300, 10)).toBe(2070);
+  });
+
+  it('repasse após recebimento desconta taxa sobre valor nominal (Neemias 793/10)', () => {
+    expect(calcularRepasseEsperadoAposRecebimento(1707.83, 1750, 10)).toBe(1532.83);
   });
 
   it('usa valor de referência quando aluguel do mês é zero', () => {
@@ -335,7 +357,7 @@ describe('honorários e repasse previsto', () => {
     expect(linha.repasseEsperado).toBe(2070);
   });
 
-  it('prioriza aluguel recebido no mês para o cálculo', () => {
+  it('prioriza aluguel recebido no mês para repasse (taxa sobre referência)', () => {
     const linha = linhaRelatorioFinanceiroFromCadastro(
       {
         imovelId: 3,
@@ -351,6 +373,24 @@ describe('honorários e repasse previsto', () => {
     );
     expect(linha.honorariosValor).toBe(210);
     expect(linha.repasseEsperado).toBe(1890);
+  });
+
+  it('relatório Neemias: recebido líquido com repasse sobre taxa do bruto', () => {
+    const linha = linhaRelatorioFinanceiroFromCadastro(
+      {
+        imovelId: 6,
+        codigo: '793',
+        proc: '10',
+        valorLocacao: '1.750,00',
+        taxaAdministracaoPercent: '10',
+        diaPagAluguel: '10',
+        diaRepasse: '15',
+      },
+      '2026-06',
+      { totalAluguel: 1707.83, totalRepasse: 1532.83, dataPrimeiroAluguel: '10/06/2026' },
+    );
+    expect(linha.honorariosValor).toBe(175);
+    expect(linha.repasseEsperado).toBe(1532.83);
   });
 });
 

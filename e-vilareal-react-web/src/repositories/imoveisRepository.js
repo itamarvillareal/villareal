@@ -1121,6 +1121,20 @@ export async function carregarItensRelatorioImoveisApi() {
   }
 }
 
+/** Mapa lancamentoFinanceiroId → { papel, competenciaMes } a partir da API de reconciliação. */
+export function vinculosMapFromApiRows(rows) {
+  const map = new Map();
+  for (const v of rows || []) {
+    const id = Number(v?.lancamentoFinanceiroId);
+    if (!Number.isFinite(id)) continue;
+    map.set(id, {
+      papel: v.papel,
+      competenciaMes: v.competenciaMes,
+    });
+  }
+  return map;
+}
+
 /**
  * Relatório financeiro (imóveis × mês): extratos bancários com Cod.+Proc., filtrado por nº de imóvel no processo.
  */
@@ -1156,10 +1170,27 @@ export async function carregarRelatorioFinanceiroImoveisMes(chaveMesYYYYMM, opts
       const prev = metaPorChave.get(chave);
       metaPorChave.set(chave, {
         processoId: item._apiProcessoId ?? prev?.processoId ?? null,
+        contratoId: item._apiContratoId ?? prev?.contratoId ?? null,
         valorLocacao: item.valorLocacao ?? prev?.valorLocacao ?? null,
         nomeInquilino: item.inquilino ?? prev?.nomeInquilino ?? null,
       });
     }
+  }
+
+  const vinculosPorPar = new Map();
+  if (featureFlags.useApiImoveis) {
+    await Promise.all(
+      [...metaPorChave.entries()].map(async ([chave, meta]) => {
+        const contratoId = Number(meta.contratoId);
+        if (!Number.isFinite(contratoId) || contratoId <= 0) return;
+        try {
+          const rows = await listarVinculosReconciliacaoApi(contratoId);
+          vinculosPorPar.set(chave, vinculosMapFromApiRows(rows));
+        } catch {
+          /* relatório segue só com heurística do extrato */
+        }
+      }),
+    );
   }
 
   if (featureFlags.useApiFinanceiro) {
@@ -1180,6 +1211,7 @@ export async function carregarRelatorioFinanceiroImoveisMes(chaveMesYYYYMM, opts
             extrairTotaisFinanceirosMesComRepasseAnterior(lancs, Number(cod), procNum, chaveMesYYYYMM, {
               valorAluguelContrato: meta.valorLocacao,
               nomeInquilino: meta.nomeInquilino,
+              vinculosPorLancamento: vinculosPorPar.get(chave),
             }),
           );
         } catch {
@@ -1197,6 +1229,7 @@ export async function carregarRelatorioFinanceiroImoveisMes(chaveMesYYYYMM, opts
         extrairTotaisFinanceirosMesComRepasseAnterior(lancs, Number(cod), Number(procNorm), chaveMesYYYYMM, {
           valorAluguelContrato: meta.valorLocacao,
           nomeInquilino: meta.nomeInquilino,
+          vinculosPorLancamento: vinculosPorPar.get(chave),
         }),
       );
     }

@@ -41,10 +41,18 @@ describe('imoveisReconciliacao', () => {
     expect(statusRepasseInfo(undefined).tone).toBe('cinza');
   });
 
-  it('repasseEsperado = recebido − taxa nominal − despesas', () => {
+  it('repasseEsperado = recebido − taxa sobre valor nominal − despesas', () => {
     const r = repasseEsperado({ aluguelRecebido: 1000, despesas: 50, taxaEsperadaPercent: 10 });
     expect(r).toBe(850); // 1000 - 100 - 50
     expect(repasseEsperado(null)).toBeNull();
+  });
+
+  it('repasseEsperado usa taxa sobre valor do contrato quando recebido é menor (Neemias)', () => {
+    const r = repasseEsperado(
+      { aluguelRecebido: 1707.83, despesas: 0, taxaEsperadaPercent: 10 },
+      1750,
+    );
+    expect(r).toBe(1532.83); // 1707,83 − 10% de 1750
   });
 
   it('linhasReconciliacaoFromSugestoes normaliza os campos', () => {

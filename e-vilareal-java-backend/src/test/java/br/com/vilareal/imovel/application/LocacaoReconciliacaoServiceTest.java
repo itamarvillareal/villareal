@@ -236,6 +236,23 @@ class LocacaoReconciliacaoServiceTest {
     }
 
     @Test
+    void resultadoRepasseFeitoQuandoTaxaIncideSobreValorContrato() {
+        ContratoLocacaoEntity c = contrato();
+        c.setValorAluguel(new BigDecimal("1750.00"));
+        when(contratoLocacaoRepository.findById(CONTRATO_ID)).thenReturn(Optional.of(c));
+        when(vinculoRepository.findByContratoLocacao_IdAndCompetenciaMesOrderByIdAsc(CONTRATO_ID, "2026-06"))
+                .thenReturn(List.of(
+                        vinculo(PapelReconciliacao.ALUGUEL, "1707.83", "2026-06"),
+                        vinculo(PapelReconciliacao.REPASSE, "1532.83", "2026-06")));
+
+        ReconciliacaoResultadoResponse r = service.resultado(CONTRATO_ID, "2026-06", null, null);
+
+        assertThat(r.aluguelRecebido()).isEqualByComparingTo("1707.83");
+        assertThat(r.repassado()).isEqualByComparingTo("1532.83");
+        assertThat(r.statusRepasse()).isEqualTo(StatusRepasse.FEITO);
+    }
+
+    @Test
     void repassesPendentesListaCiclosComAluguelSemRepasse() {
         ContratoLocacaoEntity c = contratoComLocador();
         LocacaoRepasseLancamentoEntity aluguel =
@@ -600,7 +617,9 @@ class LocacaoReconciliacaoServiceTest {
 
     @Test
     void gerarRepassesInternosGeraParDebitoCreditoNaContaVirtual() {
-        when(contratoLocacaoRepository.findById(CONTRATO_ID)).thenReturn(Optional.of(contrato()));
+        ContratoLocacaoEntity c = contrato();
+        c.setValorAluguel(new BigDecimal("1700.00"));
+        when(contratoLocacaoRepository.findById(CONTRATO_ID)).thenReturn(Optional.of(c));
         LocacaoRepasseLancamentoEntity aluguel = vinculoAluguel(77L, "1700.00", "2026-05", LocalDate.of(2026, 5, 7));
         when(vinculoRepository.findByContratoLocacao_IdOrderByCompetenciaMesAscIdAsc(CONTRATO_ID))
                 .thenReturn(List.of(aluguel));
@@ -728,7 +747,9 @@ class LocacaoReconciliacaoServiceTest {
 
     @Test
     void corrigirNaoMexeQuandoDebitoJaEstaCorreto() {
-        when(contratoLocacaoRepository.findById(CONTRATO_ID)).thenReturn(Optional.of(contrato())); // próprio
+        ContratoLocacaoEntity c = contrato();
+        c.setValorAluguel(new BigDecimal("1700.00"));
+        when(contratoLocacaoRepository.findById(CONTRATO_ID)).thenReturn(Optional.of(c)); // próprio
         LocacaoRepasseLancamentoEntity aluguel = vinculoAluguel(5L, "1700.00", "2026-05", LocalDate.of(2026, 5, 7));
         when(vinculoRepository.findByContratoLocacao_IdOrderByCompetenciaMesAscIdAsc(CONTRATO_ID))
                 .thenReturn(List.of(aluguel));
@@ -760,7 +781,9 @@ class LocacaoReconciliacaoServiceTest {
 
     @Test
     void corrigirRegeneraSomenteODebitoErrado() {
-        when(contratoLocacaoRepository.findById(CONTRATO_ID)).thenReturn(Optional.of(contrato()));
+        ContratoLocacaoEntity c = contrato();
+        c.setValorAluguel(new BigDecimal("1700.00"));
+        when(contratoLocacaoRepository.findById(CONTRATO_ID)).thenReturn(Optional.of(c));
         LocacaoRepasseLancamentoEntity aluguel = vinculoAluguel(5L, "1700.00", "2026-05", LocalDate.of(2026, 5, 7));
         when(vinculoRepository.findByContratoLocacao_IdOrderByCompetenciaMesAscIdAsc(CONTRATO_ID))
                 .thenReturn(List.of(aluguel));
@@ -901,7 +924,9 @@ class LocacaoReconciliacaoServiceTest {
         virtual.setNumeroBanco(950);
         virtual.setBancoNome("REPASSE INTERNO (V2)");
         when(contaBancariaRepository.findByTipo("VIRTUAL")).thenReturn(List.of(virtual));
-        when(contratoLocacaoRepository.findById(CONTRATO_ID)).thenReturn(Optional.of(contrato()));
+        ContratoLocacaoEntity c = contrato();
+        c.setValorAluguel(new BigDecimal("1700.00"));
+        when(contratoLocacaoRepository.findById(CONTRATO_ID)).thenReturn(Optional.of(c));
         LocacaoRepasseLancamentoEntity aluguel = vinculoAluguel(77L, "1700.00", "2026-05", LocalDate.of(2026, 5, 7));
         when(vinculoRepository.findByContratoLocacao_IdOrderByCompetenciaMesAscIdAsc(CONTRATO_ID))
                 .thenReturn(List.of(aluguel));

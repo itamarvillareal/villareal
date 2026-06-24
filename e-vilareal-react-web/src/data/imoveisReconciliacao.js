@@ -60,13 +60,20 @@ export function statusRepasseInfo(status) {
   }
 }
 
-/** Repasse esperado (recebido − taxa nominal − despesas) para o detalhe de divergência. */
-export function repasseEsperado(resultado) {
+/** Repasse esperado (recebido − taxa sobre valor nominal − despesas) para o detalhe de divergência. */
+export function repasseEsperado(resultado, valorAluguelContrato) {
   if (!resultado) return null;
   const recebido = Number(resultado.aluguelRecebido) || 0;
   const despesas = Number(resultado.despesas) || 0;
   const taxa = Number(resultado.taxaEsperadaPercent) || 0;
-  const taxaValor = recebido * (taxa / 100);
+  const ref =
+    Number(valorAluguelContrato) > 0
+      ? Number(valorAluguelContrato)
+      : Number(resultado.valorAluguelContrato) > 0
+        ? Number(resultado.valorAluguelContrato)
+        : recebido;
+  const baseTaxa = ref > 0 ? ref : recebido;
+  const taxaValor = baseTaxa * (taxa / 100);
   return Math.round((recebido - taxaValor - despesas) * 100) / 100;
 }
 

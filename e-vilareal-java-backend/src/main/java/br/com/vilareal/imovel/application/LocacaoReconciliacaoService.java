@@ -302,8 +302,9 @@ public class LocacaoReconciliacaoService {
      *   <li>Confiança = proximidade de valor (principal); nome do locador e dia de repasse apenas
      *       elevam a confiança (desempate), nunca filtram.</li>
      * </ol>
-     * {@code repasseEsperado = aluguel − aluguel×taxa − despesasVinculadas(competência)} (sem
-     * despesa vinculada → {@code aluguel×(1−taxa)}).
+     * {@code repasseEsperado = recebido − valorContrato×taxa − despesasVinculadas(competência)}.
+     * Honorários incidem sobre o valor nominal do contrato; o recebido pode ser menor (ex.: desconto
+     * de condomínio retido pelo inquilino).
      */
     private SugestaoPapel sugerirRepasseDebito(
             BigDecimal valor, ContratoLocacaoEntity contrato, boolean nomeLocadorOk, boolean diaRepasseOk,
@@ -327,16 +328,22 @@ public class LocacaoReconciliacaoService {
                 PapelReconciliacao.REPASSE, confiancaRepasse(proximidade, nomeLocadorOk, diaRepasseOk));
     }
 
-    /** {@code aluguel×(1−taxa) − despesasVinculadas(competência)}; sem competência, ignora despesas. */
+    /** Repasse esperado na competência (usa recebido vinculado quando existir). */
     private BigDecimal repasseEsperadoComDespesas(ContratoLocacaoEntity contrato, YearMonth competencia) {
-        BigDecimal base = repasseEsperadoPorTaxa(contrato.getValorAluguel(), contrato.getTaxaAdministracaoPercent());
-        if (base == null) {
-            return null;
-        }
         BigDecimal despesas = competencia != null
                 ? despesasDaCompetencia(contrato.getId(), competencia.toString())
                 : BigDecimal.ZERO;
-        return base.subtract(despesas).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal recebido = competencia != null
+                ? aluguelRecebidoDaCompetencia(contrato.getId(), competencia.toString())
+                : null;
+        if (recebido != null && recebido.signum() > 0) {
+            return repasseEsperadoRecebidoMenosTaxaContrato(recebido, contrato, despesas);
+        }
+        BigDecimal valorContrato = contrato.getValorAluguel();
+        if (valorContrato == null || valorContrato.signum() <= 0) {
+            return null;
+        }
+        return repasseEsperadoRecebidoMenosTaxaContrato(valorContrato, contrato, despesas);
     }
 
     /** Principal = proximidade de valor; nome/dia só elevam a confiança (desempate). */
@@ -863,7 +870,8 @@ public class LocacaoReconciliacaoService {
                     .filter(v -> v.getPapel() == PapelReconciliacao.ALUGUEL)
                     .findFirst();
 
-            ReconciliacaoResultadoCompetenciaResponse resComp = calcularCompetencia(comp, vincComp, taxaEsperada);
+            ReconciliacaoResultadoCompetenciaResponse resComp =
+                    calcularCompetencia(comp, vincComp, taxaEsperada, contrato.getValorAluguel());
 
             if (aluguelV.isPresent()) {
                 LancamentoFinanceiroEntity l = aluguelV.get().getLancamentoFinanceiro();
@@ -1016,16 +1024,15 @@ public class LocacaoReconciliacaoService {
         return ids.size();
     }
 
-    /** repasseEsperado = aluguel − aluguel×taxa − despesas da competência (o mesmo do /resultado). */
+    /** repasseEsperado = recebido − valorContrato×taxa − despesas (o mesmo do /resultado). */
     private BigDecimal repasseEsperadoDoAluguel(
             ContratoLocacaoEntity contrato, LocacaoRepasseLancamentoEntity aluguelVinculo) {
-        BigDecimal aluguel = aluguelVinculo.getValor() != null ? aluguelVinculo.getValor().abs() : null;
-        if (aluguel == null || aluguel.signum() <= 0) {
+        BigDecimal recebido = aluguelVinculo.getValor() != null ? aluguelVinculo.getValor().abs() : null;
+        if (recebido == null || recebido.signum() <= 0) {
             return BigDecimal.ZERO;
         }
-        BigDecimal taxa = taxaEsperadaPercent(contrato);
         BigDecimal despesas = despesasDaCompetencia(contrato.getId(), aluguelVinculo.getCompetenciaMes());
-        return repasseEsperadoPorTaxa(aluguel, taxa).subtract(despesas).setScale(2, RoundingMode.HALF_UP);
+        return repasseEsperadoRecebidoMenosTaxaContrato(recebido, contrato, despesas);
     }
 
     /** data_lancamento do repasse = data real do recebimento do aluguel (nunca 01/MM). */
@@ -1337,14 +1344,14 @@ public class LocacaoReconciliacaoService {
 
         List<ReconciliacaoResultadoCompetenciaResponse> detalhe = new ArrayList<>();
         for (Map.Entry<String, List<LocacaoRepasseLancamentoEntity>> e : porCompetencia.entrySet()) {
-            detalhe.add(calcularCompetencia(e.getKey(), e.getValue(), taxaEsperada));
+            detalhe.add(calcularCompetencia(e.getKey(), e.getValue(), taxaEsperada, contrato.getValorAluguel()));
         }
         detalhe.sort(Comparator.comparing(
                 ReconciliacaoResultadoCompetenciaResponse::competencia,
                 Comparator.nullsLast(Comparator.naturalOrder())));
 
         Agregado total = agregar(vinculos);
-        StatusRepasse statusTotal = statusRepasse(total, taxaEsperada);
+        StatusRepasse statusTotal = statusRepasse(total, taxaEsperada, contrato.getValorAluguel());
 
         return new ReconciliacaoResultadoResponse(
                 contratoId,
@@ -1453,11 +1460,12 @@ public class LocacaoReconciliacaoService {
         if (a.aluguel().compareTo(BigDecimal.ZERO) <= 0) {
             return null;
         }
-        StatusRepasse status = statusRepasse(a, taxaEsperada);
+        BigDecimal valorContrato = contrato.getValorAluguel();
+        StatusRepasse status = statusRepasse(a, taxaEsperada, valorContrato);
         if (status != StatusRepasse.PENDENTE && status != StatusRepasse.DIVERGENTE) {
             return null;
         }
-        MetricasCicloRepasse metricas = metricasCicloRepasse(a, taxaEsperada);
+        MetricasCicloRepasse metricas = metricasCicloRepasse(a, taxaEsperada, valorContrato);
         BigDecimal valorEmAberto = escala(metricas.repasseEsperado().subtract(a.repassado()));
         ImovelEntity imovel = contrato.getImovel();
         return new RepassePendenteItemResponse(
@@ -1477,7 +1485,10 @@ public class LocacaoReconciliacaoService {
     }
 
     private ReconciliacaoResultadoCompetenciaResponse calcularCompetencia(
-            String competencia, List<LocacaoRepasseLancamentoEntity> vinculos, BigDecimal taxaEsperada) {
+            String competencia,
+            List<LocacaoRepasseLancamentoEntity> vinculos,
+            BigDecimal taxaEsperada,
+            BigDecimal valorAluguelContrato) {
         Agregado a = agregar(vinculos);
         return new ReconciliacaoResultadoCompetenciaResponse(
                 competencia,
@@ -1487,7 +1498,7 @@ public class LocacaoReconciliacaoService {
                 escala(resultadoEscritorio(a)),
                 taxaEfetivaPercent(a),
                 taxaEsperada,
-                statusRepasse(a, taxaEsperada));
+                statusRepasse(a, taxaEsperada, valorAluguelContrato));
     }
 
     private Agregado agregar(List<LocacaoRepasseLancamentoEntity> vinculos) {
@@ -1511,9 +1522,18 @@ public class LocacaoReconciliacaoService {
 
     private record MetricasCicloRepasse(BigDecimal taxaEsperadaValor, BigDecimal repasseEsperado) {}
 
-    private static MetricasCicloRepasse metricasCicloRepasse(Agregado a, BigDecimal taxaEsperadaPercent) {
-        BigDecimal taxaEsperadaValor = a.aluguel().multiply(taxaEsperadaPercent).divide(CEM, 2, RoundingMode.HALF_UP);
-        BigDecimal repasseEsperado = a.aluguel().subtract(taxaEsperadaValor).subtract(a.despesas());
+    /**
+     * Honorários sobre o valor nominal do contrato; repasse = recebido − honorários − despesas.
+     * Quando recebido = nominal, equivale a {@code recebido×(1−taxa) − despesas}.
+     */
+    private static MetricasCicloRepasse metricasCicloRepasse(
+            Agregado a, BigDecimal taxaEsperadaPercent, BigDecimal valorAluguelContrato) {
+        BigDecimal baseTaxa = valorAluguelContrato != null && valorAluguelContrato.signum() > 0
+                ? valorAluguelContrato
+                : a.aluguel();
+        BigDecimal taxaEsperadaValor = baseTaxa.multiply(taxaEsperadaPercent).divide(CEM, 2, RoundingMode.HALF_UP);
+        BigDecimal repasseEsperado =
+                a.aluguel().subtract(taxaEsperadaValor).subtract(a.despesas()).setScale(2, RoundingMode.HALF_UP);
         return new MetricasCicloRepasse(taxaEsperadaValor, repasseEsperado);
     }
 
@@ -1530,13 +1550,34 @@ public class LocacaoReconciliacaoService {
                 .divide(a.aluguel(), 2, RoundingMode.HALF_UP);
     }
 
-    private StatusRepasse statusRepasse(Agregado a, BigDecimal taxaEsperada) {
+    private StatusRepasse statusRepasse(Agregado a, BigDecimal taxaEsperada, BigDecimal valorAluguelContrato) {
         if (!a.temRepasse()) {
             return StatusRepasse.PENDENTE;
         }
-        MetricasCicloRepasse metricas = metricasCicloRepasse(a, taxaEsperada);
+        MetricasCicloRepasse metricas = metricasCicloRepasse(a, taxaEsperada, valorAluguelContrato);
         BigDecimal diff = a.repassado().subtract(metricas.repasseEsperado()).abs();
         return diff.compareTo(TOLERANCIA_REPASSE) <= 0 ? StatusRepasse.FEITO : StatusRepasse.DIVERGENTE;
+    }
+
+    private BigDecimal aluguelRecebidoDaCompetencia(Long contratoId, String competencia) {
+        if (!StringUtils.hasText(competencia)) {
+            return null;
+        }
+        return vinculoRepository.findByContratoLocacao_IdAndCompetenciaMesOrderByIdAsc(contratoId, competencia)
+                .stream()
+                .filter(v -> v.getPapel() == PapelReconciliacao.ALUGUEL)
+                .map(v -> v.getValor() != null ? v.getValor().abs() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal repasseEsperadoRecebidoMenosTaxaContrato(
+            BigDecimal aluguelRecebido, ContratoLocacaoEntity contrato, BigDecimal despesas) {
+        BigDecimal recebido = aluguelRecebido != null ? aluguelRecebido : BigDecimal.ZERO;
+        BigDecimal valorContrato = contrato.getValorAluguel();
+        BigDecimal baseTaxa = valorContrato != null && valorContrato.signum() > 0 ? valorContrato : recebido;
+        BigDecimal taxaValor = baseTaxa.multiply(taxaEsperadaPercent(contrato)).divide(CEM, 2, RoundingMode.HALF_UP);
+        BigDecimal desp = despesas != null ? despesas : BigDecimal.ZERO;
+        return recebido.subtract(taxaValor).subtract(desp).setScale(2, RoundingMode.HALF_UP);
     }
 
     // ----------------------------------------------------------------------------------------- helpers

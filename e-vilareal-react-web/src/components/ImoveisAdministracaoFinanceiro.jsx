@@ -850,7 +850,16 @@ export function ImoveisAdministracaoFinanceiro() {
                       </div>
                       {String(resultado.statusRepasse).toUpperCase() === 'DIVERGENTE' ? (
                         <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
-                          Esperado <strong>{formatBRL(repasseEsperado(resultado))}</strong> · real{' '}
+                          Esperado{' '}
+                          <strong>
+                            {formatBRL(
+                              repasseEsperado(
+                                resultado,
+                                matriz?.valorAluguelContrato ?? contratoVigenteApi?.valorAluguel,
+                              ),
+                            )}
+                          </strong>{' '}
+                          · real{' '}
                           <strong>{formatBRL(resultado.repassado)}</strong>
                         </p>
                       ) : null}

@@ -134,6 +134,39 @@ export function calcularRepasseEsperado(valorAluguel, taxaPercent) {
   return Math.round(aluguel * fator * 100) / 100;
 }
 
+/**
+ * Repasse após recebimento: honorários sobre o valor nominal do contrato;
+ * repasse = recebido − honorários − despesas (caso Neemias: 1707,83 − 10% de 1750).
+ */
+export function calcularRepasseEsperadoAposRecebimento(
+  aluguelRecebido,
+  valorAluguelContrato,
+  taxaPercent,
+  despesas = 0,
+) {
+  const recebido = Number(aluguelRecebido) || 0;
+  const ref = parseValorMonetarioBr(valorAluguelContrato) ?? (Number(valorAluguelContrato) || 0);
+  const baseTaxa = ref > 0 ? ref : recebido;
+  const taxaValor = calcularHonorariosValor(baseTaxa, taxaPercent);
+  return Math.round((recebido - taxaValor - (Number(despesas) || 0)) * 100) / 100;
+}
+
+function ehAluguelTransacaoRelatorio(t, vinculos) {
+  const id = t?.apiId != null ? Number(t.apiId) : NaN;
+  if (Number.isFinite(id) && String(vinculos?.get(id)?.papel ?? '').toUpperCase() === 'ALUGUEL') {
+    return Number(t.valor) > 0;
+  }
+  return t.classificacao?.papel === PAPEL_ALUGUEL && Number(t.valor) > 0;
+}
+
+function ehRepasseTransacaoRelatorio(t, vinculos) {
+  const id = t?.apiId != null ? Number(t.apiId) : NaN;
+  if (Number.isFinite(id) && String(vinculos?.get(id)?.papel ?? '').toUpperCase() === 'REPASSE') {
+    return Number(t.valor) < 0;
+  }
+  return t.classificacao?.papel === PAPEL_REPASSE && Number(t.valor) < 0;
+}
+
 export function itemCadastroMinimoRelatorioImovel(par, numeroImovel) {
   return {
     imovelId: numeroImovel,
@@ -635,15 +668,15 @@ export function extrairTotaisFinanceirosMes(lancamentos, codigoCliente, proc, ch
     return ref === chaveMesYYYYMM;
   });
 
-  const aluguel = marcados.find((t) => t.classificacao?.papel === PAPEL_ALUGUEL && Number(t.valor) > 0);
-  const repasse = marcados.find((t) => t.classificacao?.papel === PAPEL_REPASSE && Number(t.valor) < 0);
+  const aluguel = marcados.find((t) => ehAluguelTransacaoRelatorio(t, vinculos));
+  const repasse = marcados.find((t) => ehRepasseTransacaoRelatorio(t, vinculos));
   return {
     totalAluguel: marcados
-      .filter((t) => t.classificacao?.papel === PAPEL_ALUGUEL && Number(t.valor) > 0)
+      .filter((t) => ehAluguelTransacaoRelatorio(t, vinculos))
       .reduce((s, t) => s + Number(t.valor || 0), 0),
     totalRepasse: Math.abs(
       marcados
-        .filter((t) => t.classificacao?.papel === PAPEL_REPASSE && Number(t.valor) < 0)
+        .filter((t) => ehRepasseTransacaoRelatorio(t, vinculos))
         .reduce((s, t) => s + Number(t.valor || 0), 0),
     ),
     dataPrimeiroAluguel: aluguel?.data ?? null,
@@ -688,9 +721,14 @@ export function linhaRelatorioFinanceiroFromCadastro(item, chaveMesYYYYMM, totai
 
   const valorReferenciaLocacao = parseValorMonetarioBr(item.valorLocacao) ?? 0;
   const taxaAdministracaoPercent = parseTaxaAdministracaoPercent(item.taxaAdministracaoPercent);
-  const baseCalculoRepasse = totalAluguel > 0 ? totalAluguel : valorReferenciaLocacao;
-  const honorariosValor = calcularHonorariosValor(baseCalculoRepasse, taxaAdministracaoPercent);
-  const repasseEsperado = calcularRepasseEsperado(baseCalculoRepasse, taxaAdministracaoPercent);
+  const honorariosValor = calcularHonorariosValor(
+    valorReferenciaLocacao > 0 ? valorReferenciaLocacao : totalAluguel,
+    taxaAdministracaoPercent,
+  );
+  const repasseEsperado =
+    totalAluguel > 0
+      ? calcularRepasseEsperadoAposRecebimento(totalAluguel, valorReferenciaLocacao, taxaAdministracaoPercent)
+      : calcularRepasseEsperado(valorReferenciaLocacao, taxaAdministracaoPercent);
   const alug = avaliarSituacaoFluxoMes({
     totalNoMes: totalAluguel,
     dataPrimeiroNoMes: dataPrimeiroAluguel,
