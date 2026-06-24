@@ -126,7 +126,7 @@ export function titulosGravadosSnapshotUtilizavel(gravados) {
 }
 
 /**
- * Usa valores gravados do txt onde existem; recalcula as linhas só com vencimento/valor.
+ * Exibe encargos recalculados (regra do programa) com vencimento/valor imutáveis do txt.
  * @param {unknown[]} gravados
  * @param {unknown[]} recalculados
  * @param {(lista: unknown[]) => unknown[]} mapTitulosAceitos
@@ -140,12 +140,25 @@ export function mesclarTitulosGravadosComRecalculo(gravados, recalculados, mapTi
   for (let i = 0; i < n; i++) {
     const gravado = g[i];
     const calc = r[i];
-    if (gravado && typeof gravado === 'object' && tituloGravadoTemCalculoSnapshot(gravado)) {
-      out.push(mapTitulosAceitos([gravado])[0]);
-    } else if (calc && typeof calc === 'object' && String(calc.valorInicial ?? '').trim() !== '') {
-      out.push(calc);
-    } else if (gravado && typeof gravado === 'object') {
-      out.push(gravado);
+    const gravadoComValor =
+      gravado && typeof gravado === 'object' && String(gravado.valorInicial ?? '').trim() !== ''
+        ? mapTitulosAceitos([gravado])[0]
+        : null;
+    const calcComValor =
+      calc && typeof calc === 'object' && String(calc.valorInicial ?? '').trim() !== '' ? calc : null;
+
+    if (gravadoComValor && calcComValor) {
+      out.push({
+        ...calcComValor,
+        dataVencimento: gravadoComValor.dataVencimento,
+        valorInicial: gravadoComValor.valorInicial,
+        descricaoValor: gravadoComValor.descricaoValor ?? calcComValor.descricaoValor,
+        datasEspeciais: gravadoComValor.datasEspeciais ?? calcComValor.datasEspeciais,
+      });
+    } else if (gravadoComValor) {
+      out.push(gravadoComValor);
+    } else if (calcComValor) {
+      out.push(calcComValor);
     } else {
       out.push(linhaTituloVaziaCalculos());
     }

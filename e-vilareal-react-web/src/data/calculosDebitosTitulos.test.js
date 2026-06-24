@@ -76,7 +76,7 @@ describe('calculosDebitosTitulos', () => {
     ).toBe('R$ 117,00');
   });
 
-  it('mesclarTitulosGravadosComRecalculo: linha sem snapshot usa recálculo', () => {
+  it('mesclarTitulosGravadosComRecalculo: encargos do recálculo, vencimento/valor do txt', () => {
     const map = (lista) => lista;
     const merged = mesclarTitulosGravadosComRecalculo(
       [
@@ -84,12 +84,14 @@ describe('calculosDebitosTitulos', () => {
         { valorInicial: 'R$ 200,00', dataVencimento: '01/02/2020' },
       ],
       [
-        { valorInicial: 'R$ 100,00', juros: 'R$ 99,00' },
+        { valorInicial: 'R$ 999,00', juros: 'R$ 99,00', multa: 'R$ 1,00' },
         { valorInicial: 'R$ 200,00', juros: 'R$ 50,00', multa: 'R$ 4,00' },
       ],
       map,
     );
-    expect(merged[0].juros).toBe('R$ 10,00');
+    expect(merged[0].valorInicial).toBe('R$ 100,00');
+    expect(merged[0].dataVencimento).toBe('01/01/2020');
+    expect(merged[0].juros).toBe('R$ 99,00');
     expect(merged[1].juros).toBe('R$ 50,00');
   });
 });

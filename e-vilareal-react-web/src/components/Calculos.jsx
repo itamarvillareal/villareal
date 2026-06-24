@@ -45,7 +45,6 @@ import { resolverTextosPartesCabecalhoCalculo } from '../data/processosDadosRela
 import {
   calcularTotalTituloGrade,
   mesclarTitulosGravadosComRecalculo,
-  titulosGravadosSnapshotUtilizavel,
   titulosGradeTemValor,
 } from '../data/calculosDebitosTitulos.js';
 import TitulosGrid from './calculos/TitulosGrid.jsx';
@@ -956,8 +955,8 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
 
   useEffect(() => {
     const dc = String(rodadaAtual.dataCalculoRodada ?? '').trim();
-    if (aceitarPagamento && dc) setDataCalculo(dc);
-  }, [rodadaKey, aceitarPagamento, rodadaAtual.dataCalculoRodada]);
+    if ((aceitarPagamento || calculoTravadoAceito) && dc) setDataCalculo(dc);
+  }, [rodadaKey, aceitarPagamento, calculoTravadoAceito, rodadaAtual.dataCalculoRodada]);
 
   // Preenche cabecalho.autor / .reu a partir de Processos + Cliente (API) ou histórico local, sem sobrescrever texto já salvo na rodada.
   useEffect(() => {
@@ -1056,14 +1055,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       });
     const fromEstado = Array.isArray(rodadaAtual.titulos) ? rodadaAtual.titulos : [];
     if (Array.isArray(gravados) && gravados.length > 0) {
-      const snapshotCompleto = titulosGravadosSnapshotUtilizavel(gravados);
-      if (snapshotCompleto && (calculoTravadoAceito || aceitarPagamento)) {
-        return mapTitulosAceitos(gravados);
-      }
-      if (!snapshotCompleto) {
-        return mesclarTitulosGravadosComRecalculo(gravados, fromEstado, mapTitulosAceitos);
-      }
-      return mapTitulosAceitos(gravados);
+      return mesclarTitulosGravadosComRecalculo(gravados, fromEstado, mapTitulosAceitos);
     }
     if (calculoTravadoAceito) {
       if (fromEstado.some((t) => String(t?.valorInicial ?? '').trim() !== '')) {
@@ -1075,7 +1067,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     return Array.isArray(t) ? t : [];
   }, [rodadaAtual, calculoTravadoAceito, aceitarPagamento]);
 
-  // Corrige estado persistido se um recálculo antigo sobrescreveu títulos gravados (aceito ou snapshot txt).
+  // Mantém vencimento/valor do txt; encargos vêm do recálculo (não do snapshot gravado).
   useEffect(() => {
     if (modoAlteracao) return;
     setRodadasState((prev) => {
@@ -1083,24 +1075,25 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       if (!cur) return prev;
       const gravados = cur.titulosGravadosAceito;
       if (!Array.isArray(gravados) || gravados.length === 0) return prev;
-      if (!titulosGravadosSnapshotUtilizavel(gravados)) return prev;
       const atual = cur.titulos;
-      if (Array.isArray(atual) && atual.length === gravados.length) {
-        const igual = gravados.every((g, i) => {
-          const a = atual[i];
-          return (
-            g?.juros === a?.juros &&
-            g?.multa === a?.multa &&
-            g?.atualizacaoMonetaria === a?.atualizacaoMonetaria &&
-            g?.total === a?.total
-          );
-        });
-        if (igual) return prev;
-      }
-      return {
-        ...prev,
-        [rodadaKey]: { ...cur, titulos: gravados.map((t) => ({ ...t })) },
-      };
+      if (!Array.isArray(atual) || atual.length !== gravados.length) return prev;
+      let changed = false;
+      const next = atual.map((a, i) => {
+        const g = gravados[i];
+        if (!g || typeof g !== 'object') return a;
+        const venc = String(g.dataVencimento ?? '').trim();
+        const val = String(g.valorInicial ?? '').trim();
+        if (
+          String(a?.dataVencimento ?? '').trim() === venc &&
+          String(a?.valorInicial ?? '').trim() === val
+        ) {
+          return a;
+        }
+        changed = true;
+        return { ...a, dataVencimento: g.dataVencimento, valorInicial: g.valorInicial };
+      });
+      if (!changed) return prev;
+      return { ...prev, [rodadaKey]: { ...cur, titulos: next } };
     });
   }, [rodadaKey, modoAlteracao, parcelamentoAceitoRodadaAtual]);
 
@@ -1589,7 +1582,9 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     const multaPct = parsePercent(multa);
     // dataOverride (quando informada) força a data do cálculo sem mexer no estado do aceite.
     // Sem override: travado usa a data do painel; liberado usa a data corrente (regra de negócio).
-    const dataCalcGlobal = dataOverride ?? (aceitarPagamento ? parseDateBR(dataCalculo) : parseDateBR(hojeBR()));
+    const dataCalcGlobal =
+      dataOverride ??
+      (aceitarPagamento || calculoTravadoAceito ? parseDateBR(dataCalculo) : parseDateBR(hojeBR()));
     const honorPctFixo = parsePercent(honorariosValor);
 
     let changed = false;
@@ -1697,9 +1692,8 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   // Usa `parcelamentoAceito` da rodada, não só o checkbox — evita corrida antes do sync do checkbox.
   useEffect(() => {
     const gravados = rodadaAtual.titulosGravadosAceito;
-    const snapshotParcial =
-      Array.isArray(gravados) && gravados.length > 0 && !titulosGravadosSnapshotUtilizavel(gravados);
-    if ((calculoTravadoAceito || aceitarPagamento) && !snapshotParcial) return;
+    const temGravadosImutaveis = Array.isArray(gravados) && gravados.length > 0;
+    if ((calculoTravadoAceito || aceitarPagamento) && !temGravadosImutaveis) return;
     if (featureFlags.useApiCalculos && !rodadaExisteNoEstado) return;
     if (!aceitarPagamento && !calculoTravadoAceito) {
       const hoje = hojeBR();
@@ -1722,10 +1716,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     setRodadasState((prev) => {
       const cur = prev[rodadaKey] || { ...rodadaAtual };
       const baseTitulos = Array.isArray(cur.titulos) ? cur.titulos : [];
-      const listaFull =
-        snapshotParcial && Array.isArray(gravados) && gravados.length
-          ? gravados
-          : baseTitulos;
+      const listaFull = temGravadosImutaveis ? gravados : baseTitulos;
       const { next, changed } = recalcularTitulos(listaFull, indicesMensaisINPC, indicesMensaisIPCA);
       if (!changed) return prev;
       isDirtyRodadaRef.current = true;
@@ -1763,9 +1754,8 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   // Carrega índices mensais do INPC antes de recalcular.
   useEffect(() => {
     const gravados = rodadaAtual.titulosGravadosAceito;
-    const snapshotParcial =
-      Array.isArray(gravados) && gravados.length > 0 && !titulosGravadosSnapshotUtilizavel(gravados);
-    if ((calculoTravadoAceito || aceitarPagamento) && !modoAlteracao && !snapshotParcial) return;
+    const temGravadosImutaveis = Array.isArray(gravados) && gravados.length > 0;
+    if ((calculoTravadoAceito || aceitarPagamento) && !modoAlteracao && !temGravadosImutaveis) return;
     const idxUpperGeral = String(indice).toUpperCase();
     const precisaINPC =
       idxUpperGeral === 'INPC' ||
@@ -1776,7 +1766,9 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       return;
     }
 
-    const dataCalcDate = parseDateBR(aceitarPagamento ? dataCalculo : hojeBR());
+    const dataCalcDate = parseDateBR(
+      aceitarPagamento || calculoTravadoAceito ? dataCalculo : hojeBR(),
+    );
     if (!dataCalcDate) return;
 
     // Busca o intervalo monetário coberto pelas “Datas Especiais” (por linha) e pela data geral.
@@ -1816,9 +1808,8 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   // Carrega índices mensais do IPCA (IPCA / “IPCA-E”) antes de recalcular.
   useEffect(() => {
     const gravados = rodadaAtual.titulosGravadosAceito;
-    const snapshotParcial =
-      Array.isArray(gravados) && gravados.length > 0 && !titulosGravadosSnapshotUtilizavel(gravados);
-    if ((calculoTravadoAceito || aceitarPagamento) && !modoAlteracao && !snapshotParcial) return;
+    const temGravadosImutaveis = Array.isArray(gravados) && gravados.length > 0;
+    if ((calculoTravadoAceito || aceitarPagamento) && !modoAlteracao && !temGravadosImutaveis) return;
     const idxUpper = String(indice).toUpperCase();
     const precisaIPCA =
       idxUpper === 'IPCA-E' ||
@@ -1833,7 +1824,9 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       return;
     }
 
-    const dataCalcDate = parseDateBR(aceitarPagamento ? dataCalculo : hojeBR());
+    const dataCalcDate = parseDateBR(
+      aceitarPagamento || calculoTravadoAceito ? dataCalculo : hojeBR(),
+    );
     if (!dataCalcDate) return;
 
     // Busca o intervalo monetário coberto pelas “Datas Especiais” (por linha) e pela data geral.
@@ -3542,11 +3535,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
         open={modalIndicesConferencia}
         onClose={() => setModalIndicesConferencia(false)}
         indice={indice}
-        titulos={
-          Array.isArray(rodadaAtual.titulosGravadosAceito) && rodadaAtual.titulosGravadosAceito.length
-            ? rodadaAtual.titulosGravadosAceito
-            : titulos
-        }
+        titulos={titulos}
         dataCalculo={dataCalculo}
         aceitarPagamento={aceitarPagamento}
         hojeBR={hojeBR}
