@@ -212,11 +212,26 @@ public class ImovelApplicationService {
     }
 
     private String resolverCodigoClienteImovelProcesso(ImovelEntity im, ProcessoEntity proc) {
+        String codProc = resolverCodigoClienteDoProcesso(proc);
+        if (StringUtils.hasText(codProc)) {
+            return codProc;
+        }
         if (im.getPessoa() != null) {
             String cod = resolverCodigoClienteDaPessoa(im.getPessoa().getId());
             if (StringUtils.hasText(cod)) {
                 return cod;
             }
+        }
+        return null;
+    }
+
+    /** Código de 8 dígitos do processo vinculado (cliente contratante), não da pessoa do imóvel. */
+    private String resolverCodigoClienteDoProcesso(ProcessoEntity proc) {
+        if (proc == null) {
+            return null;
+        }
+        if (proc.getCliente() != null && StringUtils.hasText(proc.getCliente().getCodigoCliente())) {
+            return CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(proc.getCliente().getCodigoCliente());
         }
         if (proc.getPessoa() != null) {
             String cod = resolverCodigoClienteDaPessoa(proc.getPessoa().getId());
@@ -584,6 +599,10 @@ public class ImovelApplicationService {
         if (procAtivo != null) {
             r.setProcessoId(procAtivo.getId());
             r.setNumeroInternoProcesso(procAtivo.getNumeroInterno());
+            String codEspelho = resolverCodigoClienteDoProcesso(procAtivo);
+            if (StringUtils.hasText(codEspelho)) {
+                r.setCodigoCliente(codEspelho);
+            }
         } else {
             r.setProcessoId(null);
             r.setNumeroInternoProcesso(null);

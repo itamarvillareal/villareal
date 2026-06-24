@@ -138,6 +138,31 @@ class ImovelApplicationServiceAbrirProcVinculoTest {
     }
 
     @Test
+    void abrirProcUsaCodigoDoProcessoQuandoPessoaDoImovelEDeOutroCliente() {
+        ClienteEntity cliente938 = clienteComCodigo("00000938");
+        PessoaEntity pessoa149 = new PessoaEntity();
+        pessoa149.setId(149L);
+
+        ProcessoEntity proc938 = processo(88034L, 34);
+        proc938.setCliente(cliente938);
+
+        ImovelEntity im = imovelBase();
+        im.setPessoa(pessoa149);
+        im.setProcesso(null);
+        im.setCamposExtrasJson("{\"codigo\":\"00000149\",\"proc\":\"34\"}");
+
+        stubImovelCadastro(im);
+        when(imovelProcessoRepository.findFirstByImovel_IdAndAtivoTrueOrderByIdDesc(IMOVEL_ID))
+                .thenReturn(Optional.of(vinculoAtivo(im, proc938)));
+
+        ImovelVinculosProcessoResponse out = service.listarVinculosProcessoPorImovelId(IMOVEL_ID);
+
+        assertThat(out.getVinculos()).hasSize(1);
+        assertThat(out.getVinculos().get(0).getCodigoCliente()).isEqualTo("00000938");
+        assertThat(out.getVinculos().get(0).getNumeroInterno()).isEqualTo(34);
+    }
+
+    @Test
     void abrirProcCaiNosExtrasQuandoSemNnNemEscalar() {
         ProcessoEntity procExtras = processo(1904L, 90);
         ImovelEntity im = imovelBase();
