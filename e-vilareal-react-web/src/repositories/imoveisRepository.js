@@ -751,7 +751,7 @@ function mesclarVinculosProcessoImovel(apiPayload, numeroPlanilha) {
     });
   }
 
-  /** Principal = último vínculo da API (cadastro imóvel); histórico legado do Processos não substitui. */
+  /** Principal = escolha persistida na API; senão último vínculo cadastrado. */
   merged.forEach((v) => {
     v.principal = false;
   });
@@ -797,7 +797,7 @@ export async function listarVinculosProcessoImovel(opts = {}) {
   }
 }
 
-/** Escolhe o vínculo atual: principal (último cadastrado) > cadastro atual > último da lista. */
+/** Escolhe o vínculo atual: principal (definido pelo usuário) > cadastro atual > último da lista. */
 export function escolherVinculoPrincipalProcessoLista(vinculos) {
   const lista = Array.isArray(vinculos) ? vinculos : [];
   return (
@@ -849,6 +849,31 @@ export async function resolverVinculoPrincipalProcessoImovel(imovel) {
 
   if (cacheKey) cacheVinculoPrincipalProcesso.set(cacheKey, resultado);
   return resultado;
+}
+
+/** Define o par Cod.+Proc. principal (vínculo atual) do imóvel — reflete no relatório e conta corrente. */
+export async function definirVinculoPrincipalProcessoImovelApi(opts = {}) {
+  if (!featureFlags.useApiImoveis) {
+    throw new Error('Ative a API de imóveis para definir o vínculo principal.');
+  }
+  const np = Number(opts.numeroPlanilha);
+  const idApi = Number(opts.imovelIdApi);
+  const codigoCliente = padCliente8(opts.codigoCliente);
+  const numeroInterno = Number(opts.numeroInterno);
+  if (!codigoCliente || !Number.isFinite(numeroInterno) || numeroInterno < 1) {
+    throw new Error('Informe código de cliente e proc. válidos.');
+  }
+  const body = { codigoCliente, numeroInterno: Math.trunc(numeroInterno) };
+  let payload;
+  if (Number.isFinite(idApi) && idApi > 0) {
+    payload = await request(`/api/imoveis/${idApi}/vinculo-principal`, { method: 'PUT', body });
+  } else if (Number.isFinite(np) && np >= 1) {
+    payload = await request(`/api/imoveis/por-numero-planilha/${np}/vinculo-principal`, { method: 'PUT', body });
+  } else {
+    throw new Error('Informe o imóvel (nº planilha ou id API).');
+  }
+  invalidarCacheVinculoPrincipalProcessoImovel();
+  return mesclarVinculosProcessoImovel(payload, payload?.numeroPlanilha ?? np);
 }
 
 function corpoPutImovelFromApi(imo, patch) {

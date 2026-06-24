@@ -43,6 +43,7 @@ public class ImovelApplicationService {
     private final ClienteResolverService clienteResolverService;
     private final ImovelProcessoLinkService imovelProcessoLinkService;
     private final ImovelProcessoRepository imovelProcessoRepository;
+    private final ImovelVinculoProcessoPrincipalRepository imovelVinculoProcessoPrincipalRepository;
 
     public ImovelApplicationService(
             ImovelRepository imovelRepository,
@@ -54,7 +55,8 @@ public class ImovelApplicationService {
             ObjectMapper objectMapper,
             ClienteResolverService clienteResolverService,
             ImovelProcessoLinkService imovelProcessoLinkService,
-            ImovelProcessoRepository imovelProcessoRepository) {
+            ImovelProcessoRepository imovelProcessoRepository,
+            ImovelVinculoProcessoPrincipalRepository imovelVinculoProcessoPrincipalRepository) {
         this.imovelRepository = imovelRepository;
         this.contratoLocacaoRepository = contratoLocacaoRepository;
         this.pessoaRepository = pessoaRepository;
@@ -65,6 +67,7 @@ public class ImovelApplicationService {
         this.clienteResolverService = clienteResolverService;
         this.imovelProcessoLinkService = imovelProcessoLinkService;
         this.imovelProcessoRepository = imovelProcessoRepository;
+        this.imovelVinculoProcessoPrincipalRepository = imovelVinculoProcessoPrincipalRepository;
     }
 
     @Transactional(readOnly = true)
@@ -138,7 +141,70 @@ public class ImovelApplicationService {
         return out;
     }
 
+    /**
+     * Define manualmente o par Cod.+Proc. principal (vínculo atual) do imóvel na planilha.
+     * Usado na conta corrente e no relatório financeiro.
+     */
+    @Transactional
+    public ImovelVinculosProcessoResponse definirVinculoProcessoPrincipal(
+            int numeroPlanilha, ImovelVinculoPrincipalWriteRequest req) {
+        if (numeroPlanilha < 1) {
+            throw new BusinessRuleException("numeroPlanilha inválido");
+        }
+        String cod8 = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(req.getCodigoCliente());
+        Integer proc = req.getNumeroInterno();
+        if (!StringUtils.hasText(cod8) || proc == null || proc < 1) {
+            throw new BusinessRuleException("Informe código de cliente e proc. válidos.");
+        }
+
+        List<ImovelVinculoProcessoItemResponse> vinculos = coletarVinculosProcessoSemPrincipal(numeroPlanilha, null);
+        boolean existe = vinculos.stream()
+                .anyMatch(v -> cod8.equals(v.getCodigoCliente()) && proc.equals(v.getNumeroInterno()));
+        if (!existe) {
+            throw new BusinessRuleException(
+                    "Par Cliente " + cod8 + " · Proc. " + proc + " não pertence aos vínculos deste imóvel.");
+        }
+
+        ImovelVinculoProcessoPrincipalEntity row = imovelVinculoProcessoPrincipalRepository
+                .findById(numeroPlanilha)
+                .orElseGet(() -> {
+                    ImovelVinculoProcessoPrincipalEntity novo = new ImovelVinculoProcessoPrincipalEntity();
+                    novo.setNumeroPlanilha(numeroPlanilha);
+                    return novo;
+                });
+        row.setCodigoCliente(cod8);
+        row.setNumeroInterno(proc);
+        imovelVinculoProcessoPrincipalRepository.save(row);
+
+        aplicarPrincipalPersistido(numeroPlanilha, vinculos);
+        ImovelVinculosProcessoResponse out = new ImovelVinculosProcessoResponse();
+        out.setNumeroPlanilha(numeroPlanilha);
+        out.setVinculos(vinculos);
+        return out;
+    }
+
+    @Transactional
+    public ImovelVinculosProcessoResponse definirVinculoProcessoPrincipalPorImovelId(
+            Long imovelId, ImovelVinculoPrincipalWriteRequest req) {
+        ImovelEntity ref = requireImovel(imovelId);
+        int numero = ref.getNumeroPlanilha() != null
+                ? ref.getNumeroPlanilha()
+                : extrairNumeroPlanilhaLegadoObservacoes(ref.getObservacoes());
+        if (numero < 1) {
+            throw new BusinessRuleException(
+                    "Imóvel sem número da planilha nem referência «planilha legado» nas observações.");
+        }
+        return definirVinculoProcessoPrincipal(numero, req);
+    }
+
     private List<ImovelVinculoProcessoItemResponse> coletarVinculosProcesso(int numeroPlanilha, Long imovelIdCadastroAtual) {
+        List<ImovelVinculoProcessoItemResponse> itens = coletarVinculosProcessoSemPrincipal(numeroPlanilha, imovelIdCadastroAtual);
+        aplicarPrincipalPersistido(numeroPlanilha, itens);
+        return itens;
+    }
+
+    private List<ImovelVinculoProcessoItemResponse> coletarVinculosProcessoSemPrincipal(
+            int numeroPlanilha, Long imovelIdCadastroAtual) {
         List<ImovelEntity> candidatos = imovelRepository.findAllPorNumeroPlanilhaLegado(numeroPlanilha);
         List<ImovelVinculoProcessoItemResponse> itens = new ArrayList<>();
 
@@ -149,10 +215,29 @@ public class ImovelApplicationService {
             }
         }
 
-        if (!itens.isEmpty()) {
-            itens.get(itens.size() - 1).setPrincipal(true);
-        }
         return itens;
+    }
+
+    private void aplicarPrincipalPersistido(int numeroPlanilha, List<ImovelVinculoProcessoItemResponse> itens) {
+        if (itens == null || itens.isEmpty()) {
+            return;
+        }
+        itens.forEach(i -> i.setPrincipal(false));
+
+        Optional<ImovelVinculoProcessoPrincipalEntity> pref =
+                imovelVinculoProcessoPrincipalRepository.findById(numeroPlanilha);
+        if (pref.isPresent()) {
+            String cod = pref.get().getCodigoCliente();
+            Integer proc = pref.get().getNumeroInterno();
+            for (ImovelVinculoProcessoItemResponse item : itens) {
+                if (cod.equals(item.getCodigoCliente()) && proc.equals(item.getNumeroInterno())) {
+                    item.setPrincipal(true);
+                    return;
+                }
+            }
+        }
+
+        itens.get(itens.size() - 1).setPrincipal(true);
     }
 
     private ImovelVinculoProcessoItemResponse montarVinculoProcessoDeImovel(

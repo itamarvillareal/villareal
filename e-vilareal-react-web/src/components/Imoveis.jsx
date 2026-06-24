@@ -898,6 +898,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
           setShowModalVinculosProc(false);
           navegarParaProcesso(codigoCliente, numeroInterno);
         }}
+        onPrincipalAlterado={recarregarListaImoveisPesquisa}
       />
 
       {/* Modal Informações sobre o IPTU (legado; desligado quando FEATURE_IPTU_NOVO) */}

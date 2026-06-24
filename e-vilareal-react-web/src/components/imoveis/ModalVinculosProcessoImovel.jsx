@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react';
-import { ExternalLink, X } from 'lucide-react';
+import { ExternalLink, Loader2, Star, X } from 'lucide-react';
 import { padCliente } from '../../data/processosDadosRelatorio.js';
-import { listarVinculosProcessoImovel } from '../../repositories/imoveisRepository.js';
+import { featureFlags } from '../../config/featureFlags.js';
+import {
+  definirVinculoPrincipalProcessoImovelApi,
+  listarVinculosProcessoImovel,
+} from '../../repositories/imoveisRepository.js';
 import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 import { imoveisBtnPrimary, imoveisBtnSecondary, imoveisBtnIconGhost } from './ImoveisAdminLayout.jsx';
 
@@ -13,8 +17,10 @@ export function ModalVinculosProcessoImovel({
   codigoCadastro,
   procCadastro,
   onAbrirProcesso,
+  onPrincipalAlterado,
 }) {
   const [carregando, setCarregando] = useState(false);
+  const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
   const [vinculos, setVinculos] = useState([]);
 
@@ -46,10 +52,31 @@ export function ModalVinculosProcessoImovel({
     };
   }, [open, numeroPlanilha, imovelIdApi]);
 
+  async function definirComoPrincipal(v) {
+    if (!featureFlags.useApiImoveis || v.principal) return;
+    setSalvando(true);
+    setErro('');
+    try {
+      const r = await definirVinculoPrincipalProcessoImovelApi({
+        numeroPlanilha,
+        imovelIdApi: imovelIdApi ?? undefined,
+        codigoCliente: v.codigoCliente,
+        numeroInterno: v.numeroInterno,
+      });
+      setVinculos(Array.isArray(r?.vinculos) ? r.vinculos : []);
+      onPrincipalAlterado?.();
+    } catch (e) {
+      setErro(e?.message || 'Não foi possível definir o vínculo principal.');
+    } finally {
+      setSalvando(false);
+    }
+  }
+
   if (!open) return null;
 
   const codCad = padCliente(codigoCadastro ?? '');
   const procCad = String(procCadastro ?? '').trim();
+  const vinculoPrincipal = vinculos.find((x) => x.principal) || vinculos[vinculos.length - 1] || null;
 
   return (
     <div
@@ -69,8 +96,8 @@ export function ModalVinculosProcessoImovel({
               Processos do imóvel {numeroPlanilha}
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              Pares Código + Proc. com este nº no campo Imóvel (Processos), na ordem de cadastro. O último é o
-              principal.
+              Pares Código + Proc. com este nº no campo Imóvel (Processos). Escolha qual é o{' '}
+              <strong>vínculo principal</strong> — ele alimenta a conta corrente e o relatório financeiro.
             </p>
           </div>
           <button type="button" onClick={onClose} className={imoveisBtnIconGhost} aria-label="Fechar">
@@ -95,7 +122,7 @@ export function ModalVinculosProcessoImovel({
                 const ehPrincipal = !!v.principal;
                 const ehCadastroAtual =
                   (codCad && procCad && cod === codCad && String(procN) === procCad) || v.cadastroAtual;
-                const destaque = ehPrincipal || ehCadastroAtual;
+                const destaque = ehPrincipal;
                 return (
                   <li
                     key={`${cod}-${procN}-${v.processoId ?? v.imovelId ?? 'x'}`}
@@ -105,28 +132,46 @@ export function ModalVinculosProcessoImovel({
                         : 'border-slate-200/80 dark:border-white/[0.08] bg-slate-50/50 dark:bg-white/[0.03]'
                     }`}
                   >
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 tabular-nums">
                         Cliente {cod} · Proc. {procN}
                       </p>
                       {ehPrincipal ? (
-                        <p className="text-[11px] text-teal-700 dark:text-teal-300 mt-0.5 font-medium">
-                          Principal (último cadastrado)
+                        <p className="text-[11px] text-teal-700 dark:text-teal-300 mt-0.5 font-medium flex items-center gap-1">
+                          <Star className="w-3 h-3 fill-current shrink-0" aria-hidden />
+                          Principal · vínculo atual
                         </p>
                       ) : ehCadastroAtual ? (
-                        <p className="text-[11px] text-teal-700 dark:text-teal-300 mt-0.5">
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                           Referência deste cadastro
                         </p>
                       ) : null}
                     </div>
-                    <button
-                      type="button"
-                      className={`${imoveisBtnSecondary} text-xs py-1.5 px-2.5`}
-                      onClick={() => onAbrirProcesso(cod, procN)}
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" aria-hidden />
-                      Abrir
-                    </button>
+                    <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                      {!ehPrincipal && featureFlags.useApiImoveis ? (
+                        <button
+                          type="button"
+                          disabled={salvando}
+                          onClick={() => void definirComoPrincipal(v)}
+                          className={`${imoveisBtnSecondary} text-xs py-1.5 px-2.5 inline-flex items-center gap-1`}
+                        >
+                          {salvando ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
+                          ) : (
+                            <Star className="w-3.5 h-3.5" aria-hidden />
+                          )}
+                          Definir principal
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        className={`${imoveisBtnSecondary} text-xs py-1.5 px-2.5`}
+                        onClick={() => onAbrirProcesso(cod, procN)}
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" aria-hidden />
+                        Abrir
+                      </button>
+                    </div>
                   </li>
                 );
               })}
@@ -138,13 +183,12 @@ export function ModalVinculosProcessoImovel({
           <button type="button" onClick={onClose} className={imoveisBtnSecondary}>
             Fechar
           </button>
-          {vinculos.length >= 1 ? (
+          {vinculoPrincipal ? (
             <button
               type="button"
               className={imoveisBtnPrimary}
               onClick={() => {
-                const v = vinculos.find((x) => x.principal) || vinculos[vinculos.length - 1];
-                onAbrirProcesso(padCliente(v.codigoCliente), Number(v.numeroInterno));
+                onAbrirProcesso(padCliente(vinculoPrincipal.codigoCliente), Number(vinculoPrincipal.numeroInterno));
               }}
             >
               Abrir processo principal

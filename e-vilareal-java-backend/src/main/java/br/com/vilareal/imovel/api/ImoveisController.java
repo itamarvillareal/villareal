@@ -5,6 +5,7 @@ import br.com.vilareal.imovel.api.dto.ImovelProcessoPatchRequest;
 import br.com.vilareal.imovel.api.dto.ImovelProcessoResponse;
 import br.com.vilareal.imovel.api.dto.ImovelProcessoWriteRequest;
 import br.com.vilareal.imovel.api.dto.ImovelResponse;
+import br.com.vilareal.imovel.api.dto.ImovelVinculoPrincipalWriteRequest;
 import br.com.vilareal.imovel.api.dto.ImovelVinculosProcessoResponse;
 import br.com.vilareal.imovel.api.dto.ImovelWriteRequest;
 import br.com.vilareal.imovel.application.ImovelApplicationService;
@@ -61,6 +62,20 @@ public class ImoveisController {
     @Operation(summary = "Listar vínculos processo do imóvel (pelo nº da planilha ou legado nas observações)")
     public ImovelVinculosProcessoResponse vinculosPorImovelId(@PathVariable Long id) {
         return imovelApplicationService.listarVinculosProcessoPorImovelId(id);
+    }
+
+    @PutMapping("/por-numero-planilha/{numeroPlanilha}/vinculo-principal")
+    @Operation(summary = "Definir o par Cod.+Proc. principal (vínculo atual) do imóvel na planilha")
+    public ImovelVinculosProcessoResponse definirVinculoPrincipalPorNumeroPlanilha(
+            @PathVariable int numeroPlanilha, @Valid @RequestBody ImovelVinculoPrincipalWriteRequest request) {
+        return imovelApplicationService.definirVinculoProcessoPrincipal(numeroPlanilha, request);
+    }
+
+    @PutMapping("/{id}/vinculo-principal")
+    @Operation(summary = "Definir o par Cod.+Proc. principal do imóvel (via nº da planilha)")
+    public ImovelVinculosProcessoResponse definirVinculoPrincipalPorImovelId(
+            @PathVariable Long id, @Valid @RequestBody ImovelVinculoPrincipalWriteRequest request) {
+        return imovelApplicationService.definirVinculoProcessoPrincipalPorImovelId(id, request);
     }
 
     @GetMapping("/{id}/processos")

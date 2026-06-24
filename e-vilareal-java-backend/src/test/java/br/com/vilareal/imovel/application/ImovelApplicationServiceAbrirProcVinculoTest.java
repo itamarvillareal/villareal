@@ -6,6 +6,7 @@ import br.com.vilareal.imovel.infrastructure.persistence.entity.ImovelProcessoEn
 import br.com.vilareal.imovel.infrastructure.persistence.repository.ContratoLocacaoRepository;
 import br.com.vilareal.imovel.infrastructure.persistence.repository.ImovelProcessoRepository;
 import br.com.vilareal.imovel.infrastructure.persistence.repository.ImovelRepository;
+import br.com.vilareal.imovel.infrastructure.persistence.repository.ImovelVinculoProcessoPrincipalRepository;
 import br.com.vilareal.pessoa.application.ClienteResolverService;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
@@ -48,6 +49,7 @@ class ImovelApplicationServiceAbrirProcVinculoTest {
     @Mock private ClienteResolverService clienteResolverService;
     @Mock private ImovelProcessoLinkService imovelProcessoLinkService;
     @Mock private ImovelProcessoRepository imovelProcessoRepository;
+    @Mock private ImovelVinculoProcessoPrincipalRepository imovelVinculoProcessoPrincipalRepository;
 
     private ImovelApplicationService service;
 
@@ -66,7 +68,8 @@ class ImovelApplicationServiceAbrirProcVinculoTest {
                 new ObjectMapper(),
                 clienteResolverService,
                 imovelProcessoLinkService,
-                imovelProcessoRepository);
+                imovelProcessoRepository,
+                imovelVinculoProcessoPrincipalRepository);
 
         pessoa = new PessoaEntity();
         pessoa.setId(929L);
