@@ -48,7 +48,9 @@ class FinanceiroContasBancariasEndpointTest {
                 mock(br.com.vilareal.financeiro.application.FinanceiroSemelhantesEscritorioService.class),
                 mock(br.com.vilareal.financeiro.application.FinanceiroFaturaCartaoFechamentoService.class),
                 mock(br.com.vilareal.financeiro.application.InboxClassificarApplicationService.class),
-                mock(br.com.vilareal.financeiro.application.ExtratoPosImportApplicationService.class));
+                mock(br.com.vilareal.financeiro.application.ExtratoPosImportApplicationService.class),
+                mock(br.com.vilareal.financeiro.application.ExtratoImportProtecaoService.class),
+                mock(br.com.vilareal.financeiro.application.LancamentoFinanceiroImportDedupService.class));
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 
