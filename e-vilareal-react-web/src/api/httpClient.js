@@ -2,6 +2,7 @@ import { API_BASE_URL } from './config.js';
 import { buildDefaultApiHeaders } from './apiAuthHeaders.js';
 import { getAccessToken } from './authTokenStorage.js';
 import { buildAuditoriaHeaders } from '../services/auditoriaCliente.js';
+import { parseApiJsonResponse } from './parseApiResponse.js';
 import { salvarResponseComoArquivo } from '../utils/streamFileDownload.js';
 
 function buildUrl(path, query) {
