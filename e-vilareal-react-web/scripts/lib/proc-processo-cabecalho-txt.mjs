@@ -131,16 +131,23 @@ export function caminhoArquivoUnidadeCalculos(baseBanco, codNum, numeroInterno, 
  * @param {PastaTipo} pastaTipo
  */
 function lerTextoTipo(baseBanco, codNum, numeroInterno, tipoMeio, pastaTipo) {
-  let abs = null;
   if (pastaTipo === 'calculos') {
-    abs = caminhoArquivoUnidadeCalculos(baseBanco, codNum, numeroInterno, tipoMeio);
-  } else {
-    const milhar = milharPastaClienteGerais(codNum);
-    const baseMil = path.join(baseBanco, pastaTipo === 'proc' ? 'Proc' : 'Gerais', milhar);
-    abs = caminhoArquivoTipoNumerico(baseMil, codNum, numeroInterno, tipoMeio);
+    const abs = caminhoArquivoUnidadeCalculos(baseBanco, codNum, numeroInterno, tipoMeio);
+    if (!abs || !fs.existsSync(abs)) return { texto: null, arquivo: null };
+    return { texto: readOneLineFile(abs), arquivo: abs };
   }
-  if (!abs || !fs.existsSync(abs)) return { texto: null, arquivo: null };
-  return { texto: readOneLineFile(abs), arquivo: abs };
+
+  const milhar = milharPastaClienteGerais(codNum);
+  const ordemPastas =
+    pastaTipo === 'gerais' ? ['Gerais', 'Proc'] : ['Proc', 'Gerais'];
+  for (const nome of ordemPastas) {
+    const baseMil = path.join(baseBanco, nome, milhar);
+    const abs = caminhoArquivoTipoNumerico(baseMil, codNum, numeroInterno, tipoMeio);
+    if (abs && fs.existsSync(abs)) {
+      return { texto: readOneLineFile(abs), arquivo: abs };
+    }
+  }
+  return { texto: null, arquivo: null };
 }
 
 /**
