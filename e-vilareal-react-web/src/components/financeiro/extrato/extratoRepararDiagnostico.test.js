@@ -156,6 +156,47 @@ describe('extratoRepararDiagnostico', () => {
     expect(diag.faltamNoSistema).toHaveLength(0);
   });
 
+  it('diagnosticarExtratoComOfxCore com overrides não sugere exclusão fora do período', () => {
+    const ofxText = [
+      'OFXHEADER:100',
+      'DATA:OFXSGML',
+      'OFXSGML',
+      '<OFX>',
+      '<BANKMSGSRSV1><STMTTRNRS><STMTRS>',
+      '<BANKTRANLIST>',
+      '<DTSTART>20260422000000',
+      '<DTEND>20260621000000',
+      '<STMTTRN>',
+      '<TRNTYPE>DEBIT',
+      '<DTPOSTED>20260515000000',
+      '<TRNAMT>-10.00',
+      '<FITID>parcial-1',
+      '<NAME>Teste periodo',
+      '</STMTTRN>',
+      '</BANKTRANLIST>',
+      '<LEDGERBAL><BALAMT>0.00</LEDGERBAL>',
+      '</STMTRS></STMTTRNRS></BANKMSGSRSV1>',
+      '</OFX>',
+    ].join('\n');
+
+    const existentePeriodo = [
+      { apiId: 2, data: '15/05/2026', valor: -10, numero: 'dup', descricao: 'Teste periodo' },
+    ];
+
+    const diag = diagnosticarExtratoComOfxCore({
+      ofxText,
+      existenteAll: existentePeriodo,
+      saldoApi: null,
+      sistemaTotalOverride: 2,
+      existenteIgnoradosForaPeriodoOverride: 1,
+    });
+
+    expect(diag.totais.existenteIgnoradosForaPeriodo).toBe(1);
+    expect(diag.totais.sistemaTotal).toBe(2);
+    expect(diag.sobramNoSistema.some((t) => Number(t.apiId) === 1)).toBe(false);
+    expect(diag.faltamNoSistema).toHaveLength(0);
+  });
+
   it('parseOfxAmount lê BALAMT com ponto decimal (formato Cora)', () => {
     const txt = ['<LEDGERBAL><BALAMT>-5743.46</BALAMT></LEDGERBAL>'].join('');
     expect(extrairMetadadosOfx(txt).saldoLedger).toBe(-5743.46);

@@ -240,17 +240,29 @@ async function main() {
     return { removidos, erros };
   };
 
-  const salvarLancamento = async (row) => {
-    const body = rowParaPayloadApi(row, contaNId, opts.banco, opts.numeroBanco);
-    const res = await fetch(`${opts.baseUrl}/api/financeiro/lancamentos`, {
-      method: 'POST',
-      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      throw new Error(`${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const salvarLancamentos = async (linhas) => {
+    const criados = [];
+    const erros = [];
+    for (const row of linhas) {
+      try {
+        const saved = await (async () => {
+          const body = rowParaPayloadApi(row, contaNId, opts.banco, opts.numeroBanco);
+          const res = await fetch(`${opts.baseUrl}/api/financeiro/lancamentos`, {
+            method: 'POST',
+            headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          if (!res.ok) {
+            throw new Error(`${res.status}: ${(await res.text()).slice(0, 200)}`);
+          }
+          return res.json();
+        })();
+        if (saved?.id) criados.push(Number(saved.id));
+      } catch (e) {
+        erros.push(`${row.numero} ${row.data}: ${e?.message || e}`);
+      }
     }
-    return res.json();
+    return { criados, erros };
   };
 
   const r = await executarAlinhamentoExtratoComOfxCore({
@@ -259,7 +271,7 @@ async function main() {
     nomeBanco: opts.banco,
     diagnosticar: carregarDiag,
     removerLote,
-    salvarLancamento,
+    salvarLancamentos,
   });
 
   console.log(`Excluídos: ${r.removidos}`);

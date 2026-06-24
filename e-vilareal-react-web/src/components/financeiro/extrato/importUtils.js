@@ -143,6 +143,44 @@ export async function carregarLancamentosExistentesBancoDesde(numeroBanco, dataC
   return out;
 }
 
+/** Lançamentos ATIVOS no intervalo DTSTART–DTEND (para diagnóstico Reparar). */
+export async function carregarLancamentosExistentesBancoNoPeriodo(
+  numeroBanco,
+  dataInicioIso,
+  dataFimIso,
+  signal,
+) {
+  const nb = Number(numeroBanco);
+  const dataInicio = String(dataInicioIso ?? '').slice(0, 10);
+  const dataFim = String(dataFimIso ?? '').slice(0, 10);
+  if (!Number.isFinite(nb) || !dataInicio || !dataFim) {
+    return { rows: [], totalInPeriod: 0 };
+  }
+
+  const contaToLetra = buildContaToLetraMerge(loadPersistedContasContabeisExtrasFinanceiro());
+  const out = [];
+  let page = 0;
+  let totalPages = 1;
+  let totalInPeriod = 0;
+  while (page < totalPages) {
+    const res = await listarLancamentosFinanceiroPaginados(
+      { numeroBanco: nb, dataInicio, dataFim, page, size: 500, sort: 'dataLancamento,asc' },
+      { signal },
+    );
+    if (page === 0) {
+      totalInPeriod = Number(res?.totalElements ?? 0);
+    }
+    const content = res?.content ?? [];
+    for (const l of content) {
+      out.push(extratoRowToUi(mapApiLancamentoToExtratoRow(l, contaToLetra)));
+    }
+    totalPages = Math.max(1, Number(res?.totalPages ?? 1));
+    page += 1;
+    if (!content.length) break;
+  }
+  return { rows: out, totalInPeriod: totalInPeriod || out.length };
+}
+
 function montarExistenteParaDedupe(existenteSemantico, numerosJaExistentes) {
   const out = [...(existenteSemantico || [])];
   const numerosCarregados = new Set(out.map((t) => String(t?.numero ?? '').trim()).filter(Boolean));

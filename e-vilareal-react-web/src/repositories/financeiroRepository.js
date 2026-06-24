@@ -884,6 +884,66 @@ export async function salvarOuAtualizarLancamentoFinanceiroApi(t) {
   return request('/api/financeiro/lancamentos', { method: 'POST', body });
 }
 
+/** Grava vários lançamentos de extrato em paralelo (importação / reparo). */
+export async function salvarLancamentosExtratoEmLote(
+  linhas,
+  { nomeBanco, numeroBanco, origemImportacao = 'OFX' } = {},
+) {
+  if (!featureFlags.useApiFinanceiro || !linhas?.length) {
+    return { criados: [], erros: [] };
+  }
+  const normBanco = String(nomeBanco || '').trim();
+  const nb =
+    numeroBanco != null && Number.isFinite(Number(numeroBanco)) ? Number(numeroBanco) : null;
+  const origem = String(origemImportacao || 'OFX').trim() || 'OFX';
+  const contas = await listarContasFinanceiro();
+  const contaIdByNome = new Map((contas || []).map((c) => [c.nome, c.id]));
+  const { letraToConta } = contaMaps();
+  const criados = [];
+  const erros = [];
+  const concorrencia = Math.min(8, Math.max(1, linhas.length));
+  let indice = 0;
+
+  async function salvarLinha(row) {
+    const t = sanitizarLancamentoImportacaoExtrato({
+      ...row,
+      nomeBanco: normBanco,
+      numeroBanco: nb,
+      origemImportacao: origem,
+    });
+    const body = mapUiLancamentoToApi(t, contaIdByNome, letraToConta);
+    if (!body?.contaContabilId || !body.numeroLancamento || !body.dataLancamento || !body.descricao) {
+      return {
+        ok: false,
+        erro: `${String(row.numero)} ${String(row.data)}: falha (verifique se existe a conta contábil «Conta Não Identificados» na API).`,
+      };
+    }
+    try {
+      const saved = await request('/api/financeiro/lancamentos', { method: 'POST', body });
+      if (saved?.id) return { ok: true, id: Number(saved.id) };
+      return {
+        ok: false,
+        erro: `${String(row.numero)} ${String(row.data)}: falha ao gravar`,
+      };
+    } catch (e) {
+      return { ok: false, erro: `${String(row.numero)} ${String(row.data)}: ${e?.message || e}` };
+    }
+  }
+
+  async function worker() {
+    while (indice < linhas.length) {
+      const i = indice;
+      indice += 1;
+      const res = await salvarLinha(linhas[i]);
+      if (res.ok) criados.push(res.id);
+      else if (res.erro) erros.push(res.erro);
+    }
+  }
+
+  await Promise.all(Array.from({ length: concorrencia }, () => worker()));
+  return { criados, erros };
+}
+
 /**
  * Grava na API os lançamentos de uma importação OFX (modo mesclar = só linhas novas; substituir = apaga lançamentos do banco na API e recria).
  * Com `useApiFinanceiro` desligado, retorna ok sem fazer nada.

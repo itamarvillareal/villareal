@@ -6,6 +6,7 @@ import {
 } from '../../../utils/ofx.js';
 import {
   aplicarProtecaoDataCorteImportacao,
+  aplicarProtecaoDataCorteImportacaoComData,
   formatarDataCorteBr,
 } from '../../../utils/extratoImportProtecao.js';
 
@@ -291,11 +292,24 @@ export function prepararImportacaoReparoExtrato(faltamNoSistema, nomeBanco, nume
 /**
  * Compara OFX com lançamentos já carregados (sem I/O).
  * Faltam/sobram limitam-se ao período DTSTART–DTEND do arquivo OFX.
+ *
+ * @param {object} opts
+ * @param {string} opts.ofxText
+ * @param {object[]} opts.existenteAll — lançamentos no período (ou todos, se OFX sem DTSTART/DTEND)
+ * @param {object[]} [opts.existenteMesclagem] — base para estimativa de mesclagem (janela desde data de corte)
+ * @param {object|null} [opts.saldoApi]
+ * @param {string|null} [opts.dataCorteOverride] YYYY-MM-DD (evita recalcular corte no browser)
+ * @param {number|null} [opts.sistemaTotalOverride] total ATIVO no banco (quando existenteAll é só o período)
+ * @param {number|null} [opts.existenteIgnoradosForaPeriodoOverride]
  */
 export function diagnosticarExtratoComOfxCore({
   ofxText,
   existenteAll,
+  existenteMesclagem = null,
   saldoApi = null,
+  dataCorteOverride = null,
+  sistemaTotalOverride = null,
+  existenteIgnoradosForaPeriodoOverride = null,
 }) {
   const meta = extrairMetadadosOfx(ofxText);
   const ofxRows = parseOfxToExtrato(ofxText).map((r) =>
@@ -307,13 +321,14 @@ export function diagnosticarExtratoComOfxCore({
     meta.dataInicio,
     meta.dataFim,
   );
-  const existenteIgnoradosForaPeriodo = existenteForaPeriodoOfx(
-    existenteAll,
-    meta.dataInicio,
-    meta.dataFim,
-  );
+  const existenteIgnoradosForaPeriodo =
+    existenteIgnoradosForaPeriodoOverride ??
+    existenteForaPeriodoOfx(existenteAll, meta.dataInicio, meta.dataFim).length;
 
-  const protecao = aplicarProtecaoDataCorteImportacao(ofxRows, existenteAll, { modo: 'mesclar' });
+  const dataCorteIso = dataCorteOverride ? String(dataCorteOverride).slice(0, 10) : null;
+  const protecao = dataCorteIso
+    ? aplicarProtecaoDataCorteImportacaoComData(ofxRows, dataCorteIso)
+    : aplicarProtecaoDataCorteImportacao(ofxRows, existenteAll, { modo: 'mesclar' });
 
   const ofxNoPeriodo = ofxDentroPeriodo(ofxRows, meta.dataInicio, meta.dataFim);
 
@@ -322,9 +337,13 @@ export function diagnosticarExtratoComOfxCore({
   });
   const faltamNoSistema = analiseFaltam.novos;
 
-  const analiseMesclagem = analisarLancamentosNovosDedupe(existenteAll, protecao.rows, {
-    respeitarExtratoComoMestre: false,
-  });
+  const analiseMesclagem = analisarLancamentosNovosDedupe(
+    existenteMesclagem ?? existenteAll,
+    protecao.rows,
+    {
+      respeitarExtratoComoMestre: false,
+    },
+  );
 
   const sobramNoSistema = montarSobramNoSistema(ofxNoPeriodo, existenteAll, meta);
   const deltasAlinhamento = calcularDeltasAlinhamentoSaldo({
@@ -339,14 +358,14 @@ export function diagnosticarExtratoComOfxCore({
   const totais = {
     ofxArquivo: ofxRows.length,
     ofxAposCorte: protecao.rows.length,
-    sistemaTotal: existenteAll.length,
+    sistemaTotal: sistemaTotalOverride ?? existenteAll.length,
     sistemaNoPeriodo: existenteNoPeriodo.length,
     faltamNoSistema: faltamNoSistema.length,
     faltamMesclagem: analiseMesclagem.novos.length,
     sobramNoSistema: sobramNoSistema.length,
-    existenteIgnoradosForaPeriodo: existenteIgnoradosForaPeriodo.length,
+    existenteIgnoradosForaPeriodo,
     /** @deprecated use existenteIgnoradosForaPeriodo */
-    sobramForaPeriodo: existenteIgnoradosForaPeriodo.length,
+    sobramForaPeriodo: existenteIgnoradosForaPeriodo,
     ignoradosDedupe: analiseFaltam.ignorados,
     ignoradosPorCorte: protecao.ignoradosPorCorte,
     somaOfxArquivo: somaValores(ofxRows),
@@ -386,7 +405,7 @@ export async function executarAlinhamentoExtratoComOfxCore({
   signal,
   diagnosticar,
   removerLote,
-  salvarLancamento,
+  salvarLancamentos,
 }) {
   let diag = await diagnosticar();
   if (!alinhamentoSaldoCoerenteComOfx(diag)) {
@@ -417,15 +436,11 @@ export async function executarAlinhamentoExtratoComOfxCore({
 
   const criados = [];
   const errosImportacao = [];
-  for (const row of importacao.linhas) {
-    if (signal?.aborted) break;
-    try {
-      const saved = await salvarLancamento(row);
-      if (saved?.id) criados.push(saved.id);
-      else errosImportacao.push(`${row.numero} ${row.data}: falha ao gravar`);
-    } catch (e) {
-      errosImportacao.push(`${row.numero} ${row.data}: ${e?.message || e}`);
-    }
+  const linhasImportacao = importacao.linhas ?? [];
+  if (linhasImportacao.length > 0) {
+    const batch = await salvarLancamentos(linhasImportacao, { signal });
+    criados.push(...(batch.criados ?? []));
+    errosImportacao.push(...(batch.erros ?? []));
   }
 
   const diagFinal = await diagnosticar();
