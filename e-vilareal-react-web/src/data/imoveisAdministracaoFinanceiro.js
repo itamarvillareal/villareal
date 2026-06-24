@@ -376,6 +376,76 @@ export function mesAnteriorChaveYYYYMM(chaveMesYYYYMM) {
   return `${yy}-${mm}`;
 }
 
+/** Intervalo ISO para buscar extrato do relatório (mês alvo + anterior + lookback de créditos). */
+export function intervaloDatasRelatorioFinanceiroImoveis(chaveMesYYYYMM) {
+  const parts = String(chaveMesYYYYMM ?? '').trim().split('-');
+  if (parts.length !== 2) return null;
+  const y = Number(parts[0]);
+  const m = Number(parts[1]);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return null;
+  const fim = new Date(y, m, 0);
+  const inicio = new Date(y, m - 1 - 6, 1);
+  const pad = (n) => String(n).padStart(2, '0');
+  return {
+    dataInicio: `${inicio.getFullYear()}-${pad(inicio.getMonth() + 1)}-01`,
+    dataFim: `${fim.getFullYear()}-${pad(fim.getMonth() + 1)}-${pad(fim.getDate())}`,
+  };
+}
+
+function totaisMesDeVinculosRows(vinculosRows, chaveMesYYYYMM) {
+  let totalAluguel = 0;
+  let totalRepasse = 0;
+  for (const v of vinculosRows || []) {
+    if (String(v?.competenciaMes ?? '') !== chaveMesYYYYMM) continue;
+    const papel = String(v?.papel ?? '').toUpperCase();
+    const val = Math.abs(Number(v?.valor) || 0);
+    if (papel === 'ALUGUEL') totalAluguel += val;
+    else if (papel === 'REPASSE') totalRepasse += val;
+  }
+  return {
+    totalAluguel,
+    totalRepasse,
+    dataPrimeiroAluguel: null,
+    dataPrimeiroRepasse: null,
+  };
+}
+
+/** Totais do mês a partir dos vínculos persistidos (sem extrato). */
+export function extrairTotaisFinanceirosMesDeVinculos(vinculosRows, chaveMesYYYYMM) {
+  return totaisMesDeVinculosRows(vinculosRows, chaveMesYYYYMM);
+}
+
+export function extrairTotaisFinanceirosMesComRepasseAnteriorDeVinculos(vinculosRows, chaveMesYYYYMM) {
+  const totais = extrairTotaisFinanceirosMesDeVinculos(vinculosRows, chaveMesYYYYMM);
+  const chaveAnterior = mesAnteriorChaveYYYYMM(chaveMesYYYYMM);
+  if (!chaveAnterior) return totais;
+  const anterior = extrairTotaisFinanceirosMesDeVinculos(vinculosRows, chaveAnterior);
+  return {
+    ...totais,
+    totalRepasseAnterior: anterior.totalRepasse,
+    dataPrimeiroRepasseAnterior: anterior.dataPrimeiroRepasse,
+    chaveMesAnterior: chaveAnterior,
+  };
+}
+
+export function competenciaTemVinculoRelevanteRelatorio(vinculosRows, chaveMesYYYYMM) {
+  return (vinculosRows || []).some((v) => {
+    if (String(v?.competenciaMes ?? '') !== chaveMesYYYYMM) return false;
+    const papel = String(v?.papel ?? '').toUpperCase();
+    return papel === 'ALUGUEL' || papel === 'REPASSE';
+  });
+}
+
+/** Quando há vínculo ALUGUEL/REPASSE no mês (ou anterior), não precisa baixar extrato. */
+export function podeUsarSomenteVinculosRelatorioFinanceiro(vinculosRows, chaveMesYYYYMM) {
+  if (!Array.isArray(vinculosRows) || vinculosRows.length === 0) return false;
+  const chaveAnterior = mesAnteriorChaveYYYYMM(chaveMesYYYYMM);
+  return (
+    competenciaTemVinculoRelevanteRelatorio(vinculosRows, chaveMesYYYYMM) ||
+    (chaveAnterior != null && competenciaTemVinculoRelevanteRelatorio(vinculosRows, chaveAnterior))
+  );
+}
+
 /**
  * @returns {{
  *   transacoes: Array<object & { classificacao: ReturnType<classificarLancamentoAdministracaoImovel> }>,

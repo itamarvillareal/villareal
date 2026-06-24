@@ -1282,6 +1282,40 @@ export async function listarLancamentosProcessoApiFirst({ processoId, codigoClie
   );
 }
 
+/** Extrato do processo no intervalo — sem consulta por clienteId (evita histórico inteiro / OOM). */
+export async function listarLancamentosProcessoNoPeriodoApiFirst({
+  processoId,
+  codigoCliente,
+  numeroInterno,
+  dataInicio,
+  dataFim,
+  signal,
+}) {
+  if (!featureFlags.useApiFinanceiro || !dataInicio || !dataFim) return [];
+  const codigoNorm = normalizarCodigoClienteFinanceiro(codigoCliente);
+  const procNorm = normalizarProcFinanceiro(numeroInterno);
+  const resolvedProcessoId = await resolverProcessoId({ processoId, codigoCliente, numeroInterno });
+  if (!resolvedProcessoId) return [];
+
+  const filtros = { processoId: resolvedProcessoId, dataInicio, dataFim };
+  const rows = mesclarLancamentosApiSemDuplicar(
+    await Promise.all([
+      listarLancamentosFinanceiro(filtros, { signal }),
+      listarLancamentosCartaoFinanceiro(filtros, { signal }),
+    ]),
+  );
+
+  const filtered = rows.filter((l) =>
+    lancamentoBateContaCorrenteProcesso(l, { codigoNorm, procNorm, resolvedProcessoId }),
+  );
+
+  const { contaToLetra } = contaMaps();
+  const ehCartao = (l) => l.cartaoId != null || String(l.cartaoNome ?? '').trim() !== '';
+  return filtered.map((l) =>
+    ehCartao(l) ? mapApiLancamentoCartaoToUi(l, contaToLetra) : mapApiLancamentoToUi(l, contaToLetra),
+  );
+}
+
 /** Cache local dos extratos: com API ativa continua útil para 1ª pintura e se o GET falhar ou atrasar. */
 export function persistirFallbackExtratos(extratos) {
   savePersistedExtratosFinanceiro(extratos);

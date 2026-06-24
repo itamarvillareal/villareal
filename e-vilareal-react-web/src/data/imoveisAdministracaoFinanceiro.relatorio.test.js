@@ -11,12 +11,15 @@ import {
   construirIndiceImoveisPorCodProc,
   extrairTotaisFinanceirosMes,
   extrairTotaisFinanceirosMesComRepasseAnterior,
+  extrairTotaisFinanceirosMesComRepasseAnteriorDeVinculos,
   filtrarLancamentosRelatorioFinanceiroMes,
   formatarDataVencimentoFluxoNoMes,
+  intervaloDatasRelatorioFinanceiroImoveis,
   linhaRelatorioFinanceiroFromCadastro,
   mesAnteriorChaveYYYYMM,
   montarLinhasRelatorioFinanceiroImoveisExtrato,
   montarPainelAdministracaoImovelDeTransacoes,
+  podeUsarSomenteVinculosRelatorioFinanceiro,
   paresCodProcComLancamentosNoMes,
   resolverNumeroImovelParCodProc,
 } from './imoveisAdministracaoFinanceiro.js';
@@ -431,5 +434,33 @@ describe('repasse do mês anterior', () => {
     );
     expect(linha.totalRepasseAnterior).toBe(1890);
     expect(linha.chaveMesAnterior).toBe('2026-05');
+  });
+});
+
+describe('intervaloDatasRelatorioFinanceiroImoveis / totais por vínculos', () => {
+  it('intervalo cobre lookback de 6 meses até fim do mês alvo', () => {
+    expect(intervaloDatasRelatorioFinanceiroImoveis('2026-06')).toEqual({
+      dataInicio: '2025-12-01',
+      dataFim: '2026-06-30',
+    });
+  });
+
+  it('extrai totais de vínculos ALUGUEL/REPASSE por competência', () => {
+    const rows = [
+      { papel: 'ALUGUEL', competenciaMes: '2026-06', valor: 1707.83 },
+      { papel: 'REPASSE', competenciaMes: '2026-06', valor: -1532.83 },
+      { papel: 'REPASSE', competenciaMes: '2026-05', valor: -1890 },
+    ];
+    const totais = extrairTotaisFinanceirosMesComRepasseAnteriorDeVinculos(rows, '2026-06');
+    expect(totais.totalAluguel).toBe(1707.83);
+    expect(totais.totalRepasse).toBe(1532.83);
+    expect(totais.totalRepasseAnterior).toBe(1890);
+  });
+
+  it('podeUsarSomenteVinculosRelatorioFinanceiro quando há ALUGUEL ou REPASSE no mês', () => {
+    const rows = [{ papel: 'ALUGUEL', competenciaMes: '2026-06', valor: 2100 }];
+    expect(podeUsarSomenteVinculosRelatorioFinanceiro(rows, '2026-06')).toBe(true);
+    expect(podeUsarSomenteVinculosRelatorioFinanceiro([], '2026-06')).toBe(false);
+    expect(podeUsarSomenteVinculosRelatorioFinanceiro(rows, '2026-05')).toBe(false);
   });
 });

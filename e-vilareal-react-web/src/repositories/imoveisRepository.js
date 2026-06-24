@@ -11,7 +11,10 @@ import {
   buildRelatorioFinanceiroImoveisMes,
   chaveParCodProc,
   extrairTotaisFinanceirosMesComRepasseAnterior,
+  extrairTotaisFinanceirosMesComRepasseAnteriorDeVinculos,
+  intervaloDatasRelatorioFinanceiroImoveis,
   montarPainelAdministracaoImovelDeTransacoes,
+  podeUsarSomenteVinculosRelatorioFinanceiro,
 } from '../data/imoveisAdministracaoFinanceiro.js';
 import { TAG_ADM_ALUGUEL } from '../data/imoveisAdministracaoFinanceiro.js';
 import {
@@ -31,6 +34,7 @@ import {
   listarLancamentosExtratoNoIntervalo,
   listarLancamentosFinanceiroPaginados,
   listarLancamentosProcessoApiFirst,
+  listarLancamentosProcessoNoPeriodoApiFirst,
   salvarOuAtualizarLancamentoFinanceiroApi,
 } from './financeiroRepository.js';
 import {
@@ -1099,19 +1103,17 @@ export async function carregarItensRelatorioImoveisApi() {
     return { ok: true, itens: [] };
   }
   try {
-    const results = await Promise.all(
-      list.map(async (im) => {
-        const np = im.numeroPlanilha != null ? Number(im.numeroPlanilha) : null;
-        const r =
-          Number.isFinite(np) && np >= 1
-            ? await carregarImovelCadastroPorNumeroPlanilha(np)
-            : await carregarImovelCadastro({ imovelId: im.id });
-        if (r.item) return r.item;
-        // Sempre incluir o imóvel: a lista GET já traz o mesmo shape de ImovelResponse; se o GET por id falhar, monta a linha só com esse payload + sem contrato.
-        const base = mapApiToUi(im, null);
-        return enriquecerNomesPartesImovelUi(base);
-      }),
-    );
+    const results = await mapComLimiteConcorrencia(list, 4, async (im) => {
+      const np = im.numeroPlanilha != null ? Number(im.numeroPlanilha) : null;
+      const r =
+        Number.isFinite(np) && np >= 1
+          ? await carregarImovelCadastroPorNumeroPlanilha(np)
+          : await carregarImovelCadastro({ imovelId: im.id });
+      if (r.item) return r.item;
+      // Sempre incluir o imóvel: a lista GET já traz o mesmo shape de ImovelResponse; se o GET por id falhar, monta a linha só com esse payload + sem contrato.
+      const base = mapApiToUi(im, null);
+      return enriquecerNomesPartesImovelUi(base);
+    });
     const itens = filtrarItensRelatorioPlanilhaAdmin(
       await enriquecerNomesPartesImoveisLote(results),
     );
@@ -1138,26 +1140,25 @@ export function vinculosMapFromApiRows(rows) {
 /**
  * Relatório financeiro (imóveis × mês): extratos bancários com Cod.+Proc., filtrado por nº de imóvel no processo.
  */
-const RELATORIO_FINANCEIRO_IMOVEIS_CONCORRENCIA = 6;
+const RELATORIO_FINANCEIRO_IMOVEIS_CONCORRENCIA = 4;
 export async function carregarRelatorioFinanceiroImoveisMes(chaveMesYYYYMM, opts = {}) {
   const { soOcupados = true, signal } = opts;
+  const intervaloExtrato = intervaloDatasRelatorioFinanceiroImoveis(chaveMesYYYYMM);
   const cad = await carregarItensRelatorioImoveisApi();
   if (!cad.ok) {
     return { ok: false, motivo: cad.motivo, linhas: [], ultimaCarga: null };
   }
 
   /** Cod.+proc. canônicos (N:N do imóvel) — evita buscar extrato do par errado (ex.: 938/4 vs 856/4). */
-  const itensCanon = await Promise.all(
-    (cad.itens || []).map(async (item) => {
-      const chave = await resolverChaveProcessoContaCorrentePainel(item);
-      return {
-        ...item,
-        codigo: chave.codigo || item.codigo,
-        proc: chave.proc || item.proc,
-        _apiProcessoId: chave.processoId ?? item._apiProcessoId ?? null,
-      };
-    }),
-  );
+  const itensCanon = await mapComLimiteConcorrencia(cad.itens || [], RELATORIO_FINANCEIRO_IMOVEIS_CONCORRENCIA, async (item) => {
+    const chave = await resolverChaveProcessoContaCorrentePainel(item);
+    return {
+      ...item,
+      codigo: chave.codigo || item.codigo,
+      proc: chave.proc || item.proc,
+      _apiProcessoId: chave.processoId ?? item._apiProcessoId ?? null,
+    };
+  });
 
   const totaisPorPar = new Map();
   const chavesVinculo = new Set();
@@ -1179,6 +1180,7 @@ export async function carregarRelatorioFinanceiroImoveisMes(chaveMesYYYYMM, opts
   }
 
   const vinculosPorPar = new Map();
+  const vinculosRowsPorPar = new Map();
   if (featureFlags.useApiImoveis) {
     await mapComLimiteConcorrencia(
       [...metaPorChave.entries()],
@@ -1188,6 +1190,7 @@ export async function carregarRelatorioFinanceiroImoveisMes(chaveMesYYYYMM, opts
         if (!Number.isFinite(contratoId) || contratoId <= 0) return;
         try {
           const rows = await listarVinculosReconciliacaoApi(contratoId);
+          vinculosRowsPorPar.set(chave, rows);
           vinculosPorPar.set(chave, vinculosMapFromApiRows(rows));
         } catch {
           /* relatório segue só com heurística do extrato */
@@ -1204,20 +1207,40 @@ export async function carregarRelatorioFinanceiroImoveisMes(chaveMesYYYYMM, opts
         const [cod, procNorm] = chave.split('|');
         const procNum = Number(procNorm);
         const meta = metaPorChave.get(chave) || {};
+        const vinculosRows = vinculosRowsPorPar.get(chave) || [];
+        const optsTotais = {
+          valorAluguelContrato: meta.valorLocacao,
+          nomeInquilino: meta.nomeInquilino,
+          vinculosPorLancamento: vinculosPorPar.get(chave),
+        };
         try {
-          const lancs = await listarLancamentosProcessoApiFirst({
-            codigoCliente: cod,
-            numeroInterno: Number.isFinite(procNum) && procNum >= 1 ? procNum : procNorm,
-            processoId: meta.processoId ?? undefined,
-            signal,
-          });
+          if (podeUsarSomenteVinculosRelatorioFinanceiro(vinculosRows, chaveMesYYYYMM)) {
+            totaisPorPar.set(
+              chave,
+              extrairTotaisFinanceirosMesComRepasseAnteriorDeVinculos(vinculosRows, chaveMesYYYYMM),
+            );
+            return;
+          }
+          const numeroInterno =
+            Number.isFinite(procNum) && procNum >= 1 ? procNum : procNorm;
+          const lancs = intervaloExtrato
+            ? await listarLancamentosProcessoNoPeriodoApiFirst({
+                codigoCliente: cod,
+                numeroInterno,
+                processoId: meta.processoId ?? undefined,
+                dataInicio: intervaloExtrato.dataInicio,
+                dataFim: intervaloExtrato.dataFim,
+                signal,
+              })
+            : await listarLancamentosProcessoApiFirst({
+                codigoCliente: cod,
+                numeroInterno,
+                processoId: meta.processoId ?? undefined,
+                signal,
+              });
           totaisPorPar.set(
             chave,
-            extrairTotaisFinanceirosMesComRepasseAnterior(lancs, Number(cod), procNum, chaveMesYYYYMM, {
-              valorAluguelContrato: meta.valorLocacao,
-              nomeInquilino: meta.nomeInquilino,
-              vinculosPorLancamento: vinculosPorPar.get(chave),
-            }),
+            extrairTotaisFinanceirosMesComRepasseAnterior(lancs, Number(cod), procNum, chaveMesYYYYMM, optsTotais),
           );
         } catch {
           /* mantém totais vazios para o par */
