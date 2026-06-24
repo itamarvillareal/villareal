@@ -19,7 +19,7 @@ public class ImovelVinculoProcessoPrincipalEntity {
     @Column(name = "numero_planilha", nullable = false)
     private Integer numeroPlanilha;
 
-    @Column(name = "codigo_cliente", nullable = false, length = 8)
+    @Column(name = "codigo_cliente", nullable = false, columnDefinition = "CHAR(8)")
     private String codigoCliente;
 
     @Column(name = "numero_interno", nullable = false)
