@@ -268,9 +268,9 @@ export function RelatorioFinanceiroImoveis() {
               descrição/categoria, ou deixe o sistema inferir por texto quando o processo for de administração de imóvel.
               {featureFlags.useApiFinanceiro ? (
                 <span className="block mt-1">
-                  Totais e datas do mês vêm da API financeira; situação (prazo) usa os dias cadastrados no contrato.
-                  Honorários e repasse previsto usam a taxa de administração (%) do contrato — padrão 10%.
-                  A coluna «Repasse (mês ant.)» traz o repasse efetivo do extrato no mês anterior ao selecionado.
+                  Totais e repasse do mês anterior vêm da reconciliação no servidor (vínculos ALUGUEL/REPASSE) —
+                  o relatório não baixa extratos inteiros no navegador. Situação (prazo) usa os dias cadastrados no
+                  contrato. Honorários e repasse previsto usam a taxa de administração (%) do contrato — padrão 10%.
                 </span>
               ) : (
                 <span className="block mt-1 text-amber-800 dark:text-amber-200">

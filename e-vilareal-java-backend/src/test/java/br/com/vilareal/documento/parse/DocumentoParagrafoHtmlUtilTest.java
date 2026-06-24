@@ -48,6 +48,17 @@ class DocumentoParagrafoHtmlUtilTest {
     }
 
     @Test
+    void normalizarHtmlLegadoCorpo_preservaCitacaoSublinhadoDestacado() {
+        String html = DocumentoParagrafoHtmlUtil.normalizarHtmlLegadoCorpo(
+                "<p>Parágrafo com <u>sublinhado</u> e <mark>destaque</mark>.</p>"
+                        + "<p class=\"citacao\">Art. 239 do CPC.</p>");
+
+        assertThat(html).contains("<u>sublinhado</u>");
+        assertThat(html).contains("<mark>destaque</mark>");
+        assertThat(html).contains("<p class=\"citacao\">Art. 239 do CPC.</p>");
+    }
+
+    @Test
     void roundTrip_paragrafosToHtml_e_htmlToParagrafos() {
         List<ParagrafoDocumento> originais = List.of(
                 new ParagrafoDocumento(TipoParagrafo.ENUMERACAO, List.of(new TextoFormatado("a) item", false, false, false))),

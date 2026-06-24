@@ -31,6 +31,7 @@ public final class DocumentoParagrafoHtmlUtil {
                 switch (paragrafo.tipo()) {
                     case ENUMERACAO -> "enumeracao";
                     case FECHO -> "fecho";
+                    case CITACAO -> "citacao";
                     default -> "corpo";
                 };
         return "<p class=\"" + cls + "\">" + runsToHtml(paragrafo.conteudo()) + "</p>";
@@ -117,26 +118,35 @@ public final class DocumentoParagrafoHtmlUtil {
         }
         StringBuilder sb = new StringBuilder();
         for (TextoFormatado r : runs) {
-            String t = escapeHtml(r.texto());
-            if (!StringUtils.hasText(t)) {
-                continue;
-            }
-            if (r.negrito() && r.italico()) {
-                sb.append("<strong><em>").append(t).append("</em></strong>");
-            } else if (r.negrito()) {
-                sb.append("<strong>").append(t).append("</strong>");
-            } else if (r.italico()) {
-                sb.append("<em>").append(t).append("</em>");
-            } else {
-                sb.append(t);
-            }
+            sb.append(runToHtml(r));
         }
         return sb.toString();
     }
 
+    private static String runToHtml(TextoFormatado r) {
+        String t = escapeHtml(r.texto());
+        if (!StringUtils.hasText(t)) {
+            return "";
+        }
+        if (r.negrito() && r.italico()) {
+            t = "<strong><em>" + t + "</em></strong>";
+        } else if (r.negrito()) {
+            t = "<strong>" + t + "</strong>";
+        } else if (r.italico()) {
+            t = "<em>" + t + "</em>";
+        }
+        if (r.sublinhado()) {
+            t = "<u>" + t + "</u>";
+        }
+        if (r.destacado()) {
+            t = "<mark>" + t + "</mark>";
+        }
+        return t;
+    }
+
     private static List<TextoFormatado> parseRuns(Element el) {
         List<TextoFormatado> runs = new ArrayList<>();
-        parseRunsRec(el, runs, false, false);
+        parseRunsRec(el, runs, false, false, false, false);
         if (runs.isEmpty()) {
             String texto = el.text();
             if (StringUtils.hasText(texto)) {
@@ -146,11 +156,17 @@ public final class DocumentoParagrafoHtmlUtil {
         return runs;
     }
 
-    private static void parseRunsRec(Node node, List<TextoFormatado> runs, boolean negrito, boolean italico) {
+    private static void parseRunsRec(
+            Node node,
+            List<TextoFormatado> runs,
+            boolean negrito,
+            boolean italico,
+            boolean sublinhado,
+            boolean destacado) {
         if (node instanceof TextNode tn) {
             String t = tn.text();
             if (StringUtils.hasText(t)) {
-                runs.add(new TextoFormatado(t, negrito, italico, false));
+                runs.add(new TextoFormatado(t, negrito, italico, false, sublinhado, destacado));
             }
             return;
         }
@@ -160,8 +176,10 @@ public final class DocumentoParagrafoHtmlUtil {
         String tag = el.tagName().toLowerCase(Locale.ROOT);
         boolean n = negrito || tag.equals("strong") || tag.equals("b");
         boolean i = italico || tag.equals("em") || tag.equals("i");
+        boolean s = sublinhado || tag.equals("u");
+        boolean d = destacado || tag.equals("mark");
         for (Node child : el.childNodes()) {
-            parseRunsRec(child, runs, n, i);
+            parseRunsRec(child, runs, n, i, s, d);
         }
     }
 
@@ -175,6 +193,9 @@ public final class DocumentoParagrafoHtmlUtil {
         }
         if (c.contains("fecho")) {
             return TipoParagrafo.FECHO;
+        }
+        if (c.contains("citacao")) {
+            return TipoParagrafo.CITACAO;
         }
         return padrao;
     }

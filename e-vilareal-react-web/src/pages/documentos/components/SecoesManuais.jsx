@@ -1,7 +1,8 @@
 import { Plus, Trash2 } from 'lucide-react';
 import { Field } from '../../../components/ui/Field.jsx';
+import { HtmlEditor } from './HtmlEditor.jsx';
 import { PedidosEspecificos } from './PedidosEspecificos.jsx';
-import { btnGhost, fieldErrorClass, inputClass, textareaClass } from '../documentosStyles.js';
+import { btnGhost, fieldErrorClass, inputClass } from '../documentosStyles.js';
 
 export function SecoesManuais({ values, onChange, errors = {} }) {
   const secoes = values.secoes?.length
@@ -25,11 +26,11 @@ export function SecoesManuais({ values, onChange, errors = {} }) {
   return (
     <div className="grid gap-6">
       <Field label="Preâmbulo (qualificação das partes) *">
-        <textarea
-          className={`${textareaClass} min-h-[140px] font-mono text-xs`}
+        <HtmlEditor
+          ariaLabel="Preâmbulo"
           value={values.preambulo}
-          onChange={(e) => onChange({ preambulo: e.target.value })}
-          placeholder="HTML: &lt;strong&gt;FULANO&lt;/strong&gt;, brasileiro…"
+          onChange={(preambulo) => onChange({ preambulo })}
+          minHeight="140px"
         />
         {errors.preambulo && <p className={fieldErrorClass}>{errors.preambulo}</p>}
       </Field>
@@ -68,12 +69,12 @@ export function SecoesManuais({ values, onChange, errors = {} }) {
                   <Trash2 className="h-4 w-4" aria-hidden />
                 </button>
               </div>
-              <Field label="Conteúdo (HTML)">
-                <textarea
-                  className={`${textareaClass} min-h-[120px] font-mono text-xs`}
+              <Field label="Conteúdo">
+                <HtmlEditor
+                  ariaLabel={`Conteúdo da seção ${secao.titulo || index + 1}`}
                   value={secao.conteudo}
-                  onChange={(e) => atualizarSecao(index, { conteudo: e.target.value })}
-                  placeholder="&lt;p&gt;Parágrafo…&lt;/p&gt;"
+                  onChange={(conteudo) => atualizarSecao(index, { conteudo })}
+                  minHeight="120px"
                 />
               </Field>
             </div>

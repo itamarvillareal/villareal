@@ -1,6 +1,7 @@
 package br.com.vilareal.documento;
 
 import br.com.vilareal.common.exception.BusinessRuleException;
+import br.com.vilareal.documento.parse.DocumentoLocalDataResolver;
 import br.com.vilareal.documento.tema.DocumentoTemaResolver;
 import br.com.vilareal.documento.tema.TemaDocumento;
 import com.openhtmltopdf.extend.FSSupplier;
@@ -81,9 +82,13 @@ public class DocumentoPdfService {
         String cidadeEstado = ctx.cidadeEstado() != null && !ctx.cidadeEstado().isBlank()
                 ? ctx.cidadeEstado()
                 : "Anápolis, estado de Goiás";
-        String localData = StringUtils.hasText(ctx.localDataCustom())
-                ? ctx.localDataCustom()
-                : montarLocalData(cidadeEstado, data);
+        String localData;
+        if (StringUtils.hasText(ctx.localDataCustom())) {
+            localData = ctx.localDataCustom();
+        } else {
+            String dataIso = data != null ? data.toString() : null;
+            localData = DocumentoLocalDataResolver.resolver(cidadeEstado, dataIso, null, this);
+        }
         if (!StringUtils.hasText(localData)) {
             localData = montarLocalData("Anápolis, estado de Goiás", data);
         }

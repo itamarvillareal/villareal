@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { ENDERECAMENTOS } from '../pages/documentos/constants.js';
 import {
   inferirEnderecamento,
+  formatarLocalData,
+  formatarDataExtensoPeticao,
+  extrairCidadeEstadoDeLocalData,
+  extrairDataIsoDeLocalData,
   mapearDadosProcessoParaFormIA,
   mapearDadosProcessoParaFormManual,
   montarPreambuloSugerido,
@@ -20,6 +24,32 @@ describe('montarTrechoAcaoPreambuloHtml', () => {
   it('parte cliente requerida (ré) recebe ação da oposta', () => {
     expect(montarTrechoAcaoPreambuloHtml('requerido', 'Digittos Ltda')).toBe(
       'na ação que lhe move <strong>DIGITTOS LTDA</strong>',
+    );
+  });
+});
+
+describe('formatarLocalData', () => {
+  it('monta cidade + data por extenso com ponto final', () => {
+    expect(formatarLocalData('Anápolis, estado de Goiás', '2026-06-24')).toBe(
+      'Anápolis, estado de Goiás, 24 de junho de 2026.',
+    );
+  });
+
+  it('preserva data já informada no texto', () => {
+    expect(formatarLocalData('Anápolis, estado de Goiás, 1 de junho de 2026.')).toBe(
+      'Anápolis, estado de Goiás, 1 de junho de 2026.',
+    );
+  });
+
+  it('extrai ISO de local completo', () => {
+    expect(extrairDataIsoDeLocalData('Anápolis, estado de Goiás, 24 de junho de 2026.')).toBe(
+      '2026-06-24',
+    );
+  });
+
+  it('extrai só cidade/estado sem a data', () => {
+    expect(extrairCidadeEstadoDeLocalData('Anápolis, estado de Goiás, 24 de junho de 2026.')).toBe(
+      'Anápolis, estado de Goiás',
     );
   });
 });

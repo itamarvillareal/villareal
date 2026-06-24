@@ -8,7 +8,9 @@ import br.com.vilareal.imovel.api.dto.ImovelResponse;
 import br.com.vilareal.imovel.api.dto.ImovelVinculoPrincipalWriteRequest;
 import br.com.vilareal.imovel.api.dto.ImovelVinculosProcessoResponse;
 import br.com.vilareal.imovel.api.dto.ImovelWriteRequest;
+import br.com.vilareal.imovel.api.dto.RelatorioFinanceiroImoveisResponse;
 import br.com.vilareal.imovel.application.ImovelApplicationService;
+import br.com.vilareal.imovel.application.RelatorioFinanceiroImoveisService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -25,15 +27,27 @@ import java.util.List;
 public class ImoveisController {
 
     private final ImovelApplicationService imovelApplicationService;
+    private final RelatorioFinanceiroImoveisService relatorioFinanceiroImoveisService;
 
-    public ImoveisController(ImovelApplicationService imovelApplicationService) {
+    public ImoveisController(
+            ImovelApplicationService imovelApplicationService,
+            RelatorioFinanceiroImoveisService relatorioFinanceiroImoveisService) {
         this.imovelApplicationService = imovelApplicationService;
+        this.relatorioFinanceiroImoveisService = relatorioFinanceiroImoveisService;
     }
 
     @GetMapping
     @Operation(summary = "Listar imóveis")
     public List<ImovelResponse> listar() {
         return imovelApplicationService.listarImoveis();
+    }
+
+    @GetMapping("/relatorio-financeiro")
+    @Operation(summary = "Relatório financeiro imóveis × competência (totais no servidor, sem extrato no browser)")
+    public RelatorioFinanceiroImoveisResponse relatorioFinanceiro(
+            @RequestParam String competencia,
+            @RequestParam(defaultValue = "true") boolean soOcupados) {
+        return relatorioFinanceiroImoveisService.gerar(competencia, soOcupados);
     }
 
     @GetMapping("/numero-por-vinculo")

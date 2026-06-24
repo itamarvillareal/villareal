@@ -8,13 +8,8 @@ import {
   normalizarProcFinanceiro,
 } from '../data/financeiroData.js';
 import {
-  buildRelatorioFinanceiroImoveisMes,
-  chaveParCodProc,
-  extrairTotaisFinanceirosMesComRepasseAnterior,
-  extrairTotaisFinanceirosMesComRepasseAnteriorDeVinculos,
-  intervaloDatasRelatorioFinanceiroImoveis,
+  mapRelatorioFinanceiroBackendParaLinhas,
   montarPainelAdministracaoImovelDeTransacoes,
-  podeUsarSomenteVinculosRelatorioFinanceiro,
 } from '../data/imoveisAdministracaoFinanceiro.js';
 import { TAG_ADM_ALUGUEL } from '../data/imoveisAdministracaoFinanceiro.js';
 import {
@@ -34,7 +29,6 @@ import {
   listarLancamentosExtratoNoIntervalo,
   listarLancamentosFinanceiroPaginados,
   listarLancamentosProcessoApiFirst,
-  listarLancamentosProcessoNoPeriodoApiFirst,
   salvarOuAtualizarLancamentoFinanceiroApi,
 } from './financeiroRepository.js';
 import {
@@ -1189,18 +1183,38 @@ export async function carregarItensRelatorioImoveisApi() {
     return { ok: true, itens: [] };
   }
   try {
-    const results = await mapComLimiteConcorrencia(list, 4, async (im) => {
+    const numerosPlanilha = new Set();
+    const extrasSemPlanilha = [];
+    for (const im of list) {
       const np = im.numeroPlanilha != null ? Number(im.numeroPlanilha) : null;
-      const r =
-        Number.isFinite(np) && np >= 1
-          ? await carregarImovelCadastroPorNumeroPlanilha(np)
-          : await carregarImovelCadastro({ imovelId: im.id });
+      if (Number.isFinite(np) && np >= 1 && np <= MAX_NUMERO_PLANILHA_RELATORIO_IMOVEIS) {
+        numerosPlanilha.add(np);
+      } else if (im?.id) {
+        extrasSemPlanilha.push(im);
+      }
+    }
+
+    const numerosOrdenados = [...numerosPlanilha].sort((a, b) => a - b);
+    const porPlanilha = await mapComLimiteConcorrencia(numerosOrdenados, 4, async (np) => {
+      const r = await carregarImovelCadastroPorNumeroPlanilha(np);
       if (r.item) return r.item;
-      // Sempre incluir o imóvel: a lista GET já traz o mesmo shape de ImovelResponse; se o GET por id falhar, monta a linha só com esse payload + sem contrato.
+      const candidatos = list.filter((i) => Number(i.numeroPlanilha) === np);
+      const melhor = escolherMelhorImovelApiPorNumeroPlanilha(candidatos);
+      if (!melhor) return null;
+      let base = mapApiToUi(melhor, null);
+      base = await enriquecerCodigoProcDoVinculo(base, melhor);
+      return enriquecerNomesPartesImovelUi(base);
+    });
+
+    const extras = await mapComLimiteConcorrencia(extrasSemPlanilha, 2, async (im) => {
+      const r = await carregarImovelCadastro({ imovelId: im.id });
+      if (r.item) return r.item;
       let base = mapApiToUi(im, null);
       base = await enriquecerCodigoProcDoVinculo(base, im);
       return enriquecerNomesPartesImovelUi(base);
     });
+
+    const results = [...porPlanilha, ...extras].filter(Boolean);
     const itens = filtrarItensRelatorioPlanilhaAdmin(
       await enriquecerNomesPartesImoveisLote(results),
     );
@@ -1225,137 +1239,26 @@ export function vinculosMapFromApiRows(rows) {
 }
 
 /**
- * Relatório financeiro (imóveis × mês): extratos bancários com Cod.+Proc., filtrado por nº de imóvel no processo.
+ * Relatório financeiro (imóveis × mês): totais calculados no backend (sem extrato no browser).
  */
-const RELATORIO_FINANCEIRO_IMOVEIS_CONCORRENCIA = 4;
 export async function carregarRelatorioFinanceiroImoveisMes(chaveMesYYYYMM, opts = {}) {
   const { soOcupados = true, signal } = opts;
-  const intervaloExtrato = intervaloDatasRelatorioFinanceiroImoveis(chaveMesYYYYMM);
-  const cad = await carregarItensRelatorioImoveisApi();
-  if (!cad.ok) {
-    return { ok: false, motivo: cad.motivo, linhas: [], ultimaCarga: null };
+  if (!featureFlags.useApiImoveis) {
+    return { ok: false, motivo: 'Ative VITE_USE_API_IMOVEIS e use o backend para gerar o relatório.', linhas: [], ultimaCarga: null };
   }
-
-  /** Cod.+proc. canônicos (N:N do imóvel) — evita buscar extrato do par errado (ex.: 938/4 vs 856/4). */
-  const itensCanon = await mapComLimiteConcorrencia(cad.itens || [], RELATORIO_FINANCEIRO_IMOVEIS_CONCORRENCIA, async (item) => {
-    const chave = await resolverChaveProcessoContaCorrentePainel(item);
-    return {
-      ...item,
-      codigo: chave.codigo || item.codigo,
-      proc: chave.proc || item.proc,
-      _apiProcessoId: chave.processoId ?? item._apiProcessoId ?? null,
-    };
-  });
-
-  const totaisPorPar = new Map();
-  const chavesVinculo = new Set();
-  const metaPorChave = new Map();
-  for (const item of itensCanon) {
-    const cod = normalizarCodigoClienteFinanceiro(item.codigo);
-    const procNorm = normalizarProcFinanceiro(item.proc);
-    const chave = chaveParCodProc(cod, procNorm);
-    if (chave) {
-      chavesVinculo.add(chave);
-      const prev = metaPorChave.get(chave);
-      metaPorChave.set(chave, {
-        processoId: item._apiProcessoId ?? prev?.processoId ?? null,
-        contratoId: item._apiContratoId ?? prev?.contratoId ?? null,
-        valorLocacao: item.valorLocacao ?? prev?.valorLocacao ?? null,
-        nomeInquilino: item.inquilino ?? prev?.nomeInquilino ?? null,
-      });
-    }
-  }
-
-  const vinculosPorPar = new Map();
-  const vinculosRowsPorPar = new Map();
-  if (featureFlags.useApiImoveis) {
-    await mapComLimiteConcorrencia(
-      [...metaPorChave.entries()],
-      RELATORIO_FINANCEIRO_IMOVEIS_CONCORRENCIA,
-      async ([chave, meta]) => {
-        const contratoId = Number(meta.contratoId);
-        if (!Number.isFinite(contratoId) || contratoId <= 0) return;
-        try {
-          const rows = await listarVinculosReconciliacaoApi(contratoId);
-          vinculosRowsPorPar.set(chave, rows);
-          vinculosPorPar.set(chave, vinculosMapFromApiRows(rows));
-        } catch {
-          /* relatório segue só com heurística do extrato */
-        }
+  try {
+    const res = await request('/api/imoveis/relatorio-financeiro', {
+      signal,
+      query: {
+        competencia: chaveMesYYYYMM,
+        soOcupados,
       },
-    );
+    });
+    const linhas = mapRelatorioFinanceiroBackendParaLinhas(res?.linhas, chaveMesYYYYMM);
+    return { ok: true, linhas, ultimaCarga: new Date() };
+  } catch (e) {
+    return { ok: false, motivo: e?.message || 'Falha ao gerar o relatório.', linhas: [], ultimaCarga: null };
   }
-
-  if (featureFlags.useApiFinanceiro) {
-    await mapComLimiteConcorrencia(
-      [...chavesVinculo],
-      RELATORIO_FINANCEIRO_IMOVEIS_CONCORRENCIA,
-      async (chave) => {
-        const [cod, procNorm] = chave.split('|');
-        const procNum = Number(procNorm);
-        const meta = metaPorChave.get(chave) || {};
-        const vinculosRows = vinculosRowsPorPar.get(chave) || [];
-        const optsTotais = {
-          valorAluguelContrato: meta.valorLocacao,
-          nomeInquilino: meta.nomeInquilino,
-          vinculosPorLancamento: vinculosPorPar.get(chave),
-        };
-        try {
-          if (podeUsarSomenteVinculosRelatorioFinanceiro(vinculosRows, chaveMesYYYYMM)) {
-            totaisPorPar.set(
-              chave,
-              extrairTotaisFinanceirosMesComRepasseAnteriorDeVinculos(vinculosRows, chaveMesYYYYMM),
-            );
-            return;
-          }
-          const numeroInterno =
-            Number.isFinite(procNum) && procNum >= 1 ? procNum : procNorm;
-          const lancs = intervaloExtrato
-            ? await listarLancamentosProcessoNoPeriodoApiFirst({
-                codigoCliente: cod,
-                numeroInterno,
-                processoId: meta.processoId ?? undefined,
-                dataInicio: intervaloExtrato.dataInicio,
-                dataFim: intervaloExtrato.dataFim,
-                signal,
-              })
-            : await listarLancamentosProcessoApiFirst({
-                codigoCliente: cod,
-                numeroInterno,
-                processoId: meta.processoId ?? undefined,
-                signal,
-              });
-          totaisPorPar.set(
-            chave,
-            extrairTotaisFinanceirosMesComRepasseAnterior(lancs, Number(cod), procNum, chaveMesYYYYMM, optsTotais),
-          );
-        } catch {
-          /* mantém totais vazios para o par */
-        }
-      },
-    );
-  } else {
-    for (const chave of chavesVinculo) {
-      const [cod, procNorm] = chave.split('|');
-      const meta = metaPorChave.get(chave) || {};
-      const lancs = getTransacoesContaCorrenteCompleto(cod, procNorm);
-      totaisPorPar.set(
-        chave,
-        extrairTotaisFinanceirosMesComRepasseAnterior(lancs, Number(cod), Number(procNorm), chaveMesYYYYMM, {
-          valorAluguelContrato: meta.valorLocacao,
-          nomeInquilino: meta.nomeInquilino,
-          vinculosPorLancamento: vinculosPorPar.get(chave),
-        }),
-      );
-    }
-  }
-
-  const linhas = buildRelatorioFinanceiroImoveisMes(itensCanon, chaveMesYYYYMM, {
-    soOcupados,
-    totaisPorPar,
-  });
-
-  return { ok: true, linhas, ultimaCarga: new Date() };
 }
 
 export async function salvarImovelCadastro(uiPayload) {

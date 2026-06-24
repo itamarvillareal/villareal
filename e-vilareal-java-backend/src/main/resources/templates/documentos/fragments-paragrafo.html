@@ -6,13 +6,16 @@
         <strong th:if="${trecho.negrito && !trecho.italico}" th:text="${trecho.texto}">texto</strong>
         <em th:if="${trecho.italico && !trecho.negrito}" th:text="${trecho.texto}">texto</em>
         <strong th:if="${trecho.negrito && trecho.italico}"><em th:text="${trecho.texto}">texto</em></strong>
-        <span th:if="${!trecho.negrito && !trecho.italico}" th:text="${trecho.texto}">texto</span>
+        <u th:if="${trecho.sublinhado && !trecho.negrito && !trecho.italico}" th:text="${trecho.texto}">texto</u>
+        <mark th:if="${trecho.destacado && !trecho.negrito && !trecho.italico && !trecho.sublinhado}" th:text="${trecho.texto}">texto</mark>
+        <span th:if="${!trecho.negrito && !trecho.italico && !trecho.sublinhado && !trecho.destacado}" th:text="${trecho.texto}">texto</span>
     </th:block>
 </th:block>
 
 <th:block th:fragment="paragrafo(paragrafo)">
     <p th:class="${paragrafo.tipo.name() == 'ENUMERACAO' ? 'enumeracao' :
-                   paragrafo.tipo.name() == 'FECHO' ? 'fecho' : 'corpo'}">
+                   paragrafo.tipo.name() == 'FECHO' ? 'fecho' :
+                   paragrafo.tipo.name() == 'CITACAO' ? 'citacao' : 'corpo'}">
         <th:block th:replace="~{documentos/fragments-paragrafo :: runs(${paragrafo.conteudo})}"/>
     </p>
 </th:block>

@@ -1282,6 +1282,30 @@ export async function listarLancamentosProcessoApiFirst({ processoId, codigoClie
   );
 }
 
+async function listarLancamentosBancoProcessoNoPeriodoPaginado(filtros, opts = {}) {
+  const { signal } = opts;
+  const out = [];
+  let page = 0;
+  let totalPages = 1;
+  while (page < totalPages) {
+    const res = await listarLancamentosFinanceiroPaginados(
+      {
+        processoId: filtros.processoId,
+        dataInicio: filtros.dataInicio,
+        dataFim: filtros.dataFim,
+        page,
+        size: 120,
+        sort: 'dataLancamento,asc',
+      },
+      { signal },
+    );
+    totalPages = Math.max(1, Number(res.totalPages) || 0);
+    out.push(...(res.content || []));
+    page += 1;
+  }
+  return out;
+}
+
 /** Extrato do processo no intervalo — sem consulta por clienteId (evita histórico inteiro / OOM). */
 export async function listarLancamentosProcessoNoPeriodoApiFirst({
   processoId,
@@ -1300,7 +1324,7 @@ export async function listarLancamentosProcessoNoPeriodoApiFirst({
   const filtros = { processoId: resolvedProcessoId, dataInicio, dataFim };
   const rows = mesclarLancamentosApiSemDuplicar(
     await Promise.all([
-      listarLancamentosFinanceiro(filtros, { signal }),
+      listarLancamentosBancoProcessoNoPeriodoPaginado(filtros, { signal }),
       listarLancamentosCartaoFinanceiro(filtros, { signal }),
     ]),
   );

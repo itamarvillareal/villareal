@@ -887,15 +887,54 @@ export function linhaRelatorioFinanceiroFromCadastro(item, chaveMesYYYYMM, totai
  * @param {{ soOcupados?: boolean }} opts
  */
 export function buildRelatorioFinanceiroImoveisMes(itens, chaveMesYYYYMM, opts = {}) {
-  const { soOcupados = true, totaisPorPar = new Map() } = opts;
+  const { soOcupados = true, totaisPorPar = new Map(), totaisPorImovel = new Map() } = opts;
   return (itens || [])
     .filter((item) => !soOcupados || item.imovelOcupado)
     .map((item) => {
       const chave = chaveParCodProc(item.codigo, item.proc);
-      const totais = chave ? totaisPorPar.get(chave) || {} : {};
+      const totais =
+        totaisPorImovel.get(Number(item.imovelId)) ||
+        (chave ? totaisPorPar.get(chave) : {}) ||
+        {};
       return linhaRelatorioFinanceiroFromCadastro(item, chaveMesYYYYMM, totais);
     })
     .sort((a, b) => (Number(a.imovelId) || 0) - (Number(b.imovelId) || 0));
+}
+
+/** Converte linhas do GET /api/imoveis/relatorio-financeiro para o shape da UI. */
+export function mapRelatorioFinanceiroBackendParaLinhas(linhasBackend, chaveMesYYYYMM) {
+  return (linhasBackend || []).map((row) => {
+    const codRaw = row?.codigoCliente != null ? String(row.codigoCliente).replace(/\D/g, '') : '';
+    const codNum = codRaw ? Number.parseInt(codRaw, 10) : 0;
+    const item = {
+      imovelId: row.numeroPlanilha,
+      imovelOcupado: row.imovelOcupado !== false,
+      codigo: codNum > 0 ? codNum : codRaw || '',
+      proc: row.numeroInterno != null ? String(row.numeroInterno) : '',
+      unidade: row.unidade ?? '',
+      condominio: row.condominio ?? '',
+      inquilino: row.inquilino ?? '',
+      proprietario: row.proprietario ?? '',
+      valorLocacao:
+        row.valorAluguel != null && Number.isFinite(Number(row.valorAluguel))
+          ? Number(row.valorAluguel).toLocaleString('pt-BR', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })
+          : '',
+      diaPagAluguel:
+        row.diaVencimentoAluguel != null ? String(row.diaVencimentoAluguel).padStart(2, '0') : '',
+      diaRepasse: row.diaRepasse != null ? String(row.diaRepasse).padStart(2, '0') : '',
+      taxaAdministracaoPercent: row.taxaAdministracaoPercent,
+    };
+    const totais = {
+      totalAluguel: Number(row.totalAluguel) || 0,
+      totalRepasse: Number(row.totalRepasse) || 0,
+      totalRepasseAnterior: Number(row.totalRepasseAnterior) || 0,
+      chaveMesAnterior: row.chaveMesAnterior ?? mesAnteriorChaveYYYYMM(chaveMesYYYYMM),
+    };
+    return linhaRelatorioFinanceiroFromCadastro(item, chaveMesYYYYMM, totais);
+  });
 }
 
 /**

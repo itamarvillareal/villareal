@@ -8,7 +8,7 @@ import { Field } from '../../../components/ui/Field.jsx';
 import { ENDERECAMENTOS } from '../constants.js';
 import { fieldErrorClass, inputClass } from '../documentosStyles.js';
 import { resolveEnderecamento } from './DadosProcesso.jsx';
-import { inferirEnderecamento, formatarCidadeEstado } from '../../../helpers/documentoHelper.js';
+import { inferirEnderecamento, formatarCidadeEstado, formatarLocalData } from '../../../helpers/documentoHelper.js';
 import { pad8 } from './configModeloDocumentoState.js';
 
 /**
@@ -73,7 +73,7 @@ export function ConfigModeloDocumento({ values, onChange, errors = {}, onProcess
         valorCausa: proc.valorCausa != null ? String(proc.valorCausa) : values.valorCausa,
         enderecamentoSelect: matchEnd || (end ? '__outro__' : values.enderecamentoSelect),
         enderecamentoOutro: matchEnd ? '' : end || values.enderecamentoOutro,
-        cidadeEstado: formatarCidadeEstado(proc.cidade, proc.uf || proc.estado),
+        cidadeEstado: formatarLocalData(formatarCidadeEstado(proc.cidade, proc.uf || proc.estado)),
       });
       return proc;
     },

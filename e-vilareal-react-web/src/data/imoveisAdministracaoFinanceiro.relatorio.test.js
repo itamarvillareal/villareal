@@ -16,6 +16,7 @@ import {
   formatarDataVencimentoFluxoNoMes,
   intervaloDatasRelatorioFinanceiroImoveis,
   linhaRelatorioFinanceiroFromCadastro,
+  mapRelatorioFinanceiroBackendParaLinhas,
   mesAnteriorChaveYYYYMM,
   montarLinhasRelatorioFinanceiroImoveisExtrato,
   montarPainelAdministracaoImovelDeTransacoes,
@@ -455,6 +456,34 @@ describe('intervaloDatasRelatorioFinanceiroImoveis / totais por vínculos', () =
     expect(totais.totalAluguel).toBe(1707.83);
     expect(totais.totalRepasse).toBe(1532.83);
     expect(totais.totalRepasseAnterior).toBe(1890);
+  });
+
+  it('mapRelatorioFinanceiroBackendParaLinhas monta linha da UI', () => {
+    const [linha] = mapRelatorioFinanceiroBackendParaLinhas(
+      [
+        {
+          numeroPlanilha: 14,
+          imovelOcupado: true,
+          unidade: 'Unidade 1205 B',
+          codigoCliente: '00000938',
+          numeroInterno: 41,
+          valorAluguel: 2300,
+          taxaAdministracaoPercent: 10,
+          diaVencimentoAluguel: 10,
+          diaRepasse: 15,
+          totalAluguel: 2300,
+          totalRepasse: 2070,
+          totalRepasseAnterior: 1890,
+          chaveMesAnterior: '2026-05',
+        },
+      ],
+      '2026-06',
+    );
+    expect(linha.imovelId).toBe(14);
+    expect(linha.codigo).toBe(938);
+    expect(linha.proc).toBe('41');
+    expect(linha.totalAluguel).toBe(2300);
+    expect(linha.totalRepasseAnterior).toBe(1890);
   });
 
   it('podeUsarSomenteVinculosRelatorioFinanceiro quando há ALUGUEL ou REPASSE no mês', () => {

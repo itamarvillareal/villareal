@@ -14,6 +14,7 @@ import {
 import {
   mapearDadosProcessoParaFormIA,
   mapearDadosProcessoParaFormManual,
+  extrairCidadeEstadoDeLocalData,
   extrairDataIsoDeLocalData,
   formatarLocalData,
   LOCAL_DATA_PADRAO,
@@ -158,7 +159,7 @@ function montarPeticaoAiRequest(form, processoId) {
     pedidosEspecificos: pedidos.length ? pedidos : null,
     modeloBase: opcional(form.modeloBase),
     instrucoesAdicionais: opcional(form.instrucoesAdicionais),
-    cidadeEstado: form.cidadeEstado?.trim() || LOCAL_DATA_PADRAO,
+    cidadeEstado: extrairCidadeEstadoDeLocalData(form.cidadeEstado),
     data: extrairDataIsoDeLocalData(form.cidadeEstado) || hojeIso(),
   };
   if (processoId != null && processoId !== '') payload.processoId = Number(processoId);
@@ -177,7 +178,7 @@ function montarDocumentoManualRequest(form, processoId) {
     preambulo: form.preambulo.trim(),
     secoes,
     pedidos,
-    cidadeEstado: form.cidadeEstado?.trim() || LOCAL_DATA_PADRAO,
+    cidadeEstado: extrairCidadeEstadoDeLocalData(form.cidadeEstado),
     data: extrairDataIsoDeLocalData(form.cidadeEstado) || hojeIso(),
     ...(processoId != null && processoId !== '' ? { processoId: Number(processoId) } : {}),
   };

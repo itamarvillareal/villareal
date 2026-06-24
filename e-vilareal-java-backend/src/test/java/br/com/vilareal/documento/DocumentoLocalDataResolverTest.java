@@ -37,6 +37,18 @@ class DocumentoLocalDataResolverTest {
     }
 
     @Test
+    void formularioComLocalDataCompletoNaoDuplicaData() {
+        String local = DocumentoLocalDataResolver.resolver(
+                "Anápolis, estado de Goiás, 24 de junho de 2026.",
+                "2026-06-24",
+                null,
+                pdfService);
+
+        assertThat(local).isEqualTo("Anápolis, estado de Goiás, 24 de junho de 2026.");
+        assertThat(local).doesNotContain("24 de junho de 2026., 24");
+    }
+
+    @Test
     void documentoComPlaceholderUsaFormularioOuDataIso() {
         String doc = "Anápolis, estado de Goiás, ____ de junho de 2026.";
 

@@ -117,6 +117,17 @@ export function extrairDataIsoDeLocalData(texto) {
   return `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
 }
 
+/** Só a parte «cidade, estado de …» — sem a data por extenso (evita duplicar no PDF). */
+export function extrairCidadeEstadoDeLocalData(texto) {
+  const entrada = String(texto ?? CIDADE_ESTADO_PADRAO).trim() || CIDADE_ESTADO_PADRAO;
+  return (
+    entrada
+      .replace(/\s*,\s*\d{1,2}\s+de\s+[a-zç]+\s+de\s+\d{4}\.?\s*$/i, '')
+      .replace(/\.$/, '')
+      .trim() || CIDADE_ESTADO_PADRAO
+  );
+}
+
 /** Espelha o backend: «24 de junho de 2026». */
 export function formatarDataExtensoPeticao(isoOrDate) {
   const raw = String(isoOrDate ?? '').trim();

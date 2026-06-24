@@ -1,4 +1,4 @@
-import { CIDADE_ESTADO_PADRAO } from '../constants.js';
+import { LOCAL_DATA_PADRAO } from '../../../helpers/documentoHelper.js';
 
 export function pad8(cod) {
   const d = String(cod ?? '').replace(/\D/g, '');
@@ -15,5 +15,5 @@ export const estadoInicialConfigModelo = () => ({
   numeroProcesso: '',
   valorCausa: '',
   dataDocumento: new Date().toISOString().split('T')[0],
-  cidadeEstado: CIDADE_ESTADO_PADRAO,
+  cidadeEstado: LOCAL_DATA_PADRAO,
 });
