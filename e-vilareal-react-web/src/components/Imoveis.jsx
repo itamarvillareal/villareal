@@ -315,8 +315,10 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
               const lista = await listarImoveisApi();
               if (!ativo) return;
               if (lista.length > 0) {
-                const first =
-                  lista[0].numeroPlanilha != null ? Number(lista[0].numeroPlanilha) : Number(lista[0].id);
+                const comPlanilha = lista.find(
+                  (im) => im.numeroPlanilha != null && Number(im.numeroPlanilha) >= 1,
+                );
+                const first = comPlanilha != null ? Number(comPlanilha.numeroPlanilha) : NaN;
                 if (Number.isFinite(first) && first > 0 && first !== numero) {
                   setImovelId(first);
                   return;
@@ -633,11 +635,15 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   }
 
   function onSelecionarImovelPesquisa(im) {
-    const n = im.numeroPlanilha != null ? Number(im.numeroPlanilha) : Number(im.id);
-    if (Number.isFinite(n) && n > 0) {
+    const np = im.numeroPlanilha != null ? Number(im.numeroPlanilha) : NaN;
+    if (Number.isFinite(np) && np >= 1) {
       setPesquisaCondUnidade('');
-      setImovelId(n);
+      setImovelId(np);
+      return;
     }
+    setApiError(
+      'Este registro não tem número da planilha (col. A). Corrija o cadastro na API antes de abrir pelo nº do imóvel.',
+    );
   }
 
   useEffect(() => {

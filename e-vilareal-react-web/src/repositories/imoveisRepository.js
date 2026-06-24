@@ -1038,6 +1038,11 @@ export async function carregarImovelCadastroParaPainel({ imovelId, imovelIdApi }
   return { fonte: 'api', item: null, encontrado: false };
 }
 
+/**
+ * Cadastro completo por **id interno** da API (`imovel.id`).
+ * Não use o nº da planilha (col. A) aqui — risco de carregar outro imóvel (ex.: planilha 6 → id 21, mas id 6 → planilha 31).
+ * Para UI com nº da planilha, use {@link carregarImovelCadastroParaPainel}.
+ */
 export async function carregarImovelCadastro({ imovelId }) {
   if (!featureFlags.useApiImoveis) {
     return { fonte: 'legado', item: null, encontrado: false };

@@ -17,7 +17,7 @@ function safeExtrasJson(raw) {
  * Sem `useApiImoveis`, retorna lista vazia (cadastro de imóvel legado não é indexado por pessoa).
  *
  * @param {number|string} pessoaId
- * @returns {Promise<Array<{ imovelId: number, papel: string, endereco: string, unidade: string, condominio: string, codigo: string, proc: string }>>}
+ * @returns {Promise<Array<{ imovelId: number, imovelIdApi?: number, papel: string, endereco: string, unidade: string, condominio: string, codigo: string, proc: string }>>}
  */
 export async function listarImoveisResumoPorPessoaDiagnostico(pessoaId) {
   const id = Number(pessoaId);
@@ -51,10 +51,14 @@ export async function listarImoveisResumoPorPessoaDiagnostico(pessoaId) {
       }
       if (papeis.size === 0) continue;
 
+      const np = im.numeroPlanilha != null ? Number(im.numeroPlanilha) : NaN;
+      if (!Number.isFinite(np) || np < 1) continue;
+
       const extras = safeExtrasJson(im.camposExtrasJson);
       for (const papel of papeis) {
         out.push({
-          imovelId,
+          imovelId: np,
+          imovelIdApi: imovelId,
           papel,
           endereco: String(im.enderecoCompleto || '').trim() || '—',
           unidade: String(im.unidade || extras.unidade || '').trim() || '',

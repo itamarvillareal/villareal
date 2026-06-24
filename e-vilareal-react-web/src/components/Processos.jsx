@@ -1508,7 +1508,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
     let unidadeTrim = String(unidadeEndereco ?? '').trim();
 
-    /** Abre Imóveis: com API, o campo costuma ser o nº da planilha (col. A); links antigos com id interno ainda funcionam (fallback no carregamento). */
+    /** Abre Imóveis pelo nº da planilha (col. A) — não confundir com id interno da API. */
     navigate('/imoveis', {
       state: {
         imovelId: idNum,
