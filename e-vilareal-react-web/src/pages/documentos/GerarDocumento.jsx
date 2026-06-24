@@ -11,7 +11,10 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
-import { mapearDadosProcessoParaFormIA } from '../../helpers/documentoHelper.js';
+import {
+  mapearDadosProcessoParaFormIA,
+  mapearDadosProcessoParaFormManual,
+} from '../../helpers/documentoHelper.js';
 import { buildRouterStateChaveClienteProcesso } from '../../domain/camposProcessoCliente.js';
 import {
   downloadPdfBlob,
@@ -197,6 +200,10 @@ export function GerarDocumento() {
     () => (dadosProcesso ? mapearDadosProcessoParaFormIA(dadosProcesso) : estadoInicialIA()),
     [dadosProcesso]
   );
+  const formInicialManual = useMemo(
+    () => (dadosProcesso ? mapearDadosProcessoParaFormManual(dadosProcesso) : estadoInicialManual()),
+    [dadosProcesso]
+  );
   const vindoDoProcesso = Boolean(dadosProcesso);
 
   const [modo, setModo] = useState(() => {
@@ -216,7 +223,7 @@ export function GerarDocumento() {
   const temChaveProcesso =
     Boolean(codigoClienteProcesso) && String(numeroInternoProcesso ?? '').trim() !== '';
   const [formIA, setFormIA] = useState(formInicialIA);
-  const [formManual, setFormManual] = useState(estadoInicialManual);
+  const [formManual, setFormManual] = useState(formInicialManual);
   const [formProcuracao, setFormProcuracao] = useState(() => ({
     pessoaId: dadosProcesso?.pessoaIdOutorgante ? String(dadosProcesso.pessoaIdOutorgante) : '',
     cidadeEstado: dadosProcesso?.cidadeEstado || CIDADE_ESTADO_PADRAO,

@@ -2,6 +2,8 @@ import { request } from '../api/httpClient.js';
 import { ENDERECAMENTOS, TIPOS_PECA, CIDADE_ESTADO_PADRAO } from '../pages/documentos/constants.js';
 import {
   primeiraPessoaIdParteCliente,
+  primeiraPessoaIdParteOposta,
+  poloJuridicoEscritorioEhAutor,
   textosPartesFromListaPartesApi,
 } from '../data/partesLadoEscritorio.js';
 import { listarPartesProcesso, papelParteUiParaApi } from '../repositories/processosRepository.js';
@@ -211,6 +213,13 @@ export async function montarDadosParaDocumentoFromProcesso(ctx) {
   const cidadeEstado = formatarCidadeEstado(cidade, uf);
 
   const pessoaIdOutorgante = primeiraPessoaIdParteCliente(partes, papelUi);
+  const pessoaIdOposta = primeiraPessoaIdParteOposta(partes, papelUi);
+  const qualificacaoParteCliente = pessoaIdOutorgante
+    ? await buscarQualificacaoCompleta(pessoaIdOutorgante)
+    : '';
+  const qualificacaoParteOposta = pessoaIdOposta
+    ? await buscarQualificacaoCompleta(pessoaIdOposta)
+    : '';
   const nomeOutorgante = textoParteCliente.toUpperCase();
 
   const nomeLocador = juntarNomesPartes(partesAutor).toUpperCase() || nomeAutor;
@@ -236,19 +245,63 @@ export async function montarDadosParaDocumentoFromProcesso(ctx) {
     processoApiId: ctx.processoApiId ?? null,
     parteCliente: textoParteCliente,
     parteOposta: textoParteOposta,
+    qualificacaoParteCliente,
+    qualificacaoParteOposta,
     papelParte: papelUi,
+  };
+}
+
+function escaparHtmlBasico(texto) {
+  return String(texto ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** Trecho «na ação que move…» / «na ação que lhe move…» conforme o polo da parte cliente. */
+export function montarTrechoAcaoPreambuloHtml(papelParte, parteOposta) {
+  const opostaNome = String(parteOposta || 'XXXXXXXXXXXX').trim().toUpperCase();
+  const opostaHtml = `<strong>${escaparHtmlBasico(opostaNome)}</strong>`;
+  if (poloJuridicoEscritorioEhAutor(papelParte)) {
+    return `na ação que move em face de ${opostaHtml}`;
+  }
+  return `na ação que lhe move ${opostaHtml}`;
+}
+
+/** Preâmbulo HTML sugerido para o modo manual (qualificação da parte cliente + trecho da ação). */
+export function montarPreambuloSugerido(dadosProcesso) {
+  if (!dadosProcesso) return '';
+  const nomeCliente = String(dadosProcesso.parteCliente || dadosProcesso.nomeOutorgante || '').trim();
+  const parteOposta = String(dadosProcesso.parteOposta || '').trim();
+  if (!nomeCliente && !parteOposta) return '';
+
+  const qual = String(dadosProcesso.qualificacaoParteCliente || '').trim();
+  const qualSuffix = qual ? escaparHtmlBasico(qual) : 'brasileiro(a)...';
+  const nomeClienteHtml = `<strong>${escaparHtmlBasico(
+    (nomeCliente || 'FULANO').toUpperCase(),
+  )}</strong>`;
+  const trechoAcao = montarTrechoAcaoPreambuloHtml(dadosProcesso.papelParte, parteOposta);
+
+  return `<p>${nomeClienteHtml}, ${qualSuffix}, vem, respeitosamente, perante Vossa Excelência, ${trechoAcao}, requerer o que segue.</p>`;
+}
+
+function mapearEnderecamentoParaForm(enderecamento) {
+  const end = resolveSelectExato(enderecamento, ENDERECAMENTOS);
+  return {
+    enderecamentoSelect: end.select,
+    enderecamentoOutro: end.outro,
   };
 }
 
 export function mapearDadosProcessoParaFormIA(dadosProcesso) {
   if (!dadosProcesso) return estadoInicialFormVazio();
 
-  const end = resolveSelectExato(dadosProcesso.enderecamento, ENDERECAMENTOS);
   const tipo = resolveSelectInicial(dadosProcesso.tipoPeca, TIPOS_PECA);
 
   return {
-    enderecamento: end.select,
-    enderecamentoOutro: end.outro,
+    ...mapearEnderecamentoParaForm(dadosProcesso.enderecamento),
+    numeroProcesso: dadosProcesso.numeroProcesso || '',
     tipoPeca: tipo.select,
     tipoPecaOutro: tipo.outro,
     nomeAutor: dadosProcesso.nomeAutor || '',
@@ -261,10 +314,27 @@ export function mapearDadosProcessoParaFormIA(dadosProcesso) {
   };
 }
 
+export function mapearDadosProcessoParaFormManual(dadosProcesso) {
+  if (!dadosProcesso) return estadoInicialFormManualVazio();
+
+  return {
+    ...mapearEnderecamentoParaForm(dadosProcesso.enderecamento),
+    numeroProcesso: dadosProcesso.numeroProcesso || '',
+    preambulo: montarPreambuloSugerido(dadosProcesso),
+    secoes: [
+      { titulo: 'DOS FATOS', conteudo: '' },
+      { titulo: 'DO DIREITO', conteudo: '' },
+    ],
+    pedidos: [''],
+    cidadeEstado: dadosProcesso.cidadeEstado || CIDADE_ESTADO_PADRAO,
+  };
+}
+
 function estadoInicialFormVazio() {
   return {
-    enderecamento: '',
+    enderecamentoSelect: '',
     enderecamentoOutro: '',
+    numeroProcesso: '',
     tipoPeca: '',
     tipoPecaOutro: '',
     nomeAutor: '',
@@ -273,6 +343,21 @@ function estadoInicialFormVazio() {
     qualificacaoReu: '',
     fatos: '',
     valorCausa: '',
+    cidadeEstado: CIDADE_ESTADO_PADRAO,
+  };
+}
+
+function estadoInicialFormManualVazio() {
+  return {
+    enderecamentoSelect: '',
+    enderecamentoOutro: '',
+    numeroProcesso: '',
+    preambulo: '',
+    secoes: [
+      { titulo: 'DOS FATOS', conteudo: '' },
+      { titulo: 'DO DIREITO', conteudo: '' },
+    ],
+    pedidos: [''],
     cidadeEstado: CIDADE_ESTADO_PADRAO,
   };
 }

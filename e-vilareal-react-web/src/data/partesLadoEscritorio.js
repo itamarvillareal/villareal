@@ -143,6 +143,33 @@ export function textosPartesFromListaPartesApi(partes, papelParte = 'requerente'
   return montarPorPapelJuridico(partes, papelParte);
 }
 
+/** Primeira pessoa cadastrada no lado oposto ao «parte cliente». */
+export function primeiraPessoaIdParteOposta(partes, papelParte = 'requerente') {
+  for (const p of partes || []) {
+    const q = normQualificacao(p.qualificacao);
+    if (q.includes('PARTE OPOSTA')) {
+      const id = Number(p.pessoaId);
+      if (Number.isFinite(id) && id > 0) return id;
+    }
+  }
+  if (importPoloJuridicoInvertidoParteCliente(papelParte, partes)) {
+    for (const p of partes || []) {
+      if (!temMarcadorParteClienteImport(p)) {
+        const id = Number(p.pessoaId);
+        if (Number.isFinite(id) && id > 0) return id;
+      }
+    }
+  }
+  const poloAutor = poloJuridicoEscritorioEhAutor(papelParte, partes);
+  for (const p of partes || []) {
+    if (!poloEhLadoEscritorio(p.polo, poloAutor)) {
+      const id = Number(p.pessoaId);
+      if (Number.isFinite(id) && id > 0) return id;
+    }
+  }
+  return null;
+}
+
 /** Primeira pessoa cadastrada no lado «parte cliente» (contratante de honorários). */
 export function primeiraPessoaIdParteCliente(partes, papelParte = 'requerente') {
   for (const p of partes || []) {
