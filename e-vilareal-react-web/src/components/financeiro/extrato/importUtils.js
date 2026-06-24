@@ -2,6 +2,7 @@ import {
   buildContaToLetraMerge,
   loadPersistedContasContabeisExtrasFinanceiro,
 } from '../../../data/financeiroData.js';
+import { featureFlags } from '../../../config/featureFlags.js';
 import {
   arquivoExtratoEhOfx,
   arquivoExtratoEhPdf,
@@ -19,9 +20,15 @@ import {
 } from '../../../utils/ofx.js';
 import {
   aplicarProtecaoDataCorteImportacao,
+  aplicarProtecaoDataCorteImportacaoComData,
   formatarDataCorteBr,
 } from '../../../utils/extratoImportProtecao.js';
-import { listarLancamentosFinanceiroPaginados, persistirImportacaoOfxFinanceiroApi } from '../../../repositories/financeiroRepository.js';
+import {
+  consultarNumerosLancamentoExistentesApi,
+  listarLancamentosFinanceiroPaginados,
+  obterContextoImportacaoExtratoApi,
+  persistirImportacaoOfxFinanceiroApi,
+} from '../../../repositories/financeiroRepository.js';
 import { extratoRowToUi, mapApiLancamentoToExtratoRow } from './extratoMappers.js';
 
 export { arquivoExtratoEhOfx, arquivoExtratoEhPdf, isInstituicaoExtratoPdfImport };
@@ -110,6 +117,84 @@ export async function carregarLancamentosExistentesBanco(numeroBanco, signal) {
   return out;
 }
 
+/** Só lançamentos a partir da data de corte (janela mínima para dedupe semântico). */
+export async function carregarLancamentosExistentesBancoDesde(numeroBanco, dataCorteIso, signal) {
+  const nb = Number(numeroBanco);
+  const dataInicio = String(dataCorteIso ?? '').slice(0, 10);
+  if (!Number.isFinite(nb) || !dataInicio) return [];
+
+  const contaToLetra = buildContaToLetraMerge(loadPersistedContasContabeisExtrasFinanceiro());
+  const out = [];
+  let page = 0;
+  let totalPages = 1;
+  while (page < totalPages) {
+    const res = await listarLancamentosFinanceiroPaginados(
+      { numeroBanco: nb, dataInicio, page, size: 500, sort: 'dataLancamento,asc' },
+      { signal },
+    );
+    const content = res?.content ?? [];
+    for (const l of content) {
+      out.push(extratoRowToUi(mapApiLancamentoToExtratoRow(l, contaToLetra)));
+    }
+    totalPages = Math.max(1, Number(res?.totalPages ?? 1));
+    page += 1;
+    if (!content.length) break;
+  }
+  return out;
+}
+
+function montarExistenteParaDedupe(existenteSemantico, numerosJaExistentes) {
+  const out = [...(existenteSemantico || [])];
+  const numerosCarregados = new Set(out.map((t) => String(t?.numero ?? '').trim()).filter(Boolean));
+  for (const num of numerosJaExistentes || []) {
+    const n = String(num ?? '').trim();
+    if (!n || numerosCarregados.has(n)) continue;
+    out.push({ numero: n });
+  }
+  return out;
+}
+
+async function prepararImportacaoMesclarRapido(rows, numeroBanco, signal, origemImportacao = '') {
+  const nb = Number(numeroBanco);
+  const ctx = await obterContextoImportacaoExtratoApi(nb, signal);
+  const dataCorte = ctx?.dataCorte ? String(ctx.dataCorte).slice(0, 10) : null;
+  const protecao = dataCorte
+    ? aplicarProtecaoDataCorteImportacaoComData(rows, dataCorte)
+    : aplicarProtecaoDataCorteImportacao(rows, [], { modo: 'mesclar' });
+
+  const existenteSemantico = dataCorte
+    ? await carregarLancamentosExistentesBancoDesde(nb, dataCorte, signal)
+    : [];
+
+  const numeros = [
+    ...new Set(protecao.rows.map((r) => String(r?.numero ?? '').trim()).filter(Boolean)),
+  ];
+  const existentesNumeros = numeros.length
+    ? await consultarNumerosLancamentoExistentesApi(nb, numeros, signal)
+    : [];
+
+  const existente = montarExistenteParaDedupe(existenteSemantico, existentesNumeros);
+  const analise = analisarLancamentosNovosDedupe(existente, protecao.rows, {
+    respeitarExtratoComoMestre: /^PDF$/i.test(String(origemImportacao ?? '').trim()),
+  });
+
+  return {
+    totalArquivo: protecao.totalArquivo,
+    noBanco: Number(ctx?.totalNoBanco ?? existenteSemantico.length),
+    novos: analise.novos.length,
+    ignorados: analise.ignorados,
+    ignoradosPorCorte: protecao.ignoradosPorCorte,
+    dataCorte: protecao.dataCorte,
+    dataCorteBr: formatarDataCorteBr(protecao.dataCorte),
+    linhasAposCorte: protecao.rows.length,
+    preparacao: {
+      existente,
+      protecao,
+      linhasNovas: analise.novos,
+    },
+  };
+}
+
 /**
  * Prévia de quantos lançamentos do arquivo seriam gravados (modo mesclar).
  * @param {object[]} rows
@@ -117,6 +202,15 @@ export async function carregarLancamentosExistentesBanco(numeroBanco, signal) {
  * @param {AbortSignal} [signal]
  */
 export async function resumirNovosImportacaoMesclar(rows, numeroBanco, signal, origemImportacao = '') {
+  const nb = Number(numeroBanco);
+  if (featureFlags.useApiFinanceiro && Number.isFinite(nb)) {
+    try {
+      return await prepararImportacaoMesclarRapido(rows, nb, signal, origemImportacao);
+    } catch {
+      /* fallback legado abaixo */
+    }
+  }
+
   const existente = await carregarLancamentosExistentesBanco(numeroBanco, signal);
   const protecao = aplicarProtecaoDataCorteImportacao(rows, existente, { modo: 'mesclar' });
   const { novos, ignorados } = analisarLancamentosNovosDedupe(existente, protecao.rows, {
@@ -131,11 +225,16 @@ export async function resumirNovosImportacaoMesclar(rows, numeroBanco, signal, o
     dataCorte: protecao.dataCorte,
     dataCorteBr: formatarDataCorteBr(protecao.dataCorte),
     linhasAposCorte: protecao.rows.length,
+    preparacao: {
+      existente,
+      protecao,
+      linhasNovas: novos,
+    },
   };
 }
 
 /**
- * @param {{ nomeBanco: string, numeroBanco: number|null, modo: 'mesclar'|'substituir', rows: object[], origem: string, signal?: AbortSignal }}
+ * @param {{ nomeBanco: string, numeroBanco: number|null, modo: 'mesclar'|'substituir', rows: object[], origem: string, signal?: AbortSignal, preparacaoCache?: object }}
  */
 export async function executarImportacaoExtrato({
   nomeBanco,
@@ -144,14 +243,37 @@ export async function executarImportacaoExtrato({
   rows,
   origem,
   signal,
+  preparacaoCache,
 }) {
   const normBanco = String(nomeBanco ?? '').trim();
   const nb = numeroBanco != null && Number.isFinite(Number(numeroBanco)) ? Number(numeroBanco) : null;
 
-  const transacoesAntesNoBanco =
-    modo === 'mesclar' ? await carregarLancamentosExistentesBanco(nb, signal) : [];
+  let transacoesAntesNoBanco = [];
+  let protecao;
+  let linhasNovasPrecomputadas = null;
 
-  const protecao = aplicarProtecaoDataCorteImportacao(rows, transacoesAntesNoBanco, { modo });
+  if (modo === 'mesclar') {
+    if (preparacaoCache?.protecao && preparacaoCache?.existente) {
+      transacoesAntesNoBanco = preparacaoCache.existente;
+      protecao = preparacaoCache.protecao;
+      linhasNovasPrecomputadas = preparacaoCache.linhasNovas ?? null;
+    } else if (featureFlags.useApiFinanceiro && nb != null) {
+      try {
+        const prep = await prepararImportacaoMesclarRapido(rows, nb, signal, origem);
+        transacoesAntesNoBanco = prep.preparacao.existente;
+        protecao = prep.preparacao.protecao;
+        linhasNovasPrecomputadas = prep.preparacao.linhasNovas;
+      } catch {
+        transacoesAntesNoBanco = await carregarLancamentosExistentesBanco(nb, signal);
+        protecao = aplicarProtecaoDataCorteImportacao(rows, transacoesAntesNoBanco, { modo });
+      }
+    } else {
+      transacoesAntesNoBanco = await carregarLancamentosExistentesBanco(nb, signal);
+      protecao = aplicarProtecaoDataCorteImportacao(rows, transacoesAntesNoBanco, { modo });
+    }
+  } else {
+    protecao = aplicarProtecaoDataCorteImportacao(rows, [], { modo });
+  }
 
   const result = await persistirImportacaoOfxFinanceiroApi({
     nomeBanco: normBanco,
@@ -161,6 +283,7 @@ export async function executarImportacaoExtrato({
     transacoesAntesNoBanco,
     origemImportacao: origem,
     dataCorteImportacao: protecao.dataCorte,
+    linhasNovasPrecomputadas,
   });
 
   const totalArquivo = protecao.totalArquivo;

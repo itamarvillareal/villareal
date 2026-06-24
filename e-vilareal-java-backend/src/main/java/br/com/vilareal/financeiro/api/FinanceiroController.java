@@ -3,7 +3,9 @@ package br.com.vilareal.financeiro.api;
 import br.com.vilareal.financeiro.api.dto.*;
 import br.com.vilareal.financeiro.application.CartaoBancoMapeamentoApplicationService;
 import br.com.vilareal.financeiro.application.ContaBancariaApplicationService;
+import br.com.vilareal.financeiro.application.ExtratoImportProtecaoService;
 import br.com.vilareal.financeiro.application.ExtratoPosImportApplicationService;
+import br.com.vilareal.financeiro.application.LancamentoFinanceiroImportDedupService;
 import br.com.vilareal.financeiro.application.FinanceiroApplicationService;
 import br.com.vilareal.financeiro.application.FinanceiroCompensacaoService;
 import br.com.vilareal.financeiro.application.FinanceiroFaturaSugestaoService;
@@ -60,6 +62,8 @@ public class FinanceiroController {
     private final FinanceiroFaturaCartaoFechamentoService faturaCartaoFechamentoService;
     private final InboxClassificarApplicationService inboxClassificarService;
     private final ExtratoPosImportApplicationService extratoPosImportService;
+    private final ExtratoImportProtecaoService extratoImportProtecaoService;
+    private final LancamentoFinanceiroImportDedupService lancamentoImportDedupService;
 
     public FinanceiroController(
             FinanceiroApplicationService financeiroService,
@@ -77,7 +81,9 @@ public class FinanceiroController {
             FinanceiroSemelhantesEscritorioService semelhantesEscritorioService,
             FinanceiroFaturaCartaoFechamentoService faturaCartaoFechamentoService,
             InboxClassificarApplicationService inboxClassificarService,
-            ExtratoPosImportApplicationService extratoPosImportService) {
+            ExtratoPosImportApplicationService extratoPosImportService,
+            ExtratoImportProtecaoService extratoImportProtecaoService,
+            LancamentoFinanceiroImportDedupService lancamentoImportDedupService) {
         this.financeiroService = financeiroService;
         this.financeiroCartaoService = financeiroCartaoService;
         this.pagamentoFaturaService = pagamentoFaturaService;
@@ -94,6 +100,8 @@ public class FinanceiroController {
         this.faturaCartaoFechamentoService = faturaCartaoFechamentoService;
         this.inboxClassificarService = inboxClassificarService;
         this.extratoPosImportService = extratoPosImportService;
+        this.extratoImportProtecaoService = extratoImportProtecaoService;
+        this.lancamentoImportDedupService = lancamentoImportDedupService;
     }
 
     @GetMapping("/saude")
@@ -364,6 +372,33 @@ public class FinanceiroController {
     @Operation(description = "Pós-processamento idempotente após upload OFX/PDF (honorários; skip Cora e bancos congelados).")
     public ExtratoPosImportResponse posImportExtrato(@Valid @RequestBody ExtratoPosImportRequest request) {
         return extratoPosImportService.rodar(request);
+    }
+
+    @GetMapping("/extrato/importacao/contexto")
+    @Operation(description = "Contexto leve para preview/importação OFX (total no banco + data de corte), sem paginar milhares de lançamentos.")
+    public ExtratoImportacaoContextoResponse contextoImportacaoExtrato(
+            @RequestParam @Parameter(description = "Número da conta bancária (numero_banco)") Integer numeroBanco) {
+        ExtratoImportacaoContextoResponse out = new ExtratoImportacaoContextoResponse();
+        out.setNumeroBanco(numeroBanco);
+        if (numeroBanco == null) {
+            out.setTotalNoBanco(0);
+            return out;
+        }
+        out.setTotalNoBanco(financeiroService.contarLancamentosAtivosPorNumeroBanco(numeroBanco));
+        out.setDataCorte(extratoImportProtecaoService.calcularDataCorteMesclagem(numeroBanco));
+        return out;
+    }
+
+    @PostMapping("/extrato/importacao/numeros-existentes")
+    @Operation(description = "Consulta em lote quais numero_lancamento já existem no banco (dedupe estrito na importação).")
+    public ExtratoImportacaoNumerosExistentesResponse numerosExistentesImportacaoExtrato(
+            @Valid @RequestBody ExtratoImportacaoNumerosExistentesRequest request) {
+        ExtratoImportacaoNumerosExistentesResponse out = new ExtratoImportacaoNumerosExistentesResponse();
+        out.setNumeroBanco(request.getNumeroBanco());
+        var existentes = lancamentoImportDedupService.numerosLancamentoJaExistentes(
+                request.getNumeroBanco(), request.getNumeros());
+        out.setExistentes(existentes.stream().sorted().toList());
+        return out;
     }
 
     @PutMapping("/lancamentos/{id:\\d+}")

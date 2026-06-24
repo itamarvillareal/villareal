@@ -56,3 +56,24 @@ export function formatarDataCorteBr(dataCorteIso) {
   if (!m) return String(dataCorteIso);
   return `${m[3]}/${m[2]}/${m[1]}`;
 }
+
+/**
+ * Igual a {@link aplicarProtecaoDataCorteImportacao}, mas com data de corte já calculada no servidor.
+ * @param {object[]} rows
+ * @param {string|null} dataCorteIso YYYY-MM-DD
+ */
+export function aplicarProtecaoDataCorteImportacaoComData(rows, dataCorteIso) {
+  const totalArquivo = rows?.length ?? 0;
+  if (!dataCorteIso) {
+    return { rows: rows || [], dataCorte: null, ignoradosPorCorte: 0, totalArquivo };
+  }
+  const dataCorte = String(dataCorteIso).slice(0, 10);
+  const filtrados = [];
+  let ignoradosPorCorte = 0;
+  for (const r of rows || []) {
+    const iso = dataLancamentoParaIso(r?.data);
+    if (iso && iso >= dataCorte) filtrados.push(r);
+    else ignoradosPorCorte += 1;
+  }
+  return { rows: filtrados, dataCorte, ignoradosPorCorte, totalArquivo };
+}

@@ -139,6 +139,7 @@ export function ExtratoImportModal({
         modo,
         rows: preview.rows,
         origem: preview.origem,
+        preparacaoCache: preview.preparacaoCache ?? preview.resumoMesclar?.preparacao,
       });
       if (res.erros?.length) {
         toast.warn(

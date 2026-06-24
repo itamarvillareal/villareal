@@ -490,6 +490,30 @@ export async function listarLancamentosFinanceiroPaginados(filtros = {}, opts = 
   });
 }
 
+/** Contexto leve para importação OFX (total + data de corte), sem paginar todo o extrato. */
+export async function obterContextoImportacaoExtratoApi(numeroBanco, signal) {
+  if (!featureFlags.useApiFinanceiro || !Number.isFinite(Number(numeroBanco))) {
+    return { numeroBanco, totalNoBanco: 0, dataCorte: null };
+  }
+  return request('/api/financeiro/extrato/importacao/contexto', {
+    query: { numeroBanco: Number(numeroBanco) },
+    signal,
+  });
+}
+
+/** Quais numero_lancamento já existem no banco (dedupe estrito em lote). */
+export async function consultarNumerosLancamentoExistentesApi(numeroBanco, numeros, signal) {
+  if (!featureFlags.useApiFinanceiro || !Number.isFinite(Number(numeroBanco))) return [];
+  const lista = [...new Set((numeros || []).map((n) => String(n ?? '').trim()).filter(Boolean))];
+  if (!lista.length) return [];
+  const res = await request('/api/financeiro/extrato/importacao/numeros-existentes', {
+    method: 'POST',
+    body: { numeroBanco: Number(numeroBanco), numeros: lista },
+    signal,
+  });
+  return res?.existentes ?? [];
+}
+
 /** Todos os lançamentos de extrato bancário em um intervalo (paginação automática). */
 export async function listarLancamentosExtratoNoIntervalo(
   { dataInicio, dataFim, size = 500 } = {},
@@ -872,6 +896,7 @@ export async function persistirImportacaoOfxFinanceiroApi({
   transacoesAntesNoBanco,
   origemImportacao = 'OFX',
   dataCorteImportacao = null,
+  linhasNovasPrecomputadas = null,
 }) {
   if (!featureFlags.useApiFinanceiro) {
     return { ok: true, criados: 0, removidos: 0, erros: [], savedPairs: [] };
@@ -921,30 +946,55 @@ export async function persistirImportacaoOfxFinanceiroApi({
       : analisarLancamentosNovosDedupe(transacoesAntesNoBanco, linhasImportaveis, {
           respeitarExtratoComoMestre: /^PDF$/i.test(String(origemImportacao ?? '').trim()),
         });
-  const paraCriar = analiseDedupe.novos;
+  const paraCriar = Array.isArray(linhasNovasPrecomputadas) ? linhasNovasPrecomputadas : analiseDedupe.novos;
 
   const nb =
     numeroBanco != null && Number.isFinite(Number(numeroBanco)) ? Number(numeroBanco) : null;
 
-  for (const row of paraCriar) {
+  const contas = await listarContasFinanceiro();
+  const contaIdByNome = new Map((contas || []).map((c) => [c.nome, c.id]));
+  const { letraToConta } = contaMaps();
+  const concorrencia = Math.min(8, Math.max(1, paraCriar.length));
+  let indice = 0;
+
+  async function salvarLinhaImportacao(row) {
     const t = sanitizarLancamentoImportacaoExtrato({
       ...row,
       nomeBanco: normBanco,
       numeroBanco: nb,
       origemImportacao: String(origemImportacao || 'OFX').trim() || 'OFX',
     });
-    try {
-      const saved = await salvarOuAtualizarLancamentoFinanceiroApi(t);
-      if (saved?.id) {
-        savedPairs.push({ row, saved });
-      } else {
-        erros.push(
-          `${String(row.numero)} ${String(row.data)}: falha (verifique se existe a conta contábil «Conta Não Identificados» na API).`,
-        );
-      }
-    } catch (e) {
-      erros.push(`${String(row.numero)} ${String(row.data)}: ${e?.message || e}`);
+    const body = mapUiLancamentoToApi(t, contaIdByNome, letraToConta);
+    if (!body?.contaContabilId || !body.numeroLancamento || !body.dataLancamento || !body.descricao) {
+      return {
+        ok: false,
+        erro: `${String(row.numero)} ${String(row.data)}: falha (verifique se existe a conta contábil «Conta Não Identificados» na API).`,
+      };
     }
+    try {
+      const saved = await request('/api/financeiro/lancamentos', { method: 'POST', body });
+      if (saved?.id) return { ok: true, row, saved };
+      return {
+        ok: false,
+        erro: `${String(row.numero)} ${String(row.data)}: falha (verifique se existe a conta contábil «Conta Não Identificados» na API).`,
+      };
+    } catch (e) {
+      return { ok: false, erro: `${String(row.numero)} ${String(row.data)}: ${e?.message || e}` };
+    }
+  }
+
+  async function workerSalvarImportacao() {
+    while (indice < paraCriar.length) {
+      const i = indice;
+      indice += 1;
+      const res = await salvarLinhaImportacao(paraCriar[i]);
+      if (res.ok) savedPairs.push({ row: res.row, saved: res.saved });
+      else if (res.erro) erros.push(res.erro);
+    }
+  }
+
+  if (paraCriar.length) {
+    await Promise.all(Array.from({ length: concorrencia }, () => workerSalvarImportacao()));
   }
 
   let posImport = null;

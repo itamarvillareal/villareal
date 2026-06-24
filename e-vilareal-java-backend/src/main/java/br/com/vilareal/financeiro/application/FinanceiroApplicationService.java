@@ -253,6 +253,14 @@ public class FinanceiroApplicationService {
     }
 
     @Transactional(readOnly = true)
+    public long contarLancamentosAtivosPorNumeroBanco(Integer numeroBanco) {
+        if (numeroBanco == null) {
+            return 0;
+        }
+        return lancamentoRepository.countByNumeroBanco(numeroBanco);
+    }
+
+    @Transactional(readOnly = true)
     public SaldoBancoResponse saldoPorNumeroBanco(Integer numeroBanco) {
         return saldoPorNumeroBanco(numeroBanco, null);
     }
