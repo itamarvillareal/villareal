@@ -16,10 +16,17 @@ vi.mock('../api/httpClient.js', () => ({
   request: vi.fn(),
 }));
 
+vi.mock('../data/processosHistoricoData.js', () => ({
+  listarParesCodProcPorNumeroImovelProcessos: vi.fn(() => []),
+}));
+
+import { listarParesCodProcPorNumeroImovelProcessos } from '../data/processosHistoricoData.js';
 import { request } from '../api/httpClient.js';
 import { buscarProcessoPorId } from './processosRepository.js';
 import {
   escolherVinculoPrincipalProcessoLista,
+  invalidarCacheVinculoPrincipalProcessoImovel,
+  listarVinculosProcessoImovel,
   resolverChaveProcessoContaCorrentePainel,
 } from './imoveisRepository.js';
 
@@ -33,10 +40,38 @@ describe('escolherVinculoPrincipalProcessoLista', () => {
   });
 });
 
+describe('listarVinculosProcessoImovel / principal', () => {
+  beforeEach(() => {
+    invalidarCacheVinculoPrincipalProcessoImovel();
+    vi.mocked(listarParesCodProcPorNumeroImovelProcessos).mockReset();
+    vi.mocked(listarParesCodProcPorNumeroImovelProcessos).mockReturnValue([]);
+  });
+
+  it('mantém principal da API quando histórico legado do Processos traz proc. antigo', async () => {
+    vi.mocked(listarParesCodProcPorNumeroImovelProcessos).mockReturnValue([
+      { codigoCliente: '00000938', numeroInterno: 26 },
+    ]);
+    vi.mocked(request).mockResolvedValueOnce({
+      numeroPlanilha: 13,
+      vinculos: [
+        { codigoCliente: '00000938', numeroInterno: 34, principal: false },
+        { codigoCliente: '00000938', numeroInterno: 41, principal: true },
+      ],
+    });
+
+    const r = await listarVinculosProcessoImovel({ numeroPlanilha: 13 });
+    const prim = escolherVinculoPrincipalProcessoLista(r.vinculos);
+    expect(prim.numeroInterno).toBe(41);
+    expect(r.vinculos.some((v) => v.numeroInterno === 26 && v.principal)).toBe(false);
+  });
+});
+
 describe('resolverChaveProcessoContaCorrentePainel', () => {
   beforeEach(() => {
+    invalidarCacheVinculoPrincipalProcessoImovel();
     vi.mocked(buscarProcessoPorId).mockReset();
     vi.mocked(request).mockReset();
+    vi.mocked(listarParesCodProcPorNumeroImovelProcessos).mockReturnValue([]);
     vi.mocked(request).mockRejectedValue(new Error('sem vinculos'));
   });
 

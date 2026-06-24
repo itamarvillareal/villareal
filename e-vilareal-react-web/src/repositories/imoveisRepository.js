@@ -733,7 +733,8 @@ function chaveVinculoCodProc(codigoCliente, numeroInterno) {
 
 function mesclarVinculosProcessoImovel(apiPayload, numeroPlanilha) {
   const np = Number(numeroPlanilha);
-  const merged = Array.isArray(apiPayload?.vinculos) ? [...apiPayload.vinculos] : [];
+  const fromApi = Array.isArray(apiPayload?.vinculos) ? apiPayload.vinculos.map((v) => ({ ...v })) : [];
+  const merged = [...fromApi];
   const seen = new Set(merged.map((v) => chaveVinculoCodProc(v.codigoCliente, v.numeroInterno)));
 
   for (const lp of listarParesCodProcPorNumeroImovelProcessos(np)) {
@@ -750,9 +751,19 @@ function mesclarVinculosProcessoImovel(apiPayload, numeroPlanilha) {
     });
   }
 
-  merged.forEach((v, i) => {
-    v.principal = i === merged.length - 1;
+  /** Principal = último vínculo da API (cadastro imóvel); histórico legado do Processos não substitui. */
+  merged.forEach((v) => {
+    v.principal = false;
   });
+  if (fromApi.length > 0) {
+    const apiPrincipal = fromApi.find((x) => x.principal) || fromApi[fromApi.length - 1];
+    const chavePrincipal = chaveVinculoCodProc(apiPrincipal.codigoCliente, apiPrincipal.numeroInterno);
+    const item = merged.find((v) => chaveVinculoCodProc(v.codigoCliente, v.numeroInterno) === chavePrincipal);
+    if (item) item.principal = true;
+  } else if (merged.length > 0) {
+    merged[merged.length - 1].principal = true;
+  }
+
   return {
     numeroPlanilha: apiPayload?.numeroPlanilha ?? (np >= 1 ? np : null),
     vinculos: merged,
@@ -798,6 +809,10 @@ export function escolherVinculoPrincipalProcessoLista(vinculos) {
 }
 
 const cacheVinculoPrincipalProcesso = new Map();
+
+export function invalidarCacheVinculoPrincipalProcessoImovel() {
+  cacheVinculoPrincipalProcesso.clear();
+}
 
 /** Par Cod.+Proc. vigente do imóvel (conta corrente / relatório), alinhado ao modal «Processos do imóvel». */
 export async function resolverVinculoPrincipalProcessoImovel(imovel) {
@@ -1157,7 +1172,8 @@ export async function carregarItensRelatorioImoveisApi() {
           : await carregarImovelCadastro({ imovelId: im.id });
       if (r.item) return r.item;
       // Sempre incluir o imóvel: a lista GET já traz o mesmo shape de ImovelResponse; se o GET por id falhar, monta a linha só com esse payload + sem contrato.
-      const base = mapApiToUi(im, null);
+      let base = mapApiToUi(im, null);
+      base = await enriquecerCodigoProcDoVinculo(base, im);
       return enriquecerNomesPartesImovelUi(base);
     });
     const itens = filtrarItensRelatorioPlanilhaAdmin(
