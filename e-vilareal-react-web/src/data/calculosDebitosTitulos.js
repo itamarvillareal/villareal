@@ -104,6 +104,55 @@ export function titulosGradeTemValor(titulos) {
   return titulos.some((t) => String(t?.valorInicial ?? '').trim() !== '');
 }
 
+/** Linha com encargos gravados no txt (106–108, 104, dias 105 por linha). */
+export function tituloGravadoTemCalculoSnapshot(t) {
+  if (!t || typeof t !== 'object') return false;
+  if (String(t.valorInicial ?? '').trim() === '') return false;
+  return (
+    String(t.juros ?? '').trim() !== '' ||
+    String(t.atualizacaoMonetaria ?? '').trim() !== '' ||
+    String(t.multa ?? '').trim() !== '' ||
+    String(t.honorarios ?? '').trim() !== '' ||
+    String(t.diasAtraso ?? '').trim() !== ''
+  );
+}
+
+/** True se todas as linhas com valor têm snapshot completo no txt. */
+export function titulosGravadosSnapshotUtilizavel(gravados) {
+  if (!Array.isArray(gravados) || !gravados.length) return false;
+  const comValor = gravados.filter((t) => String(t?.valorInicial ?? '').trim() !== '');
+  if (!comValor.length) return false;
+  return comValor.every((t) => tituloGravadoTemCalculoSnapshot(t));
+}
+
+/**
+ * Usa valores gravados do txt onde existem; recalcula as linhas só com vencimento/valor.
+ * @param {unknown[]} gravados
+ * @param {unknown[]} recalculados
+ * @param {(lista: unknown[]) => unknown[]} mapTitulosAceitos
+ */
+export function mesclarTitulosGravadosComRecalculo(gravados, recalculados, mapTitulosAceitos) {
+  const g = Array.isArray(gravados) ? gravados : [];
+  const r = Array.isArray(recalculados) ? recalculados : [];
+  const n = Math.max(g.length, r.length);
+  /** @type {unknown[]} */
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const gravado = g[i];
+    const calc = r[i];
+    if (gravado && typeof gravado === 'object' && tituloGravadoTemCalculoSnapshot(gravado)) {
+      out.push(mapTitulosAceitos([gravado])[0]);
+    } else if (calc && typeof calc === 'object' && String(calc.valorInicial ?? '').trim() !== '') {
+      out.push(calc);
+    } else if (gravado && typeof gravado === 'object') {
+      out.push(gravado);
+    } else {
+      out.push(linhaTituloVaziaCalculos());
+    }
+  }
+  return out;
+}
+
 /**
  * Preenche `titulos[]` a partir de `debitos[]` quando a grade de títulos está vazia (import legado).
  * @param {Record<string, unknown>} rodada

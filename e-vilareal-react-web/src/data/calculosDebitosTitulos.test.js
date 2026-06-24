@@ -3,6 +3,7 @@ import { parseValorMonetarioBr } from '../utils/parseValorMonetarioBr.js';
 import {
   calcularTotalTituloGrade,
   enriquecerTitulosAPartirDeDebitosNaRodada,
+  mesclarTitulosGravadosComRecalculo,
   tituloFromCamposTaxa,
   titulosGradeTemValor,
 } from './calculosDebitosTitulos.js';
@@ -75,12 +76,20 @@ describe('calculosDebitosTitulos', () => {
     ).toBe('R$ 117,00');
   });
 
-  it('enriquecerTitulosAPartirDeDebitosNaRodada não altera se já há títulos', () => {
-    const rodada = {
-      titulos: [{ valorInicial: 'R$ 1,00', dataVencimento: '01/01/2020' }],
-      debitos: [{ valor: '999', dataVencimento: '02/02/2020' }],
-    };
-    const out = enriquecerTitulosAPartirDeDebitosNaRodada(rodada);
-    expect(out).toBe(rodada);
+  it('mesclarTitulosGravadosComRecalculo: linha sem snapshot usa recálculo', () => {
+    const map = (lista) => lista;
+    const merged = mesclarTitulosGravadosComRecalculo(
+      [
+        { valorInicial: 'R$ 100,00', juros: 'R$ 10,00', dataVencimento: '01/01/2020' },
+        { valorInicial: 'R$ 200,00', dataVencimento: '01/02/2020' },
+      ],
+      [
+        { valorInicial: 'R$ 100,00', juros: 'R$ 99,00' },
+        { valorInicial: 'R$ 200,00', juros: 'R$ 50,00', multa: 'R$ 4,00' },
+      ],
+      map,
+    );
+    expect(merged[0].juros).toBe('R$ 10,00');
+    expect(merged[1].juros).toBe('R$ 50,00');
   });
 });

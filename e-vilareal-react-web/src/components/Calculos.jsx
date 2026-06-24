@@ -42,7 +42,12 @@ import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import { buildRouterStateChaveClienteProcesso, extrairIntentNavegacaoProcessos } from '../domain/camposProcessoCliente.js';
 import { mergeDebitosCalculosMultiSheet } from '../utils/mergeDebitosCalculosPlanilha.js';
 import { resolverTextosPartesCabecalhoCalculo } from '../data/processosDadosRelatorio.js';
-import { calcularTotalTituloGrade, titulosGradeTemValor } from '../data/calculosDebitosTitulos.js';
+import {
+  calcularTotalTituloGrade,
+  mesclarTitulosGravadosComRecalculo,
+  titulosGravadosSnapshotUtilizavel,
+  titulosGradeTemValor,
+} from '../data/calculosDebitosTitulos.js';
 import TitulosGrid from './calculos/TitulosGrid.jsx';
 import { IndicesAtualizacaoConferenciaModal } from './calculos/IndicesAtualizacaoConferenciaModal.jsx';
 import { parseValorMonetarioBr } from '../utils/parseValorMonetarioBr.js';
@@ -1049,19 +1054,26 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
         }
         return t;
       });
+    const fromEstado = Array.isArray(rodadaAtual.titulos) ? rodadaAtual.titulos : [];
     if (Array.isArray(gravados) && gravados.length > 0) {
+      const snapshotCompleto = titulosGravadosSnapshotUtilizavel(gravados);
+      if (snapshotCompleto && (calculoTravadoAceito || aceitarPagamento)) {
+        return mapTitulosAceitos(gravados);
+      }
+      if (!snapshotCompleto) {
+        return mesclarTitulosGravadosComRecalculo(gravados, fromEstado, mapTitulosAceitos);
+      }
       return mapTitulosAceitos(gravados);
     }
     if (calculoTravadoAceito) {
-      const fallback = Array.isArray(rodadaAtual.titulos) ? rodadaAtual.titulos : [];
-      if (fallback.some((t) => String(t?.valorInicial ?? '').trim() !== '')) {
-        return mapTitulosAceitos(fallback);
+      if (fromEstado.some((t) => String(t?.valorInicial ?? '').trim() !== '')) {
+        return mapTitulosAceitos(fromEstado);
       }
     }
     const enriquecida = enriquecerTitulosAPartirDeParcelasNaRodada(rodadaAtual);
     const t = enriquecida.titulos;
     return Array.isArray(t) ? t : [];
-  }, [rodadaAtual, calculoTravadoAceito]);
+  }, [rodadaAtual, calculoTravadoAceito, aceitarPagamento]);
 
   // Corrige estado persistido se um recálculo antigo sobrescreveu títulos gravados (aceito ou snapshot txt).
   useEffect(() => {
@@ -1071,6 +1083,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       if (!cur) return prev;
       const gravados = cur.titulosGravadosAceito;
       if (!Array.isArray(gravados) || gravados.length === 0) return prev;
+      if (!titulosGravadosSnapshotUtilizavel(gravados)) return prev;
       const atual = cur.titulos;
       if (Array.isArray(atual) && atual.length === gravados.length) {
         const igual = gravados.every((g, i) => {
@@ -1683,10 +1696,15 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   // Recalcula ao abrir e a cada mudança, exceto quando a rodada está aceita (travada como no Excel).
   // Usa `parcelamentoAceito` da rodada, não só o checkbox — evita corrida antes do sync do checkbox.
   useEffect(() => {
-    if (calculoTravadoAceito || aceitarPagamento) return;
+    const gravados = rodadaAtual.titulosGravadosAceito;
+    const snapshotParcial =
+      Array.isArray(gravados) && gravados.length > 0 && !titulosGravadosSnapshotUtilizavel(gravados);
+    if ((calculoTravadoAceito || aceitarPagamento) && !snapshotParcial) return;
     if (featureFlags.useApiCalculos && !rodadaExisteNoEstado) return;
-    const hoje = hojeBR();
-    setDataCalculo((prev) => (prev !== hoje ? hoje : prev));
+    if (!aceitarPagamento && !calculoTravadoAceito) {
+      const hoje = hojeBR();
+      setDataCalculo((prev) => (prev !== hoje ? hoje : prev));
+    }
     const idxUpperGeral = String(indice).toUpperCase();
     const precisaINPC =
       idxUpperGeral === 'INPC' ||
@@ -1703,7 +1721,11 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     if (precisaIPCA && indicesMensaisIPCA == null) return;
     setRodadasState((prev) => {
       const cur = prev[rodadaKey] || { ...rodadaAtual };
-      const listaFull = Array.isArray(cur.titulos) ? cur.titulos : [];
+      const baseTitulos = Array.isArray(cur.titulos) ? cur.titulos : [];
+      const listaFull =
+        snapshotParcial && Array.isArray(gravados) && gravados.length
+          ? gravados
+          : baseTitulos;
       const { next, changed } = recalcularTitulos(listaFull, indicesMensaisINPC, indicesMensaisIPCA);
       if (!changed) return prev;
       isDirtyRodadaRef.current = true;
@@ -1740,7 +1762,10 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
 
   // Carrega índices mensais do INPC antes de recalcular.
   useEffect(() => {
-    if ((calculoTravadoAceito || aceitarPagamento) && !modoAlteracao) return;
+    const gravados = rodadaAtual.titulosGravadosAceito;
+    const snapshotParcial =
+      Array.isArray(gravados) && gravados.length > 0 && !titulosGravadosSnapshotUtilizavel(gravados);
+    if ((calculoTravadoAceito || aceitarPagamento) && !modoAlteracao && !snapshotParcial) return;
     const idxUpperGeral = String(indice).toUpperCase();
     const precisaINPC =
       idxUpperGeral === 'INPC' ||
@@ -1790,7 +1815,10 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
 
   // Carrega índices mensais do IPCA (IPCA / “IPCA-E”) antes de recalcular.
   useEffect(() => {
-    if ((calculoTravadoAceito || aceitarPagamento) && !modoAlteracao) return;
+    const gravados = rodadaAtual.titulosGravadosAceito;
+    const snapshotParcial =
+      Array.isArray(gravados) && gravados.length > 0 && !titulosGravadosSnapshotUtilizavel(gravados);
+    if ((calculoTravadoAceito || aceitarPagamento) && !modoAlteracao && !snapshotParcial) return;
     const idxUpper = String(indice).toUpperCase();
     const precisaIPCA =
       idxUpper === 'IPCA-E' ||
