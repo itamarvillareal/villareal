@@ -486,7 +486,15 @@ function mapApiToUi(imovel, contrato) {
   const imovelIdUi = np != null && Number.isFinite(np) && np >= 1 ? np : idApi;
   return {
     imovelId: imovelIdUi,
-    imovelOcupado: String(imovel?.situacao || '').toUpperCase() !== 'DESOCUPADO',
+    imovelOcupado: (() => {
+      const sit = String(imovel?.situacao || '').toUpperCase();
+      if (sit === 'OCUPADO') return true;
+      if (sit === 'DESOCUPADO') {
+        const stContrato = String(contrato?.status ?? '').toUpperCase();
+        return stContrato === 'VIGENTE';
+      }
+      return true;
+    })(),
     codigo,
     proc,
     _vinculoCodigoOriginal: codigo,
@@ -965,6 +973,17 @@ async function montarItemCadastroFromApiImovel(apiImovel) {
   return item;
 }
 
+/** Igual a {@link montarItemCadastroFromApiImovel}, mas cai no shape básico da listagem se contrato/vínculos falharem. */
+async function montarItemCadastroResiliente(apiImovel) {
+  try {
+    return await montarItemCadastroFromApiImovel(apiImovel);
+  } catch {
+    let item = mapApiToUi(apiImovel, null);
+    item = await enriquecerCodigoProcDoVinculo(item, apiImovel);
+    return enriquecerNomesPartesImovelUi(item);
+  }
+}
+
 export async function carregarImovelCadastroPorNumeroPlanilha(numeroPlanilha) {
   if (!featureFlags.useApiImoveis) {
     return { fonte: 'legado', item: null, encontrado: false };
@@ -975,7 +994,7 @@ export async function carregarImovelCadastroPorNumeroPlanilha(numeroPlanilha) {
   }
   try {
     const apiImovel = await request(`/api/imoveis/por-numero-planilha/${n}`);
-    const item = await montarItemCadastroFromApiImovel(apiImovel);
+    const item = await montarItemCadastroResiliente(apiImovel);
     return { fonte: 'api', item, encontrado: true };
   } catch {
     try {
@@ -985,9 +1004,14 @@ export async function carregarImovelCadastroPorNumeroPlanilha(numeroPlanilha) {
       if (!melhor?.id) {
         return { fonte: 'api', item: null, encontrado: false };
       }
-      const apiImovel = await request(`/api/imoveis/${melhor.id}`);
-      const item = await montarItemCadastroFromApiImovel(apiImovel);
-      return { fonte: 'api', item, encontrado: true };
+      try {
+        const apiImovel = await request(`/api/imoveis/${melhor.id}`);
+        const item = await montarItemCadastroResiliente(apiImovel);
+        return { fonte: 'api', item, encontrado: true };
+      } catch {
+        const item = await montarItemCadastroResiliente(melhor);
+        return { fonte: 'api', item, encontrado: true };
+      }
     } catch {
       return { fonte: 'api', item: null, encontrado: false };
     }
@@ -995,8 +1019,8 @@ export async function carregarImovelCadastroPorNumeroPlanilha(numeroPlanilha) {
 }
 
 /**
- * Resolve cadastro para painéis/navegação: prioriza nº da planilha (col. A), depois id interno da API.
- * Evita confundir GET /api/imoveis/{id} quando o id da URL é o número do imóvel na planilha.
+ * Resolve cadastro para painéis/navegação: prioriza nº da planilha (col. A).
+ * Só usa `imovelIdApi` como PK interna — nunca confunde nº da planilha com `GET /api/imoveis/{id}`.
  */
 export async function carregarImovelCadastroParaPainel({ imovelId, imovelIdApi } = {}) {
   if (!featureFlags.useApiImoveis) {
@@ -1007,7 +1031,7 @@ export async function carregarImovelCadastroParaPainel({ imovelId, imovelIdApi }
     const porPlanilha = await carregarImovelCadastroPorNumeroPlanilha(np);
     if (porPlanilha.item) return porPlanilha;
   }
-  const apiId = Number(imovelIdApi ?? imovelId);
+  const apiId = Number(imovelIdApi);
   if (Number.isFinite(apiId) && apiId >= 1) {
     return carregarImovelCadastro({ imovelId: apiId });
   }

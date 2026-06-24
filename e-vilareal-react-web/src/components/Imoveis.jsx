@@ -150,8 +150,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
 
   function popularFormulario(data) {
     if (!data) {
-      // Sem cadastro para este nº de imóvel: formulário em branco (não manter dados do imóvel anterior).
-      setImovelOcupado(false);
+      // Sem cadastro para este nº de imóvel: formulário em branco (não marcar como desocupado por engano).
       setCodigo('');
       setProc('');
       setObservacoesInquilino('');
