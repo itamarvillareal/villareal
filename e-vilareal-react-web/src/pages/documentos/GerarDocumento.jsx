@@ -14,6 +14,9 @@ import {
 import {
   mapearDadosProcessoParaFormIA,
   mapearDadosProcessoParaFormManual,
+  extrairDataIsoDeLocalData,
+  formatarLocalData,
+  LOCAL_DATA_PADRAO,
 } from '../../helpers/documentoHelper.js';
 import { buildRouterStateChaveClienteProcesso } from '../../domain/camposProcessoCliente.js';
 import {
@@ -32,7 +35,7 @@ import {
   buscarContratoHonorariosProcesso,
   salvarContratoHonorariosProcesso,
 } from '../../repositories/documentosRepository.js';
-import { CIDADE_ESTADO_PADRAO } from './constants.js';
+import { ENDERECAMENTOS } from './constants.js';
 import { btnGhost, btnPrimary, btnSecondary } from './documentosStyles.js';
 import { CollapsibleSection } from './components/CollapsibleSection.jsx';
 import { DadosProcesso, resolveEnderecamento } from './components/DadosProcesso.jsx';
@@ -67,6 +70,28 @@ import { renumerarClausulas } from './contratoHonorariosClausulasPreview.js';
 
 const hojeIso = () => new Date().toISOString().split('T')[0];
 
+const STORAGE_KEY_DADOS_PROCESSO = 'vilareal.gerarDocumento.dadosProcesso';
+
+function lerDadosProcessoPersistidos() {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY_DADOS_PROCESSO);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function salvarDadosProcessoPersistidos(dados) {
+  if (!dados) return;
+  try {
+    sessionStorage.setItem(STORAGE_KEY_DADOS_PROCESSO, JSON.stringify(dados));
+  } catch {
+    /* quota / modo privado */
+  }
+}
+
 const hojeBR = () => {
   const d = new Date();
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
@@ -96,7 +121,7 @@ const estadoInicialIA = () => ({
   modeloBase: '',
   instrucoesAdicionais: '',
   pedidosEspecificos: [''],
-  cidadeEstado: CIDADE_ESTADO_PADRAO,
+  cidadeEstado: LOCAL_DATA_PADRAO,
 });
 
 const estadoInicialManual = () => ({
@@ -109,7 +134,7 @@ const estadoInicialManual = () => ({
     { titulo: 'DO DIREITO', conteudo: '' },
   ],
   pedidos: [''],
-  cidadeEstado: CIDADE_ESTADO_PADRAO,
+  cidadeEstado: LOCAL_DATA_PADRAO,
 });
 
 function opcional(val) {
@@ -133,8 +158,8 @@ function montarPeticaoAiRequest(form, processoId) {
     pedidosEspecificos: pedidos.length ? pedidos : null,
     modeloBase: opcional(form.modeloBase),
     instrucoesAdicionais: opcional(form.instrucoesAdicionais),
-    cidadeEstado: form.cidadeEstado?.trim() || CIDADE_ESTADO_PADRAO,
-    data: hojeIso(),
+    cidadeEstado: form.cidadeEstado?.trim() || LOCAL_DATA_PADRAO,
+    data: extrairDataIsoDeLocalData(form.cidadeEstado) || hojeIso(),
   };
   if (processoId != null && processoId !== '') payload.processoId = Number(processoId);
   return payload;
@@ -152,8 +177,8 @@ function montarDocumentoManualRequest(form, processoId) {
     preambulo: form.preambulo.trim(),
     secoes,
     pedidos,
-    cidadeEstado: form.cidadeEstado?.trim() || CIDADE_ESTADO_PADRAO,
-    data: hojeIso(),
+    cidadeEstado: form.cidadeEstado?.trim() || LOCAL_DATA_PADRAO,
+    data: extrairDataIsoDeLocalData(form.cidadeEstado) || hojeIso(),
     ...(processoId != null && processoId !== '' ? { processoId: Number(processoId) } : {}),
   };
 }
@@ -194,8 +219,18 @@ function validarModoManual(form) {
 export function GerarDocumento() {
   const location = useLocation();
   const navigate = useNavigate();
-  const dadosProcesso = location.state?.dadosProcesso;
+  const dadosProcessoState = location.state?.dadosProcesso;
+  const dadosProcesso = useMemo(
+    () => dadosProcessoState ?? lerDadosProcessoPersistidos(),
+    [dadosProcessoState],
+  );
   const modoInicial = location.state?.modoInicial;
+
+  useEffect(() => {
+    if (dadosProcessoState) {
+      salvarDadosProcessoPersistidos(dadosProcessoState);
+    }
+  }, [dadosProcessoState]);
   const formInicialIA = useMemo(
     () => (dadosProcesso ? mapearDadosProcessoParaFormIA(dadosProcesso) : estadoInicialIA()),
     [dadosProcesso]
@@ -226,13 +261,13 @@ export function GerarDocumento() {
   const [formManual, setFormManual] = useState(formInicialManual);
   const [formProcuracao, setFormProcuracao] = useState(() => ({
     pessoaId: dadosProcesso?.pessoaIdOutorgante ? String(dadosProcesso.pessoaIdOutorgante) : '',
-    cidadeEstado: dadosProcesso?.cidadeEstado || CIDADE_ESTADO_PADRAO,
+    cidadeEstado: formatarLocalData(dadosProcesso?.cidadeEstado),
     nomeOutorgante: dadosProcesso?.nomeOutorgante || '',
   }));
   const [formContrato, setFormContrato] = useState(() => ({
     modelo: MODELO_CONTRATO_HONORARIOS,
     pessoaId: dadosProcesso?.pessoaIdOutorgante ? String(dadosProcesso.pessoaIdOutorgante) : '',
-    cidadeEstado: dadosProcesso?.cidadeEstado || CIDADE_ESTADO_PADRAO,
+    cidadeEstado: formatarLocalData(dadosProcesso?.cidadeEstado),
     nomeContratante: dadosProcesso?.nomeOutorgante || '',
     objetoContrato: sugerirObjetoContrato(dadosProcesso),
     clausula3Remuneracao: CLAUSULA_3_REMUNERACAO_PADRAO,
@@ -337,13 +372,13 @@ export function GerarDocumento() {
     setFormManual(estadoInicialManual());
     setFormProcuracao({
       pessoaId: '',
-      cidadeEstado: CIDADE_ESTADO_PADRAO,
+      cidadeEstado: LOCAL_DATA_PADRAO,
       nomeOutorgante: '',
     });
     setFormContrato({
       modelo: MODELO_CONTRATO_HONORARIOS,
       pessoaId: '',
-      cidadeEstado: CIDADE_ESTADO_PADRAO,
+      cidadeEstado: LOCAL_DATA_PADRAO,
       nomeContratante: '',
       objetoContrato: '',
       clausula3Remuneracao: CLAUSULA_3_REMUNERACAO_PADRAO,
@@ -449,8 +484,8 @@ export function GerarDocumento() {
     try {
       const blob = await gerarProcuracao({
         pessoaId,
-        cidadeEstado: formProcuracao.cidadeEstado?.trim() || CIDADE_ESTADO_PADRAO,
-        data: hojeIso(),
+        cidadeEstado: formProcuracao.cidadeEstado?.trim() || LOCAL_DATA_PADRAO,
+        data: extrairDataIsoDeLocalData(formProcuracao.cidadeEstado) || hojeIso(),
         processoId: processoApiId,
       });
       downloadPdfBlob(blob, nomeArquivoProcuracaoPdf(formProcuracao.nomeOutorgante));
@@ -465,8 +500,8 @@ export function GerarDocumento() {
     const pessoaId = Number(formContrato.pessoaId);
     return {
       pessoaId,
-      cidadeEstado: formContrato.cidadeEstado?.trim() || CIDADE_ESTADO_PADRAO,
-      data: hojeIso(),
+      cidadeEstado: formContrato.cidadeEstado?.trim() || LOCAL_DATA_PADRAO,
+      data: extrairDataIsoDeLocalData(formContrato.cidadeEstado) || hojeIso(),
       processoId: processoApiId,
       codigoCliente: codigoClienteProcesso,
       numeroInterno: numeroInternoProcesso,
@@ -504,8 +539,8 @@ export function GerarDocumento() {
     }
     return {
       pessoaId,
-      cidadeEstado: formContrato.cidadeEstado?.trim() || CIDADE_ESTADO_PADRAO,
-      data: hojeIso(),
+      cidadeEstado: formContrato.cidadeEstado?.trim() || LOCAL_DATA_PADRAO,
+      data: extrairDataIsoDeLocalData(formContrato.cidadeEstado) || hojeIso(),
       processoId: processoApiId,
       codigoCliente: codigoClienteProcesso,
       numeroInterno: numeroInternoProcesso,
@@ -646,8 +681,8 @@ export function GerarDocumento() {
       try {
         const blob = await gerarContratoAluguel({
           processoId: processoApiId,
-          cidadeEstado: formContrato.cidadeEstado?.trim() || CIDADE_ESTADO_PADRAO,
-          data: hojeIso(),
+          cidadeEstado: formContrato.cidadeEstado?.trim() || LOCAL_DATA_PADRAO,
+          data: extrairDataIsoDeLocalData(formContrato.cidadeEstado) || hojeIso(),
           codigoCliente: codigoClienteProcesso,
           numeroInterno: numeroInternoProcesso,
           formaAssinatura: formContrato.formaAssinatura,

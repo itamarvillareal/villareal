@@ -75,24 +75,26 @@ export function PreviewArquivoDocumento({
               'Atualizar prévia'
             )}
           </button>
-          {podeInserirPastaAssinar ? (
-            <button
-              type="button"
-              className={btnSecondary}
-              disabled={ocupado}
-              onClick={onInserirPastaAssinar}
-              title="Envia o PDF para a subpasta Assinar no Drive (arquivo a assinar agora) e altera a fase para Protocolo / Movimentação"
-            >
-              {inserindoPastaAssinar ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                  Inserindo…
-                </>
-              ) : (
-                'Inserir na Pasta Assinar'
-              )}
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className={btnSecondary}
+            disabled={ocupado || !podeInserirPastaAssinar}
+            onClick={onInserirPastaAssinar}
+            title={
+              podeInserirPastaAssinar
+                ? 'Envia o PDF para a subpasta Assinar no Drive (arquivo a assinar agora) e altera a fase para Protocolo / Movimentação'
+                : 'Abra esta tela a partir de Processos (Gerar documento) para vincular o PDF ao processo no Drive'
+            }
+          >
+            {inserindoPastaAssinar ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                Inserindo…
+              </>
+            ) : (
+              'Inserir na Pasta Assinar'
+            )}
+          </button>
           <button
             type="button"
             className={btnPrimary}

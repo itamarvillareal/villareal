@@ -7,7 +7,7 @@ import {
   inserirPdfReformatadoNaPastaAssinar,
   nomeArquivoPeticaoPdf,
 } from '../../../repositories/documentosRepository.js';
-import { resolveSelectExato, extrairDataIsoDeLocalData } from '../../../helpers/documentoHelper.js';
+import { resolveSelectExato, extrairDataIsoDeLocalData, formatarLocalData, LOCAL_DATA_PADRAO } from '../../../helpers/documentoHelper.js';
 import { salvarHistoricoDoProcesso } from '../../../data/processosHistoricoData.js';
 import { CIDADE_ESTADO_PADRAO, ENDERECAMENTOS } from '../constants.js';
 import { btnPrimary, btnSecondary, fieldErrorClass, inputClass } from '../documentosStyles.js';
@@ -23,7 +23,7 @@ const estadoInicial = () => ({
   enderecamentoSelect: '',
   enderecamentoOutro: '',
   numeroProcesso: '',
-  cidadeEstado: CIDADE_ESTADO_PADRAO,
+  cidadeEstado: LOCAL_DATA_PADRAO,
 });
 
 export function ModoEnviarArquivo({ dadosProcesso, onErro, onSucesso, onLoadingChange }) {
@@ -37,7 +37,7 @@ export function ModoEnviarArquivo({ dadosProcesso, onErro, onSucesso, onLoadingC
     return {
       ...base,
       numeroProcesso: dadosProcesso.numeroProcesso || '',
-      cidadeEstado: dadosProcesso.cidadeEstado || CIDADE_ESTADO_PADRAO,
+      cidadeEstado: formatarLocalData(dadosProcesso.cidadeEstado || CIDADE_ESTADO_PADRAO),
       enderecamentoSelect: end.select,
       enderecamentoOutro: end.outro,
     };
@@ -97,7 +97,7 @@ export function ModoEnviarArquivo({ dadosProcesso, onErro, onSucesso, onLoadingC
 
   const montarOpcoesExtracao = useCallback(() => {
     const enderecamento = resolveEnderecamento(form);
-    const localData = form.cidadeEstado?.trim() || CIDADE_ESTADO_PADRAO;
+    const localData = form.cidadeEstado?.trim() || LOCAL_DATA_PADRAO;
     const dataIso = extrairDataIsoDeLocalData(localData) || hojeIso();
     return {
       enderecamento: enderecamento || undefined,
@@ -317,7 +317,14 @@ export function ModoEnviarArquivo({ dadosProcesso, onErro, onSucesso, onLoadingC
       ) : null}
 
       {previewVisivel ? (
-        <PreviewArquivoDocumento
+        <>
+          {!podeInserirPastaAssinar ? (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-950 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-100">
+              Para usar <strong>Inserir na Pasta Assinar</strong>, abra esta tela a partir de{' '}
+              <strong>Processos → Gerar documento</strong> (vincula Cod.+Proc. ao Drive).
+            </p>
+          ) : null}
+          <PreviewArquivoDocumento
           conteudo={conteudoEditavel}
           pdfUrl={previewUrl}
           loading={loadingPreview}
@@ -329,6 +336,7 @@ export function ModoEnviarArquivo({ dadosProcesso, onErro, onSucesso, onLoadingC
           onGerarFinal={() => void handleGerarFinal()}
           onInserirPastaAssinar={() => void handleInserirPastaAssinar()}
         />
+        </>
       ) : null}
 
       <div className="flex flex-wrap gap-3 pt-2">
