@@ -269,6 +269,11 @@ export function itemPainelEmFalha(item) {
   return Number(item?.falhasConsecutivas) > 0;
 }
 
+/** @param {PainelItem|undefined|null} item */
+export function itemPainelComNovidade(item) {
+  return String(item?.statusUltimaExecucao ?? '').trim() === 'SUCESSO_COM_NOVIDADE';
+}
+
 /**
  * @param {PainelItem|undefined|null} item
  * @returns {string}

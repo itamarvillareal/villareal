@@ -11,6 +11,7 @@ import {
   construirIndiceImoveisPorCodProc,
   extrairTotaisFinanceirosMes,
   extrairTotaisFinanceirosMesComRepasseAnterior,
+  filtrarLancamentosRelatorioFinanceiroMes,
   formatarDataVencimentoFluxoNoMes,
   linhaRelatorioFinanceiroFromCadastro,
   mesAnteriorChaveYYYYMM,
@@ -126,6 +127,16 @@ describe('classificarLancamentoAdministracaoImovel / extrairTotaisFinanceirosMes
     });
     const jun = painel.transacoes.find((t) => t.data === '10/06/2026');
     expect(jun?.classificacao?.papel).toBe('aluguel');
+  });
+
+  it('filtrarLancamentosRelatorioFinanceiroMes descarta histórico antigo', () => {
+    const lancs = [
+      { data: '10/06/2026', valor: 1707.83, descricao: 'PIX Neemias' },
+      { data: '15/01/2020', valor: 500, descricao: 'legado' },
+    ];
+    const filtrados = filtrarLancamentosRelatorioFinanceiroMes(lancs, '2026-06', null);
+    expect(filtrados).toHaveLength(1);
+    expect(filtrados[0].data).toBe('10/06/2026');
   });
 
   it('extrairTotaisFinanceirosMes reconhece PIX do inquilino com cadastro do imóvel (793/10)', () => {

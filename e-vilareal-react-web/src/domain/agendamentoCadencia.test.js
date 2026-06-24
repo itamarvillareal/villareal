@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   agruparPainelPorProcesso,
+  itemPainelComNovidade,
   formatarHoraInput,
   montarBodyAgendamentoRequest,
   normalizarHora,
@@ -101,6 +102,12 @@ describe('agendamentoCadencia', () => {
       { agendamentoId: 3, emAtraso: false, proximaExecucao: '2026-06-05T10:00:00' },
     ]);
     expect(sorted.map((x) => x.agendamentoId)).toEqual([2, 3, 1]);
+  });
+
+  it('itemPainelComNovidade detecta última execução com novidade', () => {
+    expect(itemPainelComNovidade({ statusUltimaExecucao: 'SUCESSO_COM_NOVIDADE' })).toBe(true);
+    expect(itemPainelComNovidade({ statusUltimaExecucao: 'SUCESSO_SEM_NOVIDADE' })).toBe(false);
+    expect(itemPainelComNovidade({ statusUltimaExecucao: null })).toBe(false);
   });
 
   it('agruparPainelPorProcesso une agendamentos do mesmo processo', () => {

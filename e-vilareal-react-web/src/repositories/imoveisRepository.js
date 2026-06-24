@@ -1138,6 +1138,7 @@ export function vinculosMapFromApiRows(rows) {
 /**
  * Relatório financeiro (imóveis × mês): extratos bancários com Cod.+Proc., filtrado por nº de imóvel no processo.
  */
+const RELATORIO_FINANCEIRO_IMOVEIS_CONCORRENCIA = 6;
 export async function carregarRelatorioFinanceiroImoveisMes(chaveMesYYYYMM, opts = {}) {
   const { soOcupados = true, signal } = opts;
   const cad = await carregarItensRelatorioImoveisApi();
@@ -1179,8 +1180,10 @@ export async function carregarRelatorioFinanceiroImoveisMes(chaveMesYYYYMM, opts
 
   const vinculosPorPar = new Map();
   if (featureFlags.useApiImoveis) {
-    await Promise.all(
-      [...metaPorChave.entries()].map(async ([chave, meta]) => {
+    await mapComLimiteConcorrencia(
+      [...metaPorChave.entries()],
+      RELATORIO_FINANCEIRO_IMOVEIS_CONCORRENCIA,
+      async ([chave, meta]) => {
         const contratoId = Number(meta.contratoId);
         if (!Number.isFinite(contratoId) || contratoId <= 0) return;
         try {
@@ -1189,13 +1192,15 @@ export async function carregarRelatorioFinanceiroImoveisMes(chaveMesYYYYMM, opts
         } catch {
           /* relatório segue só com heurística do extrato */
         }
-      }),
+      },
     );
   }
 
   if (featureFlags.useApiFinanceiro) {
-    await Promise.all(
-      [...chavesVinculo].map(async (chave) => {
+    await mapComLimiteConcorrencia(
+      [...chavesVinculo],
+      RELATORIO_FINANCEIRO_IMOVEIS_CONCORRENCIA,
+      async (chave) => {
         const [cod, procNorm] = chave.split('|');
         const procNum = Number(procNorm);
         const meta = metaPorChave.get(chave) || {};
@@ -1217,7 +1222,7 @@ export async function carregarRelatorioFinanceiroImoveisMes(chaveMesYYYYMM, opts
         } catch {
           /* mantém totais vazios para o par */
         }
-      }),
+      },
     );
   } else {
     for (const chave of chavesVinculo) {

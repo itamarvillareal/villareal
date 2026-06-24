@@ -17,6 +17,7 @@ import {
   agruparPainelPorProcesso,
   formatarDateTimePainel,
   itemPainelEmFalha,
+  itemPainelComNovidade,
   labelFalhaPainel,
   labelStatusUltimaExecucao,
   ordenarPainelItens,
@@ -323,12 +324,17 @@ export function ConsultasPeriodicasPainel() {
                       ? labelStatusUltimaExecucao(row.statusUltimaExecucao)
                       : '';
                     const emFalha = itemPainelEmFalha(row);
+                    const comNovidade = itemPainelComNovidade(row);
                     const falhaLabel = labelFalhaPainel(row);
 
                     return (
                       <tr
                         key={procId}
-                        className="border-t border-slate-100 dark:border-white/[0.06] hover:bg-slate-50/80 dark:hover:bg-white/[0.02]"
+                        className={
+                          comNovidade
+                            ? 'border-t border-emerald-200/80 dark:border-emerald-500/25 bg-emerald-50/90 dark:bg-emerald-950/30 hover:bg-emerald-100/80 dark:hover:bg-emerald-950/45'
+                            : 'border-t border-slate-100 dark:border-white/[0.06] hover:bg-slate-50/80 dark:hover:bg-white/[0.02]'
+                        }
                       >
                         <td className="p-2 align-top text-center tabular-nums text-xs font-medium text-slate-500 dark:text-slate-400">
                           {String(idx + 1).padStart(3, '0')}
@@ -380,7 +386,13 @@ export function ConsultasPeriodicasPainel() {
                             {row.ultimaExecucao ? formatarDateTimePainel(row.ultimaExecucao) : '—'}
                           </div>
                           {statusLabel ? (
-                            <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                            <div
+                              className={
+                                comNovidade
+                                  ? 'text-[10px] font-semibold text-emerald-800 dark:text-emerald-200 mt-0.5'
+                                  : 'text-[10px] text-slate-500 dark:text-slate-400 mt-0.5'
+                              }
+                            >
                               {statusLabel}
                             </div>
                           ) : null}

@@ -653,6 +653,36 @@ export function avaliarSituacaoRepasseMes({
   });
 }
 
+/**
+ * Reduz o extrato ao necessário para o relatório (mês alvo + anterior + janela curta de créditos).
+ * Evita classificar dezenas de milhares de lançamentos no browser (OOM / Chrome erro 5).
+ */
+export function filtrarLancamentosRelatorioFinanceiroMes(lancamentos, chaveMesYYYYMM, vinculosPorLancamento) {
+  const chaves = new Set(
+    [chaveMesYYYYMM, mesAnteriorChaveYYYYMM(chaveMesYYYYMM)].filter(Boolean),
+  );
+  const parts = String(chaveMesYYYYMM ?? '').split('-');
+  const y = Number(parts[0]);
+  const m = Number(parts[1]);
+  const lookbackStart =
+    Number.isFinite(y) && Number.isFinite(m) ? new Date(y, m - 1 - 6, 1).getTime() : null;
+
+  return (lancamentos || []).filter((t) => {
+    const refVinc = vinculosPorLancamento
+      ? referenciaAluguelExtrato(t, vinculosPorLancamento, mesReferenciaLancamentoParaRelatorio)?.chave
+      : null;
+    const refData = mesReferenciaLancamentoParaRelatorio(t)?.chave;
+    const ref = refVinc ?? refData;
+    if (ref && chaves.has(ref)) return true;
+    if (lookbackStart != null && Number(t?.valor) > 0 && refData) {
+      const rp = refData.split('-').map(Number);
+      const tRef = new Date(rp[0], rp[1] - 1, 1).getTime();
+      if (!Number.isNaN(tRef) && tRef >= lookbackStart) return true;
+    }
+    return false;
+  });
+}
+
 export function extrairTotaisFinanceirosMes(lancamentos, codigoCliente, proc, chaveMesYYYYMM, opts = {}) {
   const painel = montarPainelAdministracaoImovelDeTransacoes(lancamentos, codigoCliente, proc, {
     valorAluguelContrato: opts.valorAluguelContrato ?? opts.valorLocacao ?? null,
@@ -692,10 +722,15 @@ export function extrairTotaisFinanceirosMesComRepasseAnterior(
   chaveMesYYYYMM,
   opts = {},
 ) {
-  const totais = extrairTotaisFinanceirosMes(lancamentos, codigoCliente, proc, chaveMesYYYYMM, opts);
+  const filtrados = filtrarLancamentosRelatorioFinanceiroMes(
+    lancamentos,
+    chaveMesYYYYMM,
+    opts.vinculosPorLancamento,
+  );
+  const totais = extrairTotaisFinanceirosMes(filtrados, codigoCliente, proc, chaveMesYYYYMM, opts);
   const chaveAnterior = mesAnteriorChaveYYYYMM(chaveMesYYYYMM);
   if (!chaveAnterior) return totais;
-  const anterior = extrairTotaisFinanceirosMes(lancamentos, codigoCliente, proc, chaveAnterior, opts);
+  const anterior = extrairTotaisFinanceirosMes(filtrados, codigoCliente, proc, chaveAnterior, opts);
   return {
     ...totais,
     totalRepasseAnterior: anterior.totalRepasse,
