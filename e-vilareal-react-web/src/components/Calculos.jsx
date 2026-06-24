@@ -952,11 +952,13 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   };
 
   const rodadaExisteNoEstado = rodadasState[rodadaKey] != null;
+  const calculoTravadoAceito = Boolean(rodadaAtual.parcelamentoAceito);
+  const calculoAceito = aceitarPagamento || calculoTravadoAceito;
 
   useEffect(() => {
     const dc = String(rodadaAtual.dataCalculoRodada ?? '').trim();
-    if ((aceitarPagamento || calculoTravadoAceito) && dc) setDataCalculo(dc);
-  }, [rodadaKey, aceitarPagamento, calculoTravadoAceito, rodadaAtual.dataCalculoRodada]);
+    if (calculoAceito && dc) setDataCalculo(dc);
+  }, [rodadaKey, calculoAceito, rodadaAtual.dataCalculoRodada]);
 
   // Preenche cabecalho.autor / .reu a partir de Processos + Cliente (API) ou histórico local, sem sobrescrever texto já salvo na rodada.
   useEffect(() => {
@@ -1040,8 +1042,6 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       return { ...prev, [rodadaKey]: { ...cur, paginaParcelamento: nextPagParc } };
     });
   }, [paginaParcelamento, rodadaKey]);
-
-  const calculoTravadoAceito = Boolean(rodadaAtual.parcelamentoAceito);
 
   const titulos = useMemo(() => {
     const gravados = rodadaAtual.titulosGravadosAceito;
@@ -1584,7 +1584,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     // Sem override: travado usa a data do painel; liberado usa a data corrente (regra de negócio).
     const dataCalcGlobal =
       dataOverride ??
-      (aceitarPagamento || calculoTravadoAceito ? parseDateBR(dataCalculo) : parseDateBR(hojeBR()));
+      (calculoAceito ? parseDateBR(dataCalculo) : parseDateBR(hojeBR()));
     const honorPctFixo = parsePercent(honorariosValor);
 
     let changed = false;
@@ -1688,17 +1688,12 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     return { next, changed };
   }
 
-  // Recalcula ao abrir e a cada mudança, exceto quando a rodada está aceita (travada como no Excel).
-  // Usa `parcelamentoAceito` da rodada, não só o checkbox — evita corrida antes do sync do checkbox.
+  // Recalcula ao abrir e a cada mudança, exceto quando o cálculo está aceito/travado.
   useEffect(() => {
-    const gravados = rodadaAtual.titulosGravadosAceito;
-    const temGravadosImutaveis = Array.isArray(gravados) && gravados.length > 0;
-    if ((calculoTravadoAceito || aceitarPagamento) && !temGravadosImutaveis) return;
+    if (calculoAceito) return;
     if (featureFlags.useApiCalculos && !rodadaExisteNoEstado) return;
-    if (!aceitarPagamento && !calculoTravadoAceito) {
-      const hoje = hojeBR();
-      setDataCalculo((prev) => (prev !== hoje ? hoje : prev));
-    }
+    const hoje = hojeBR();
+    setDataCalculo((prev) => (prev !== hoje ? hoje : prev));
     const idxUpperGeral = String(indice).toUpperCase();
     const precisaINPC =
       idxUpperGeral === 'INPC' ||
@@ -1713,6 +1708,8 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
 
     if (precisaINPC && indicesMensaisINPC == null) return;
     if (precisaIPCA && indicesMensaisIPCA == null) return;
+    const gravados = rodadaAtual.titulosGravadosAceito;
+    const temGravadosImutaveis = Array.isArray(gravados) && gravados.length > 0;
     setRodadasState((prev) => {
       const cur = prev[rodadaKey] || { ...rodadaAtual };
       const baseTitulos = Array.isArray(cur.titulos) ? cur.titulos : [];
@@ -1735,8 +1732,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    calculoTravadoAceito,
-    aceitarPagamento,
+    calculoAceito,
     rodadaExisteNoEstado,
     indice,
     juros,
@@ -1753,9 +1749,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
 
   // Carrega índices mensais do INPC antes de recalcular.
   useEffect(() => {
-    const gravados = rodadaAtual.titulosGravadosAceito;
-    const temGravadosImutaveis = Array.isArray(gravados) && gravados.length > 0;
-    if ((calculoTravadoAceito || aceitarPagamento) && !modoAlteracao && !temGravadosImutaveis) return;
+    if (calculoAceito && !modoAlteracao) return;
     const idxUpperGeral = String(indice).toUpperCase();
     const precisaINPC =
       idxUpperGeral === 'INPC' ||
@@ -1766,9 +1760,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       return;
     }
 
-    const dataCalcDate = parseDateBR(
-      aceitarPagamento || calculoTravadoAceito ? dataCalculo : hojeBR(),
-    );
+    const dataCalcDate = parseDateBR(calculoAceito ? dataCalculo : hojeBR());
     if (!dataCalcDate) return;
 
     // Busca o intervalo monetário coberto pelas “Datas Especiais” (por linha) e pela data geral.
@@ -1803,13 +1795,11 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calculoTravadoAceito, aceitarPagamento, modoAlteracao, indice, dataCalculo, rodadaKey, indicesRefreshToken, titulosChaveRecalculo]);
+  }, [calculoAceito, modoAlteracao, indice, dataCalculo, rodadaKey, indicesRefreshToken, titulosChaveRecalculo]);
 
   // Carrega índices mensais do IPCA (IPCA / “IPCA-E”) antes de recalcular.
   useEffect(() => {
-    const gravados = rodadaAtual.titulosGravadosAceito;
-    const temGravadosImutaveis = Array.isArray(gravados) && gravados.length > 0;
-    if ((calculoTravadoAceito || aceitarPagamento) && !modoAlteracao && !temGravadosImutaveis) return;
+    if (calculoAceito && !modoAlteracao) return;
     const idxUpper = String(indice).toUpperCase();
     const precisaIPCA =
       idxUpper === 'IPCA-E' ||
@@ -1824,9 +1814,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       return;
     }
 
-    const dataCalcDate = parseDateBR(
-      aceitarPagamento || calculoTravadoAceito ? dataCalculo : hojeBR(),
-    );
+    const dataCalcDate = parseDateBR(calculoAceito ? dataCalculo : hojeBR());
     if (!dataCalcDate) return;
 
     // Busca o intervalo monetário coberto pelas “Datas Especiais” (por linha) e pela data geral.
@@ -1863,7 +1851,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calculoTravadoAceito, aceitarPagamento, modoAlteracao, indice, dataCalculo, rodadaKey, indicesRefreshToken, titulosChaveRecalculo]);
+  }, [calculoAceito, modoAlteracao, indice, dataCalculo, rodadaKey, indicesRefreshToken, titulosChaveRecalculo]);
 
   function abrirModalDatasEspeciais(indexGlobal) {
     const linha = (rodadaAtual.titulos || [])[indexGlobal];
@@ -1925,7 +1913,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       // Se o cálculo estiver travado (Aceitar Pagamento), em Modo de Alteração o usuário pode editar manualmente
       // sem que a rotina de recálculo sobrescreva os valores digitados.
       const next =
-        calculoTravadoAceito || aceitarPagamento
+        calculoAceito
           ? titulosAtualizados
           : recalcularTitulos(titulosAtualizados, indicesMensaisINPC, indicesMensaisIPCA).next;
       isDirtyRodadaRef.current = true;
@@ -2110,7 +2098,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   // Preenche valor da parcela e honorários por parcela: totais da aba Títulos + quantidade + taxa mensal (Price).
   // Com cálculo aceito/travado, não recalcula automaticamente (parcelas imutáveis até "Modo de Alteração").
   useEffect(() => {
-    if (calculoTravadoAceito || aceitarPagamento) return;
+    if (calculoAceito) return;
 
     const tm = setTimeout(() => {
       const nParc = parseQuantidadeParcelasNumero(quantidadeParcelasInformada);
@@ -3197,6 +3185,10 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                   const ok = confirmarAlternarAceitarPagamento(next);
                   if (!ok) return;
                   setAceitarPagamento(next);
+                  if (!next) {
+                    setDataCalculo(hojeBR());
+                    setIndicesRefreshToken((t) => t + 1);
+                  }
                   setRodadasState((prev) => {
                     const cur = prev[rodadaKey];
                     if (!cur) return prev;
