@@ -7,6 +7,7 @@ import {
   listarProcessosFaseAguardandoProtocolo,
   listarProcessosPorPrazoFatal,
   normalizarDataBr,
+  registroEmFaseAguardandoProtocolo,
 } from '../data/processosHistoricoData.js';
 import {
   agruparConsultasRealizadasPorProcesso,
@@ -514,7 +515,32 @@ function chaveClienteProcItemFase(item) {
 }
 
 /**
- * Diagnóstico «Aguardando Protocolo»: histórico local + processos na API com a mesma fase.
+ * Entradas só no histórico local: incluir se o processo ainda não existe na API ou se a fase
+ * na API continua «Aguardando Protocolo». Ignora fase local desatualizada após protocolo
+ * (cadastro na API já passou para «Em Andamento», etc.).
+ */
+async function filtrarLocaisAguardandoProtocoloSemContradizerApi(locais) {
+  if (!Array.isArray(locais) || locais.length === 0) return [];
+  const validados = await Promise.all(
+    locais.map(async (item) => {
+      const cod = padCliente8(item.codCliente ?? item.codigoCliente);
+      const procNum = Math.floor(Number(String(item.proc ?? item.numeroInterno ?? '').replace(/\D/g, '')) || 0);
+      if (!procNum) return item;
+      try {
+        const api = await buscarProcessoPorChaveNatural(cod, procNum);
+        if (!api) return item;
+        const faseApi = String(api.faseSelecionada ?? api.fase ?? '').trim();
+        return registroEmFaseAguardandoProtocolo(faseApi) ? item : null;
+      } catch {
+        return item;
+      }
+    }),
+  );
+  return validados.filter(Boolean);
+}
+
+/**
+ * Diagnóstico «Aguardando Protocolo»: cadastro na API + histórico local só quando não contradiz a API.
  */
 export async function listarProcessosFaseAguardandoProtocoloDiagnostico() {
   const locais = listarProcessosFaseAguardandoProtocolo();
@@ -537,9 +563,10 @@ export async function listarProcessosFaseAguardandoProtocoloDiagnostico() {
     });
     const m = new Map();
     for (const x of fromApi) m.set(chaveClienteProcItemFase(x), x);
-    for (const x of locais) {
-      const k = chaveClienteProcItemFase(x);
-      if (!m.has(k)) m.set(k, x);
+    const locaisExtras = locais.filter((x) => !m.has(chaveClienteProcItemFase(x)));
+    const locaisValidos = await filtrarLocaisAguardandoProtocoloSemContradizerApi(locaisExtras);
+    for (const x of locaisValidos) {
+      m.set(chaveClienteProcItemFase(x), x);
     }
     const out = [...m.values()];
     out.sort((a, b) => chaveClienteProcItemFase(a).localeCompare(chaveClienteProcItemFase(b)));

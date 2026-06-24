@@ -4,6 +4,7 @@ import { request } from '../api/httpClient.js';
 import {
   erroEndpointHistoricoDataIndisponivel,
   listarHistoricoPorDataDiagnostico,
+  listarProcessosFaseAguardandoProtocoloDiagnostico,
 } from './processosRepository.js';
 
 vi.mock('../api/httpClient.js', () => ({
@@ -158,5 +159,85 @@ describe('erroEndpointHistoricoDataIndisponivel', () => {
     expect(
       erroEndpointHistoricoDataIndisponivel(new Error('No static resource api/processos/diagnostico/historico-data')),
     ).toBe(true);
+  });
+});
+
+describe('listarProcessosFaseAguardandoProtocoloDiagnostico', () => {
+  beforeEach(() => {
+    vi.mocked(request).mockReset();
+    vi.spyOn(historicoData, 'listarProcessosFaseAguardandoProtocolo').mockReturnValue([]);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('não reintroduz processo local quando a API já mudou a fase', async () => {
+    vi.mocked(request).mockImplementation(async (path, opts) => {
+      if (path === '/api/processos/diagnostico/aguardando-protocolo') return [];
+      if (path === '/api/processos') {
+        expect(opts?.query?.codigoCliente).toBe('00000578');
+        expect(opts?.query?.numeroInterno).toBe('134');
+        return { id: 1, numeroInterno: 134, fase: 'Em Andamento' };
+      }
+      throw new Error(`unexpected ${path}`);
+    });
+    historicoData.listarProcessosFaseAguardandoProtocolo.mockReturnValue([
+      {
+        codCliente: '00000578',
+        proc: '134',
+        cliente: 'Condomínio',
+        faseSelecionada: 'Protocolo / Movimentação',
+      },
+    ]);
+
+    const itens = await listarProcessosFaseAguardandoProtocoloDiagnostico();
+    expect(itens).toHaveLength(0);
+  });
+
+  it('mantém processo só no histórico local quando não existe na API', async () => {
+    vi.mocked(request).mockImplementation(async (path) => {
+      if (path === '/api/processos/diagnostico/aguardando-protocolo') return [];
+      if (path === '/api/processos') {
+        const err = new Error('404 não encontrado');
+        throw err;
+      }
+      throw new Error(`unexpected ${path}`);
+    });
+    historicoData.listarProcessosFaseAguardandoProtocolo.mockReturnValue([
+      {
+        codCliente: '00000999',
+        proc: '1',
+        cliente: 'Só local',
+        faseSelecionada: 'Protocolo / Movimentação',
+      },
+    ]);
+
+    const itens = await listarProcessosFaseAguardandoProtocoloDiagnostico();
+    expect(itens).toHaveLength(1);
+    expect(itens[0].proc).toBe('1');
+  });
+
+  it('prioriza linhas da API e deduplica com local', async () => {
+    vi.mocked(request).mockResolvedValue([
+      {
+        codigoCliente: '578',
+        numeroInterno: 134,
+        cliente: 'API',
+        parteOposta: 'Réu',
+      },
+    ]);
+    historicoData.listarProcessosFaseAguardandoProtocolo.mockReturnValue([
+      {
+        codCliente: '00000578',
+        proc: '134',
+        cliente: 'Local',
+        faseSelecionada: 'Protocolo / Movimentação',
+      },
+    ]);
+
+    const itens = await listarProcessosFaseAguardandoProtocoloDiagnostico();
+    expect(itens).toHaveLength(1);
+    expect(itens[0].cliente).toBe('API');
   });
 });
