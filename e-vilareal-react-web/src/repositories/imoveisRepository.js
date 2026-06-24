@@ -255,24 +255,20 @@ export function normalizarExtrasImovelParaUi(rawExtras = {}) {
 
 async function enriquecerCodigoProcDoVinculo(item, apiImovel) {
   if (!item) return item;
-  if (String(item.codigo ?? '').trim() && String(item.proc ?? '').trim()) return item;
-  const np = apiImovel?.numeroPlanilha;
-  const idApi = apiImovel?.id;
-  const v = await listarVinculosProcessoImovel({
-    numeroPlanilha: np != null ? Number(np) : undefined,
-    imovelIdApi: idApi != null ? Number(idApi) : undefined,
-  });
-  const lista = v.vinculos || [];
-  const prim =
-    lista.find((x) => x.principal) || lista.find((x) => x.cadastroAtual) || lista[lista.length - 1];
-  if (!prim) return item;
-  return {
+  const principal = await resolverVinculoPrincipalProcessoImovel({
     ...item,
-    codigo: String(item.codigo || prim.codigoCliente || '').trim(),
-    proc:
-      String(item.proc || (prim.numeroInterno != null ? prim.numeroInterno : '')).trim(),
-    _apiProcessoId: item._apiProcessoId || prim.processoId || null,
-  };
+    _apiImovelId: item._apiImovelId ?? apiImovel?.id ?? null,
+    numeroPlanilhaColA: item.numeroPlanilhaColA ?? apiImovel?.numeroPlanilha ?? null,
+  });
+  if (principal) {
+    return {
+      ...item,
+      codigo: principal.codigo,
+      proc: principal.proc,
+      _apiProcessoId: principal.processoId ?? item._apiProcessoId ?? null,
+    };
+  }
+  return item;
 }
 
 const STATUS_ORDEM_CONTRATO = { VIGENTE: 0, RASCUNHO: 1, ENCERRADO: 2, RESCINDIDO: 3 };
@@ -788,6 +784,56 @@ export async function listarVinculosProcessoImovel(opts = {}) {
   } catch {
     return mesclarVinculosProcessoImovel({ numeroPlanilha: np >= 1 ? np : null, vinculos: [] }, np);
   }
+}
+
+/** Escolhe o vínculo atual: principal (último cadastrado) > cadastro atual > último da lista. */
+export function escolherVinculoPrincipalProcessoLista(vinculos) {
+  const lista = Array.isArray(vinculos) ? vinculos : [];
+  return (
+    lista.find((x) => x.principal) ||
+    lista.find((x) => x.cadastroAtual) ||
+    lista[lista.length - 1] ||
+    null
+  );
+}
+
+const cacheVinculoPrincipalProcesso = new Map();
+
+/** Par Cod.+Proc. vigente do imóvel (conta corrente / relatório), alinhado ao modal «Processos do imóvel». */
+export async function resolverVinculoPrincipalProcessoImovel(imovel) {
+  if (!featureFlags.useApiImoveis || !imovel) return null;
+  const np = Number(imovel.imovelId ?? imovel.numeroPlanilhaColA ?? imovel.numeroPlanilha);
+  const idApi = Number(imovel._apiImovelId);
+  const cacheKey =
+    Number.isFinite(np) && np >= 1 ? `np:${np}` : Number.isFinite(idApi) && idApi > 0 ? `id:${idApi}` : null;
+  if (cacheKey && cacheVinculoPrincipalProcesso.has(cacheKey)) {
+    return cacheVinculoPrincipalProcesso.get(cacheKey);
+  }
+
+  let resultado = null;
+  try {
+    const r = await listarVinculosProcessoImovel({
+      numeroPlanilha: Number.isFinite(np) && np >= 1 ? np : undefined,
+      imovelIdApi: Number.isFinite(idApi) && idApi > 0 ? idApi : undefined,
+    });
+    const prim = escolherVinculoPrincipalProcessoLista(r.vinculos);
+    if (prim?.codigoCliente && prim.numeroInterno != null && Number(prim.numeroInterno) >= 1) {
+      resultado = {
+        codigo: padCliente8(prim.codigoCliente),
+        proc: String(Math.trunc(Number(prim.numeroInterno))),
+        processoId:
+          prim.processoId != null && Number.isFinite(Number(prim.processoId)) && Number(prim.processoId) > 0
+            ? Number(prim.processoId)
+            : null,
+        fonteChave: 'principal',
+      };
+    }
+  } catch {
+    resultado = null;
+  }
+
+  if (cacheKey) cacheVinculoPrincipalProcesso.set(cacheKey, resultado);
+  return resultado;
 }
 
 function corpoPutImovelFromApi(imo, patch) {
@@ -1310,10 +1356,14 @@ export async function salvarImovelCadastro(uiPayload) {
 
 /**
  * Chave do processo para conta corrente / painel financeiro do imóvel (somente leitura).
- * Com N:N ({@code _apiProcessoId}): deriva cod+proc oficiais do processo — não dos extras.
- * Sem N:N: mantém cod/proc do cadastro (extras).
+ * Prioridade: vínculo principal (último proc. do imóvel) → N:N ({@code _apiProcessoId}) → extras.
  */
 export async function resolverChaveProcessoContaCorrentePainel(imovel) {
+  const principal = await resolverVinculoPrincipalProcessoImovel(imovel);
+  if (principal?.codigo && principal.proc) {
+    return principal;
+  }
+
   const fallbackCodigo = String(imovel?.codigo ?? '').trim();
   const fallbackProc = String(imovel?.proc ?? '').trim();
   const processoIdRaw = imovel?._apiProcessoId;
