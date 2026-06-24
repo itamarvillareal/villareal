@@ -195,7 +195,7 @@ function opcional(val) {
   return t || null;
 }
 
-function montarPeticaoAiRequest(form, processoId) {
+function montarPeticaoAiRequest(form, processoId, dadosProcesso) {
   const pedidos = pedidosPreenchidos(form.pedidosEspecificos);
   const payload = {
     enderecamento: resolveEnderecamento(form),
@@ -215,10 +215,14 @@ function montarPeticaoAiRequest(form, processoId) {
     data: extrairDataIsoDeLocalData(form.cidadeEstado) || hojeIso(),
   };
   if (processoId != null && processoId !== '') payload.processoId = Number(processoId);
+  if (dadosProcesso?.codigoCliente) payload.codigoCliente = dadosProcesso.codigoCliente;
+  if (dadosProcesso?.numeroInterno != null && dadosProcesso?.numeroInterno !== '') {
+    payload.numeroInterno = Number(dadosProcesso.numeroInterno);
+  }
   return payload;
 }
 
-function montarDocumentoManualRequest(form, processoId) {
+function montarDocumentoManualRequest(form, processoId, dadosProcesso) {
   const secoes = (form.secoes || [])
     .map((s) => ({ titulo: s.titulo.trim(), conteudo: s.conteudo.trim() }))
     .filter((s) => s.titulo && s.conteudo);
@@ -233,6 +237,10 @@ function montarDocumentoManualRequest(form, processoId) {
     cidadeEstado: extrairCidadeEstadoDeLocalData(form.cidadeEstado),
     data: extrairDataIsoDeLocalData(form.cidadeEstado) || hojeIso(),
     ...(processoId != null && processoId !== '' ? { processoId: Number(processoId) } : {}),
+    ...(dadosProcesso?.codigoCliente ? { codigoCliente: dadosProcesso.codigoCliente } : {}),
+    ...(dadosProcesso?.numeroInterno != null && dadosProcesso?.numeroInterno !== ''
+      ? { numeroInterno: Number(dadosProcesso.numeroInterno) }
+      : {}),
   };
 }
 
@@ -794,7 +802,7 @@ export function GerarDocumento() {
         setErrors(errs);
         return;
       }
-      const payload = montarPeticaoAiRequest(formIA, processoApiId);
+      const payload = montarPeticaoAiRequest(formIA, processoApiId, dadosProcesso);
       setLoading(true);
       try {
         await baixarPdf(gerarPdfComIA, payload);
@@ -811,7 +819,7 @@ export function GerarDocumento() {
       setErrors(errs);
       return;
     }
-    const payload = montarDocumentoManualRequest(formManual, processoApiId);
+    const payload = montarDocumentoManualRequest(formManual, processoApiId, dadosProcesso);
     setLoading(true);
     try {
       await baixarPdf(gerarPdfManual, payload);
@@ -843,7 +851,7 @@ export function GerarDocumento() {
       setErrors(errs);
       return;
     }
-    const payload = montarPeticaoAiRequest(formIA, processoApiId);
+    const payload = montarPeticaoAiRequest(formIA, processoApiId, dadosProcesso);
     setPreviewOpen(true);
     setPreviewData(null);
     setLoadingPreview(true);

@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -72,7 +73,7 @@ public class DocumentoController {
         byte[] pdf = pdfService.gerarPeticaoPdf(request);
         LocalDate data = request.data() != null ? request.data() : LocalDate.now();
         String nomeArquivo = DocumentoDrivePastaService.formatarNomeArquivoPeticao("Peticao", data);
-        salvarPdfNoDriveAsync(pdf, nomeArquivo, null, null, null, TipoDocumento.PETICAO);
+        salvarPeticaoGeradaNoDriveAsync(request.processoId(), null, null, pdf, nomeArquivo);
         return respostaPdf(nomeArquivo, pdf);
     }
 
@@ -82,13 +83,12 @@ public class DocumentoController {
         byte[] pdf = pdfService.gerarPeticaoPdf(documentoRequest);
         LocalDate data = request.data() != null ? request.data() : LocalDate.now();
         String nomeArquivo = DocumentoDrivePastaService.formatarNomeArquivoPeticao(request.tipoPeca(), data);
-        salvarPdfNoDriveAsync(
-                pdf,
-                nomeArquivo,
+        salvarPeticaoGeradaNoDriveAsync(
+                request.processoId(),
                 request.codigoCliente(),
                 request.numeroInterno(),
-                null,
-                TipoDocumento.PETICAO);
+                pdf,
+                nomeArquivo);
         return respostaPdf(nomeArquivo, pdf);
     }
 
@@ -142,6 +142,7 @@ public class DocumentoController {
             @RequestParam(value = "nomeArquivo", required = false) String nomeArquivo,
             @RequestParam(value = "codigoCliente", required = false) String codigoCliente,
             @RequestParam(value = "numeroInterno", required = false) Integer numeroInterno,
+            @RequestParam(value = "processoId", required = false) Long processoId,
             @RequestParam(value = "preview", required = false, defaultValue = "false") boolean preview) {
         byte[] pdf = reformatarService.gerarPdfFromConteudo(conteudo);
         LocalDate dataDoc = LocalDate.now();
@@ -156,7 +157,7 @@ public class DocumentoController {
                 ? nomeArquivo.replaceAll("[^a-zA-Z0-9._\\- ]", "_")
                 : DocumentoDrivePastaService.formatarNomeArquivoPeticao("Documento_Formatado", dataDoc);
         if (!preview) {
-            salvarPdfNoDriveAsync(pdf, nomeSaida, codigoCliente, numeroInterno, null, TipoDocumento.PETICAO);
+            salvarPeticaoGeradaNoDriveAsync(processoId, codigoCliente, numeroInterno, pdf, nomeSaida);
         }
         return respostaPdf(nomeSaida, pdf, preview);
     }
@@ -231,7 +232,7 @@ public class DocumentoController {
         }
         String nomeSaida = nomePdfReformatado(arquivo.getOriginalFilename(), dataDoc);
         if (!preview) {
-            salvarPdfNoDriveAsync(pdf, nomeSaida, codigoCliente, numeroInterno, null, TipoDocumento.PETICAO);
+            salvarPeticaoGeradaNoDriveAsync(processoId, codigoCliente, numeroInterno, pdf, nomeSaida);
         }
         return respostaPdf(nomeSaida, pdf, preview);
     }
@@ -437,6 +438,36 @@ public class DocumentoController {
             log.warn("Não foi possível salvar o PDF de exemplo em /tmp", e);
         }
         return respostaPdf("peticao_execucao_exemplo.pdf", pdf, true);
+    }
+
+    private void salvarPeticaoGeradaNoDriveAsync(
+            Long processoId, String codigoCliente, Integer numeroInterno, byte[] pdf, String nomeArquivo) {
+        CompletableFuture.runAsync(() -> {
+            if (!googleDriveService.isConfigurado()) {
+                return;
+            }
+            if (!temContextoProcesso(processoId, codigoCliente, numeroInterno)) {
+                salvarPdfNoDriveAsync(pdf, nomeArquivo, codigoCliente, numeroInterno, null, TipoDocumento.PETICAO);
+                return;
+            }
+            try {
+                pastaAssinarService.inserirPdf(processoId, codigoCliente, numeroInterno, pdf, nomeArquivo);
+            } catch (Exception e) {
+                log.warn(
+                        "Erro ao salvar petição em Petições/Assinar (processoId={}, cliente={}, proc={}): {}",
+                        processoId,
+                        codigoCliente,
+                        numeroInterno,
+                        e.getMessage());
+            }
+        });
+    }
+
+    static boolean temContextoProcesso(Long processoId, String codigoCliente, Integer numeroInterno) {
+        if (processoId != null && processoId > 0) {
+            return true;
+        }
+        return StringUtils.hasText(codigoCliente) && numeroInterno != null && numeroInterno >= 0;
     }
 
     private void salvarPdfNoDriveAsync(
