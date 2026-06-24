@@ -45,6 +45,7 @@ import { resolverTextosPartesCabecalhoCalculo } from '../data/processosDadosRela
 import {
   calcularTotalTituloGrade,
   mesclarTitulosGravadosComRecalculo,
+  patchRodadaAoAceitarPagamento,
   titulosGradeTemValor,
 } from '../data/calculosDebitosTitulos.js';
 import TitulosGrid from './calculos/TitulosGrid.jsx';
@@ -3192,17 +3193,9 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                   setRodadasState((prev) => {
                     const cur = prev[rodadaKey];
                     if (!cur) return prev;
-                    const patch = { parcelamentoAceito: next };
-                    if (next) {
-                      const snap =
-                        Array.isArray(cur.titulosGravadosAceito) && cur.titulosGravadosAceito.length
-                          ? cur.titulosGravadosAceito
-                          : cur.titulos;
-                      if (Array.isArray(snap) && snap.length) {
-                        patch.titulosGravadosAceito = snap.map((t) => ({ ...t }));
-                        patch.titulos = patch.titulosGravadosAceito;
-                      }
-                    }
+                    const patch = next
+                      ? patchRodadaAoAceitarPagamento(cur, dataCalculo)
+                      : { parcelamentoAceito: false };
                     isDirtyRodadaRef.current = true;
                     paginasRodadaCacheRef.current = new Map();
                     return { ...prev, [rodadaKey]: { ...cur, ...patch } };

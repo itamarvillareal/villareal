@@ -4,6 +4,7 @@ import {
   calcularTotalTituloGrade,
   enriquecerTitulosAPartirDeDebitosNaRodada,
   mesclarTitulosGravadosComRecalculo,
+  patchRodadaAoAceitarPagamento,
   tituloFromCamposTaxa,
   titulosGradeTemValor,
 } from './calculosDebitosTitulos.js';
@@ -74,6 +75,28 @@ describe('calculosDebitosTitulos', () => {
         honorarios: 'R$ 0,00',
       })
     ).toBe('R$ 117,00');
+  });
+
+  it('patchRodadaAoAceitarPagamento: prioriza títulos recalculados no estado', () => {
+    const patch = patchRodadaAoAceitarPagamento(
+      {
+        titulosGravadosAceito: [
+          { valorInicial: 'R$ 100,00', dataVencimento: '01/01/2020', juros: 'R$ 1,00' },
+        ],
+        titulos: [
+          {
+            valorInicial: 'R$ 100,00',
+            dataVencimento: '01/01/2020',
+            juros: 'R$ 99,00',
+            total: 'R$ 199,00',
+          },
+        ],
+      },
+      '23/06/2026',
+    );
+    expect(patch.titulosGravadosAceito?.[0].juros).toBe('R$ 99,00');
+    expect(patch.titulos?.[0].juros).toBe('R$ 99,00');
+    expect(patch.dataCalculoRodada).toBe('23/06/2026');
   });
 
   it('mesclarTitulosGravadosComRecalculo: encargos do recálculo, vencimento/valor do txt', () => {

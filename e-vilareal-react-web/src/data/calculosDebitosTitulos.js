@@ -126,7 +126,29 @@ export function titulosGravadosSnapshotUtilizavel(gravados) {
 }
 
 /**
- * Exibe encargos recalculados (regra do programa) com vencimento/valor imutáveis do txt.
+ * Snapshot ao marcar Aceitar Pagamento: usa títulos atuais (recalculados), não o txt importado.
+ * @param {Record<string, unknown>|null|undefined} rodada
+ * @param {string} dataCalculoAtual
+ */
+export function patchRodadaAoAceitarPagamento(rodada, dataCalculoAtual) {
+  const cur = rodada && typeof rodada === 'object' ? rodada : {};
+  const titulosEstado = Array.isArray(cur.titulos) ? cur.titulos : [];
+  const gravados = Array.isArray(cur.titulosGravadosAceito) ? cur.titulosGravadosAceito : [];
+  const temValorEstado = titulosEstado.some((t) => String(t?.valorInicial ?? '').trim() !== '');
+  const snap = temValorEstado ? titulosEstado : gravados;
+  if (!snap.length) return { parcelamentoAceito: true };
+
+  const copia = snap.map((t) => ({ ...t }));
+  const dc = String(dataCalculoAtual ?? '').trim();
+  return {
+    parcelamentoAceito: true,
+    titulosGravadosAceito: copia,
+    titulos: copia.map((t) => ({ ...t })),
+    ...(dc ? { dataCalculoRodada: dc } : {}),
+  };
+}
+
+/**
  * @param {unknown[]} gravados
  * @param {unknown[]} recalculados
  * @param {(lista: unknown[]) => unknown[]} mapTitulosAceitos
