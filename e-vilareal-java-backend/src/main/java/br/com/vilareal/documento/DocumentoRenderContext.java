@@ -61,7 +61,7 @@ public record DocumentoRenderContext(
                 null,
                 preambuloHtml,
                 secoesNormalizadas,
-                request.pedidos(),
+                normalizarPedidos(request.pedidos()),
                 List.of(),
                 List.of(),
                 List.of(),
@@ -72,5 +72,23 @@ public record DocumentoRenderContext(
                 false,
                 null,
                 request.processoId());
+    }
+
+    /** Remove «a)», «b) » etc. colados no texto — o template já numera os pedidos. */
+    static List<String> normalizarPedidos(List<String> pedidos) {
+        if (pedidos == null || pedidos.isEmpty()) {
+            return List.of();
+        }
+        return pedidos.stream()
+                .map(DocumentoRenderContext::limparMarcadorPedido)
+                .filter(p -> p != null && !p.isBlank())
+                .toList();
+    }
+
+    static String limparMarcadorPedido(String pedido) {
+        if (pedido == null) {
+            return "";
+        }
+        return pedido.strip().replaceFirst("(?i)^[a-z]\\)\\s*", "");
     }
 }

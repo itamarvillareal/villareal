@@ -19,12 +19,14 @@ public final class DocumentoLocalDataResolver {
         if (StringUtils.hasText(cidadeEstadoForm)) {
             String form = cidadeEstadoForm.trim();
             if (DocumentoParseadoHeuristics.ehLocalData(form) && !DocumentoParseadoHeuristics.temPlaceholderDia(form)) {
-                return DocumentoParseadoHeuristics.normalizarLocalDataFinal(form);
+                return DocumentoPdfService.normalizarCidadeEstadoLocal(
+                        DocumentoParseadoHeuristics.normalizarLocalDataFinal(form));
             }
             return pdfService.montarLocalData(form, parseData(dataIso));
         }
         if (StringUtils.hasText(localDataDocumento) && !DocumentoParseadoHeuristics.temPlaceholderDia(localDataDocumento)) {
-            return DocumentoParseadoHeuristics.normalizarLocalDataFinal(localDataDocumento.trim());
+            return DocumentoPdfService.normalizarCidadeEstadoLocal(
+                    DocumentoParseadoHeuristics.normalizarLocalDataFinal(localDataDocumento.trim()));
         }
         return pdfService.montarLocalData("Anápolis, estado de Goiás", parseData(dataIso));
     }

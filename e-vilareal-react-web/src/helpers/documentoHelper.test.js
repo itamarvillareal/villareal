@@ -3,6 +3,8 @@ import { ENDERECAMENTOS } from '../pages/documentos/constants.js';
 import {
   inferirEnderecamento,
   formatarLocalData,
+  formatarCidadeEstado,
+  normalizarCidadeTitulo,
   formatarDataExtensoPeticao,
   extrairCidadeEstadoDeLocalData,
   extrairDataIsoDeLocalData,
@@ -51,6 +53,28 @@ describe('formatarLocalData', () => {
     expect(extrairCidadeEstadoDeLocalData('Anápolis, estado de Goiás, 24 de junho de 2026.')).toBe(
       'Anápolis, estado de Goiás',
     );
+  });
+
+  it('normaliza cidade em maiúsculas no local completo', () => {
+    expect(extrairCidadeEstadoDeLocalData('ANÁPOLIS, estado de Goiás, 24 de junho de 2026.')).toBe(
+      'Anápolis, estado de Goiás',
+    );
+  });
+});
+
+describe('normalizarCidadeTitulo', () => {
+  it('converte ANÁPOLIS para Anápolis', () => {
+    expect(normalizarCidadeTitulo('ANÁPOLIS')).toBe('Anápolis');
+  });
+
+  it('preserva cidade já em título', () => {
+    expect(normalizarCidadeTitulo('Anápolis')).toBe('Anápolis');
+  });
+});
+
+describe('formatarCidadeEstado', () => {
+  it('normaliza cidade do processo em maiúsculas', () => {
+    expect(formatarCidadeEstado('ANÁPOLIS', 'GO')).toBe('Anápolis, estado de Goiás');
   });
 });
 

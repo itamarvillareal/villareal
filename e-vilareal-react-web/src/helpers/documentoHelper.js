@@ -87,8 +87,18 @@ export function inferirEnderecamento(competencia, cidade, uf) {
 export function formatarCidadeEstado(cidade, uf) {
   const sigla = String(uf || 'GO').trim().toUpperCase() || 'GO';
   const nomeEstado = ESTADOS_NOME[sigla] || sigla;
-  const cid = String(cidade || 'Anápolis').trim() || 'Anápolis';
+  const cid = normalizarCidadeTitulo(cidade);
   return `${cid}, estado de ${nomeEstado}`;
+}
+
+/** Cidade em título (ex.: ANÁPOLIS → Anápolis), preservando acentos. */
+export function normalizarCidadeTitulo(cidade) {
+  const bruto = String(cidade ?? '').trim();
+  if (!bruto) return 'Anápolis';
+  if (bruto === bruto.toUpperCase() && bruto.length > 1) {
+    return bruto.charAt(0) + bruto.slice(1).toLocaleLowerCase('pt-BR');
+  }
+  return bruto;
 }
 
 const MESES_PT = {
@@ -120,12 +130,17 @@ export function extrairDataIsoDeLocalData(texto) {
 /** Só a parte «cidade, estado de …» — sem a data por extenso (evita duplicar no PDF). */
 export function extrairCidadeEstadoDeLocalData(texto) {
   const entrada = String(texto ?? CIDADE_ESTADO_PADRAO).trim() || CIDADE_ESTADO_PADRAO;
-  return (
+  const semData =
     entrada
       .replace(/\s*,\s*\d{1,2}\s+de\s+[a-zç]+\s+de\s+\d{4}\.?\s*$/i, '')
       .replace(/\.$/, '')
-      .trim() || CIDADE_ESTADO_PADRAO
-  );
+      .trim() || CIDADE_ESTADO_PADRAO;
+  const idxEstado = semData.toLowerCase().indexOf(', estado de');
+  if (idxEstado > 0) {
+    const cidade = normalizarCidadeTitulo(semData.substring(0, idxEstado).trim());
+    return `${cidade}${semData.substring(idxEstado)}`;
+  }
+  return normalizarCidadeTitulo(semData);
 }
 
 /** Espelha o backend: «24 de junho de 2026». */
@@ -155,11 +170,7 @@ export function formatarLocalData(cidadeEstado, dataIso) {
   const entrada = String(cidadeEstado ?? CIDADE_ESTADO_PADRAO).trim() || CIDADE_ESTADO_PADRAO;
   const isoExistente = extrairDataIsoDeLocalData(entrada);
   const iso = dataIso || isoExistente || new Date().toISOString().split('T')[0];
-  const cidade =
-    entrada
-      .replace(/\s*,\s*\d{1,2}\s+de\s+[a-zç]+\s+de\s+\d{4}\.?\s*$/i, '')
-      .replace(/\.$/, '')
-      .trim() || CIDADE_ESTADO_PADRAO;
+  const cidade = extrairCidadeEstadoDeLocalData(entrada);
   return `${cidade}, ${formatarDataExtensoPeticao(iso)}.`;
 }
 

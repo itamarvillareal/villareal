@@ -85,7 +85,7 @@
             line-height: 1.21;
             margin-top: 18pt;
             margin-bottom: 18pt;
-            text-indent: 5.0cm;
+            text-indent: 4.0cm;
         }
 
         .titulo-secao {
@@ -107,7 +107,7 @@
             line-height: 1.21;
             margin-top: 18pt;
             margin-bottom: 18pt;
-            text-indent: 5.0cm;
+            text-indent: 4.0cm;
         }
 
         .secao-conteudo p.citacao,
@@ -155,13 +155,14 @@
             margin-top: 18pt;
             margin-bottom: 18pt;
             text-indent: 0;
-            padding-left: 4.3cm;
+            padding-left: 3.5cm;
         }
 
         .pedido-marcador {
             display: inline-block;
             width: 1.2cm;
             margin-left: -1.2cm;
+            margin-right: 0.35em;
             text-align: right;
         }
 
@@ -229,7 +230,7 @@
             text-align: justify;
             font-size: 12pt;
             font-family: "Arial Unicode MS", Arial, sans-serif;
-            text-indent: 5.0cm;
+            text-indent: 4.0cm;
             line-height: 1.21;
             margin-top: 9pt;
             margin-bottom: 9pt;
@@ -339,7 +340,7 @@
                 <p>Diante do exposto, requer de Vossa Excelência:</p>
             </div>
             <p class="pedido-item" th:each="pedido, pedidoStat : ${pedidos}">
-                <span class="pedido-marcador" th:text="${#strings.substring('abcdefghijklmnopqrstuvwxyz', pedidoStat.index, pedidoStat.index + 1) + ') '}">a) </span><span th:text="${pedido}">Pedido</span>
+                <span class="pedido-marcador" th:utext="${#strings.substring('abcdefghijklmnopqrstuvwxyz', pedidoStat.index, pedidoStat.index + 1) + ')&amp;nbsp;'}">a)&nbsp;</span><span th:text="${pedido}">Pedido</span>
             </p>
         </th:block>
 

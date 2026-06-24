@@ -55,5 +55,7 @@ export function PedidosEspecificos({ pedidos, onChange, label = 'Pedidos especí
 }
 
 export function pedidosPreenchidos(pedidos) {
-  return (pedidos || []).map((p) => p.trim()).filter(Boolean);
+  return (pedidos || [])
+    .map((p) => String(p ?? '').trim().replace(/^[a-z]\)\s*/i, ''))
+    .filter(Boolean);
 }

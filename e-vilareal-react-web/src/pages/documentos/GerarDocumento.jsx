@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   FileSignature,
@@ -44,15 +44,8 @@ import { DadosPartes } from './components/DadosPartes.jsx';
 import { FatosDoCaso, resolveTipoPeca } from './components/FatosDoCaso.jsx';
 import { ConfiguracaoIA } from './components/ConfiguracaoIA.jsx';
 import { SecoesManuais } from './components/SecoesManuais.jsx';
-import { PreviewPeticao } from './components/PreviewPeticao.jsx';
 import { pedidosPreenchidos } from './components/PedidosEspecificos.jsx';
-import { ModoModeloTopicos } from './components/ModoModeloTopicos.jsx';
-import { ModoEnviarArquivo } from './components/ModoEnviarArquivo.jsx';
 import { DocumentosSubmenu } from './components/DocumentosSubmenu.jsx';
-import {
-  carregarCalculoSalvo,
-  gerarPeticaoExecucaoDeCalculoSalvo,
-} from '../../services/peticaoExecucaoDeRodada.js';
 import { dataBRparaISO } from '../../data/peticaoExecucaoBuilder.js';
 import {
   CLAUSULA_3_REMUNERACAO_PADRAO,
@@ -64,14 +57,72 @@ import {
   MODELOS_CONTRATO,
   rotuloModeloContrato,
 } from './contratoModelos.js';
-import { ContratoHonorariosClausula3Modal } from './components/ContratoHonorariosClausula3Modal.jsx';
-import { PreviewContratoHonorarios } from './components/PreviewContratoHonorarios.jsx';
 import { estadoInicialClausula3, parcelamentoAtivo, clausula3DadosParaForm } from './contratoHonorariosClausula3.js';
 import { renumerarClausulas } from './contratoHonorariosClausulasPreview.js';
+
+const ModoModeloTopicos = lazy(() =>
+  import('./components/ModoModeloTopicos.jsx').then((m) => ({ default: m.ModoModeloTopicos })),
+);
+const ModoEnviarArquivo = lazy(() =>
+  import('./components/ModoEnviarArquivo.jsx').then((m) => ({ default: m.ModoEnviarArquivo })),
+);
+const PreviewPeticao = lazy(() =>
+  import('./components/PreviewPeticao.jsx').then((m) => ({ default: m.PreviewPeticao })),
+);
+const ContratoHonorariosClausula3Modal = lazy(() =>
+  import('./components/ContratoHonorariosClausula3Modal.jsx').then((m) => ({
+    default: m.ContratoHonorariosClausula3Modal,
+  })),
+);
+const PreviewContratoHonorarios = lazy(() =>
+  import('./components/PreviewContratoHonorarios.jsx').then((m) => ({
+    default: m.PreviewContratoHonorarios,
+  })),
+);
+
+function LazyModoFallback() {
+  return (
+    <div className="flex items-center gap-2 py-8 text-sm text-slate-500 dark:text-slate-400">
+      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+      Carregando…
+    </div>
+  );
+}
 
 const hojeIso = () => new Date().toISOString().split('T')[0];
 
 const STORAGE_KEY_DADOS_PROCESSO = 'vilareal.gerarDocumento.dadosProcesso';
+
+/** Só o necessário para reabrir a tela — evita estourar sessionStorage / memória. */
+const CAMPOS_DADOS_PROCESSO_PERSISTIDOS = [
+  'enderecamento',
+  'numeroProcesso',
+  'tipoPeca',
+  'nomeAutor',
+  'nomeReu',
+  'cidadeEstado',
+  'codigoCliente',
+  'numeroInterno',
+  'processoApiId',
+  'parteCliente',
+  'parteOposta',
+  'papelParte',
+  'pessoaIdOutorgante',
+  'nomeOutorgante',
+  'nomeLocador',
+  'nomeLocatarios',
+];
+
+function compactarDadosProcessoParaPersistencia(dados) {
+  if (!dados || typeof dados !== 'object') return null;
+  const out = {};
+  for (const chave of CAMPOS_DADOS_PROCESSO_PERSISTIDOS) {
+    const val = dados[chave];
+    if (val == null || val === '') continue;
+    out[chave] = val;
+  }
+  return Object.keys(out).length ? out : null;
+}
 
 function lerDadosProcessoPersistidos() {
   try {
@@ -85,9 +136,10 @@ function lerDadosProcessoPersistidos() {
 }
 
 function salvarDadosProcessoPersistidos(dados) {
-  if (!dados) return;
+  const compacto = compactarDadosProcessoParaPersistencia(dados);
+  if (!compacto) return;
   try {
-    sessionStorage.setItem(STORAGE_KEY_DADOS_PROCESSO, JSON.stringify(dados));
+    sessionStorage.setItem(STORAGE_KEY_DADOS_PROCESSO, JSON.stringify(compacto));
   } catch {
     /* quota / modo privado */
   }
@@ -232,6 +284,23 @@ export function GerarDocumento() {
       salvarDadosProcessoPersistidos(dadosProcessoState);
     }
   }, [dadosProcessoState]);
+
+  /** Limpa snapshot antigo/grande que podia estourar memória ao reabrir a rota. */
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(STORAGE_KEY_DADOS_PROCESSO);
+      if (!raw || raw.length <= 50_000) return;
+      const parsed = JSON.parse(raw);
+      const compacto = compactarDadosProcessoParaPersistencia(parsed);
+      if (compacto) {
+        sessionStorage.setItem(STORAGE_KEY_DADOS_PROCESSO, JSON.stringify(compacto));
+      } else {
+        sessionStorage.removeItem(STORAGE_KEY_DADOS_PROCESSO);
+      }
+    } catch {
+      sessionStorage.removeItem(STORAGE_KEY_DADOS_PROCESSO);
+    }
+  }, []);
   const formInicialIA = useMemo(
     () => (dadosProcesso ? mapearDadosProcessoParaFormIA(dadosProcesso) : estadoInicialIA()),
     [dadosProcesso]
@@ -410,10 +479,13 @@ export function GerarDocumento() {
     }
     let cancelado = false;
     setExecCalc({ loading: true, dados: null, erro: '' });
-    carregarCalculoSalvo({
-      codigoCliente: codigoClienteProcesso,
-      numeroInterno: numeroInternoProcesso,
-    })
+    import('../../services/peticaoExecucaoDeRodada.js')
+      .then(({ carregarCalculoSalvo }) =>
+        carregarCalculoSalvo({
+          codigoCliente: codigoClienteProcesso,
+          numeroInterno: numeroInternoProcesso,
+        }),
+      )
       .then((dados) => {
         if (cancelado) return;
         if (!dados) {
@@ -458,6 +530,9 @@ export function GerarDocumento() {
     setErrors({});
     setLoading(true);
     try {
+      const { gerarPeticaoExecucaoDeCalculoSalvo } = await import(
+        '../../services/peticaoExecucaoDeRodada.js'
+      );
       await gerarPeticaoExecucaoDeCalculoSalvo({
         codigoCliente: codigoClienteProcesso,
         numeroInterno: numeroInternoProcesso,
@@ -1105,23 +1180,27 @@ export function GerarDocumento() {
             )}
           </CollapsibleSection>
         ) : modoModelo ? (
-          <ModoModeloTopicos
-            onErro={setMensagemErro}
-            onLoadingChange={(v) => {
-              if (v) setLoading(true);
-              else setLoading(false);
-            }}
-          />
+          <Suspense fallback={<LazyModoFallback />}>
+            <ModoModeloTopicos
+              onErro={setMensagemErro}
+              onLoadingChange={(v) => {
+                if (v) setLoading(true);
+                else setLoading(false);
+              }}
+            />
+          </Suspense>
         ) : modoArquivo ? (
-          <ModoEnviarArquivo
-            dadosProcesso={dadosProcesso}
-            onErro={setMensagemErro}
-            onSucesso={setMensagemSucesso}
-            onLoadingChange={(v) => {
-              if (v) setLoading(true);
-              else setLoading(false);
-            }}
-          />
+          <Suspense fallback={<LazyModoFallback />}>
+            <ModoEnviarArquivo
+              dadosProcesso={dadosProcesso}
+              onErro={setMensagemErro}
+              onSucesso={setMensagemSucesso}
+              onLoadingChange={(v) => {
+                if (v) setLoading(true);
+                else setLoading(false);
+              }}
+            />
+          </Suspense>
         ) : modoProcuracao ? (
           <CollapsibleSection title="Procuração Ad Judicia" defaultOpen>
             <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
@@ -1395,16 +1474,18 @@ export function GerarDocumento() {
 
       {modoContrato && contratoHonorarios && contratoPreviewVisivel ? (
         <div ref={contratoPreviewRef} className="mt-6">
-          <PreviewContratoHonorarios
-            conteudo={contratoPreviewConteudo}
-            pdfUrl={contratoPreviewPdfUrl}
-            loading={loadingContratoPreview}
-            gerandoFinal={loadingContratoFinal}
-            onConteudoChange={setContratoPreviewConteudo}
-            onAtualizar={() => void handleAtualizarPreviewContratoHonorarios()}
-            onGerarFinal={() => void handleGerarContratoHonorariosFinal()}
-            onVoltar={fecharContratoPreview}
-          />
+          <Suspense fallback={<LazyModoFallback />}>
+            <PreviewContratoHonorarios
+              conteudo={contratoPreviewConteudo}
+              pdfUrl={contratoPreviewPdfUrl}
+              loading={loadingContratoPreview}
+              gerandoFinal={loadingContratoFinal}
+              onConteudoChange={setContratoPreviewConteudo}
+              onAtualizar={() => void handleAtualizarPreviewContratoHonorarios()}
+              onGerarFinal={() => void handleGerarContratoHonorariosFinal()}
+              onVoltar={fecharContratoPreview}
+            />
+          </Suspense>
         </div>
       ) : null}
 
@@ -1460,25 +1541,33 @@ export function GerarDocumento() {
       </div>
       ) : null}
 
-      <PreviewPeticao
-        open={previewOpen}
-        preview={previewData}
-        loading={loadingPreview}
-        gerando={loading}
-        erro={mensagemErro}
-        onClose={() => setPreviewOpen(false)}
-        onPreviewChange={setPreviewData}
-        onGerarPdf={() => void handleGerarPdfFromPreview()}
-      />
+      {previewOpen ? (
+        <Suspense fallback={null}>
+          <PreviewPeticao
+            open={previewOpen}
+            preview={previewData}
+            loading={loadingPreview}
+            gerando={loading}
+            erro={mensagemErro}
+            onClose={() => setPreviewOpen(false)}
+            onPreviewChange={setPreviewData}
+            onGerarPdf={() => void handleGerarPdfFromPreview()}
+          />
+        </Suspense>
+      ) : null}
 
-      <ContratoHonorariosClausula3Modal
-        open={clausula3ModalOpen && contratoHonorarios}
-        onClose={() => setClausula3ModalOpen(false)}
-        initialForm={formContrato.clausula3Form}
-        processoApiId={processoApiId}
-        pessoaId={formContrato.pessoaId}
-        onApply={(payload) => handleSalvarContratacao(payload)}
-      />
+      {clausula3ModalOpen && contratoHonorarios ? (
+        <Suspense fallback={null}>
+          <ContratoHonorariosClausula3Modal
+            open={clausula3ModalOpen && contratoHonorarios}
+            onClose={() => setClausula3ModalOpen(false)}
+            initialForm={formContrato.clausula3Form}
+            processoApiId={processoApiId}
+            pessoaId={formContrato.pessoaId}
+            onApply={(payload) => handleSalvarContratacao(payload)}
+          />
+        </Suspense>
+      ) : null}
     </div>
   );
 }

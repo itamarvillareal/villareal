@@ -126,7 +126,23 @@ public class DocumentoPdfService {
         String local = cidadeEstado != null && !cidadeEstado.isBlank()
                 ? cidadeEstado
                 : "Anápolis, estado de Goiás";
+        local = normalizarCidadeEstadoLocal(local);
         return local + ", " + formatarDataExtenso(d) + ".";
+    }
+
+    /** «Anápolis, estado de Goiás» — cidade em título, não MAIÚSCULAS (ex.: processo com ANÁPOLIS). */
+    public static String normalizarCidadeEstadoLocal(String texto) {
+        if (!StringUtils.hasText(texto)) {
+            return "Anápolis, estado de Goiás";
+        }
+        String t = texto.trim();
+        String lower = t.toLowerCase(LOCALE_PT_BR);
+        int idxEstado = lower.indexOf(", estado de");
+        if (idxEstado > 0) {
+            String cidade = QualificacaoPessoaUtil.normalizarCidade(t.substring(0, idxEstado).trim());
+            return cidade + t.substring(idxEstado);
+        }
+        return QualificacaoPessoaUtil.normalizarCidade(t.replaceAll("\\.$", "").trim());
     }
 
     public byte[] gerarPdfDeTemplate(String templateName, Map<String, Object> variables) {
