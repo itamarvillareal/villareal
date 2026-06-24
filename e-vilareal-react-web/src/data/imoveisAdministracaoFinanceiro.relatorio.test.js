@@ -127,6 +127,27 @@ describe('classificarLancamentoAdministracaoImovel / extrairTotaisFinanceirosMes
     expect(jun?.classificacao?.papel).toBe('aluguel');
   });
 
+  it('extrairTotaisFinanceirosMes reconhece PIX do inquilino com cadastro do imóvel (793/10)', () => {
+    const transacoes = [
+      {
+        data: '13/04/2026',
+        descricao: 'Neemias Rodrigues Borges',
+        valor: 1707.83,
+      },
+      {
+        data: '10/06/2026',
+        descricao: 'PIX TRANSF Neemias10 06',
+        valor: 1707.83,
+      },
+    ];
+    const totais = extrairTotaisFinanceirosMes(transacoes, '793', 10, '2026-06', {
+      valorAluguelContrato: '1.750,00',
+      nomeInquilino: 'NEEMIAS RODRIGUES BORGES',
+    });
+    expect(totais.totalAluguel).toBe(1707.83);
+    expect(totais.dataPrimeiroAluguel).toBe('10/06/2026');
+  });
+
   it('classifica PIX TRANSF negativo como repasse (793/20)', () => {
     const t = {
       data: '05/02/2026',

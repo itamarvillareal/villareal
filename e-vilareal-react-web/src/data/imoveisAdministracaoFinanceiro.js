@@ -10,6 +10,7 @@ import {
   normalizarProcFinanceiro,
 } from './financeiroData.js';
 import { getRegistroProcesso } from './processosHistoricoData.js';
+import { referenciaAluguelExtrato } from './imoveisAluguelChecklist.js';
 import { parseValorMonetarioBr } from '../utils/parseValorMonetarioBr.js';
 
 export const PAPEL_ALUGUEL = 'aluguel';
@@ -619,23 +620,30 @@ export function avaliarSituacaoRepasseMes({
   });
 }
 
-export function extrairTotaisFinanceirosMes(lancamentos, codigoCliente, proc, chaveMesYYYYMM) {
-  const doMes = (lancamentos || []).filter(
-    (t) => mesReferenciaLancamentoParaRelatorio(t)?.chave === chaveMesYYYYMM,
-  );
-  const marcados = doMes.map((t) => ({
-    ...t,
-    classificacao: classificarLancamentoAdministracaoImovel(t, codigoCliente, proc),
-  }));
-  const aluguel = marcados.find((t) => t.classificacao?.papel === 'aluguel' && Number(t.valor) > 0);
-  const repasse = marcados.find((t) => t.classificacao?.papel === 'repasse' && Number(t.valor) < 0);
+export function extrairTotaisFinanceirosMes(lancamentos, codigoCliente, proc, chaveMesYYYYMM, opts = {}) {
+  const painel = montarPainelAdministracaoImovelDeTransacoes(lancamentos, codigoCliente, proc, {
+    valorAluguelContrato: opts.valorAluguelContrato ?? opts.valorLocacao ?? null,
+    nomeInquilino: opts.nomeInquilino ?? null,
+  });
+  const vinculos = opts.vinculosPorLancamento;
+
+  const marcados = painel.transacoes.filter((t) => {
+    const refVinc = vinculos
+      ? referenciaAluguelExtrato(t, vinculos, mesReferenciaLancamentoParaRelatorio)?.chave
+      : null;
+    const ref = refVinc ?? mesReferenciaLancamentoParaRelatorio(t)?.chave;
+    return ref === chaveMesYYYYMM;
+  });
+
+  const aluguel = marcados.find((t) => t.classificacao?.papel === PAPEL_ALUGUEL && Number(t.valor) > 0);
+  const repasse = marcados.find((t) => t.classificacao?.papel === PAPEL_REPASSE && Number(t.valor) < 0);
   return {
     totalAluguel: marcados
-      .filter((t) => t.classificacao?.papel === 'aluguel' && Number(t.valor) > 0)
+      .filter((t) => t.classificacao?.papel === PAPEL_ALUGUEL && Number(t.valor) > 0)
       .reduce((s, t) => s + Number(t.valor || 0), 0),
     totalRepasse: Math.abs(
       marcados
-        .filter((t) => t.classificacao?.papel === 'repasse' && Number(t.valor) < 0)
+        .filter((t) => t.classificacao?.papel === PAPEL_REPASSE && Number(t.valor) < 0)
         .reduce((s, t) => s + Number(t.valor || 0), 0),
     ),
     dataPrimeiroAluguel: aluguel?.data ?? null,
@@ -643,17 +651,18 @@ export function extrairTotaisFinanceirosMes(lancamentos, codigoCliente, proc, ch
   };
 }
 
-/** Totais do mês + repasse efetivo do mês anterior (mesmos lançamentos, outra competência). */
+/** @param {object} [opts] — repassado a {@link extrairTotaisFinanceirosMes} (cadastro do imóvel / vínculos). */
 export function extrairTotaisFinanceirosMesComRepasseAnterior(
   lancamentos,
   codigoCliente,
   proc,
   chaveMesYYYYMM,
+  opts = {},
 ) {
-  const totais = extrairTotaisFinanceirosMes(lancamentos, codigoCliente, proc, chaveMesYYYYMM);
+  const totais = extrairTotaisFinanceirosMes(lancamentos, codigoCliente, proc, chaveMesYYYYMM, opts);
   const chaveAnterior = mesAnteriorChaveYYYYMM(chaveMesYYYYMM);
   if (!chaveAnterior) return totais;
-  const anterior = extrairTotaisFinanceirosMes(lancamentos, codigoCliente, proc, chaveAnterior);
+  const anterior = extrairTotaisFinanceirosMes(lancamentos, codigoCliente, proc, chaveAnterior, opts);
   return {
     ...totais,
     totalRepasseAnterior: anterior.totalRepasse,

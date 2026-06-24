@@ -1153,8 +1153,11 @@ export async function carregarRelatorioFinanceiroImoveisMes(chaveMesYYYYMM, opts
     const chave = chaveParCodProc(cod, procNorm);
     if (chave) {
       chavesVinculo.add(chave);
+      const prev = metaPorChave.get(chave);
       metaPorChave.set(chave, {
-        processoId: item._apiProcessoId ?? null,
+        processoId: item._apiProcessoId ?? prev?.processoId ?? null,
+        valorLocacao: item.valorLocacao ?? prev?.valorLocacao ?? null,
+        nomeInquilino: item.inquilino ?? prev?.nomeInquilino ?? null,
       });
     }
   }
@@ -1174,7 +1177,10 @@ export async function carregarRelatorioFinanceiroImoveisMes(chaveMesYYYYMM, opts
           });
           totaisPorPar.set(
             chave,
-            extrairTotaisFinanceirosMesComRepasseAnterior(lancs, Number(cod), procNum, chaveMesYYYYMM),
+            extrairTotaisFinanceirosMesComRepasseAnterior(lancs, Number(cod), procNum, chaveMesYYYYMM, {
+              valorAluguelContrato: meta.valorLocacao,
+              nomeInquilino: meta.nomeInquilino,
+            }),
           );
         } catch {
           /* mantém totais vazios para o par */
@@ -1184,10 +1190,14 @@ export async function carregarRelatorioFinanceiroImoveisMes(chaveMesYYYYMM, opts
   } else {
     for (const chave of chavesVinculo) {
       const [cod, procNorm] = chave.split('|');
+      const meta = metaPorChave.get(chave) || {};
       const lancs = getTransacoesContaCorrenteCompleto(cod, procNorm);
       totaisPorPar.set(
         chave,
-        extrairTotaisFinanceirosMesComRepasseAnterior(lancs, Number(cod), Number(procNorm), chaveMesYYYYMM),
+        extrairTotaisFinanceirosMesComRepasseAnterior(lancs, Number(cod), Number(procNorm), chaveMesYYYYMM, {
+          valorAluguelContrato: meta.valorLocacao,
+          nomeInquilino: meta.nomeInquilino,
+        }),
       );
     }
   }

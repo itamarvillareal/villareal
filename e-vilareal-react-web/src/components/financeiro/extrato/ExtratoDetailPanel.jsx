@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronDown, ChevronRight, ExternalLink, FolderOpen, Link2, Trash2, X } from 'lucide-react';
 import { ModalVinculoClienteProcFinanceiro } from '../../ModalVinculoClienteProcFinanceiro.jsx';
@@ -121,6 +121,23 @@ async function resolverVinculoClienteProcNoDraft(draftBase) {
   };
 }
 
+/** Observação «Parte cliente x Parte oposta» após vínculo cod.+proc. */
+async function buscarObservacaoVinculoCodProc(codGravado, procNorm, clienteResolvido = null, processoResolvido = null) {
+  if (!procNorm) return '';
+  try {
+    const partes = await resolverTextosPartesCabecalhoCalculo(codGravado, procNorm);
+    const obs = montarObservacaoExtratoVinculo(partes.parteCliente, partes.parteOposta);
+    if (obs) return obs;
+  } catch {
+    /* fallback abaixo */
+  }
+  const pc = String(
+    clienteResolvido?.nomeReferencia ?? clienteResolvido?.nomeRazao ?? clienteResolvido?.nome ?? '',
+  ).trim();
+  const po = String(processoResolvido?.parteOposta ?? processoResolvido?.parte_oposta ?? '').trim();
+  return montarObservacaoExtratoVinculo(pc, po);
+}
+
 function Field({ label, children }) {
   return (
     <div className="space-y-0.5">
@@ -145,10 +162,13 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
   const [partesLegendaLoading, setPartesLegendaLoading] = useState(false);
   const [elosGrupo, setElosGrupo] = useState([]);
   const [elosLoading, setElosLoading] = useState(false);
+  /** Evita sobrescrever observação editada manualmente ao resolver partes do processo. */
+  const obsEditadaManualRef = useRef(false);
 
   useEffect(() => {
     setDraft(item);
     setExtrasOpen(false);
+    obsEditadaManualRef.current = false;
   }, [item]);
 
   const codLegenda = normalizarCodigoClienteFinanceiro(draft.codCliente);
@@ -179,6 +199,27 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
       cancelled = true;
     };
   }, [codLegenda, procLegenda, isContaE]);
+
+  useEffect(() => {
+    if (isContaE || !codLegenda || procLegenda === '' || partesLegendaLoading || obsEditadaManualRef.current) {
+      return;
+    }
+    const obsVinculo = montarObservacaoExtratoVinculo(
+      partesLegenda?.parteCliente,
+      partesLegenda?.parteOposta,
+    );
+    if (!obsVinculo) return;
+    setDraft((d) => {
+      if (
+        normalizarCodigoClienteFinanceiro(d.codCliente) !== codLegenda ||
+        normalizarProcFinanceiro(d.proc) !== procLegenda
+      ) {
+        return d;
+      }
+      if (d.observacao === obsVinculo && d.descricaoDetalhada === obsVinculo) return d;
+      return { ...d, observacao: obsVinculo, descricaoDetalhada: obsVinculo };
+    });
+  }, [codLegenda, procLegenda, partesLegenda, partesLegendaLoading, isContaE]);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -251,6 +292,20 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
       } catch (e) {
         toast.error(e?.message || 'Falha ao resolver cliente/processo.');
         return;
+      }
+      const codGravado = normalizarCodigoClienteFinanceiro(draftSalvar.codCliente);
+      const procNorm = normalizarProcFinanceiro(draftSalvar.proc);
+      if (codGravado && procNorm !== '' && !obsEditadaManualRef.current) {
+        let obsVinculo = montarObservacaoExtratoVinculo(
+          partesLegenda?.parteCliente,
+          partesLegenda?.parteOposta,
+        );
+        if (!obsVinculo) {
+          obsVinculo = await buscarObservacaoVinculoCodProc(codGravado, procNorm);
+        }
+        if (obsVinculo) {
+          draftSalvar = { ...draftSalvar, observacao: obsVinculo, descricaoDetalhada: obsVinculo };
+        }
       }
       if (draftSalvar.contaCodigo !== draft.contaCodigo) {
         setDraft(draftSalvar);
@@ -330,21 +385,15 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
 
     let obsVinculo = '';
     if (procNorm) {
-      try {
-        const partes = await resolverTextosPartesCabecalhoCalculo(codGravado, procNorm);
-        obsVinculo = montarObservacaoExtratoVinculo(partes.parteCliente, partes.parteOposta);
-      } catch {
-        /* fallback abaixo */
-      }
-      if (!obsVinculo) {
-        const pc = String(
-          clienteResolvido?.nomeReferencia ?? clienteResolvido?.nomeRazao ?? clienteResolvido?.nome ?? '',
-        ).trim();
-        const po = String(processoResolvido?.parteOposta ?? processoResolvido?.parte_oposta ?? '').trim();
-        obsVinculo = montarObservacaoExtratoVinculo(pc, po);
-      }
+      obsVinculo = await buscarObservacaoVinculoCodProc(
+        codGravado,
+        procNorm,
+        clienteResolvido,
+        processoResolvido,
+      );
     }
 
+    obsEditadaManualRef.current = false;
     const nextDraft = promoverContaEscritorioSeVinculado(
       {
         ...draft,
@@ -475,6 +524,7 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
             <textarea
               value={draft.observacao ?? ''}
               onChange={(e) => {
+                obsEditadaManualRef.current = true;
                 const v = e.target.value;
                 patch({ observacao: v, descricaoDetalhada: v });
               }}
@@ -607,14 +657,15 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
                 <input
                   type="text"
                   value={draft.codCliente}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    obsEditadaManualRef.current = false;
                     patch({
                       codCliente: e.target.value,
                       clienteId: null,
                       pessoaRefId: null,
                       processoId: null,
-                    })
-                  }
+                    });
+                  }}
                   className="w-full text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5"
                   placeholder="Cód. cliente"
                 />
@@ -623,7 +674,10 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
                 <input
                   type="text"
                   value={draft.proc}
-                  onChange={(e) => patch({ proc: e.target.value, processoId: null })}
+                  onChange={(e) => {
+                    obsEditadaManualRef.current = false;
+                    patch({ proc: e.target.value, processoId: null });
+                  }}
                   className="w-full text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5"
                   placeholder="Nº processo"
                 />
