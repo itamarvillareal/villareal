@@ -117,6 +117,43 @@ export function extrairDataIsoDeLocalData(texto) {
   return `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
 }
 
+/** Espelha o backend: «24 de junho de 2026». */
+export function formatarDataExtensoPeticao(isoOrDate) {
+  const raw = String(isoOrDate ?? '').trim();
+  let d;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    d = new Date(`${raw}T12:00:00`);
+  } else if (isoOrDate instanceof Date) {
+    d = isoOrDate;
+  } else {
+    d = new Date(isoOrDate);
+  }
+  if (Number.isNaN(d.getTime())) {
+    d = new Date();
+  }
+  return d.toLocaleDateString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+/** «Anápolis, estado de Goiás, 24 de junho de 2026.» */
+export function formatarLocalData(cidadeEstado, dataIso) {
+  const entrada = String(cidadeEstado ?? CIDADE_ESTADO_PADRAO).trim() || CIDADE_ESTADO_PADRAO;
+  const isoExistente = extrairDataIsoDeLocalData(entrada);
+  const iso = dataIso || isoExistente || new Date().toISOString().split('T')[0];
+  const cidade =
+    entrada
+      .replace(/\s*,\s*\d{1,2}\s+de\s+[a-zç]+\s+de\s+\d{4}\.?\s*$/i, '')
+      .replace(/\.$/, '')
+      .trim() || CIDADE_ESTADO_PADRAO;
+  return `${cidade}, ${formatarDataExtensoPeticao(iso)}.`;
+}
+
+export const LOCAL_DATA_PADRAO = formatarLocalData(CIDADE_ESTADO_PADRAO);
+
 export function resolveSelectInicial(valor, opcoes) {
   const v = String(valor ?? '').trim();
   if (!v) return { select: '', outro: '' };
@@ -210,7 +247,7 @@ export async function montarDadosParaDocumentoFromProcesso(ctx) {
   const qualificacaoReu = reu.qualificacao;
 
   const enderecamento = inferirEnderecamento(competencia, cidade, uf);
-  const cidadeEstado = formatarCidadeEstado(cidade, uf);
+  const cidadeEstado = formatarLocalData(formatarCidadeEstado(cidade, uf));
 
   const pessoaIdOutorgante = primeiraPessoaIdParteCliente(partes, papelUi);
   const pessoaIdOposta = primeiraPessoaIdParteOposta(partes, papelUi);
@@ -326,7 +363,7 @@ export function mapearDadosProcessoParaFormIA(dadosProcesso) {
     qualificacaoReu: dadosProcesso.qualificacaoReu || '',
     fatos: dadosProcesso.fatos || '',
     valorCausa: dadosProcesso.valorCausa || '',
-    cidadeEstado: dadosProcesso.cidadeEstado || CIDADE_ESTADO_PADRAO,
+    cidadeEstado: formatarLocalData(dadosProcesso.cidadeEstado || CIDADE_ESTADO_PADRAO),
   };
 }
 
@@ -342,7 +379,7 @@ export function mapearDadosProcessoParaFormManual(dadosProcesso) {
       { titulo: 'DO DIREITO', conteudo: '' },
     ],
     pedidos: [''],
-    cidadeEstado: dadosProcesso.cidadeEstado || CIDADE_ESTADO_PADRAO,
+    cidadeEstado: formatarLocalData(dadosProcesso.cidadeEstado || CIDADE_ESTADO_PADRAO),
   };
 }
 
@@ -359,7 +396,7 @@ function estadoInicialFormVazio() {
     qualificacaoReu: '',
     fatos: '',
     valorCausa: '',
-    cidadeEstado: CIDADE_ESTADO_PADRAO,
+    cidadeEstado: LOCAL_DATA_PADRAO,
   };
 }
 
@@ -374,6 +411,6 @@ function estadoInicialFormManualVazio() {
       { titulo: 'DO DIREITO', conteudo: '' },
     ],
     pedidos: [''],
-    cidadeEstado: CIDADE_ESTADO_PADRAO,
+    cidadeEstado: LOCAL_DATA_PADRAO,
   };
 }
