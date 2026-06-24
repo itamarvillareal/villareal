@@ -311,6 +311,12 @@ public class ProjudiPeticaoService {
         } catch (Exception e) {
             log.warn("Falha no protocolo PROJUDI (processo={}): {}", numeroProcesso, e.getMessage());
             return falha(e.getClass().getSimpleName() + ": " + e.getMessage(), "");
+        } finally {
+            // __Pedido__ do Concluir é consumido por juntada; reutilizar a sessão no lote
+            // faz o PROJUDI rejeitar a seguinte com "pedido enviado mais de uma vez".
+            if (executarConcluir) {
+                sessionService.invalidarSessao(credencialId);
+            }
         }
     }
 

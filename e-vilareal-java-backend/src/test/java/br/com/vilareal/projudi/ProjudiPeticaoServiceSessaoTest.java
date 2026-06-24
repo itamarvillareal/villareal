@@ -25,7 +25,7 @@ class ProjudiPeticaoServiceSessaoTest {
     private ProjudiPeticaoService peticaoService;
 
     @Test
-    void fluxoProtocolo_naoInvalidaSessaoAntesDaBusca() {
+    void fluxoProtocolo_invalidaSessaoAoTerminarMesmoComFalhaPrecoce() {
         when(sessionService.buscarProcessoConsulta(anyLong(), anyString()))
                 .thenThrow(new IllegalStateException("Token OTP não recebido no prazo."));
 
@@ -35,7 +35,7 @@ class ProjudiPeticaoServiceSessaoTest {
                 "",
                 List.of(new ProjudiPeticaoService.ArquivoPeticao(new byte[] {1}, 16, "doc.pdf.p7s")));
 
-        verify(sessionService, never()).invalidarSessao(anyLong());
+        verify(sessionService).invalidarSessao(1L);
     }
 
     @Test
@@ -50,5 +50,19 @@ class ProjudiPeticaoServiceSessaoTest {
                 List.of(new ProjudiPeticaoService.ArquivoPeticao(new byte[] {1}, 16, "doc.pdf.p7s")));
 
         verify(sessionService, never()).invalidarSessao(anyLong());
+    }
+
+    @Test
+    void protocoloComConcluir_invalidaSessaoAoTerminar() {
+        when(sessionService.buscarProcessoConsulta(anyLong(), anyString()))
+                .thenThrow(new IllegalStateException("falha simulada"));
+
+        peticaoService.protocolarPeticao(
+                1L,
+                "5036755-28.2024.8.09.0047",
+                "",
+                List.of(new ProjudiPeticaoService.ArquivoPeticao(new byte[] {1}, 16, "doc.pdf.p7s")));
+
+        verify(sessionService).invalidarSessao(1L);
     }
 }

@@ -602,8 +602,8 @@ public class ProjudiPeticaoProtocoloLoteService {
         if (StringUtils.hasText(bruta)) {
             if (bruta.toLowerCase().contains("pedido enviado mais de uma vez")) {
                 msg = msg
-                        + " — PROJUDI rejeitou pedido duplicado (segunda juntada no mesmo processo). "
-                        + "Se parte dos arquivos já entrou, reabra só as pendentes e protocolize novamente.";
+                        + " — PROJUDI rejeitou pedido duplicado (token __Pedido__ já usado nesta sessão). "
+                        + "Protocolize de novo após atualização do backend; lotes com vários processos exigem sessão nova entre juntadas.";
             } else {
                 msg = msg + " | " + bruta;
             }
