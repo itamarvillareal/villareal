@@ -30,6 +30,8 @@ describe('mapearDadosProcessoParaFormManual', () => {
     const form = mapearDadosProcessoParaFormManual({
       enderecamento: endereco,
       numeroProcesso: '5009686-73.2026.8.09.0007',
+      nomeAutor: 'Autor X',
+      nomeReu: 'Condomínio Torres',
       parteCliente: 'Condomínio Torres',
       parteOposta: 'Digittos Ltda',
       papelParte: 'requerido',
@@ -42,8 +44,9 @@ describe('mapearDadosProcessoParaFormManual', () => {
     );
     expect(form.numeroProcesso).toBe('5009686-73.2026.8.09.0007');
     expect(form.preambulo).toContain('CONDOMÍNIO TORRES');
+    expect(form.preambulo).toContain('já devidamente qualificado(s)');
     expect(form.preambulo).toContain('na ação que lhe move');
-    expect(form.preambulo).toContain('DIGITTOS LTDA');
+    expect(form.preambulo).toContain('AUTOR X');
   });
 });
 
@@ -63,7 +66,7 @@ describe('mapearDadosProcessoParaFormIA', () => {
 });
 
 describe('montarPreambuloSugerido', () => {
-  it('monta parágrafo HTML com qualificação quando disponível', () => {
+  it('monta parágrafo HTML com qualificação completa na petição inicial', () => {
     const html = montarPreambuloSugerido({
       parteCliente: 'Maria',
       parteOposta: 'João',
@@ -73,6 +76,32 @@ describe('montarPreambuloSugerido', () => {
     expect(html).toContain('<strong>MARIA</strong>');
     expect(html).toContain('brasileira, solteira');
     expect(html).toContain('na ação que move em face de');
+  });
+
+  it('interlocutória resume autores e réus como já devidamente qualificados', () => {
+    const html = montarPreambuloSugerido({
+      numeroProcesso: '5009686-73.2026.8.09.0007',
+      nomeAutor: 'Itamar Alexandre Felix Villa Real Junior',
+      nomeReu: 'Euripsanto Marcelino da Costa, Paulo Moisés da Costa e Ana Paula da Costa',
+      papelParte: 'requerente',
+    });
+    expect(html).toContain('ITAMAR ALEXANDRE FELIX VILLA REAL JUNIOR');
+    expect(html).toContain('já devidamente qualificado(s)');
+    expect(html).toContain('EURIPSANTO MARCELINO DA COSTA');
+    expect(html).not.toContain('CPF');
+    expect(html).toContain('na ação que move em face de');
+  });
+
+  it('interlocutória com cliente ré usa na ação que lhe move', () => {
+    const html = montarPreambuloSugerido({
+      numeroProcesso: 'CNJ-1',
+      nomeAutor: 'Autor X',
+      nomeReu: 'Condomínio Y',
+      papelParte: 'requerido',
+    });
+    expect(html).toContain('CONDOMÍNIO Y');
+    expect(html).toContain('na ação que lhe move');
+    expect(html).toContain('AUTOR X');
   });
 });
 

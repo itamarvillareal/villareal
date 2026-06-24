@@ -272,10 +272,17 @@ export function montarTrechoAcaoPreambuloHtml(papelParte, parteOposta) {
 /** Preâmbulo HTML sugerido para o modo manual (qualificação da parte cliente + trecho da ação). */
 export function montarPreambuloSugerido(dadosProcesso) {
   if (!dadosProcesso) return '';
+  const interlocutoria = Boolean(String(dadosProcesso.numeroProcesso ?? '').trim());
+  const nomesAutor = String(dadosProcesso.nomeAutor || dadosProcesso.parteCliente || '').trim();
+  const nomesReu = String(dadosProcesso.nomeReu || dadosProcesso.parteOposta || '').trim();
+  if (!nomesAutor && !nomesReu) return '';
+
+  if (interlocutoria) {
+    return montarPreambuloInterlocutoria(dadosProcesso.papelParte, nomesAutor, nomesReu);
+  }
+
   const nomeCliente = String(dadosProcesso.parteCliente || dadosProcesso.nomeOutorgante || '').trim();
   const parteOposta = String(dadosProcesso.parteOposta || '').trim();
-  if (!nomeCliente && !parteOposta) return '';
-
   const qual = String(dadosProcesso.qualificacaoParteCliente || '').trim();
   const qualSuffix = qual ? escaparHtmlBasico(qual) : 'brasileiro(a)...';
   const nomeClienteHtml = `<strong>${escaparHtmlBasico(
@@ -284,6 +291,15 @@ export function montarPreambuloSugerido(dadosProcesso) {
   const trechoAcao = montarTrechoAcaoPreambuloHtml(dadosProcesso.papelParte, parteOposta);
 
   return `<p>${nomeClienteHtml}, ${qualSuffix}, vem, respeitosamente, perante Vossa Excelência, ${trechoAcao}, requerer o que segue.</p>`;
+}
+
+function montarPreambuloInterlocutoria(papelParte, nomesAutor, nomesReu) {
+  const autoresHtml = `<strong>${escaparHtmlBasico(nomesAutor.toUpperCase())}</strong>, já devidamente qualificado(s)`;
+  const reusHtml = `<strong>${escaparHtmlBasico(nomesReu.toUpperCase())}</strong>, já devidamente qualificado(s)`;
+  if (poloJuridicoEscritorioEhAutor(papelParte)) {
+    return `<p>${autoresHtml}, vem, respeitosamente, perante Vossa Excelência, na ação que move em face de ${reusHtml}, requerer o que segue.</p>`;
+  }
+  return `<p>${reusHtml}, vem, respeitosamente, perante Vossa Excelência, na ação que lhe move ${autoresHtml}, requerer o que segue.</p>`;
 }
 
 function mapearEnderecamentoParaForm(enderecamento) {

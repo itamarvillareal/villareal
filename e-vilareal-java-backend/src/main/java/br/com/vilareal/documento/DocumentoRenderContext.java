@@ -1,7 +1,10 @@
 package br.com.vilareal.documento;
 
+import br.com.vilareal.documento.parse.DocumentoParagrafoHtmlUtil;
 import br.com.vilareal.documento.parse.ParagrafoDocumento;
 import br.com.vilareal.documento.parse.SecaoDocumento;
+
+import java.util.ArrayList;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -37,6 +40,18 @@ public record DocumentoRenderContext(
     }
 
     public static DocumentoRenderContext legado(DocumentoGerarRequest request) {
+        String preambuloHtml = DocumentoParagrafoHtmlUtil.normalizarHtmlLegadoPreambulo(request.preambulo());
+        List<DocumentoGerarRequest.SecaoPeticao> secoesNormalizadas = new ArrayList<>();
+        if (request.secoes() != null) {
+            for (DocumentoGerarRequest.SecaoPeticao secao : request.secoes()) {
+                if (secao == null) {
+                    continue;
+                }
+                secoesNormalizadas.add(new DocumentoGerarRequest.SecaoPeticao(
+                        secao.titulo(),
+                        DocumentoParagrafoHtmlUtil.normalizarHtmlLegadoCorpo(secao.conteudo())));
+            }
+        }
         return new DocumentoRenderContext(
                 request.enderecamento(),
                 request.numeroProcesso(),
@@ -44,8 +59,8 @@ public record DocumentoRenderContext(
                 request.data(),
                 false,
                 null,
-                request.preambulo(),
-                request.secoes(),
+                preambuloHtml,
+                secoesNormalizadas,
                 request.pedidos(),
                 List.of(),
                 List.of(),

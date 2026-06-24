@@ -72,15 +72,8 @@
             margin: 0 0 42pt 0;
         }
 
-        .preambulo {
-            font-family: "Arial Unicode MS", Arial, sans-serif;
-            font-size: 12pt;
-            text-align: justify;
-            text-indent: 2.0cm;
-            margin-left: 2.0cm;
-            margin-top: 0;
+        .preambulo-rich {
             margin-bottom: 18pt;
-            line-height: 1.21;
         }
 
         .corpo,
@@ -92,7 +85,7 @@
             line-height: 1.21;
             margin-top: 18pt;
             margin-bottom: 18pt;
-            text-indent: 4.0cm;
+            text-indent: 5.0cm;
         }
 
         .titulo-secao {
@@ -114,7 +107,7 @@
             line-height: 1.21;
             margin-top: 18pt;
             margin-bottom: 18pt;
-            text-indent: 4.0cm;
+            text-indent: 5.0cm;
         }
 
         .citacao,
@@ -225,7 +218,7 @@
             text-align: justify;
             font-size: 12pt;
             font-family: "Arial Unicode MS", Arial, sans-serif;
-            text-indent: 4.0cm;
+            text-indent: 5.0cm;
             line-height: 1.21;
             margin-top: 9pt;
             margin-bottom: 9pt;
@@ -244,7 +237,13 @@
         .preambulo-rich p.corpo,
         .preambulo-rich p.enumeracao {
             text-indent: 2.0cm;
-            margin-left: 2.0cm;
+            margin-left: 0;
+            margin-top: 0;
+            margin-bottom: 18pt;
+        }
+
+        .preambulo-rich p.corpo:first-child {
+            margin-top: 0;
         }
     </style>
 </head>
@@ -311,7 +310,7 @@
 
     <!-- Modo legado (IA / manual) -->
     <th:block th:unless="${modoReformatado}">
-        <div class="preambulo" th:utext="${preambulo}">Preâmbulo</div>
+        <div class="preambulo-rich" th:if="${preambulo != null and !preambulo.isEmpty()}" th:utext="${preambulo}">Preâmbulo</div>
 
         <th:block th:each="secao, secaoStat : ${secoes}">
             <p class="titulo-secao">

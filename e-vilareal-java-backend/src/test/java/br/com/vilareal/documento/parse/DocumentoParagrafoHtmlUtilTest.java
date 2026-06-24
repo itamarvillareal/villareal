@@ -31,6 +31,23 @@ class DocumentoParagrafoHtmlUtilTest {
     }
 
     @Test
+    void normalizarHtmlLegadoCorpo_textoPlanoComQuebrasDeLinha() {
+        String html = DocumentoParagrafoHtmlUtil.normalizarHtmlLegadoCorpo(
+                "Primeiro parágrafo.\n\nSegundo parágrafo.");
+
+        assertThat(html).contains("<p class=\"corpo\">Primeiro parágrafo.</p>");
+        assertThat(html).contains("<p class=\"corpo\">Segundo parágrafo.</p>");
+    }
+
+    @Test
+    void normalizarHtmlLegadoCorpo_paragrafoHtmlSemClasse() {
+        String html = DocumentoParagrafoHtmlUtil.normalizarHtmlLegadoCorpo(
+                "<p>Texto sem classe.</p>");
+
+        assertThat(html).isEqualTo("<p class=\"corpo\">Texto sem classe.</p>");
+    }
+
+    @Test
     void roundTrip_paragrafosToHtml_e_htmlToParagrafos() {
         List<ParagrafoDocumento> originais = List.of(
                 new ParagrafoDocumento(TipoParagrafo.ENUMERACAO, List.of(new TextoFormatado("a) item", false, false, false))),

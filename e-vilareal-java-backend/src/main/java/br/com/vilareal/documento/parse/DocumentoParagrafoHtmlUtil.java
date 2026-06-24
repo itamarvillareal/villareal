@@ -36,6 +36,58 @@ public final class DocumentoParagrafoHtmlUtil {
         return "<p class=\"" + cls + "\">" + runsToHtml(paragrafo.conteudo()) + "</p>";
     }
 
+    /** Garante {@code <p class="corpo">} com recuo e espaçamento no PDF (modo manual/IA). */
+    public static String normalizarHtmlLegadoCorpo(String html) {
+        return paragrafosToHtml(htmlToParagrafosLegado(html, TipoParagrafo.CORPO));
+    }
+
+    /** Preâmbulo legado: parágrafos com classe para o CSS de {@code .preambulo-rich p.corpo}. */
+    public static String normalizarHtmlLegadoPreambulo(String html) {
+        return paragrafosToHtml(htmlToParagrafosLegado(html, TipoParagrafo.CORPO));
+    }
+
+    private static List<ParagrafoDocumento> htmlToParagrafosLegado(String html, TipoParagrafo tipoPadrao) {
+        if (!StringUtils.hasText(html)) {
+            return List.of();
+        }
+        String trimmed = html.trim();
+        if (!trimmed.contains("<")) {
+            return splitPlainTextToParagrafos(trimmed, tipoPadrao);
+        }
+        var doc = Jsoup.parseBodyFragment(trimmed);
+        if (doc.body().children().isEmpty()) {
+            String texto = doc.body().wholeText();
+            if (StringUtils.hasText(texto)) {
+                return splitPlainTextToParagrafos(texto, tipoPadrao);
+            }
+            return List.of();
+        }
+        return htmlToParagrafos(trimmed, tipoPadrao);
+    }
+
+    private static List<ParagrafoDocumento> splitPlainTextToParagrafos(String texto, TipoParagrafo tipo) {
+        String normalized = texto.replace("\r\n", "\n").trim();
+        if (!StringUtils.hasText(normalized)) {
+            return List.of();
+        }
+        String[] blocos;
+        if (normalized.contains("\n\n")) {
+            blocos = normalized.split("\\n\\s*\\n");
+        } else if (normalized.contains("\n")) {
+            blocos = normalized.split("\\n");
+        } else {
+            blocos = new String[] {normalized};
+        }
+        List<ParagrafoDocumento> resultado = new ArrayList<>();
+        for (String bloco : blocos) {
+            String t = bloco.replace('\n', ' ').replaceAll("\\s+", " ").trim();
+            if (StringUtils.hasText(t)) {
+                resultado.add(new ParagrafoDocumento(tipo, List.of(new TextoFormatado(t, false, false, false))));
+            }
+        }
+        return resultado;
+    }
+
     public static List<ParagrafoDocumento> htmlToParagrafos(String html, TipoParagrafo tipoPadrao) {
         if (!StringUtils.hasText(html)) {
             return List.of();
