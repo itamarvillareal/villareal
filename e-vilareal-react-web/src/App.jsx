@@ -94,6 +94,7 @@ import { getContextoAuditoriaUsuario, registrarAuditoria } from './services/audi
 import { installCrossTabLocalStorageSync } from './services/crossTabLocalStorageSync.js';
 import { executarSincronizacaoAudienciasAgendaEProcessosCompleta } from './services/sincronizacaoAudienciasAgendaProcessosService.js';
 import { hydrateRodadasCalculosResumoFromApi } from './data/calculosRodadasStorage.js';
+import { ProcessoEmbedErrorBoundary } from './components/ProcessoEmbedErrorBoundary.jsx';
 
 function RedirectClientesParaLista() {
   const location = useLocation();
@@ -246,9 +247,14 @@ function Layout() {
             </div>
           }
         >
-          <div className="flex w-full min-w-0 flex-col max-lg:flex-none lg:min-h-0 lg:flex-1">
-            <Outlet />
-          </div>
+          <ProcessoEmbedErrorBoundary
+            resetKey={location.pathname}
+            onFechar={() => window.location.reload()}
+          >
+            <div className="flex w-full min-w-0 flex-col max-lg:flex-none lg:min-h-0 lg:flex-1">
+              <Outlet />
+            </div>
+          </ProcessoEmbedErrorBoundary>
         </Suspense>
         </main>
       </div>

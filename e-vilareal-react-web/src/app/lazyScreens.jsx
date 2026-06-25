@@ -26,7 +26,7 @@ export const LazyAtividadesEmLote = fromNamed(
   () => import('../components/AtividadesEmLote.jsx'),
   'AtividadesEmLote'
 );
-export const LazyProcessos = fromNamed(() => import('../components/Processos.jsx'), 'Processos');
+export { LazyProcessos } from './lazyProcessos.jsx';
 export const LazyPublicacoesProcessos = fromNamed(
   () => import('../components/PublicacoesProcessos.jsx'),
   'PublicacoesProcessos'

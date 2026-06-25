@@ -1,11 +1,8 @@
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 import { X } from 'lucide-react';
 import { ProcessoEmbedErrorBoundary } from './ProcessoEmbedErrorBoundary.jsx';
-
-const LazyProcessos = lazy(() =>
-  import('./Processos.jsx').then((module) => ({ default: module.Processos })),
-);
+import { LazyProcessos } from '../app/lazyProcessos.jsx';
 
 /**
  * Janela suspensa com o formulário de Processos (embed), sem mudar de rota.

@@ -3,6 +3,7 @@ import { buildAuditoriaHeaders } from '../services/auditoriaCliente.js';
 import { getAccessToken } from '../api/authTokenStorage.js';
 import { emitApiUnauthorized } from '../api/apiAuthHeaders.js';
 import { request } from '../api/httpClient.js';
+import { dispararDownloadBlob } from '../utils/streamFileDownload.js';
 
 function headersJson() {
   const h = {
@@ -39,8 +40,6 @@ async function postPdf(path, body, { signal } = {}) {
   }
   return res.blob();
 }
-
-import { dispararDownloadBlob } from '../utils/streamFileDownload.js';
 
 export function downloadPdfBlob(blob, filename) {
   dispararDownloadBlob(blob, filename);

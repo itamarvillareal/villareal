@@ -163,7 +163,6 @@ import {
   nomeArquivoProcuracaoPdf,
 } from '../repositories/documentosRepository.js';
 import { obterStatusDrive } from '../repositories/driveRepository.js';
-const DriveExplorerLazy = lazy(() => import('./DriveExplorer.jsx'));
 import { featureFlags } from '../config/featureFlags.js';
 import { obterClienteCadastroPorCodigo } from '../repositories/clientesRepository.js';
 import { CampoNumeroComContador } from './ui/CampoNumeroComContador.jsx';
@@ -210,12 +209,16 @@ import {
   tribunalPjeAutomacaoDisponivel,
 } from '../domain/pjeTribunalCnj.js';
 
+/** Linhas por página na aba Histórico — preenche melhor a área útil sem depender de linhas vazias. */
+const HISTORICO_POR_PAGINA = 24;
+
 const CadastroClientesLazy = lazy(() =>
   import('./CadastroClientes.jsx').then((module) => ({ default: module.CadastroClientes }))
 );
 
-/** Linhas por página na aba Histórico — preenche melhor a área útil sem depender de linhas vazias. */
-const HISTORICO_POR_PAGINA = 24;
+const DriveExplorerLazy = lazy(() => import('./DriveExplorer.jsx'));
+
+const AgendaModal = lazy(() => import('./Agenda.jsx').then((m) => ({ default: m.Agenda })));
 
 /** Dois primeiros blocos do nº novo (CNJ): segmento antes do 1.º ponto — ex. `NNNNNNN-DD.aaaa…` → `NNNNNNN-DD`. */
 function doisPrimeirosBlocosNumeroProcessoNovoParaCopia(valor) {
@@ -281,8 +284,6 @@ const PERIODICIDADES_AGENDA_LOTE = [
   'Semestralmente',
   'Todo dia X do mês',
 ];
-
-const AgendaModal = lazy(() => import('./Agenda.jsx').then((m) => ({ default: m.Agenda })));
 
 /** Vínculo mock cliente×processo → imóvel (mesma regra do useMemo `vinculoImovelMock`). */
 function buscarVinculoImovelMock() {
