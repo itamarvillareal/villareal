@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Upload, RefreshCw, TrendingUp } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ExternalLink, RefreshCw, TrendingUp, Upload } from 'lucide-react';
 import {
   importarInvestimentoMovimentacaoApi,
   listarInvestimentoOperacoesApi,
@@ -7,6 +8,7 @@ import {
   obterInvestimentoResumoApi,
   recalcularInvestimentosApi,
 } from '../../../repositories/financeiroRepository.js';
+import { buildExtratoUrlParaLancamento } from '../extrato/extratoDeepLink.js';
 import { useFinanceiroChrome } from '../FinanceiroContext.jsx';
 import { Pagination } from '../shared/Pagination.jsx';
 import { useFinanceiroToast } from '../shared/Toast.jsx';
@@ -22,10 +24,39 @@ function fmtMoeda(v) {
 }
 
 function statusLabel(s) {
-  if (s === 'FECHADA') return 'Fechada';
-  if (s === 'ABERTA') return 'Aberta';
-  if (s === 'LEGADO') return 'Legado';
+  if (s === 'FECHADA') return 'Encerrada';
+  if (s === 'ABERTA') return 'Em carteira';
+  if (s === 'LEGADO') return 'Venda sem compra';
   return s ?? '—';
+}
+
+function statusHint(s) {
+  if (s === 'FECHADA') return 'Compra e venda/vencimento identificados no extrato';
+  if (s === 'ABERTA') return 'Compra feita; ainda não houve resgate/vencimento no período importado';
+  if (s === 'LEGADO') return 'Venda no extrato sem compra correspondente no histórico BTG importado';
+  return '';
+}
+
+function ExtratoLancamentoLink({ lancamentoId, numeroBanco, data, valor, rotulo }) {
+  const id = Number(lancamentoId);
+  if (!Number.isFinite(id) || id <= 0) {
+    return <span className="text-slate-400">—</span>;
+  }
+  return (
+    <Link
+      to={buildExtratoUrlParaLancamento({ lancamentoId: id, numeroBanco, data })}
+      title={`Abrir ${rotulo} no extrato (#${id})`}
+      className="inline-flex flex-col gap-0.5 text-indigo-700 dark:text-indigo-300 hover:underline"
+    >
+      <span className="inline-flex items-center gap-1 font-medium">
+        <ExternalLink className="w-3 h-3 shrink-0" aria-hidden />
+        {rotulo}
+      </span>
+      <span className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+        {data ?? '—'} · {fmtMoeda(valor)}
+      </span>
+    </Link>
+  );
 }
 
 export function InvestimentosPage() {
@@ -43,7 +74,7 @@ export function InvestimentosPage() {
   const [imports, setImports] = useState([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [somenteComTaxa, setSomenteComTaxa] = useState(true);
+  const [somenteComTaxa, setSomenteComTaxa] = useState(false);
   const pageSize = 30;
 
   const nb = numeroBanco ? Number(numeroBanco) : null;
@@ -109,7 +140,8 @@ export function InvestimentosPage() {
             Investimentos BTG
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Taxa mensal líquida (impostos e custos) com vínculo ao extrato bancário.
+            Cada linha é um flip CDB/LCA/LCI: compra e venda/vencimento cruzados com o extrato bancário.
+            Clique nos links para abrir o lançamento no extrato.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -166,6 +198,10 @@ export function InvestimentosPage() {
           Só operações com taxa calculada
         </label>
         {loading ? <span className="text-slate-400">Carregando…</span> : null}
+        <span className="text-slate-400 text-xs hidden sm:inline">
+          · Em carteira = comprado, aguardando resgate · Encerrada = vendido ou vencido · Venda sem compra = histórico
+          incompleto no xlsx
+        </span>
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
@@ -173,8 +209,10 @@ export function InvestimentosPage() {
           <thead className="bg-slate-50 dark:bg-slate-800/80 text-left text-xs text-slate-500">
             <tr>
               <th className="px-3 py-2">Código</th>
+              <th className="px-3 py-2">Tipo</th>
               <th className="px-3 py-2">Conta</th>
-              <th className="px-3 py-2">Compra → Venda</th>
+              <th className="px-3 py-2">Compra (extrato)</th>
+              <th className="px-3 py-2">Venda / venc. (extrato)</th>
               <th className="px-3 py-2">Dias</th>
               <th className="px-3 py-2">Taxa a.m. líq.</th>
               <th className="px-3 py-2">Lucro líq.</th>
@@ -183,23 +221,59 @@ export function InvestimentosPage() {
           </thead>
           <tbody>
             {(operacoes.content ?? []).map((op) => (
-              <tr key={op.id} className="border-t border-slate-100 dark:border-slate-800">
+              <tr key={op.id} className="border-t border-slate-100 dark:border-slate-800 align-top">
                 <td className="px-3 py-2 font-mono text-xs">{op.codigoProduto}</td>
+                <td className="px-3 py-2 text-xs">{op.tipoProduto ?? '—'}</td>
                 <td className="px-3 py-2">{op.bancoNome}</td>
-                <td className="px-3 py-2 text-xs whitespace-nowrap">
-                  {op.dataCompra ?? '—'} → {op.dataVenda ?? '—'}
+                <td className="px-3 py-2">
+                  <ExtratoLancamentoLink
+                    lancamentoId={op.compraLancamentoId}
+                    numeroBanco={op.numeroBanco}
+                    data={op.dataCompra}
+                    valor={op.valorCompraCaixa}
+                    rotulo="Compra"
+                  />
+                </td>
+                <td className="px-3 py-2">
+                  {op.status === 'ABERTA' ? (
+                    <span className="text-xs text-amber-700 dark:text-amber-400">Em carteira</span>
+                  ) : (
+                    <ExtratoLancamentoLink
+                      lancamentoId={op.vendaLancamentoId}
+                      numeroBanco={op.numeroBanco}
+                      data={op.dataVenda}
+                      valor={op.valorVendaCaixa}
+                      rotulo="Venda"
+                    />
+                  )}
                 </td>
                 <td className="px-3 py-2 tabular-nums">{op.diasCarteira ?? '—'}</td>
                 <td className="px-3 py-2 tabular-nums font-medium text-emerald-700 dark:text-emerald-400">
                   {fmtPctTaxa(op.taxaMensalLiquida)}
                 </td>
-                <td className="px-3 py-2 tabular-nums">{fmtMoeda(op.lucroLiquido)}</td>
-                <td className="px-3 py-2">{statusLabel(op.status)}</td>
+                <td className="px-3 py-2 tabular-nums">
+                  {fmtMoeda(op.lucroLiquido)}
+                  {op.status === 'FECHADA' && (op.valorIrrf != null || op.valorIof != null) ? (
+                    <span className="block text-[10px] text-slate-400 mt-0.5">
+                      IRRF {fmtMoeda(op.valorIrrf)} · IOF {fmtMoeda(op.valorIof)}
+                    </span>
+                  ) : null}
+                </td>
+                <td className="px-3 py-2">
+                  <span className="text-xs" title={statusHint(op.status)}>
+                    {statusLabel(op.status)}
+                  </span>
+                  {op.vinculoConfianca === 'BAIXA' ? (
+                    <span className="block text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">
+                      vínculo fraco
+                    </span>
+                  ) : null}
+                </td>
               </tr>
             ))}
             {!loading && !(operacoes.content ?? []).length ? (
               <tr>
-                <td colSpan={7} className="px-3 py-8 text-center text-slate-400">
+                <td colSpan={9} className="px-3 py-8 text-center text-slate-400">
                   Nenhuma operação. Importe um export de Movimentação BTG (.xlsx).
                 </td>
               </tr>
