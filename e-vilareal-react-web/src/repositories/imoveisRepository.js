@@ -547,12 +547,16 @@ function mapApiToUi(imovel, contrato) {
     cpfBanco: String(dadosBanc.cpfBanco ?? ''),
     titular: String(dadosBanc.titular ?? ''),
     chavePix: String(dadosBanc.chavePix ?? ''),
-    proprietarioNumeroPessoa: String(contrato?.locadorPessoaId ?? ''),
+    proprietarioNumeroPessoa: String(
+      contrato?.locadorPessoaId ?? extras.proprietarioPessoaId ?? extras.locadorPessoaId ?? '',
+    ),
     proprietario: String(extras.proprietario ?? ''),
     proprietarioCpf: String(extras.proprietarioCpf ?? ''),
     proprietarioContato: String(extras.proprietarioContato ?? ''),
     linkVistoria: String(extras.linkVistoria ?? ''),
-    inquilinoNumeroPessoa: String(contrato?.inquilinoPessoaId ?? ''),
+    inquilinoNumeroPessoa: String(
+      contrato?.inquilinoPessoaId ?? extras.inquilinoPessoaId ?? extras.inquilinoNumeroPessoa ?? '',
+    ),
     inquilino: String(extras.inquilino ?? ''),
     inquilinoCpf: String(extras.inquilinoCpf ?? ''),
     inquilinoContato: String(extras.inquilinoContato ?? ''),
@@ -569,6 +573,20 @@ function mapApiToUi(imovel, contrato) {
     _apiProcessoId: imovel?.processoId ?? null,
     _jsonExtrasOriginal: extrasRaw,
     _contratoObservacoesOriginal: contrato?.observacoes ?? null,
+    _contratoSnapshotOriginal: contrato
+      ? {
+          dataInicio: contrato.dataInicio ?? null,
+          dataFim: contrato.dataFim ?? null,
+          valorAluguel: contrato.valorAluguel ?? null,
+          diaVencimentoAluguel: contrato.diaVencimentoAluguel ?? null,
+          diaRepasse: contrato.diaRepasse ?? null,
+          taxaAdministracaoPercent: contrato.taxaAdministracaoPercent ?? null,
+          garantiaTipo: contrato.garantiaTipo ?? null,
+          valorGarantia: contrato.valorGarantia ?? null,
+          dadosBancariosRepasseJson: contrato.dadosBancariosRepasseJson ?? null,
+          status: contrato.status ?? 'VIGENTE',
+        }
+      : null,
   };
 }
 
@@ -634,20 +652,25 @@ function montarPayloadImovelFromUi(ui, clienteId, processoId, espelhoCodProc = n
   if (obsExtraLegado) extras.observacoesInquilino = obsExtraLegado;
 
   if (idProp) {
+    extras.proprietarioPessoaId = String(idProp);
     extras.proprietario = String(ui.proprietario ?? '').trim();
     extras.proprietarioCpf = String(ui.proprietarioCpf ?? '').trim();
     extras.proprietarioContato = String(ui.proprietarioContato ?? '').trim();
   } else {
+    delete extras.proprietarioPessoaId;
+    delete extras.locadorPessoaId;
     extras.proprietario = String(ui.proprietario ?? '');
     extras.proprietarioCpf = String(ui.proprietarioCpf ?? '');
     extras.proprietarioContato = String(ui.proprietarioContato ?? '');
   }
 
   if (idInq) {
+    extras.inquilinoPessoaId = String(idInq);
     extras.inquilino = String(ui.inquilino ?? '').trim();
     extras.inquilinoCpf = String(ui.inquilinoCpf ?? '').trim();
     extras.inquilinoContato = String(ui.inquilinoContato ?? '').trim();
   } else {
+    delete extras.inquilinoPessoaId;
     extras.inquilino = String(ui.inquilino ?? '');
     extras.inquilinoCpf = String(ui.inquilinoCpf ?? '');
     extras.inquilinoContato = String(ui.inquilinoContato ?? '');
@@ -674,34 +697,79 @@ function montarPayloadImovelFromUi(ui, clienteId, processoId, espelhoCodProc = n
   };
 }
 
+function isoDataContratoSnapshot(val) {
+  const s = String(val ?? '').trim();
+  if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  return toIsoDate(s);
+}
+
 function montarPayloadContratoFromUi(ui, imovelId) {
   const obsContratoLegado = String(ui._contratoObservacoesOriginal ?? '').trim();
+  const orig =
+    ui._contratoSnapshotOriginal && typeof ui._contratoSnapshotOriginal === 'object'
+      ? ui._contratoSnapshotOriginal
+      : null;
+  const dataInicio = toIsoDate(ui.dataInicioContrato) ?? isoDataContratoSnapshot(orig?.dataInicio);
+  const dataFim = toIsoDate(ui.dataFimContrato) ?? isoDataContratoSnapshot(orig?.dataFim);
+  const valorAluguel =
+    toNumberOrNull(ui.valorLocacao) ??
+    (orig?.valorAluguel != null ? Number(orig.valorAluguel) : null);
+  const taxaUi = toNumberOrNull(String(ui.taxaAdministracaoPercent ?? '').replace(',', '.'));
+  const taxaOrig =
+    orig?.taxaAdministracaoPercent != null ? Number(orig.taxaAdministracaoPercent) : null;
+  const diaVencUi = Number(String(ui.diaPagAluguel ?? '').replace(/\D/g, ''));
+  const diaRepasseUi = Number(String(ui.diaRepasse ?? '').replace(/\D/g, ''));
+  const dadosBancUi = {
+    banco: String(ui.banco ?? ''),
+    agencia: String(ui.agencia ?? ''),
+    numeroBanco: String(ui.numeroBanco ?? ''),
+    conta: String(ui.conta ?? ''),
+    cpfBanco: String(ui.cpfBanco ?? ''),
+    titular: String(ui.titular ?? ''),
+    chavePix: String(ui.chavePix ?? ''),
+  };
+  const dadosBancTemValor = Object.values(dadosBancUi).some((v) => String(v ?? '').trim());
+  const dadosBancariosRepasseJson = dadosBancTemValor
+    ? JSON.stringify(dadosBancUi)
+    : orig?.dadosBancariosRepasseJson ?? JSON.stringify(dadosBancUi);
+
   return {
     imovelId,
-    locadorPessoaId: Number(ui.proprietarioNumeroPessoa) || null,
-    inquilinoPessoaId: Number(ui.inquilinoNumeroPessoa) || null,
-    dataInicio: toIsoDate(ui.dataInicioContrato),
-    dataFim: toIsoDate(ui.dataFimContrato),
-    valorAluguel: toNumberOrNull(ui.valorLocacao),
-    taxaAdministracaoPercent:
-      toNumberOrNull(String(ui.taxaAdministracaoPercent ?? '').replace(',', '.')) ?? 10,
+    locadorPessoaId: parseIdPessoa(ui.proprietarioNumeroPessoa),
+    inquilinoPessoaId: parseIdPessoa(ui.inquilinoNumeroPessoa),
+    dataInicio,
+    dataFim,
+    valorAluguel,
+    taxaAdministracaoPercent: taxaUi ?? taxaOrig ?? 10,
     valorRepassePactuado: null,
-    diaVencimentoAluguel: Number(ui.diaPagAluguel) || null,
-    diaRepasse: Number(ui.diaRepasse) || null,
-    garantiaTipo: String(ui.garantia || '').trim() || null,
-    valorGarantia: toNumberOrNull(ui.valorGarantia),
-    dadosBancariosRepasseJson: JSON.stringify({
-      banco: String(ui.banco ?? ''),
-      agencia: String(ui.agencia ?? ''),
-      numeroBanco: String(ui.numeroBanco ?? ''),
-      conta: String(ui.conta ?? ''),
-      cpfBanco: String(ui.cpfBanco ?? ''),
-      titular: String(ui.titular ?? ''),
-      chavePix: String(ui.chavePix ?? ''),
-    }),
-    status: 'VIGENTE',
+    diaVencimentoAluguel:
+      Number.isFinite(diaVencUi) && diaVencUi >= 1
+        ? diaVencUi
+        : orig?.diaVencimentoAluguel != null
+          ? Number(orig.diaVencimentoAluguel)
+          : null,
+    diaRepasse:
+      Number.isFinite(diaRepasseUi) && diaRepasseUi >= 1
+        ? diaRepasseUi
+        : orig?.diaRepasse != null
+          ? Number(orig.diaRepasse)
+          : null,
+    garantiaTipo: String(ui.garantia || '').trim() || orig?.garantiaTipo || null,
+    valorGarantia: toNumberOrNull(ui.valorGarantia) ?? (orig?.valorGarantia != null ? Number(orig.valorGarantia) : null),
+    dadosBancariosRepasseJson,
+    status: String(orig?.status ?? 'VIGENTE').trim() || 'VIGENTE',
     observacoes: obsContratoLegado || null,
   };
+}
+
+function contratoProntoParaPersistir(contratoBody, contratoId, uiPayload) {
+  const temPartes =
+    parseIdPessoa(uiPayload?.proprietarioNumeroPessoa) != null ||
+    parseIdPessoa(uiPayload?.inquilinoNumeroPessoa) != null;
+  const temContratoMinimo = Boolean(contratoBody.dataInicio && contratoBody.valorAluguel != null);
+  if (contratoId) return temContratoMinimo || temPartes;
+  return temContratoMinimo;
 }
 
 /** Lista imóveis da API (cada item tem `id` interno e opcionalmente `numeroPlanilha`, col. A). */
@@ -1278,17 +1346,30 @@ export async function salvarImovelCadastro(uiPayload) {
     : await request('/api/imoveis', { method: 'POST', body: bodyImovel });
 
   const contratoBody = montarPayloadContratoFromUi(uiPayload, imovelSalvo.id);
+  const contratoId =
+    uiPayload._apiContratoId != null && Number(uiPayload._apiContratoId) > 0
+      ? Number(uiPayload._apiContratoId)
+      : null;
   let contratoSalvo = null;
-  if (contratoBody.dataInicio && contratoBody.valorAluguel != null) {
-    contratoSalvo = uiPayload._apiContratoId
-      ? await request(`/api/locacoes/contratos/${uiPayload._apiContratoId}`, { method: 'PUT', body: contratoBody })
+  if (contratoProntoParaPersistir(contratoBody, contratoId, uiPayload)) {
+    contratoSalvo = contratoId
+      ? await request(`/api/locacoes/contratos/${contratoId}`, { method: 'PUT', body: contratoBody })
       : await request('/api/locacoes/contratos', { method: 'POST', body: contratoBody });
+  }
+
+  let contratoAtual = contratoSalvo;
+  try {
+    const contratos = await request('/api/locacoes/contratos', { query: { imovelId: imovelSalvo.id } });
+    contratoAtual =
+      selecionarContratoVigente(Array.isArray(contratos) ? contratos : []) ?? contratoSalvo;
+  } catch {
+    contratoAtual = contratoSalvo;
   }
 
   return {
     fonte: 'api',
     salvo: true,
-    item: await enriquecerNomesPartesImovelUi(mapApiToUi(imovelSalvo, contratoSalvo)),
+    item: await enriquecerNomesPartesImovelUi(mapApiToUi(imovelSalvo, contratoAtual)),
   };
 }
 

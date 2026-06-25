@@ -115,6 +115,9 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   /** Preservados entre loads/saves para não apagar legado em JSON/contrato ao salvar. */
   const jsonExtrasOriginalRef = useRef({});
   const contratoObservacoesOriginalRef = useRef(null);
+  const contratoSnapshotOriginalRef = useRef(null);
+  const proprietarioFetchGenRef = useRef(0);
+  const inquilinoFetchGenRef = useRef(0);
   /** Baseline cod+proc ao carregar — detecta edição deliberada vs. espelho N:N no save. */
   const vinculoCodigoOriginalRef = useRef('');
   const vinculoProcOriginalRef = useRef('');
@@ -282,6 +285,10 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     jsonExtrasOriginalRef.current =
       data._jsonExtrasOriginal && typeof data._jsonExtrasOriginal === 'object' ? data._jsonExtrasOriginal : {};
     contratoObservacoesOriginalRef.current = data._contratoObservacoesOriginal ?? null;
+    contratoSnapshotOriginalRef.current =
+      data._contratoSnapshotOriginal && typeof data._contratoSnapshotOriginal === 'object'
+        ? data._contratoSnapshotOriginal
+        : null;
     vinculoCodigoOriginalRef.current = String(
       data._vinculoCodigoOriginal ?? data.codigo ?? '',
     ).trim();
@@ -395,13 +402,14 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     }
 
     let cancelado = false;
+    const gen = ++proprietarioFetchGenRef.current;
     setProprietarioCadastroCarregando(true);
     setProprietarioCadastroErro('');
     const t = window.setTimeout(() => {
       void (async () => {
         try {
           const c = await buscarCliente(id);
-          if (cancelado) return;
+          if (cancelado || gen !== proprietarioFetchGenRef.current) return;
           if (!c) {
             setProprietario('');
             setProprietarioCpf('');
@@ -414,13 +422,13 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
             setProprietarioCadastroErro('');
           }
         } catch {
-          if (cancelado) return;
+          if (cancelado || gen !== proprietarioFetchGenRef.current) return;
           setProprietario('');
           setProprietarioCpf('');
           setProprietarioContato('');
           setProprietarioCadastroErro('Não foi possível carregar o cadastro de pessoas.');
         } finally {
-          if (!cancelado) setProprietarioCadastroCarregando(false);
+          if (!cancelado && gen === proprietarioFetchGenRef.current) setProprietarioCadastroCarregando(false);
         }
       })();
     }, 380);
@@ -451,13 +459,14 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     }
 
     let cancelado = false;
+    const gen = ++inquilinoFetchGenRef.current;
     setInquilinoCadastroCarregando(true);
     setInquilinoCadastroErro('');
     const t = window.setTimeout(() => {
       void (async () => {
         try {
           const c = await buscarCliente(id);
-          if (cancelado) return;
+          if (cancelado || gen !== inquilinoFetchGenRef.current) return;
           if (!c) {
             setInquilino('');
             setInquilinoCpf('');
@@ -470,13 +479,13 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
             setInquilinoCadastroErro('');
           }
         } catch {
-          if (cancelado) return;
+          if (cancelado || gen !== inquilinoFetchGenRef.current) return;
           setInquilino('');
           setInquilinoCpf('');
           setInquilinoContato('');
           setInquilinoCadastroErro('Não foi possível carregar o cadastro de pessoas.');
         } finally {
-          if (!cancelado) setInquilinoCadastroCarregando(false);
+          if (!cancelado && gen === inquilinoFetchGenRef.current) setInquilinoCadastroCarregando(false);
         }
       })();
     }, 380);
@@ -488,6 +497,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
 
   function aplicarPessoaProprietario(p) {
     if (!p || p.id == null) return;
+    proprietarioFetchGenRef.current += 1;
     setProprietarioNumeroPessoa(String(p.id));
     setProprietario(String(p.nome ?? '').trim());
     setProprietarioCpf(formatDocBrExibicao(p.cpf));
@@ -497,6 +507,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   }
 
   function limparPessoaProprietario() {
+    proprietarioFetchGenRef.current += 1;
     setProprietarioNumeroPessoa('');
     setProprietario('');
     setProprietarioCpf('');
@@ -507,6 +518,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
 
   function aplicarPessoaInquilino(p) {
     if (!p || p.id == null) return;
+    inquilinoFetchGenRef.current += 1;
     setInquilinoNumeroPessoa(String(p.id));
     setInquilino(String(p.nome ?? '').trim());
     setInquilinoCpf(formatDocBrExibicao(p.cpf));
@@ -516,6 +528,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   }
 
   function limparPessoaInquilino() {
+    inquilinoFetchGenRef.current += 1;
     setInquilinoNumeroPessoa('');
     setInquilino('');
     setInquilinoCpf('');
@@ -617,6 +630,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
         _apiContratoId,
         _jsonExtrasOriginal: jsonExtrasOriginalRef.current,
         _contratoObservacoesOriginal: contratoObservacoesOriginalRef.current,
+        _contratoSnapshotOriginal: contratoSnapshotOriginalRef.current,
         _vinculoCodigoOriginal: vinculoCodigoOriginalRef.current,
         _vinculoProcOriginal: vinculoProcOriginalRef.current,
       });
