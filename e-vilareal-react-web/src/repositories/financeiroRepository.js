@@ -1,5 +1,5 @@
 import { clampFinanceiroPageSize } from '../components/financeiro/constants/financeiroConstants.js';
-import { request } from '../api/httpClient.js';
+import { request, postFormData } from '../api/httpClient.js';
 import { featureFlags } from '../config/featureFlags.js';
 import {
   buildContaToLetraMerge,
@@ -1604,4 +1604,57 @@ export async function descartarRecorrenciaApi(body, opts = {}) {
     body,
     signal: opts.signal,
   });
+}
+
+/** Importa export xlsx Movimentação BTG. */
+export async function importarInvestimentoMovimentacaoApi(file, numeroBanco = null, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) {
+    throw new Error('API financeiro desativada');
+  }
+  const fd = new FormData();
+  fd.append('file', file);
+  const q = numeroBanco != null ? `?numeroBanco=${encodeURIComponent(numeroBanco)}` : '';
+  return postFormData(`/api/financeiro/investimentos/import${q}`, fd, opts);
+}
+
+export async function recalcularInvestimentosApi({ contaBancariaId = null, numeroBanco = null } = {}, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) {
+    throw new Error('API financeiro desativada');
+  }
+  const query = {};
+  if (contaBancariaId != null) query.contaBancariaId = contaBancariaId;
+  if (numeroBanco != null) query.numeroBanco = numeroBanco;
+  return request('/api/financeiro/investimentos/recalcular', { method: 'POST', query, signal: opts.signal });
+}
+
+export async function listarInvestimentoOperacoesApi(
+  { contaBancariaId = null, numeroBanco = null, status = null, somenteComTaxa = false, page = 0, size = 30 } = {},
+  opts = {},
+) {
+  if (!featureFlags.useApiFinanceiro) {
+    return { content: [], totalElements: 0, totalPages: 0 };
+  }
+  const query = { page, size, somenteComTaxa };
+  if (contaBancariaId != null) query.contaBancariaId = contaBancariaId;
+  if (numeroBanco != null) query.numeroBanco = numeroBanco;
+  if (status) query.status = status;
+  return request('/api/financeiro/investimentos/operacoes', { query, signal: opts.signal });
+}
+
+export async function obterInvestimentoResumoApi(numeroBanco = null, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) {
+    return null;
+  }
+  const query = {};
+  if (numeroBanco != null) query.numeroBanco = numeroBanco;
+  return request('/api/financeiro/investimentos/resumo', { query, signal: opts.signal });
+}
+
+export async function listarInvestimentoImportsApi(numeroBanco = null, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) {
+    return [];
+  }
+  const query = {};
+  if (numeroBanco != null) query.numeroBanco = numeroBanco;
+  return request('/api/financeiro/investimentos/imports', { query, signal: opts.signal });
 }

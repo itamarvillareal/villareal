@@ -12,6 +12,7 @@ import {
   Receipt,
   Settings,
   Sparkles,
+  TrendingUp,
   Upload,
 } from 'lucide-react';
 import { featureFlags } from '../../config/featureFlags.js';
@@ -185,6 +186,10 @@ function FinanceiroShell({
                 <NavLink to="/financeiro/analises" className={navClass}>
                   <Sparkles className="w-[15px] h-[15px] shrink-0" />
                   Análises
+                </NavLink>
+                <NavLink to="/financeiro/investimentos" className={navClass}>
+                  <TrendingUp className="w-[15px] h-[15px] shrink-0" />
+                  Investimentos
                 </NavLink>
                 <NavLink to="/financeiro/compensacao" className={navClass}>
                   <Link2 className="w-[15px] h-[15px] shrink-0" />

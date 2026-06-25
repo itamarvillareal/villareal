@@ -1,0 +1,236 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Upload, RefreshCw, TrendingUp } from 'lucide-react';
+import {
+  importarInvestimentoMovimentacaoApi,
+  listarInvestimentoOperacoesApi,
+  listarInvestimentoImportsApi,
+  obterInvestimentoResumoApi,
+  recalcularInvestimentosApi,
+} from '../../../repositories/financeiroRepository.js';
+import { useFinanceiroChrome } from '../FinanceiroContext.jsx';
+import { Pagination } from '../shared/Pagination.jsx';
+import { useFinanceiroToast } from '../shared/Toast.jsx';
+
+function fmtPctTaxa(v) {
+  if (v == null || Number.isNaN(Number(v))) return '—';
+  return `${(Number(v) * 100).toFixed(2)}% a.m.`;
+}
+
+function fmtMoeda(v) {
+  if (v == null) return '—';
+  return Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function statusLabel(s) {
+  if (s === 'FECHADA') return 'Fechada';
+  if (s === 'ABERTA') return 'Aberta';
+  if (s === 'LEGADO') return 'Legado';
+  return s ?? '—';
+}
+
+export function InvestimentosPage() {
+  const { bancos } = useFinanceiroChrome();
+  const toast = useFinanceiroToast();
+  const contasInvestimento = useMemo(
+    () => (bancos ?? []).filter((b) => [21, 27, 28].includes(Number(b.numero))),
+    [bancos],
+  );
+
+  const [numeroBanco, setNumeroBanco] = useState('');
+  const [page, setPage] = useState(0);
+  const [operacoes, setOperacoes] = useState({ content: [], totalElements: 0, totalPages: 0 });
+  const [resumo, setResumo] = useState(null);
+  const [imports, setImports] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [somenteComTaxa, setSomenteComTaxa] = useState(true);
+
+  const nb = numeroBanco ? Number(numeroBanco) : null;
+
+  const carregar = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [ops, res, imp] = await Promise.all([
+        listarInvestimentoOperacoesApi({ numeroBanco: nb, somenteComTaxa, page, size: 30 }),
+        obterInvestimentoResumoApi(nb),
+        listarInvestimentoImportsApi(nb),
+      ]);
+      setOperacoes(ops);
+      setResumo(res);
+      setImports(imp);
+    } catch (e) {
+      toast.error(e.message || 'Erro ao carregar investimentos');
+    } finally {
+      setLoading(false);
+    }
+  }, [nb, page, somenteComTaxa, toast]);
+
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  async function onUpload(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploading(true);
+    try {
+      const r = await importarInvestimentoMovimentacaoApi(file, nb ?? undefined);
+      toast.success(`Importado: ${r.arquivoNome} → ${r.bancoNome} (${r.linhasCdb} ops)`);
+      await carregar();
+    } catch (err) {
+      toast.error(err.message || 'Falha no import');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function onRecalcular() {
+    if (!nb) {
+      toast.error('Selecione uma conta');
+      return;
+    }
+    try {
+      await recalcularInvestimentosApi({ numeroBanco: nb });
+      toast.success('Operações recalculadas');
+      await carregar();
+    } catch (e) {
+      toast.error(e.message || 'Erro ao recalcular');
+    }
+  }
+
+  return (
+    <div className="space-y-4 p-4 max-w-6xl">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-medium text-slate-900 dark:text-slate-100 flex items-center gap-2">
+            <TrendingUp className="w-5 h-5" />
+            Investimentos BTG
+          </h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+            Taxa mensal líquida (impostos e custos) com vínculo ao extrato bancário.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            className="text-sm border border-slate-200 dark:border-slate-700 rounded-md px-2 py-1.5 bg-white dark:bg-slate-900"
+            value={numeroBanco}
+            onChange={(ev) => {
+              setNumeroBanco(ev.target.value);
+              setPage(0);
+            }}
+          >
+            <option value="">Todas contas BTG</option>
+            {contasInvestimento.map((c) => (
+              <option key={c.numero} value={String(c.numero)}>
+                {c.nome} ({c.numero})
+              </option>
+            ))}
+          </select>
+          <label className="inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md border border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800">
+            <Upload className="w-4 h-4" />
+            {uploading ? 'Enviando…' : 'Importar xlsx'}
+            <input type="file" accept=".xlsx" className="hidden" onChange={onUpload} disabled={uploading} />
+          </label>
+          <button
+            type="button"
+            onClick={onRecalcular}
+            className="inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Recalcular
+          </button>
+        </div>
+      </div>
+
+      {resumo ? (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Kpi label="Mediana taxa a.m. líq." value={fmtPctTaxa(resumo.medianaTaxaMensalLiquida)} />
+          <Kpi label="Ops fechadas c/ taxa" value={String(resumo.operacoesFechadasComTaxa)} />
+          <Kpi label="Posições abertas" value={String(resumo.operacoesAbertas)} />
+          <Kpi label="Volume aberto" value={fmtMoeda(resumo.volumeAberto)} />
+        </div>
+      ) : null}
+
+      <div className="flex items-center gap-3 text-sm">
+        <label className="inline-flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={somenteComTaxa}
+            onChange={(ev) => {
+              setSomenteComTaxa(ev.target.checked);
+              setPage(0);
+            }}
+          />
+          Só operações com taxa calculada
+        </label>
+        {loading ? <span className="text-slate-400">Carregando…</span> : null}
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 dark:bg-slate-800/80 text-left text-xs text-slate-500">
+            <tr>
+              <th className="px-3 py-2">Código</th>
+              <th className="px-3 py-2">Conta</th>
+              <th className="px-3 py-2">Compra → Venda</th>
+              <th className="px-3 py-2">Dias</th>
+              <th className="px-3 py-2">Taxa a.m. líq.</th>
+              <th className="px-3 py-2">Lucro líq.</th>
+              <th className="px-3 py-2">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(operacoes.content ?? []).map((op) => (
+              <tr key={op.id} className="border-t border-slate-100 dark:border-slate-800">
+                <td className="px-3 py-2 font-mono text-xs">{op.codigoProduto}</td>
+                <td className="px-3 py-2">{op.bancoNome}</td>
+                <td className="px-3 py-2 text-xs whitespace-nowrap">
+                  {op.dataCompra ?? '—'} → {op.dataVenda ?? '—'}
+                </td>
+                <td className="px-3 py-2 tabular-nums">{op.diasCarteira ?? '—'}</td>
+                <td className="px-3 py-2 tabular-nums font-medium text-emerald-700 dark:text-emerald-400">
+                  {fmtPctTaxa(op.taxaMensalLiquida)}
+                </td>
+                <td className="px-3 py-2 tabular-nums">{fmtMoeda(op.lucroLiquido)}</td>
+                <td className="px-3 py-2">{statusLabel(op.status)}</td>
+              </tr>
+            ))}
+            {!loading && !(operacoes.content ?? []).length ? (
+              <tr>
+                <td colSpan={7} className="px-3 py-8 text-center text-slate-400">
+                  Nenhuma operação. Importe um export de Movimentação BTG (.xlsx).
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
+
+      <Pagination page={page} totalPages={operacoes.totalPages ?? 0} onPageChange={setPage} />
+
+      {imports.length ? (
+        <div className="text-xs text-slate-500 dark:text-slate-400 space-y-1">
+          <p className="font-medium text-slate-600 dark:text-slate-300">Últimos imports</p>
+          {imports.slice(0, 5).map((i) => (
+            <p key={i.id}>
+              {i.arquivoNome} — {i.bancoNome} — {i.periodoInicio} a {i.periodoFim} ({i.linhasCdb} ops,{' '}
+              {i.linhasVinculadas} vinculadas)
+            </p>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function Kpi({ label, value }) {
+  return (
+    <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3">
+      <p className="text-lg font-medium tabular-nums text-slate-900 dark:text-slate-100">{value}</p>
+      <p className="text-xs text-slate-500 mt-0.5">{label}</p>
+    </div>
+  );
+}
+
+export default InvestimentosPage;

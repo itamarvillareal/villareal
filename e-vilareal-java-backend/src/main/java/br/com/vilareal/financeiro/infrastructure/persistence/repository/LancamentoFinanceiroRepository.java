@@ -981,4 +981,22 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             """)
     List<Long> findCreditosOrfaosPosImportHonorarios(
             @Param("numerosBanco") Collection<Integer> numerosBanco, @Param("desde") LocalDate desde);
+
+    @Query("""
+            SELECT l FROM LancamentoFinanceiroEntity l
+            WHERE l.numeroBanco = :numeroBanco
+              AND l.status = 'ATIVO'
+              AND l.dataLancamento BETWEEN :inicio AND :fim
+              AND (
+                  l.descricao LIKE 'COMPRA -%'
+                  OR l.descricao LIKE 'VENDA-%'
+                  OR l.descricao LIKE 'IRRF%'
+                  OR l.descricao LIKE 'IOF%'
+              )
+            ORDER BY l.dataLancamento ASC, l.id ASC
+            """)
+    List<LancamentoFinanceiroEntity> findCandidatosInvestimentoExtrato(
+            @Param("numeroBanco") Integer numeroBanco,
+            @Param("inicio") LocalDate inicio,
+            @Param("fim") LocalDate fim);
 }
