@@ -5,6 +5,7 @@ import br.com.vilareal.financeiro.domain.InvestimentoVinculoConfianca;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 public record InvestimentoOperacaoResponse(
         Long id,
@@ -28,4 +29,5 @@ public record InvestimentoOperacaoResponse(
         BigDecimal taxaAnualLiquida,
         InvestimentoVinculoConfianca vinculoConfianca,
         Long compraLancamentoId,
-        Long vendaLancamentoId) {}
+        Long vendaLancamentoId,
+        List<InvestimentoOperacaoLancamentoResponse> lancamentos) {}

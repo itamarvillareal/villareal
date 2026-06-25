@@ -33,6 +33,7 @@ public class InvestimentoMovimentacaoApplicationService {
     private final InvestimentoImportRepository importRepository;
     private final InvestimentoMovimentacaoRepository movimentacaoRepository;
     private final InvestimentoOperacaoRepository operacaoRepository;
+    private final InvestimentoOperacaoLancamentoRepository operacaoLancamentoRepository;
     private final ContaBancariaRepository contaBancariaRepository;
     private final LancamentoFinanceiroRepository lancamentoRepository;
 
@@ -43,11 +44,13 @@ public class InvestimentoMovimentacaoApplicationService {
             InvestimentoImportRepository importRepository,
             InvestimentoMovimentacaoRepository movimentacaoRepository,
             InvestimentoOperacaoRepository operacaoRepository,
+            InvestimentoOperacaoLancamentoRepository operacaoLancamentoRepository,
             ContaBancariaRepository contaBancariaRepository,
             LancamentoFinanceiroRepository lancamentoRepository) {
         this.importRepository = importRepository;
         this.movimentacaoRepository = movimentacaoRepository;
         this.operacaoRepository = operacaoRepository;
+        this.operacaoLancamentoRepository = operacaoLancamentoRepository;
         this.contaBancariaRepository = contaBancariaRepository;
         this.lancamentoRepository = lancamentoRepository;
     }
@@ -145,7 +148,9 @@ public class InvestimentoMovimentacaoApplicationService {
             } else if ("V".equals(mov.getTipoExtrato())) {
                 Deque<InvestimentoMovimentacaoEntity> fila = comprasPorCodigo.get(mov.getCodigoProduto());
                 if (fila == null || fila.isEmpty()) {
-                    operacaoRepository.save(criarOperacaoLegado(conta, mov));
+                    InvestimentoOperacaoEntity op = criarOperacaoLegado(conta, mov);
+                    operacaoRepository.save(op);
+                    persistirElos(op, elosVenda(mov));
                 } else {
                     fechadasPendentes.add(new ParCompraVenda(fila.removeFirst(), mov));
                 }
@@ -155,25 +160,40 @@ public class InvestimentoMovimentacaoApplicationService {
         fechadasPendentes.sort(Comparator.comparing(p -> valorCaixa(
                 p.venda().getLancamentoFinanceiro(), p.venda().getValorOperacao())));
 
-        List<InvestimentoOperacaoEntity> fechadasOps = new ArrayList<>();
+        List<OperacaoMontada> fechadasMontadas = new ArrayList<>();
         for (ParCompraVenda par : fechadasPendentes) {
-            fechadasOps.add(criarOperacaoFechadaSemImpostos(conta, par.compra(), par.venda()));
+            fechadasMontadas.add(montarOperacaoFechada(conta, par.compra(), par.venda()));
         }
 
-        fechadasOps.stream()
-                .collect(Collectors.groupingBy(InvestimentoOperacaoEntity::getDataVenda))
-                .forEach((dia, ops) -> alocarImpostosDoDia(conta.getNumeroBanco(), dia, ops));
+        fechadasMontadas.stream()
+                .collect(Collectors.groupingBy(m -> m.op().getDataVenda()))
+                .forEach((dia, montadas) -> alocarImpostosDoDia(conta.getNumeroBanco(), dia, montadas));
 
-        for (InvestimentoOperacaoEntity op : fechadasOps) {
-            finalizarMetricasFechada(op);
-            operacaoRepository.save(op);
+        for (OperacaoMontada montada : fechadasMontadas) {
+            finalizarMetricasFechada(montada.op());
+            operacaoRepository.save(montada.op());
+            persistirElos(montada.op(), montada.elos());
         }
 
         for (Deque<InvestimentoMovimentacaoEntity> fila : comprasPorCodigo.values()) {
             for (InvestimentoMovimentacaoEntity compra : fila) {
-                operacaoRepository.save(criarOperacaoAberta(conta, compra));
+                InvestimentoOperacaoEntity op = criarOperacaoAberta(conta, compra);
+                operacaoRepository.save(op);
+                persistirElos(op, elosCompra(compra));
             }
         }
+    }
+
+    private List<EloPendente> elosCompra(InvestimentoMovimentacaoEntity compra) {
+        List<EloPendente> elos = new ArrayList<>();
+        addEloIntegral(elos, compra.getLancamentoFinanceiro(), InvestimentoOperacaoLancamentoPapel.COMPRA);
+        return elos;
+    }
+
+    private List<EloPendente> elosVenda(InvestimentoMovimentacaoEntity venda) {
+        List<EloPendente> elos = new ArrayList<>();
+        addEloIntegral(elos, venda.getLancamentoFinanceiro(), InvestimentoOperacaoLancamentoPapel.VENDA);
+        return elos;
     }
 
     @Transactional(readOnly = true)
@@ -186,17 +206,21 @@ public class InvestimentoMovimentacaoApplicationService {
             LocalDate dataVendaFim,
             boolean somenteComTaxa,
             Pageable pageable) {
-        return operacaoRepository
-                .listarFiltrado(
-                        contaBancariaId,
-                        status,
-                        dataCompraInicio,
-                        dataCompraFim,
-                        dataVendaInicio,
-                        dataVendaFim,
-                        somenteComTaxa,
-                        pageable)
-                .map(this::toOperacaoResponse);
+        Page<InvestimentoOperacaoEntity> page = operacaoRepository.listarFiltrado(
+                contaBancariaId,
+                status,
+                dataCompraInicio,
+                dataCompraFim,
+                dataVendaInicio,
+                dataVendaFim,
+                somenteComTaxa,
+                pageable);
+        List<Long> ids = page.getContent().stream().map(InvestimentoOperacaoEntity::getId).toList();
+        Map<Long, List<InvestimentoOperacaoLancamentoEntity>> elosPorOp = ids.isEmpty()
+                ? Map.of()
+                : operacaoLancamentoRepository.findByOperacaoIdsWithLancamento(ids).stream()
+                        .collect(Collectors.groupingBy(e -> e.getOperacao().getId()));
+        return page.map(o -> toOperacaoResponse(o, elosPorOp.getOrDefault(o.getId(), List.of())));
     }
 
     @Transactional(readOnly = true)
@@ -388,7 +412,7 @@ public class InvestimentoMovimentacaoApplicationService {
         return op;
     }
 
-    private InvestimentoOperacaoEntity criarOperacaoFechadaSemImpostos(
+    private OperacaoMontada montarOperacaoFechada(
             ContaBancariaEntity conta,
             InvestimentoMovimentacaoEntity compra,
             InvestimentoMovimentacaoEntity venda) {
@@ -416,7 +440,11 @@ public class InvestimentoMovimentacaoApplicationService {
             conf = InvestimentoVinculoConfianca.BAIXA;
         }
         op.setVinculoConfianca(conf);
-        return op;
+
+        List<EloPendente> elos = new ArrayList<>();
+        addEloIntegral(elos, compra.getLancamentoFinanceiro(), InvestimentoOperacaoLancamentoPapel.COMPRA);
+        addEloIntegral(elos, venda.getLancamentoFinanceiro(), InvestimentoOperacaoLancamentoPapel.VENDA);
+        return new OperacaoMontada(op, elos);
     }
 
     private void finalizarMetricasFechada(InvestimentoOperacaoEntity op) {
@@ -432,25 +460,31 @@ public class InvestimentoMovimentacaoApplicationService {
         }
     }
 
-    private void alocarImpostosDoDia(Integer numeroBanco, LocalDate dia, List<InvestimentoOperacaoEntity> ops) {
-        if (ops == null || ops.isEmpty()) {
+    private void alocarImpostosDoDia(Integer numeroBanco, LocalDate dia, List<OperacaoMontada> montadas) {
+        if (montadas == null || montadas.isEmpty()) {
             return;
         }
         List<LancamentoFinanceiroEntity> lancamentosDia =
                 lancamentoRepository.findCandidatosInvestimentoExtrato(numeroBanco, dia, dia);
         Set<Long> impostosUsados = new HashSet<>();
 
-        ops.sort(Comparator.comparing(op -> op.getValorVendaCaixa() != null ? op.getValorVendaCaixa() : BigDecimal.ZERO));
+        montadas.sort(Comparator.comparing(m -> m.op().getValorVendaCaixa() != null
+                ? m.op().getValorVendaCaixa()
+                : BigDecimal.ZERO));
 
-        for (InvestimentoOperacaoEntity op : ops) {
+        for (OperacaoMontada montada : montadas) {
             ImpostosCustos especificos = calcularImpostosEspecificos(
-                    lancamentosDia, op.getEmissor(), op.getDiasCarteira(), impostosUsados);
-            op.setValorIrrf(especificos.irrf());
-            op.setValorIof(especificos.iof());
+                    lancamentosDia,
+                    montada.op().getEmissor(),
+                    montada.op().getDiasCarteira(),
+                    impostosUsados,
+                    montada.elos());
+            montada.op().setValorIrrf(especificos.irrf());
+            montada.op().setValorIof(especificos.iof());
         }
 
-        BigDecimal genericIrrf = BigDecimal.ZERO;
-        BigDecimal genericIof = BigDecimal.ZERO;
+        List<LancamentoFinanceiroEntity> genericIrrfLancs = new ArrayList<>();
+        List<LancamentoFinanceiroEntity> genericIofLancs = new ArrayList<>();
         for (LancamentoFinanceiroEntity l : lancamentosDia) {
             if (impostosUsados.contains(l.getId())) {
                 continue;
@@ -461,38 +495,54 @@ public class InvestimentoMovimentacaoApplicationService {
             }
             String upper = desc.toUpperCase(Locale.ROOT);
             if (upper.startsWith("IRRF")) {
-                genericIrrf = genericIrrf.add(l.getValor());
+                genericIrrfLancs.add(l);
                 impostosUsados.add(l.getId());
             } else if (upper.startsWith("IOF")) {
-                genericIof = genericIof.add(l.getValor());
+                genericIofLancs.add(l);
                 impostosUsados.add(l.getId());
             }
         }
 
-        if (genericIrrf.compareTo(BigDecimal.ZERO) <= 0 && genericIof.compareTo(BigDecimal.ZERO) <= 0) {
+        if (genericIrrfLancs.isEmpty() && genericIofLancs.isEmpty()) {
             return;
         }
 
         BigDecimal baseVendas = somaVendasExtratoDia(lancamentosDia);
         if (baseVendas.compareTo(BigDecimal.ZERO) <= 0) {
-            baseVendas = ops.stream()
-                    .map(op -> op.getValorVendaCaixa() != null ? op.getValorVendaCaixa() : BigDecimal.ZERO)
+            baseVendas = montadas.stream()
+                    .map(m -> m.op().getValorVendaCaixa() != null ? m.op().getValorVendaCaixa() : BigDecimal.ZERO)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
         }
         if (baseVendas.compareTo(BigDecimal.ZERO) <= 0) {
             return;
         }
 
-        for (InvestimentoOperacaoEntity op : ops) {
-            BigDecimal vf = op.getValorVendaCaixa() != null ? op.getValorVendaCaixa() : BigDecimal.ZERO;
-            if (vf.compareTo(BigDecimal.ZERO) <= 0) {
-                continue;
+        for (LancamentoFinanceiroEntity gl : genericIrrfLancs) {
+            for (OperacaoMontada montada : montadas) {
+                BigDecimal vf = montada.op().getValorVendaCaixa() != null ? montada.op().getValorVendaCaixa() : BigDecimal.ZERO;
+                if (vf.compareTo(BigDecimal.ZERO) <= 0) {
+                    continue;
+                }
+                BigDecimal parcela = parcelaProporcional(gl.getValor(), vf, baseVendas);
+                if (parcela.compareTo(BigDecimal.ZERO) <= 0) {
+                    continue;
+                }
+                montada.op().setValorIrrf(montada.op().getValorIrrf().add(parcela));
+                addElo(montada.elos(), gl, InvestimentoOperacaoLancamentoPapel.IRRF, parcela);
             }
-            if (genericIrrf.compareTo(BigDecimal.ZERO) > 0) {
-                op.setValorIrrf(op.getValorIrrf().add(parcelaProporcional(genericIrrf, vf, baseVendas)));
-            }
-            if (genericIof.compareTo(BigDecimal.ZERO) > 0) {
-                op.setValorIof(op.getValorIof().add(parcelaProporcional(genericIof, vf, baseVendas)));
+        }
+        for (LancamentoFinanceiroEntity gl : genericIofLancs) {
+            for (OperacaoMontada montada : montadas) {
+                BigDecimal vf = montada.op().getValorVendaCaixa() != null ? montada.op().getValorVendaCaixa() : BigDecimal.ZERO;
+                if (vf.compareTo(BigDecimal.ZERO) <= 0) {
+                    continue;
+                }
+                BigDecimal parcela = parcelaProporcional(gl.getValor(), vf, baseVendas);
+                if (parcela.compareTo(BigDecimal.ZERO) <= 0) {
+                    continue;
+                }
+                montada.op().setValorIof(montada.op().getValorIof().add(parcela));
+                addElo(montada.elos(), gl, InvestimentoOperacaoLancamentoPapel.IOF, parcela);
             }
         }
     }
@@ -519,7 +569,8 @@ public class InvestimentoMovimentacaoApplicationService {
             List<LancamentoFinanceiroEntity> lancamentosDia,
             String emissor,
             Integer diasCarteira,
-            Set<Long> impostosUsados) {
+            Set<Long> impostosUsados,
+            List<EloPendente> elos) {
         if (!StringUtils.hasText(emissor)) {
             return new ImpostosCustos(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
         }
@@ -562,17 +613,58 @@ public class InvestimentoMovimentacaoApplicationService {
             String upper = l.getDescricao().toUpperCase(Locale.ROOT);
             if (upper.startsWith("IRRF")) {
                 irrf = irrf.add(l.getValor());
+                addEloIntegral(elos, l, InvestimentoOperacaoLancamentoPapel.IRRF);
             } else if (upper.startsWith("IOF")) {
                 iof = iof.add(l.getValor());
+                addEloIntegral(elos, l, InvestimentoOperacaoLancamentoPapel.IOF);
             }
             impostosUsados.add(l.getId());
         }
         return new ImpostosCustos(irrf, iof, BigDecimal.ZERO);
     }
 
+    private void addEloIntegral(
+            List<EloPendente> elos,
+            LancamentoFinanceiroEntity lancamento,
+            InvestimentoOperacaoLancamentoPapel papel) {
+        addElo(elos, lancamento, papel, null);
+    }
+
+    private void addElo(
+            List<EloPendente> elos,
+            LancamentoFinanceiroEntity lancamento,
+            InvestimentoOperacaoLancamentoPapel papel,
+            BigDecimal valorAlocado) {
+        if (lancamento == null || lancamento.getId() == null) {
+            return;
+        }
+        elos.add(new EloPendente(lancamento, papel, valorAlocado));
+    }
+
+    private void persistirElos(InvestimentoOperacaoEntity op, List<EloPendente> elos) {
+        if (op.getId() == null || elos == null || elos.isEmpty()) {
+            return;
+        }
+        for (EloPendente elo : elos) {
+            InvestimentoOperacaoLancamentoEntity row = new InvestimentoOperacaoLancamentoEntity();
+            row.setOperacao(op);
+            row.setLancamento(elo.lancamento());
+            row.setPapel(elo.papel());
+            row.setValorAlocado(elo.valorAlocado());
+            operacaoLancamentoRepository.save(row);
+        }
+    }
+
     private record ImpostosCustos(BigDecimal irrf, BigDecimal iof, BigDecimal custos) {}
 
     private record ParCompraVenda(InvestimentoMovimentacaoEntity compra, InvestimentoMovimentacaoEntity venda) {}
+
+    private record OperacaoMontada(InvestimentoOperacaoEntity op, List<EloPendente> elos) {}
+
+    private record EloPendente(
+            LancamentoFinanceiroEntity lancamento,
+            InvestimentoOperacaoLancamentoPapel papel,
+            BigDecimal valorAlocado) {}
 
     private String resolverEmissorInvestimento(
             InvestimentoMovimentacaoEntity compra, InvestimentoMovimentacaoEntity venda) {
@@ -677,7 +769,11 @@ public class InvestimentoMovimentacaoApplicationService {
                 e.getImportadoEm());
     }
 
-    private InvestimentoOperacaoResponse toOperacaoResponse(InvestimentoOperacaoEntity o) {
+    private InvestimentoOperacaoResponse toOperacaoResponse(
+            InvestimentoOperacaoEntity o, List<InvestimentoOperacaoLancamentoEntity> elos) {
+        List<InvestimentoOperacaoLancamentoResponse> lancamentos = elos.stream()
+                .map(this::toOperacaoLancamentoResponse)
+                .toList();
         return new InvestimentoOperacaoResponse(
                 o.getId(),
                 o.getContaBancaria().getNumeroBanco(),
@@ -700,7 +796,20 @@ public class InvestimentoMovimentacaoApplicationService {
                 o.getTaxaAnualLiquida(),
                 o.getVinculoConfianca(),
                 o.getCompraLancamento() != null ? o.getCompraLancamento().getId() : null,
-                o.getVendaLancamento() != null ? o.getVendaLancamento().getId() : null);
+                o.getVendaLancamento() != null ? o.getVendaLancamento().getId() : null,
+                lancamentos);
+    }
+
+    private InvestimentoOperacaoLancamentoResponse toOperacaoLancamentoResponse(InvestimentoOperacaoLancamentoEntity e) {
+        LancamentoFinanceiroEntity l = e.getLancamento();
+        return new InvestimentoOperacaoLancamentoResponse(
+                l.getId(),
+                e.getPapel(),
+                l.getDataLancamento(),
+                l.getDescricao(),
+                l.getValor(),
+                l.getNatureza(),
+                e.getValorAlocado());
     }
 
     private static String sha256Hex(byte[] bytes) {

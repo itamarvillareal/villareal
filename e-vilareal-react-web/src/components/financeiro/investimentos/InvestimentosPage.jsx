@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ExternalLink, RefreshCw, TrendingUp, Upload } from 'lucide-react';
+import { ExternalLink, RefreshCw, TrendingUp, Upload, ChevronDown, ChevronRight } from 'lucide-react';
 import {
   importarInvestimentoMovimentacaoApi,
   listarInvestimentoOperacoesApi,
@@ -24,7 +24,14 @@ function fmtMoeda(v) {
   return Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-function statusLabel(s) {
+function papelLabel(p) {
+  if (p === 'COMPRA') return 'Compra';
+  if (p === 'VENDA') return 'Venda';
+  if (p === 'IRRF') return 'IRRF';
+  if (p === 'IOF') return 'IOF';
+  if (p === 'CUSTO') return 'Custo';
+  return p ?? '—';
+}
   if (s === 'FECHADA') return 'Encerrada';
   if (s === 'ABERTA') return 'Em carteira';
   if (s === 'LEGADO') return 'Venda sem compra';
@@ -101,6 +108,7 @@ export function InvestimentosPage() {
   const [dataCompraAte, setDataCompraAte] = useState('');
   const [dataVendaDe, setDataVendaDe] = useState('');
   const [dataVendaAte, setDataVendaAte] = useState('');
+  const [expandedOpId, setExpandedOpId] = useState(null);
   const pageSize = 30;
 
   const filtrosDataAtivos = Boolean(dataCompraDe || dataCompraAte || dataVendaDe || dataVendaAte);
@@ -291,6 +299,7 @@ export function InvestimentosPage() {
         <table className="w-full text-sm">
           <thead className="bg-slate-50 dark:bg-slate-800/80 text-left text-xs text-slate-500">
             <tr>
+              <th className="px-2 py-2 w-8" aria-label="Expandir extrato" />
               <th className="px-3 py-2">Código</th>
               <th className="px-3 py-2">Tipo</th>
               <th className="px-3 py-2">Conta</th>
@@ -305,9 +314,26 @@ export function InvestimentosPage() {
             </tr>
           </thead>
           <tbody>
-            {(operacoes.content ?? []).map((op) => (
-              <tr key={op.id} className="border-t border-slate-100 dark:border-slate-800 align-top">
-                <td className="px-3 py-2 font-mono text-xs">{op.codigoProduto}</td>
+            {(operacoes.content ?? []).map((op) => {
+              const expanded = expandedOpId === op.id;
+              const elos = op.lancamentos ?? [];
+              return (
+                <Fragment key={op.id}>
+                  <tr className="border-t border-slate-100 dark:border-slate-800 align-top">
+                    <td className="px-2 py-2">
+                      {elos.length ? (
+                        <button
+                          type="button"
+                          onClick={() => setExpandedOpId(expanded ? null : op.id)}
+                          className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500"
+                          aria-expanded={expanded}
+                          title="Extrato desta operação"
+                        >
+                          {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                        </button>
+                      ) : null}
+                    </td>
+                    <td className="px-3 py-2 font-mono text-xs">{op.codigoProduto}</td>
                 <td className="px-3 py-2 text-xs">{op.tipoProduto ?? '—'}</td>
                 <td className="px-3 py-2">{op.bancoNome}</td>
                 <td className="px-3 py-2 text-xs tabular-nums whitespace-nowrap">
@@ -366,11 +392,71 @@ export function InvestimentosPage() {
                     </span>
                   ) : null}
                 </td>
-              </tr>
-            ))}
+                  </tr>
+                  {expanded && elos.length ? (
+                    <tr className="border-t border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/40">
+                      <td colSpan={12} className="px-4 py-3">
+                        <p className="text-xs font-medium text-slate-600 dark:text-slate-300 mb-2">
+                          Extrato desta operação ({elos.length} lançamento{elos.length === 1 ? '' : 's'})
+                        </p>
+                        <div className="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
+                          <table className="w-full text-xs">
+                            <thead className="text-slate-500 bg-white dark:bg-slate-900">
+                              <tr>
+                                <th className="px-2 py-1.5 text-left">Papel</th>
+                                <th className="px-2 py-1.5 text-left">Data</th>
+                                <th className="px-2 py-1.5 text-left">Descrição</th>
+                                <th className="px-2 py-1.5 text-right">Valor</th>
+                                <th className="px-2 py-1.5 text-left">Extrato</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {elos.map((elo) => {
+                                const valor =
+                                  elo.valorAlocado != null ? elo.valorAlocado : elo.valorExtrato;
+                                return (
+                                  <tr key={`${elo.lancamentoId}-${elo.papel}`} className="border-t border-slate-100 dark:border-slate-800">
+                                    <td className="px-2 py-1.5 font-medium">{papelLabel(elo.papel)}</td>
+                                    <td className="px-2 py-1.5 tabular-nums whitespace-nowrap">
+                                      {elo.dataLancamento ? formatDataBrCompleta(elo.dataLancamento) : '—'}
+                                    </td>
+                                    <td className="px-2 py-1.5 max-w-md truncate" title={elo.descricao}>
+                                      {elo.descricao ?? '—'}
+                                    </td>
+                                    <td className="px-2 py-1.5 tabular-nums text-right whitespace-nowrap">
+                                      {fmtMoeda(valor)}
+                                      {elo.valorAlocado != null &&
+                                      elo.valorExtrato != null &&
+                                      Number(elo.valorAlocado) !== Number(elo.valorExtrato) ? (
+                                        <span className="block text-[10px] text-slate-400">
+                                          de {fmtMoeda(elo.valorExtrato)} no extrato
+                                        </span>
+                                      ) : null}
+                                    </td>
+                                    <td className="px-2 py-1.5">
+                                      <ExtratoLancamentoLink
+                                        lancamentoId={elo.lancamentoId}
+                                        numeroBanco={op.numeroBanco}
+                                        data={elo.dataLancamento}
+                                        valor={valor}
+                                        rotulo="Abrir"
+                                      />
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
+              );
+            })}
             {!loading && !(operacoes.content ?? []).length ? (
               <tr>
-                <td colSpan={11} className="px-3 py-8 text-center text-slate-400">
+                <td colSpan={12} className="px-3 py-8 text-center text-slate-400">
                   Nenhuma operação. Importe um export de Movimentação BTG (.xlsx).
                 </td>
               </tr>

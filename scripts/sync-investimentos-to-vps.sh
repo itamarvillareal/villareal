@@ -38,6 +38,7 @@ TABLES=(
   financeiro_investimento_import
   financeiro_investimento_movimentacao
   financeiro_investimento_operacao
+  financeiro_investimento_operacao_lancamento
 )
 
 if ! docker ps --format '{{.Names}}' | grep -qx "$LOCAL_CONTAINER"; then
@@ -77,6 +78,7 @@ fi
   echo "-- Sync investimentos BTG local → VPS ($STAMP)"
   echo "SET NAMES utf8mb4;"
   echo "SET FOREIGN_KEY_CHECKS = 0;"
+  echo "DELETE FROM financeiro_investimento_operacao_lancamento;"
   echo "DELETE FROM financeiro_investimento_operacao;"
   echo "DELETE FROM financeiro_investimento_movimentacao;"
   echo "DELETE FROM financeiro_investimento_import;"
