@@ -466,10 +466,13 @@ public class ImovelApplicationService {
      */
     @Transactional
     public ContratoLocacaoResponse criarContrato(ContratoLocacaoWriteRequest req) {
+        if (req.getDataInicio() == null || req.getValorAluguel() == null) {
+            throw new BusinessRuleException("Data de início e valor do aluguel são obrigatórios ao criar contrato.");
+        }
         ImovelEntity im = requireImovel(req.getImovelId());
         ContratoLocacaoEntity c = new ContratoLocacaoEntity();
         c.setImovel(im);
-        aplicarContrato(c, req);
+        aplicarContrato(c, req, true);
         c = contratoLocacaoRepository.save(c);
         applicationEventPublisher.publishEvent(new ContratoLocacaoAlteradoEvent(c.getId()));
         return toContratoResponse(requireContrato(c.getId()));
@@ -482,7 +485,7 @@ public class ImovelApplicationService {
         if (!c.getImovel().getId().equals(req.getImovelId())) {
             throw new BusinessRuleException("Contrato não pertence ao imóvel informado.");
         }
-        aplicarContrato(c, req);
+        aplicarContrato(c, req, false);
         contratoLocacaoRepository.save(c);
         applicationEventPublisher.publishEvent(new ContratoLocacaoAlteradoEvent(id));
         return toContratoResponse(requireContrato(id));
@@ -620,16 +623,25 @@ public class ImovelApplicationService {
         }
     }
 
-    private void aplicarContrato(ContratoLocacaoEntity c, ContratoLocacaoWriteRequest req) {
-        c.setDataInicio(req.getDataInicio());
+    private void aplicarContrato(ContratoLocacaoEntity c, ContratoLocacaoWriteRequest req, boolean novo) {
+        if (novo) {
+            c.setDataInicio(req.getDataInicio());
+            c.setValorAluguel(req.getValorAluguel());
+        } else {
+            if (req.getDataInicio() != null) {
+                c.setDataInicio(req.getDataInicio());
+            }
+            if (req.getValorAluguel() != null) {
+                c.setValorAluguel(req.getValorAluguel());
+            }
+        }
         c.setDataFim(req.getDataFim());
-        c.setValorAluguel(req.getValorAluguel());
         c.setValorRepassePactuado(req.getValorRepassePactuado());
         c.setDiaVencimentoAluguel(req.getDiaVencimentoAluguel());
         c.setDiaRepasse(req.getDiaRepasse());
         if (req.getTaxaAdministracaoPercent() != null) {
             c.setTaxaAdministracaoPercent(req.getTaxaAdministracaoPercent());
-        } else if (c.getId() == null) {
+        } else if (novo) {
             c.setTaxaAdministracaoPercent(new java.math.BigDecimal("10.00"));
         }
         c.setGarantiaTipo(trimToNull(req.getGarantiaTipo()));
@@ -638,7 +650,7 @@ public class ImovelApplicationService {
         c.setObservacoes(trimToNull(req.getObservacoes()));
         if (StringUtils.hasText(req.getStatus())) {
             c.setStatus(req.getStatus().trim());
-        } else if (c.getId() == null) {
+        } else if (novo) {
             c.setStatus("VIGENTE");
         }
         if (req.getLocadorPessoaId() != null) {

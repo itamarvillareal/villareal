@@ -573,20 +573,7 @@ function mapApiToUi(imovel, contrato) {
     _apiProcessoId: imovel?.processoId ?? null,
     _jsonExtrasOriginal: extrasRaw,
     _contratoObservacoesOriginal: contrato?.observacoes ?? null,
-    _contratoSnapshotOriginal: contrato
-      ? {
-          dataInicio: contrato.dataInicio ?? null,
-          dataFim: contrato.dataFim ?? null,
-          valorAluguel: contrato.valorAluguel ?? null,
-          diaVencimentoAluguel: contrato.diaVencimentoAluguel ?? null,
-          diaRepasse: contrato.diaRepasse ?? null,
-          taxaAdministracaoPercent: contrato.taxaAdministracaoPercent ?? null,
-          garantiaTipo: contrato.garantiaTipo ?? null,
-          valorGarantia: contrato.valorGarantia ?? null,
-          dadosBancariosRepasseJson: contrato.dadosBancariosRepasseJson ?? null,
-          status: contrato.status ?? 'VIGENTE',
-        }
-      : null,
+    _contratoSnapshotOriginal: contratoSnapshotFromApi(contrato),
   };
 }
 
@@ -695,6 +682,49 @@ function montarPayloadImovelFromUi(ui, clienteId, processoId, espelhoCodProc = n
     camposExtrasJson: JSON.stringify(extras),
     ativo: true,
   };
+}
+
+function contratoSnapshotFromApi(contrato) {
+  if (!contrato) return null;
+  return {
+    dataInicio: contrato.dataInicio ?? null,
+    dataFim: contrato.dataFim ?? null,
+    valorAluguel: contrato.valorAluguel ?? null,
+    diaVencimentoAluguel: contrato.diaVencimentoAluguel ?? null,
+    diaRepasse: contrato.diaRepasse ?? null,
+    taxaAdministracaoPercent: contrato.taxaAdministracaoPercent ?? null,
+    garantiaTipo: contrato.garantiaTipo ?? null,
+    valorGarantia: contrato.valorGarantia ?? null,
+    dadosBancariosRepasseJson: contrato.dadosBancariosRepasseJson ?? null,
+    status: contrato.status ?? 'VIGENTE',
+  };
+}
+
+async function resolverContratoParaSaveImovel(imovelIdApi, uiPayload) {
+  let contratoId =
+    uiPayload?._apiContratoId != null && Number(uiPayload._apiContratoId) > 0
+      ? Number(uiPayload._apiContratoId)
+      : null;
+  let snapshot =
+    uiPayload?._contratoSnapshotOriginal && typeof uiPayload._contratoSnapshotOriginal === 'object'
+      ? uiPayload._contratoSnapshotOriginal
+      : null;
+
+  try {
+    const contratos = await request('/api/locacoes/contratos', { query: { imovelId: imovelIdApi } });
+    const lista = Array.isArray(contratos) ? contratos : [];
+    const vigente = selecionarContratoVigente(lista);
+    const contratoBase =
+      (contratoId != null ? lista.find((c) => Number(c.id) === Number(contratoId)) : null) ?? vigente;
+    if (contratoBase?.id != null) {
+      if (!contratoId) contratoId = Number(contratoBase.id);
+      if (!snapshot) snapshot = contratoSnapshotFromApi(contratoBase);
+    }
+  } catch {
+    /* mantém refs carregadas na UI */
+  }
+
+  return { contratoId, snapshot };
 }
 
 function isoDataContratoSnapshot(val) {
@@ -1345,13 +1375,15 @@ export async function salvarImovelCadastro(uiPayload) {
     ? await request(`/api/imoveis/${uiPayload._apiImovelId}`, { method: 'PUT', body: bodyImovel })
     : await request('/api/imoveis', { method: 'POST', body: bodyImovel });
 
-  const contratoBody = montarPayloadContratoFromUi(uiPayload, imovelSalvo.id);
-  const contratoId =
-    uiPayload._apiContratoId != null && Number(uiPayload._apiContratoId) > 0
-      ? Number(uiPayload._apiContratoId)
-      : null;
+  const { contratoId, snapshot } = await resolverContratoParaSaveImovel(imovelSalvo.id, uiPayload);
+  const uiContrato = {
+    ...uiPayload,
+    _apiContratoId: contratoId ?? uiPayload._apiContratoId,
+    _contratoSnapshotOriginal: snapshot ?? uiPayload._contratoSnapshotOriginal,
+  };
+  const contratoBody = montarPayloadContratoFromUi(uiContrato, imovelSalvo.id);
   let contratoSalvo = null;
-  if (contratoProntoParaPersistir(contratoBody, contratoId, uiPayload)) {
+  if (contratoProntoParaPersistir(contratoBody, contratoId, uiContrato)) {
     contratoSalvo = contratoId
       ? await request(`/api/locacoes/contratos/${contratoId}`, { method: 'PUT', body: contratoBody })
       : await request('/api/locacoes/contratos', { method: 'POST', body: contratoBody });

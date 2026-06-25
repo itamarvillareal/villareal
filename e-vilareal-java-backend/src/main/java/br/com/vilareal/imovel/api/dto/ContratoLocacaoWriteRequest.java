@@ -13,12 +13,12 @@ public class ContratoLocacaoWriteRequest {
     private Long locadorPessoaId;
     private Long inquilinoPessoaId;
 
-    @NotNull
+    /** Obrigatório apenas na criação ({@link br.com.vilareal.imovel.application.ImovelApplicationService#criarContrato}). */
     private LocalDate dataInicio;
 
     private LocalDate dataFim;
 
-    @NotNull
+    /** Obrigatório apenas na criação. */
     private BigDecimal valorAluguel;
 
     private BigDecimal valorRepassePactuado;
