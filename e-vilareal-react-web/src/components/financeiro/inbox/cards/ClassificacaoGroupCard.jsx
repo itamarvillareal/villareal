@@ -54,9 +54,9 @@ export function ClassificacaoGroupCard({
     codigo !== '—' ? CLASSE_BORDA_CONTA : 'border-l-[3px] border-l-slate-300 dark:border-l-slate-600';
   const periodo = useMemo(() => resumoPeriodoGrupo(lancamentos), [lancamentos]);
   const valores = useMemo(() => resumoValoresGrupo(lancamentos), [lancamentos]);
-  const datasDistintas = useMemo(() => {
+  const bancosDistintos = useMemo(() => {
     const chaves = new Set(
-      lancamentos.map((l) => String(l.dataExibicao ?? l.dataLancamento ?? '').trim()).filter(Boolean),
+      lancamentos.map((l) => String(l.bancoNome ?? '').trim()).filter(Boolean),
     );
     return chaves.size > 1;
   }, [lancamentos]);
@@ -203,22 +203,36 @@ export function ClassificacaoGroupCard({
               expandido && n > 8 ? 'max-h-40 overflow-y-auto' : ''
             }`}
           >
-            {listaExibida.map((l) => (
+            {listaExibida.map((l) => {
+              const detalhe =
+                String(l.descricaoDetalhada ?? l.observacao ?? '').trim() ||
+                String(l.descricao ?? descricao ?? '').trim() ||
+                `#${l.id}`;
+              return (
               <li
                 key={l.id}
                 className="flex items-center gap-2 px-2 py-1 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50"
                 onDoubleClick={() => abrirExtrato(l)}
                 title="Duplo clique: abrir extrato do banco neste lançamento"
               >
-                {datasDistintas ? (
-                  <span className="text-slate-500 dark:text-slate-400 tabular-nums shrink-0">
-                    {l.dataExibicao}
+                <span className="text-slate-500 dark:text-slate-400 tabular-nums shrink-0 w-[4.5rem]">
+                  {l.dataExibicao || '—'}
+                </span>
+                {bancosDistintos && l.bancoNome ? (
+                  <span className="text-[10px] font-medium px-1 py-0.5 rounded-full bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 shrink-0 max-w-[5rem] truncate">
+                    {l.bancoNome}
                   </span>
                 ) : null}
-                <span className="flex-1" />
+                <span
+                  className="flex-1 min-w-0 truncate text-slate-800 dark:text-slate-100"
+                  title={detalhe}
+                >
+                  {detalhe}
+                </span>
                 <ValorText valor={l.valor} natureza={l.natureza} />
               </li>
-            ))}
+              );
+            })}
           </ul>
         ) : null}
 
