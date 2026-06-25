@@ -22,6 +22,9 @@ public final class InvestimentoTaxaUtil {
             return null;
         }
         double taxa = Math.pow(ratio, 30.0 / dias) - 1.0;
+        if (!Double.isFinite(taxa) || taxa > 9999.0) {
+            return null;
+        }
         return BigDecimal.valueOf(taxa).setScale(8, RoundingMode.HALF_UP);
     }
 
@@ -37,6 +40,9 @@ public final class InvestimentoTaxaUtil {
             return null;
         }
         double taxa = Math.pow(ratio, 365.0 / dias) - 1.0;
+        if (!Double.isFinite(taxa) || taxa > 9999.0) {
+            return null;
+        }
         return BigDecimal.valueOf(taxa).setScale(8, RoundingMode.HALF_UP);
     }
 }

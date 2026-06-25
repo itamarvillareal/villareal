@@ -44,6 +44,7 @@ export function InvestimentosPage() {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [somenteComTaxa, setSomenteComTaxa] = useState(true);
+  const pageSize = 30;
 
   const nb = numeroBanco ? Number(numeroBanco) : null;
 
@@ -51,7 +52,7 @@ export function InvestimentosPage() {
     setLoading(true);
     try {
       const [ops, res, imp] = await Promise.all([
-        listarInvestimentoOperacoesApi({ numeroBanco: nb, somenteComTaxa, page, size: 30 }),
+        listarInvestimentoOperacoesApi({ numeroBanco: nb, somenteComTaxa, page, size: pageSize }),
         obterInvestimentoResumoApi(nb),
         listarInvestimentoImportsApi(nb),
       ]);
@@ -100,7 +101,7 @@ export function InvestimentosPage() {
   }
 
   return (
-    <div className="space-y-4 p-4 max-w-6xl">
+    <div className="min-h-0 h-full overflow-y-auto overscroll-y-contain p-4 space-y-4 max-w-6xl">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-medium text-slate-900 dark:text-slate-100 flex items-center gap-2">
@@ -207,7 +208,13 @@ export function InvestimentosPage() {
         </table>
       </div>
 
-      <Pagination page={page} totalPages={operacoes.totalPages ?? 0} onPageChange={setPage} />
+      <Pagination
+        page={page}
+        totalPages={operacoes.totalPages ?? 0}
+        totalItems={operacoes.totalElements ?? 0}
+        pageSize={pageSize}
+        onPageChange={setPage}
+      />
 
       {imports.length ? (
         <div className="text-xs text-slate-500 dark:text-slate-400 space-y-1">

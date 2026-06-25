@@ -4,12 +4,31 @@
  *
  * Uso:
  *   node scripts/import-btg-movimentacao.mjs [arquivo ou pasta] [--numero-banco=21]
- *   API_BASE=http://localhost:8080 node scripts/import-btg-movimentacao.mjs "~/Dropbox/pasta sem título 2"
+ *   VILAREAL_API_BASE=http://localhost:8080 node scripts/import-btg-movimentacao.mjs "~/Dropbox/pasta sem título 2"
  */
+import './lib/load-vilareal-import-env.mjs';
+
 import fs from 'node:fs';
 import path from 'node:path';
 
-const API_BASE = (process.env.API_BASE || 'http://localhost:8080').replace(/\/$/, '');
+const API_BASE = (process.env.VILAREAL_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
+const LOGIN = process.env.VILAREAL_IMPORT_LOGIN || 'itamar';
+const SENHA = process.env.VILAREAL_IMPORT_SENHA || '';
+
+async function authLogin() {
+  if (!SENHA) {
+    throw new Error('Defina VILAREAL_IMPORT_SENHA (ou .env.import.local / ~/.vilareal-import-env)');
+  }
+  const res = await fetch(`${API_BASE}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ login: LOGIN.trim().toLowerCase(), senha: SENHA }),
+  });
+  if (!res.ok) throw new Error(`Login falhou ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  const j = await res.json();
+  if (!j.accessToken) throw new Error('Login sem accessToken');
+  return j.accessToken;
+}
 
 function parseArgs(argv) {
   let numeroBanco = null;
@@ -46,15 +65,15 @@ function resolveFiles(inputs) {
   return [...new Set(files)].sort();
 }
 
-async function importFile(filePath, numeroBanco) {
+async function importFile(filePath, numeroBanco, token) {
   const buf = fs.readFileSync(filePath);
   const fd = new FormData();
   fd.append('file', new Blob([buf]), path.basename(filePath));
   const q = numeroBanco != null ? `?numeroBanco=${numeroBanco}` : '';
   const res = await fetch(`${API_BASE}/api/financeiro/investimentos/import${q}`, {
     method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
     body: fd,
-    credentials: 'include',
   });
   const text = await res.text();
   if (!res.ok) {
@@ -74,9 +93,10 @@ if (!files.length) {
 }
 
 console.log(`API: ${API_BASE} | arquivos: ${files.length}`);
+const token = await authLogin();
 for (const f of files) {
   try {
-    const r = await importFile(f, numeroBanco);
+    const r = await importFile(f, numeroBanco, token);
     console.log(
       `✓ ${path.basename(f)} → ${r.bancoNome} (${r.numeroBanco}) | ${r.linhasCdb} ops | ${r.linhasVinculadas} vinculadas`,
     );

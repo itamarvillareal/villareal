@@ -13,14 +13,13 @@ CREATE TABLE IF NOT EXISTS financeiro_investimento_import (
     status VARCHAR(20) NOT NULL DEFAULT 'OK',
     mensagem_erro VARCHAR(2000) NULL,
     importado_em TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    INDEX idx_fii_conta (conta_bancaria_id),
+    INDEX idx_fii_importado_em (importado_em),
     CONSTRAINT fk_fii_conta_bancaria FOREIGN KEY (conta_bancaria_id) REFERENCES conta_bancaria (id)
         ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT uk_fii_arquivo_conta_hash UNIQUE (conta_bancaria_id, arquivo_hash),
     CONSTRAINT chk_fii_status CHECK (status IN ('PROCESSANDO', 'OK', 'ERRO'))
 );
-
-CREATE INDEX idx_fii_conta ON financeiro_investimento_import (conta_bancaria_id);
-CREATE INDEX idx_fii_importado_em ON financeiro_investimento_import (importado_em);
 
 CREATE TABLE IF NOT EXISTS financeiro_investimento_movimentacao (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -42,6 +41,10 @@ CREATE TABLE IF NOT EXISTS financeiro_investimento_movimentacao (
     vinculo_confianca VARCHAR(10) NULL,
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    INDEX idx_fim_data (data_movimentacao),
+    INDEX idx_fim_codigo (codigo_produto),
+    INDEX idx_fim_conta (conta_bancaria_id),
+    INDEX idx_fim_lancamento (lancamento_financeiro_id),
     CONSTRAINT fk_fim_import FOREIGN KEY (import_id) REFERENCES financeiro_investimento_import (id)
         ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT fk_fim_conta_bancaria FOREIGN KEY (conta_bancaria_id) REFERENCES conta_bancaria (id)
@@ -55,11 +58,6 @@ CREATE TABLE IF NOT EXISTS financeiro_investimento_movimentacao (
     CONSTRAINT chk_fim_tipo_extrato CHECK (tipo_extrato IS NULL OR tipo_extrato IN ('C', 'V')),
     CONSTRAINT chk_fim_vinculo CHECK (vinculo_confianca IS NULL OR vinculo_confianca IN ('ALTA', 'MEDIA', 'BAIXA'))
 );
-
-CREATE INDEX idx_fim_data ON financeiro_investimento_movimentacao (data_movimentacao);
-CREATE INDEX idx_fim_codigo ON financeiro_investimento_movimentacao (codigo_produto);
-CREATE INDEX idx_fim_conta ON financeiro_investimento_movimentacao (conta_bancaria_id);
-CREATE INDEX idx_fim_lancamento ON financeiro_investimento_movimentacao (lancamento_financeiro_id);
 
 CREATE TABLE IF NOT EXISTS financeiro_investimento_operacao (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -87,6 +85,10 @@ CREATE TABLE IF NOT EXISTS financeiro_investimento_operacao (
     vinculo_confianca VARCHAR(10) NULL,
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    INDEX idx_fio_conta (conta_bancaria_id),
+    INDEX idx_fio_codigo (codigo_produto),
+    INDEX idx_fio_status (status),
+    INDEX idx_fio_venda_dt (data_venda),
     CONSTRAINT fk_fio_conta_bancaria FOREIGN KEY (conta_bancaria_id) REFERENCES conta_bancaria (id)
         ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT fk_fio_compra_mov FOREIGN KEY (compra_movimentacao_id) REFERENCES financeiro_investimento_movimentacao (id)
@@ -100,8 +102,3 @@ CREATE TABLE IF NOT EXISTS financeiro_investimento_operacao (
     CONSTRAINT chk_fio_status CHECK (status IN ('FECHADA', 'ABERTA', 'LEGADO')),
     CONSTRAINT chk_fio_vinculo CHECK (vinculo_confianca IS NULL OR vinculo_confianca IN ('ALTA', 'MEDIA', 'BAIXA'))
 );
-
-CREATE INDEX idx_fio_conta ON financeiro_investimento_operacao (conta_bancaria_id);
-CREATE INDEX idx_fio_codigo ON financeiro_investimento_operacao (codigo_produto);
-CREATE INDEX idx_fio_status ON financeiro_investimento_operacao (status);
-CREATE INDEX idx_fio_venda_dt ON financeiro_investimento_operacao (data_venda);
