@@ -14,6 +14,7 @@ import {
   ehTituloHistoricoSistemaLegado,
 } from '../domain/historicoTituloLegadoSistema.js';
 import { normalizarTipoAudienciaCanonico } from '../data/processosDadosRelatorio.js';
+import { getNomeExibicaoUsuario, isAssistenteIaUsuario } from '../data/usuarioDisplayHelpers.js';
 import { salvarResponseComoArquivo } from '../utils/streamFileDownload.js';
 
 function padCliente8(value) {
