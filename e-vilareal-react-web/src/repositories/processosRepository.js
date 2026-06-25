@@ -14,8 +14,13 @@ import {
   ehTituloHistoricoSistemaLegado,
 } from '../domain/historicoTituloLegadoSistema.js';
 import { normalizarTipoAudienciaCanonico } from '../data/processosDadosRelatorio.js';
-import { getNomeExibicaoUsuario, isAssistenteIaUsuario } from '../data/usuarioDisplayHelpers.js';
+import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
 import { salvarResponseComoArquivo } from '../utils/streamFileDownload.js';
+
+function flagAssistenteIaUsuarioHistorico(u) {
+  if (!u) return false;
+  return String(u.tipo ?? 'HUMANO').trim().toUpperCase() === 'ASSISTENTE_IA';
+}
 
 function padCliente8(value) {
   const d = String(value ?? '').replace(/\D/g, '');
@@ -1352,7 +1357,7 @@ export function usuarioHistoricoAutorMeta(entrada, usuariosAtivos = []) {
     return {
       rotulo: formatarUsuarioHistoricoExibicao(apelidoCat),
       usuario: u,
-      isAssistenteIa: isAssistenteIaUsuario(u),
+      isAssistenteIa: flagAssistenteIaUsuarioHistorico(u),
     };
   }
   const linha = formatarUsuarioHistoricoExibicao(entrada?.usuario ?? '');
@@ -1360,7 +1365,7 @@ export function usuarioHistoricoAutorMeta(entrada, usuariosAtivos = []) {
     return {
       rotulo: linha,
       usuario: u,
-      isAssistenteIa: isAssistenteIaUsuario(u),
+      isAssistenteIa: flagAssistenteIaUsuarioHistorico(u),
     };
   }
   if (u) {
@@ -1369,7 +1374,7 @@ export function usuarioHistoricoAutorMeta(entrada, usuariosAtivos = []) {
       return {
         rotulo: formatarUsuarioHistoricoExibicao(rotulo),
         usuario: u,
-        isAssistenteIa: isAssistenteIaUsuario(u),
+        isAssistenteIa: flagAssistenteIaUsuarioHistorico(u),
       };
     }
   }
