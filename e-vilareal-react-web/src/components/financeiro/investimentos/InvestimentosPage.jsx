@@ -58,6 +58,29 @@ function ExtratoLancamentoLink({ lancamentoId, numeroBanco, data, valor, rotulo 
   );
 }
 
+function FiltroData({ label, de, ate, onDeChange, onAteChange }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 text-xs">
+      <span className="text-slate-500 dark:text-slate-400 font-medium shrink-0">{label}</span>
+      <input
+        type="date"
+        value={de}
+        onChange={(ev) => onDeChange(ev.target.value)}
+        className="rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-xs"
+        aria-label={`${label} de`}
+      />
+      <span className="text-slate-400">até</span>
+      <input
+        type="date"
+        value={ate}
+        onChange={(ev) => onAteChange(ev.target.value)}
+        className="rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-xs"
+        aria-label={`${label} até`}
+      />
+    </div>
+  );
+}
+
 export function InvestimentosPage() {
   const { bancos } = useFinanceiroChrome();
   const toast = useFinanceiroToast();
@@ -74,7 +97,13 @@ export function InvestimentosPage() {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [somenteComTaxa, setSomenteComTaxa] = useState(false);
+  const [dataCompraDe, setDataCompraDe] = useState('');
+  const [dataCompraAte, setDataCompraAte] = useState('');
+  const [dataVendaDe, setDataVendaDe] = useState('');
+  const [dataVendaAte, setDataVendaAte] = useState('');
   const pageSize = 30;
+
+  const filtrosDataAtivos = Boolean(dataCompraDe || dataCompraAte || dataVendaDe || dataVendaAte);
 
   const nb = numeroBanco ? Number(numeroBanco) : null;
 
@@ -82,7 +111,16 @@ export function InvestimentosPage() {
     setLoading(true);
     try {
       const [ops, res, imp] = await Promise.all([
-        listarInvestimentoOperacoesApi({ numeroBanco: nb, somenteComTaxa, page, size: pageSize }),
+        listarInvestimentoOperacoesApi({
+          numeroBanco: nb,
+          somenteComTaxa,
+          dataCompraInicio: dataCompraDe || null,
+          dataCompraFim: dataCompraAte || null,
+          dataVendaInicio: dataVendaDe || null,
+          dataVendaFim: dataVendaAte || null,
+          page,
+          size: pageSize,
+        }),
         obterInvestimentoResumoApi(nb),
         listarInvestimentoImportsApi(nb),
       ]);
@@ -94,7 +132,7 @@ export function InvestimentosPage() {
     } finally {
       setLoading(false);
     }
-  }, [nb, page, somenteComTaxa, toast]);
+  }, [nb, page, somenteComTaxa, dataCompraDe, dataCompraAte, dataVendaDe, dataVendaAte, toast]);
 
   useEffect(() => {
     carregar();
@@ -184,23 +222,69 @@ export function InvestimentosPage() {
         </div>
       ) : null}
 
-      <div className="flex items-center gap-3 text-sm">
-        <label className="inline-flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={somenteComTaxa}
-            onChange={(ev) => {
-              setSomenteComTaxa(ev.target.checked);
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <label className="inline-flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={somenteComTaxa}
+              onChange={(ev) => {
+                setSomenteComTaxa(ev.target.checked);
+                setPage(0);
+              }}
+            />
+            Só operações com taxa calculada
+          </label>
+          {loading ? <span className="text-slate-400">Carregando…</span> : null}
+          <span className="text-slate-400 text-xs hidden lg:inline">
+            · Em carteira = comprado, aguardando resgate · Encerrada = vendido ou vencido · Venda sem compra =
+            histórico incompleto no xlsx
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/50 px-3 py-2">
+          <FiltroData
+            label="Compra"
+            de={dataCompraDe}
+            ate={dataCompraAte}
+            onDeChange={(v) => {
+              setDataCompraDe(v);
+              setPage(0);
+            }}
+            onAteChange={(v) => {
+              setDataCompraAte(v);
               setPage(0);
             }}
           />
-          Só operações com taxa calculada
-        </label>
-        {loading ? <span className="text-slate-400">Carregando…</span> : null}
-        <span className="text-slate-400 text-xs hidden sm:inline">
-          · Em carteira = comprado, aguardando resgate · Encerrada = vendido ou vencido · Venda sem compra = histórico
-          incompleto no xlsx
-        </span>
+          <FiltroData
+            label="Venda"
+            de={dataVendaDe}
+            ate={dataVendaAte}
+            onDeChange={(v) => {
+              setDataVendaDe(v);
+              setPage(0);
+            }}
+            onAteChange={(v) => {
+              setDataVendaAte(v);
+              setPage(0);
+            }}
+          />
+          {filtrosDataAtivos ? (
+            <button
+              type="button"
+              onClick={() => {
+                setDataCompraDe('');
+                setDataCompraAte('');
+                setDataVendaDe('');
+                setDataVendaAte('');
+                setPage(0);
+              }}
+              className="text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 underline"
+            >
+              Limpar datas
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">

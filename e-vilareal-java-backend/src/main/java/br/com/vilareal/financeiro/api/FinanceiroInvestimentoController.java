@@ -56,14 +56,25 @@ public class FinanceiroInvestimentoController {
             @RequestParam(value = "contaBancariaId", required = false) Long contaBancariaId,
             @RequestParam(value = "numeroBanco", required = false) Integer numeroBanco,
             @RequestParam(value = "status", required = false) InvestimentoOperacaoStatus status,
-            @RequestParam(value = "dataInicio", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
-                    LocalDate dataInicio,
-            @RequestParam(value = "dataFim", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
-                    LocalDate dataFim,
+            @RequestParam(value = "dataCompraInicio", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+                    LocalDate dataCompraInicio,
+            @RequestParam(value = "dataCompraFim", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+                    LocalDate dataCompraFim,
+            @RequestParam(value = "dataVendaInicio", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+                    LocalDate dataVendaInicio,
+            @RequestParam(value = "dataVendaFim", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+                    LocalDate dataVendaFim,
             @RequestParam(value = "somenteComTaxa", defaultValue = "false") boolean somenteComTaxa,
             @PageableDefault(size = 50) Pageable pageable) {
         return investimentoService.listarOperacoes(
-                resolverContaId(contaBancariaId, numeroBanco), status, dataInicio, dataFim, somenteComTaxa, pageable);
+                resolverContaId(contaBancariaId, numeroBanco),
+                status,
+                dataCompraInicio,
+                dataCompraFim,
+                dataVendaInicio,
+                dataVendaFim,
+                somenteComTaxa,
+                pageable);
     }
 
     @GetMapping("/resumo")

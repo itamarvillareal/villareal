@@ -163,12 +163,22 @@ public class InvestimentoMovimentacaoApplicationService {
     public Page<InvestimentoOperacaoResponse> listarOperacoes(
             Long contaBancariaId,
             InvestimentoOperacaoStatus status,
-            LocalDate dataInicio,
-            LocalDate dataFim,
+            LocalDate dataCompraInicio,
+            LocalDate dataCompraFim,
+            LocalDate dataVendaInicio,
+            LocalDate dataVendaFim,
             boolean somenteComTaxa,
             Pageable pageable) {
         return operacaoRepository
-                .listarFiltrado(contaBancariaId, status, dataInicio, dataFim, somenteComTaxa, pageable)
+                .listarFiltrado(
+                        contaBancariaId,
+                        status,
+                        dataCompraInicio,
+                        dataCompraFim,
+                        dataVendaInicio,
+                        dataVendaFim,
+                        somenteComTaxa,
+                        pageable)
                 .map(this::toOperacaoResponse);
     }
 

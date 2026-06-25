@@ -28,16 +28,20 @@ public interface InvestimentoOperacaoRepository extends JpaRepository<Investimen
             LEFT JOIN FETCH o.vendaLancamento
             WHERE (:contaBancariaId IS NULL OR cb.id = :contaBancariaId)
               AND (:status IS NULL OR o.status = :status)
-              AND (:dataInicio IS NULL OR COALESCE(o.dataVenda, o.dataCompra) >= :dataInicio)
-              AND (:dataFim IS NULL OR COALESCE(o.dataVenda, o.dataCompra) <= :dataFim)
+              AND (:dataCompraInicio IS NULL OR o.dataCompra >= :dataCompraInicio)
+              AND (:dataCompraFim IS NULL OR o.dataCompra <= :dataCompraFim)
+              AND (:dataVendaInicio IS NULL OR o.dataVenda >= :dataVendaInicio)
+              AND (:dataVendaFim IS NULL OR o.dataVenda <= :dataVendaFim)
               AND (:somenteComTaxa = false OR o.taxaMensalLiquida IS NOT NULL)
             ORDER BY COALESCE(o.dataVenda, o.dataCompra) DESC, o.id DESC
             """)
     Page<InvestimentoOperacaoEntity> listarFiltrado(
             @Param("contaBancariaId") Long contaBancariaId,
             @Param("status") InvestimentoOperacaoStatus status,
-            @Param("dataInicio") LocalDate dataInicio,
-            @Param("dataFim") LocalDate dataFim,
+            @Param("dataCompraInicio") LocalDate dataCompraInicio,
+            @Param("dataCompraFim") LocalDate dataCompraFim,
+            @Param("dataVendaInicio") LocalDate dataVendaInicio,
+            @Param("dataVendaFim") LocalDate dataVendaFim,
             @Param("somenteComTaxa") boolean somenteComTaxa,
             Pageable pageable);
 

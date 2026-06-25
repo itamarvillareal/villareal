@@ -1628,7 +1628,18 @@ export async function recalcularInvestimentosApi({ contaBancariaId = null, numer
 }
 
 export async function listarInvestimentoOperacoesApi(
-  { contaBancariaId = null, numeroBanco = null, status = null, somenteComTaxa = false, page = 0, size = 30 } = {},
+  {
+    contaBancariaId = null,
+    numeroBanco = null,
+    status = null,
+    dataCompraInicio = null,
+    dataCompraFim = null,
+    dataVendaInicio = null,
+    dataVendaFim = null,
+    somenteComTaxa = false,
+    page = 0,
+    size = 30,
+  } = {},
   opts = {},
 ) {
   if (!featureFlags.useApiFinanceiro) {
@@ -1638,6 +1649,10 @@ export async function listarInvestimentoOperacoesApi(
   if (contaBancariaId != null) query.contaBancariaId = contaBancariaId;
   if (numeroBanco != null) query.numeroBanco = numeroBanco;
   if (status) query.status = status;
+  if (dataCompraInicio) query.dataCompraInicio = dataCompraInicio;
+  if (dataCompraFim) query.dataCompraFim = dataCompraFim;
+  if (dataVendaInicio) query.dataVendaInicio = dataVendaInicio;
+  if (dataVendaFim) query.dataVendaFim = dataVendaFim;
   return request('/api/financeiro/investimentos/operacoes', { query, signal: opts.signal });
 }
 
