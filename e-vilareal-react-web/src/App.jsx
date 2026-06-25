@@ -92,7 +92,7 @@ import { getUsuariosAtivos } from './data/agendaPersistenciaData';
 import { getNomeExibicaoUsuario } from './data/usuarioDisplayHelpers.js';
 import { getContextoAuditoriaUsuario, registrarAuditoria } from './services/auditoriaCliente.js';
 import { installCrossTabLocalStorageSync } from './services/crossTabLocalStorageSync.js';
-import { executarSincronizacaoAudienciasAgendaEProcessosCompleta } from './services/sincronizacaoAudienciasAgendaProcessosService.js';
+import { executarSincronizacaoAudienciasAgendaEProcessosCompleta, SYNC_AUDIENCIAS_AGENDA_AUTOMATICA } from './services/sincronizacaoAudienciasAgendaProcessosService.js';
 import { hydrateRodadasCalculosResumoFromApi } from './data/calculosRodadasStorage.js';
 import { ProcessoEmbedErrorBoundary } from './components/ProcessoEmbedErrorBoundary.jsx';
 
@@ -313,30 +313,59 @@ function App() {
     };
   }, []);
 
-  /** Agenda persistida → histórico local de processos (audiência), em idle após abrir o app. */
+  /** Agenda persistida → histórico local (audiência), leve e só com aba visível (evita OOM em /agenda). */
   useEffect(() => {
     let cancelled = false;
+    let idleId = null;
+    let timeoutId = null;
+
     const run = () => {
-      if (cancelled || typeof window === 'undefined') return;
-      void executarSincronizacaoAudienciasAgendaEProcessosCompleta().catch(() => {
+      if (cancelled || typeof window === 'undefined' || document.hidden) return;
+      void executarSincronizacaoAudienciasAgendaEProcessosCompleta(SYNC_AUDIENCIAS_AGENDA_AUTOMATICA).catch(() => {
         /* silencioso */
       });
     };
-    if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
-      const id = window.requestIdleCallback(() => run(), { timeout: 4000 });
-      return () => {
-        cancelled = true;
+
+    const agendar = () => {
+      if (cancelled || typeof window === 'undefined') return;
+      if (document.hidden) return;
+      if (idleId != null && typeof window.cancelIdleCallback === 'function') {
         try {
-          window.cancelIdleCallback(id);
+          window.cancelIdleCallback(idleId);
         } catch {
           /* ignore */
         }
-      };
-    }
-    const t = window.setTimeout(run, 600);
+        idleId = null;
+      }
+      if (timeoutId != null) {
+        window.clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      if (typeof window.requestIdleCallback === 'function') {
+        idleId = window.requestIdleCallback(() => run(), { timeout: 8000 });
+      } else {
+        timeoutId = window.setTimeout(run, 1200);
+      }
+    };
+
+    const onVisibility = () => {
+      if (!document.hidden) agendar();
+    };
+
+    agendar();
+    document.addEventListener('visibilitychange', onVisibility);
+
     return () => {
       cancelled = true;
-      window.clearTimeout(t);
+      document.removeEventListener('visibilitychange', onVisibility);
+      if (idleId != null && typeof window.cancelIdleCallback === 'function') {
+        try {
+          window.cancelIdleCallback(idleId);
+        } catch {
+          /* ignore */
+        }
+      }
+      if (timeoutId != null) window.clearTimeout(timeoutId);
     };
   }, []);
 
@@ -349,7 +378,7 @@ function App() {
     const agendar = () => {
       window.clearTimeout(timer);
       timer = window.setTimeout(() => {
-        void executarSincronizacaoAudienciasAgendaEProcessosCompleta().catch(() => {});
+        void executarSincronizacaoAudienciasAgendaEProcessosCompleta(SYNC_AUDIENCIAS_AGENDA_AUTOMATICA).catch(() => {});
       }, 2000);
     };
     window.addEventListener('vilareal:cadastro-clientes-externo-atualizado', agendar);

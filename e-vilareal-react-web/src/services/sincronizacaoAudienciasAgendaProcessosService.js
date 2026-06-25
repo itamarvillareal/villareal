@@ -25,10 +25,11 @@ function chaveMatchDeRegistro(reg) {
   return `${cod}:${proc}`;
 }
 
-/**
- * Objeto no formato esperado por `encontrarProcessosHistoricoPorTextoAgenda` (valores do `Object.values`).
- */
-export async function montarStoreObjetoParaMatchCnjMescladoComApi() {
+/** @typedef {{ mesclarIndiceApiProcessos?: boolean, intervaloAgendaApi?: 'completo' | 'recente' }} SyncAudienciasAgendaOptions */
+
+let syncCompletaEmVoo = null;
+
+function montarStoreObjetoParaMatchCnjLocal() {
   const store = {};
   for (const reg of listarRegistrosProcessosHistoricoNormalizados()) {
     const key = chaveMatchDeRegistro(reg);
@@ -39,6 +40,10 @@ export async function montarStoreObjetoParaMatchCnjMescladoComApi() {
       numeroProcessoVelho: reg.numeroProcessoVelho,
     };
   }
+  return store;
+}
+
+async function mesclarIndiceProcessosApiNoStore(store) {
   if (!featureFlags.useApiProcessos || typeof window === 'undefined') return store;
   try {
     const clientes = await listarClientesIndiceCadastro();
@@ -72,6 +77,22 @@ export async function montarStoreObjetoParaMatchCnjMescladoComApi() {
     /* mantém só o que veio do histórico local */
   }
   return store;
+}
+
+/**
+ * @param {SyncAudienciasAgendaOptions} [options]
+ */
+async function montarStoreObjetoParaMatch(options = {}) {
+  const store = montarStoreObjetoParaMatchCnjLocal();
+  if (options.mesclarIndiceApiProcessos === false) return store;
+  return mesclarIndiceProcessosApiNoStore(store);
+}
+
+/**
+ * Objeto no formato esperado por `encontrarProcessosHistoricoPorTextoAgenda` (valores do `Object.values`).
+ */
+export async function montarStoreObjetoParaMatchCnjMescladoComApi() {
+  return montarStoreObjetoParaMatch({ mesclarIndiceApiProcessos: true });
 }
 
 /**
@@ -123,13 +144,45 @@ function agruparEventosAgendaPorDataBr(eventosComData) {
   return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 }
 
+function isoDataLocal(d) {
+  return d.toISOString().slice(0, 10);
+}
+
 function intervaloPadraoBuscaAgendaApi() {
   const h = new Date();
   const ini = new Date(h.getFullYear() - 2, h.getMonth(), 1);
   const fim = new Date(h.getFullYear() + 2, h.getMonth() + 1, 0);
-  const f = (d) => d.toISOString().slice(0, 10);
-  return { dataInicio: f(ini), dataFim: f(fim) };
+  return { dataInicio: isoDataLocal(ini), dataFim: isoDataLocal(fim) };
 }
+
+/** Janela curta para sync automática em background (evita OOM ao abrir o portal). */
+function intervaloRecenteBuscaAgendaApi() {
+  const h = new Date();
+  const ini = new Date(h.getFullYear(), h.getMonth() - 2, 1);
+  const fim = new Date(h.getFullYear(), h.getMonth() + 3, 0);
+  return { dataInicio: isoDataLocal(ini), dataFim: isoDataLocal(fim) };
+}
+
+function intervaloMesAnoBuscaAgendaApi(mes, ano) {
+  const m = Number(mes);
+  const y = Number(ano);
+  const ini = new Date(y, m - 1, 1);
+  const fim = new Date(y, m, 0);
+  return { dataInicio: isoDataLocal(ini), dataFim: isoDataLocal(fim) };
+}
+
+function resolverIntervaloBuscaAgendaApi(options = {}) {
+  if (options.intervaloAgendaApi === 'recente') {
+    return intervaloRecenteBuscaAgendaApi();
+  }
+  return intervaloPadraoBuscaAgendaApi();
+}
+
+/** Sync leve ao abrir o app: histórico local + agenda recente, sem varrer todos os processos na API. */
+export const SYNC_AUDIENCIAS_AGENDA_AUTOMATICA = {
+  mesclarIndiceApiProcessos: false,
+  intervaloAgendaApi: 'recente',
+};
 
 function mergearResultadosSync(a, b) {
   return {
@@ -144,10 +197,7 @@ function mergearResultadosSync(a, b) {
   };
 }
 
-/**
- * Fluxo completo: histórico local + processos na API para match; agenda localStorage + agenda API.
- */
-export async function executarSincronizacaoAudienciasAgendaEProcessosCompleta() {
+async function executarSincronizacaoAudienciasAgendaEProcessosCompletaInterno(options = {}) {
   if (typeof window === 'undefined') {
     return {
       ok: false,
@@ -161,7 +211,7 @@ export async function executarSincronizacaoAudienciasAgendaEProcessosCompleta() 
     };
   }
 
-  const storeMatch = await montarStoreObjetoParaMatchCnjMescladoComApi();
+  const storeMatch = await montarStoreObjetoParaMatch(options);
   const optsMatch = {
     storeHistoricoParaMatch: storeMatch,
     criarRegistroSeAusente: true,
@@ -187,7 +237,7 @@ export async function executarSincronizacaoAudienciasAgendaEProcessosCompleta() 
     ignoradosSemRegistro: 0,
   };
   try {
-    const { dataInicio, dataFim } = intervaloPadraoBuscaAgendaApi();
+    const { dataInicio, dataFim } = resolverIntervaloBuscaAgendaApi(options);
     const rows = await listarEventosAgendaPeriodoTodosUsuariosApi(dataInicio, dataFim);
     const mapped = (rows || []).map(mapApiAgendaLinhaParaEventoComData).filter((x) => x.dataBr);
     const entradasApi = agruparEventosAgendaPorDataBr(mapped);
@@ -209,6 +259,18 @@ export async function executarSincronizacaoAudienciasAgendaEProcessosCompleta() 
   }
 
   return mergearResultadosSync(rLocal, rApi);
+}
+
+/**
+ * Fluxo completo: histórico local + processos na API para match; agenda localStorage + agenda API.
+ * @param {SyncAudienciasAgendaOptions} [options]
+ */
+export async function executarSincronizacaoAudienciasAgendaEProcessosCompleta(options = {}) {
+  if (syncCompletaEmVoo) return syncCompletaEmVoo;
+  syncCompletaEmVoo = executarSincronizacaoAudienciasAgendaEProcessosCompletaInterno(options).finally(() => {
+    syncCompletaEmVoo = null;
+  });
+  return syncCompletaEmVoo;
 }
 
 /**
@@ -242,7 +304,7 @@ export async function executarSincronizacaoAudienciasAgendaMesEProcessos(mes, an
     };
   }
 
-  const storeMatch = await montarStoreObjetoParaMatchCnjMescladoComApi();
+  const storeMatch = await montarStoreObjetoParaMatch({ mesclarIndiceApiProcessos: true });
   const optsMatch = {
     storeHistoricoParaMatch: storeMatch,
     criarRegistroSeAusente: true,
@@ -268,16 +330,9 @@ export async function executarSincronizacaoAudienciasAgendaMesEProcessos(mes, an
     ignoradosSemRegistro: 0,
   };
   try {
-    const { dataInicio, dataFim } = intervaloPadraoBuscaAgendaApi();
+    const { dataInicio, dataFim } = intervaloMesAnoBuscaAgendaApi(m, y);
     const rows = await listarEventosAgendaPeriodoTodosUsuariosApi(dataInicio, dataFim);
-    const mm = String(m).padStart(2, '0');
-    const filtrados = (rows || []).filter((e) => {
-      const br = dataEventoApiParaDataBr(e?.dataEvento);
-      if (!/^\d{2}\/\d{2}\/\d{4}$/.test(br)) return false;
-      const [, mo, yy] = br.split('/');
-      return Number(yy) === y && mo === mm;
-    });
-    const mapped = filtrados.map(mapApiAgendaLinhaParaEventoComData).filter((x) => x.dataBr);
+    const mapped = (rows || []).map(mapApiAgendaLinhaParaEventoComData).filter((x) => x.dataBr);
     const entradasApi = agruparEventosAgendaPorDataBr(mapped);
     rApi = sincronizarAudienciasAgendaEntradas(entradasApi, {
       ...optsMatch,

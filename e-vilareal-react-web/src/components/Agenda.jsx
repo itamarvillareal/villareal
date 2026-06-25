@@ -755,8 +755,14 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
   const dataDireitaStr = dataStr(diaDireita, mesDireita, anoDireita);
 
   // Recalcula ao mudar `agendaStatusNonce` (salvando statusCurto no localStorage).
-  const eventosPersistidosEsquerda = getEventosAgendaPersistidosPorData(dataEsquerdaStr);
-  const eventosPersistidosDireita = getEventosAgendaPersistidosPorData(dataDireitaStr);
+  const eventosPersistidosEsquerda = useMemo(
+    () => getEventosAgendaPersistidosPorData(dataEsquerdaStr),
+    [dataEsquerdaStr, agendaStatusNonce]
+  );
+  const eventosPersistidosDireita = useMemo(
+    () => getEventosAgendaPersistidosPorData(dataDireitaStr),
+    [dataDireitaStr, agendaStatusNonce]
+  );
 
   useEffect(() => {
     if (!featureFlags.useApiAgenda) return;
