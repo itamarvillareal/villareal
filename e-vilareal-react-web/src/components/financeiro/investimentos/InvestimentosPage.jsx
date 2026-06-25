@@ -11,6 +11,7 @@ import {
 import { buildExtratoUrlParaLancamento } from '../extrato/extratoDeepLink.js';
 import { useFinanceiroChrome } from '../FinanceiroContext.jsx';
 import { Pagination } from '../shared/Pagination.jsx';
+import { formatDataBrCompleta } from '../shared/financeiroFormat.js';
 import { useFinanceiroToast } from '../shared/Toast.jsx';
 
 function fmtPctTaxa(v) {
@@ -52,9 +53,7 @@ function ExtratoLancamentoLink({ lancamentoId, numeroBanco, data, valor, rotulo 
         <ExternalLink className="w-3 h-3 shrink-0" aria-hidden />
         {rotulo}
       </span>
-      <span className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
-        {data ?? '—'} · {fmtMoeda(valor)}
-      </span>
+      <span className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">{fmtMoeda(valor)}</span>
     </Link>
   );
 }
@@ -211,6 +210,8 @@ export function InvestimentosPage() {
               <th className="px-3 py-2">Código</th>
               <th className="px-3 py-2">Tipo</th>
               <th className="px-3 py-2">Conta</th>
+              <th className="px-3 py-2 whitespace-nowrap">Dt. compra</th>
+              <th className="px-3 py-2 whitespace-nowrap">Dt. venda</th>
               <th className="px-3 py-2">Compra (extrato)</th>
               <th className="px-3 py-2">Venda / venc. (extrato)</th>
               <th className="px-3 py-2">Dias</th>
@@ -225,6 +226,18 @@ export function InvestimentosPage() {
                 <td className="px-3 py-2 font-mono text-xs">{op.codigoProduto}</td>
                 <td className="px-3 py-2 text-xs">{op.tipoProduto ?? '—'}</td>
                 <td className="px-3 py-2">{op.bancoNome}</td>
+                <td className="px-3 py-2 text-xs tabular-nums whitespace-nowrap">
+                  {op.dataCompra ? formatDataBrCompleta(op.dataCompra) : '—'}
+                </td>
+                <td className="px-3 py-2 text-xs tabular-nums whitespace-nowrap">
+                  {op.status === 'ABERTA' ? (
+                    <span className="text-amber-700 dark:text-amber-400">—</span>
+                  ) : op.dataVenda ? (
+                    formatDataBrCompleta(op.dataVenda)
+                  ) : (
+                    '—'
+                  )}
+                </td>
                 <td className="px-3 py-2">
                   <ExtratoLancamentoLink
                     lancamentoId={op.compraLancamentoId}
@@ -273,7 +286,7 @@ export function InvestimentosPage() {
             ))}
             {!loading && !(operacoes.content ?? []).length ? (
               <tr>
-                <td colSpan={9} className="px-3 py-8 text-center text-slate-400">
+                <td colSpan={11} className="px-3 py-8 text-center text-slate-400">
                   Nenhuma operação. Importe um export de Movimentação BTG (.xlsx).
                 </td>
               </tr>
