@@ -134,6 +134,7 @@ public class InvestimentoMovimentacaoApplicationService {
 
         List<InvestimentoMovimentacaoEntity> movs = movimentacaoRepository.findCdbPorConta(contaBancariaId);
         Map<String, Deque<InvestimentoMovimentacaoEntity>> comprasPorCodigo = new HashMap<>();
+        List<ParCompraVenda> fechadasPendentes = new ArrayList<>();
 
         for (InvestimentoMovimentacaoEntity mov : movs) {
             if (!StringUtils.hasText(mov.getCodigoProduto())) {
@@ -146,10 +147,26 @@ public class InvestimentoMovimentacaoApplicationService {
                 if (fila == null || fila.isEmpty()) {
                     operacaoRepository.save(criarOperacaoLegado(conta, mov));
                 } else {
-                    InvestimentoMovimentacaoEntity compra = fila.removeFirst();
-                    operacaoRepository.save(criarOperacaoFechada(conta, compra, mov));
+                    fechadasPendentes.add(new ParCompraVenda(fila.removeFirst(), mov));
                 }
             }
+        }
+
+        fechadasPendentes.sort(Comparator.comparing(p -> valorCaixa(
+                p.venda().getLancamentoFinanceiro(), p.venda().getValorOperacao())));
+
+        List<InvestimentoOperacaoEntity> fechadasOps = new ArrayList<>();
+        for (ParCompraVenda par : fechadasPendentes) {
+            fechadasOps.add(criarOperacaoFechadaSemImpostos(conta, par.compra(), par.venda()));
+        }
+
+        fechadasOps.stream()
+                .collect(Collectors.groupingBy(InvestimentoOperacaoEntity::getDataVenda))
+                .forEach((dia, ops) -> alocarImpostosDoDia(conta.getNumeroBanco(), dia, ops));
+
+        for (InvestimentoOperacaoEntity op : fechadasOps) {
+            finalizarMetricasFechada(op);
+            operacaoRepository.save(op);
         }
 
         for (Deque<InvestimentoMovimentacaoEntity> fila : comprasPorCodigo.values()) {
@@ -371,9 +388,12 @@ public class InvestimentoMovimentacaoApplicationService {
         return op;
     }
 
-    private InvestimentoOperacaoEntity criarOperacaoFechada(
-            ContaBancariaEntity conta, InvestimentoMovimentacaoEntity compra, InvestimentoMovimentacaoEntity venda) {
-        InvestimentoOperacaoEntity op = baseOperacao(conta, compra.getCodigoProduto(), compra.getTipoProduto(), compra.getEmissor());
+    private InvestimentoOperacaoEntity criarOperacaoFechadaSemImpostos(
+            ContaBancariaEntity conta,
+            InvestimentoMovimentacaoEntity compra,
+            InvestimentoMovimentacaoEntity venda) {
+        String emissor = resolverEmissorInvestimento(compra, venda);
+        InvestimentoOperacaoEntity op = baseOperacao(conta, compra.getCodigoProduto(), compra.getTipoProduto(), emissor);
         op.setStatus(InvestimentoOperacaoStatus.FECHADA);
         op.setCompraMovimentacao(compra);
         op.setVendaMovimentacao(venda);
@@ -387,20 +407,9 @@ public class InvestimentoMovimentacaoApplicationService {
         BigDecimal vf = valorCaixa(venda.getLancamentoFinanceiro(), venda.getValorOperacao());
         op.setValorCompraCaixa(vi);
         op.setValorVendaCaixa(vf);
-
-        ImpostosCustos imp = calcularImpostosCustos(conta.getNumeroBanco(), venda, compra.getEmissor());
-        op.setValorIrrf(imp.irrf());
-        op.setValorIof(imp.iof());
-        op.setValorCustos(imp.custos());
-
-        BigDecimal vfLiq = vf.subtract(imp.irrf()).subtract(imp.iof()).subtract(imp.custos());
-        op.setValorLiquidoEntrada(vfLiq);
-        op.setLucroLiquido(vfLiq.subtract(vi));
-
-        if (op.getDiasCarteira() != null && op.getDiasCarteira() > 0 && vi.compareTo(BigDecimal.ZERO) > 0) {
-            op.setTaxaMensalLiquida(InvestimentoTaxaUtil.taxaMensalLiquida(vfLiq, vi, op.getDiasCarteira()));
-            op.setTaxaAnualLiquida(InvestimentoTaxaUtil.taxaAnualLiquida(vfLiq, vi, op.getDiasCarteira()));
-        }
+        op.setValorIrrf(BigDecimal.ZERO);
+        op.setValorIof(BigDecimal.ZERO);
+        op.setValorCustos(BigDecimal.ZERO);
 
         InvestimentoVinculoConfianca conf = menorConfianca(compra.getVinculoConfianca(), venda.getVinculoConfianca());
         if (compra.getLancamentoFinanceiro() == null || venda.getLancamentoFinanceiro() == null) {
@@ -410,29 +419,219 @@ public class InvestimentoMovimentacaoApplicationService {
         return op;
     }
 
-    private record ImpostosCustos(BigDecimal irrf, BigDecimal iof, BigDecimal custos) {}
+    private void finalizarMetricasFechada(InvestimentoOperacaoEntity op) {
+        BigDecimal vi = op.getValorCompraCaixa() != null ? op.getValorCompraCaixa() : BigDecimal.ZERO;
+        BigDecimal vf = op.getValorVendaCaixa() != null ? op.getValorVendaCaixa() : BigDecimal.ZERO;
+        BigDecimal vfLiq = vf.subtract(op.getValorIrrf()).subtract(op.getValorIof()).subtract(op.getValorCustos());
+        op.setValorLiquidoEntrada(vfLiq);
+        op.setLucroLiquido(vfLiq.subtract(vi));
 
-    private ImpostosCustos calcularImpostosCustos(Integer numeroBanco, InvestimentoMovimentacaoEntity venda, String emissor) {
-        if (venda.getDataMovimentacao() == null) {
-            return new ImpostosCustos(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+        if (op.getDiasCarteira() != null && op.getDiasCarteira() > 0 && vi.compareTo(BigDecimal.ZERO) > 0) {
+            op.setTaxaMensalLiquida(InvestimentoTaxaUtil.taxaMensalLiquida(vfLiq, vi, op.getDiasCarteira()));
+            op.setTaxaAnualLiquida(InvestimentoTaxaUtil.taxaAnualLiquida(vfLiq, vi, op.getDiasCarteira()));
         }
-        LocalDate d = venda.getDataMovimentacao();
-        List<LancamentoFinanceiroEntity> dia = lancamentoRepository.findCandidatosInvestimentoExtrato(numeroBanco, d, d);
-        BigDecimal irrf = BigDecimal.ZERO;
-        BigDecimal iof = BigDecimal.ZERO;
-            String emPrefix = emissor != null && emissor.length() >= 12 ? emissor.substring(0, 12) : emissor;
-        for (LancamentoFinanceiroEntity l : dia) {
-            String desc = l.getDescricao() != null ? l.getDescricao().toUpperCase(Locale.ROOT) : "";
-            String emLanc = BtgMovimentacaoParser.extrairEmissorFin(l.getDescricao());
-            boolean emissorOk = emPrefix == null || emLanc == null || emLanc.startsWith(emPrefix)
-                    || (emLanc.length() >= 12 && emPrefix != null && emPrefix.startsWith(emLanc.substring(0, 12)));
-            if (desc.startsWith("IRRF") && emissorOk) {
-                irrf = irrf.add(l.getValor());
-            } else if (desc.startsWith("IOF") && emissorOk) {
-                iof = iof.add(l.getValor());
+    }
+
+    private void alocarImpostosDoDia(Integer numeroBanco, LocalDate dia, List<InvestimentoOperacaoEntity> ops) {
+        if (ops == null || ops.isEmpty()) {
+            return;
+        }
+        List<LancamentoFinanceiroEntity> lancamentosDia =
+                lancamentoRepository.findCandidatosInvestimentoExtrato(numeroBanco, dia, dia);
+        Set<Long> impostosUsados = new HashSet<>();
+
+        ops.sort(Comparator.comparing(op -> op.getValorVendaCaixa() != null ? op.getValorVendaCaixa() : BigDecimal.ZERO));
+
+        for (InvestimentoOperacaoEntity op : ops) {
+            ImpostosCustos especificos = calcularImpostosEspecificos(
+                    lancamentosDia, op.getEmissor(), op.getDiasCarteira(), impostosUsados);
+            op.setValorIrrf(especificos.irrf());
+            op.setValorIof(especificos.iof());
+        }
+
+        BigDecimal genericIrrf = BigDecimal.ZERO;
+        BigDecimal genericIof = BigDecimal.ZERO;
+        for (LancamentoFinanceiroEntity l : lancamentosDia) {
+            if (impostosUsados.contains(l.getId())) {
+                continue;
+            }
+            String desc = l.getDescricao() != null ? l.getDescricao().trim() : "";
+            if (!BtgMovimentacaoParser.isImpostoGenericoSemProduto(desc)) {
+                continue;
+            }
+            String upper = desc.toUpperCase(Locale.ROOT);
+            if (upper.startsWith("IRRF")) {
+                genericIrrf = genericIrrf.add(l.getValor());
+                impostosUsados.add(l.getId());
+            } else if (upper.startsWith("IOF")) {
+                genericIof = genericIof.add(l.getValor());
+                impostosUsados.add(l.getId());
             }
         }
+
+        if (genericIrrf.compareTo(BigDecimal.ZERO) <= 0 && genericIof.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+
+        BigDecimal baseVendas = somaVendasExtratoDia(lancamentosDia);
+        if (baseVendas.compareTo(BigDecimal.ZERO) <= 0) {
+            baseVendas = ops.stream()
+                    .map(op -> op.getValorVendaCaixa() != null ? op.getValorVendaCaixa() : BigDecimal.ZERO)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+        }
+        if (baseVendas.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+
+        for (InvestimentoOperacaoEntity op : ops) {
+            BigDecimal vf = op.getValorVendaCaixa() != null ? op.getValorVendaCaixa() : BigDecimal.ZERO;
+            if (vf.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            if (genericIrrf.compareTo(BigDecimal.ZERO) > 0) {
+                op.setValorIrrf(op.getValorIrrf().add(parcelaProporcional(genericIrrf, vf, baseVendas)));
+            }
+            if (genericIof.compareTo(BigDecimal.ZERO) > 0) {
+                op.setValorIof(op.getValorIof().add(parcelaProporcional(genericIof, vf, baseVendas)));
+            }
+        }
+    }
+
+    private BigDecimal somaVendasExtratoDia(List<LancamentoFinanceiroEntity> lancamentosDia) {
+        BigDecimal total = BigDecimal.ZERO;
+        for (LancamentoFinanceiroEntity l : lancamentosDia) {
+            String desc = l.getDescricao() != null ? l.getDescricao().toUpperCase(Locale.ROOT) : "";
+            if (desc.startsWith("VENDA")) {
+                total = total.add(l.getValor());
+            }
+        }
+        return total;
+    }
+
+    static BigDecimal parcelaProporcional(BigDecimal total, BigDecimal parte, BigDecimal baseTotal) {
+        if (total == null || parte == null || baseTotal == null || baseTotal.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+        return total.multiply(parte).divide(baseTotal, 2, RoundingMode.HALF_UP);
+    }
+
+    private ImpostosCustos calcularImpostosEspecificos(
+            List<LancamentoFinanceiroEntity> lancamentosDia,
+            String emissor,
+            Integer diasCarteira,
+            Set<Long> impostosUsados) {
+        if (!StringUtils.hasText(emissor)) {
+            return new ImpostosCustos(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+        }
+
+        List<LancamentoFinanceiroEntity> candidatos = new ArrayList<>();
+        for (LancamentoFinanceiroEntity l : lancamentosDia) {
+            if (impostosUsados.contains(l.getId())) {
+                continue;
+            }
+            String desc = l.getDescricao() != null ? l.getDescricao().trim() : "";
+            if (BtgMovimentacaoParser.isImpostoGenericoSemProduto(desc)) {
+                continue;
+            }
+            String upper = desc.toUpperCase(Locale.ROOT);
+            if (!upper.startsWith("IRRF") && !upper.startsWith("IOF")) {
+                continue;
+            }
+            String emLanc = BtgMovimentacaoParser.extrairEmissorFin(desc);
+            if (!BtgMovimentacaoParser.emissoresInvestimentoCompat(emissor, emLanc)) {
+                continue;
+            }
+            candidatos.add(l);
+        }
+
+        if (candidatos.isEmpty()) {
+            return new ImpostosCustos(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+        }
+
+        Map<String, List<LancamentoFinanceiroEntity>> porVencimento = new LinkedHashMap<>();
+        for (LancamentoFinanceiroEntity l : candidatos) {
+            String venc = BtgMovimentacaoParser.extrairVencimentoExtrato(l.getDescricao());
+            String chave = venc != null ? venc : "#sem-venc";
+            porVencimento.computeIfAbsent(chave, k -> new ArrayList<>()).add(l);
+        }
+
+        List<LancamentoFinanceiroEntity> escolhidos = selecionarGrupoImpostos(porVencimento, diasCarteira);
+        BigDecimal irrf = BigDecimal.ZERO;
+        BigDecimal iof = BigDecimal.ZERO;
+        for (LancamentoFinanceiroEntity l : escolhidos) {
+            String upper = l.getDescricao().toUpperCase(Locale.ROOT);
+            if (upper.startsWith("IRRF")) {
+                irrf = irrf.add(l.getValor());
+            } else if (upper.startsWith("IOF")) {
+                iof = iof.add(l.getValor());
+            }
+            impostosUsados.add(l.getId());
+        }
         return new ImpostosCustos(irrf, iof, BigDecimal.ZERO);
+    }
+
+    private record ImpostosCustos(BigDecimal irrf, BigDecimal iof, BigDecimal custos) {}
+
+    private record ParCompraVenda(InvestimentoMovimentacaoEntity compra, InvestimentoMovimentacaoEntity venda) {}
+
+    private String resolverEmissorInvestimento(
+            InvestimentoMovimentacaoEntity compra, InvestimentoMovimentacaoEntity venda) {
+        if (StringUtils.hasText(compra.getEmissor()) && !isEmissorInstituicaoBtg(compra.getEmissor())) {
+            return compra.getEmissor().trim().toUpperCase(Locale.ROOT);
+        }
+        if (compra.getLancamentoFinanceiro() != null) {
+            String e = BtgMovimentacaoParser.extrairEmissorFin(compra.getLancamentoFinanceiro().getDescricao());
+            if (StringUtils.hasText(e)) {
+                return e;
+            }
+        }
+        if (venda.getLancamentoFinanceiro() != null) {
+            String e = BtgMovimentacaoParser.extrairEmissorFin(venda.getLancamentoFinanceiro().getDescricao());
+            if (StringUtils.hasText(e)) {
+                return e;
+            }
+        }
+        if (StringUtils.hasText(venda.getEmissor()) && !isEmissorInstituicaoBtg(venda.getEmissor())) {
+            return venda.getEmissor().trim().toUpperCase(Locale.ROOT);
+        }
+        return StringUtils.hasText(compra.getEmissor()) ? compra.getEmissor().trim().toUpperCase(Locale.ROOT) : null;
+    }
+
+    private static boolean isEmissorInstituicaoBtg(String emissor) {
+        if (!StringUtils.hasText(emissor)) {
+            return false;
+        }
+        return emissor.toUpperCase(Locale.ROOT).contains("BTG PACTUAL");
+    }
+
+    private List<LancamentoFinanceiroEntity> selecionarGrupoImpostos(
+            Map<String, List<LancamentoFinanceiroEntity>> porVencimento, Integer diasCarteira) {
+        List<List<LancamentoFinanceiroEntity>> grupos = new ArrayList<>(porVencimento.values());
+        if (grupos.isEmpty()) {
+            return List.of();
+        }
+
+        boolean curtoPrazo = diasCarteira != null && diasCarteira <= 30;
+        List<List<LancamentoFinanceiroEntity>> preferidos = grupos.stream()
+                .filter(g -> curtoPrazo == grupoTemIof(g))
+                .toList();
+        if (preferidos.isEmpty()) {
+            preferidos = grupos;
+        }
+
+        return preferidos.stream()
+                .min(Comparator.comparing(this::somaValorLancamentos))
+                .orElse(List.of());
+    }
+
+    private boolean grupoTemIof(List<LancamentoFinanceiroEntity> grupo) {
+        return grupo.stream()
+                .anyMatch(l -> l.getDescricao() != null
+                        && l.getDescricao().toUpperCase(Locale.ROOT).startsWith("IOF"));
+    }
+
+    private BigDecimal somaValorLancamentos(List<LancamentoFinanceiroEntity> grupo) {
+        return grupo.stream().map(LancamentoFinanceiroEntity::getValor).reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private BigDecimal valorCaixa(LancamentoFinanceiroEntity lanc, BigDecimal fallback) {

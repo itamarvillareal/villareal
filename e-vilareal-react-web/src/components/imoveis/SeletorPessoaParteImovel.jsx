@@ -14,12 +14,11 @@ function pareceNumeroPessoa(termo) {
 /**
  * Busca pessoa no cadastro e devolve snapshot para vincular proprietário/inquilino do imóvel.
  * @param {{
- *   valueId?: string,
  *   onChange: (pessoa: { id: number, nome?: string, cpf?: string, telefone?: string } | null) => void,
  *   disabled?: boolean,
  * }} props
  */
-export function SeletorPessoaParteImovel({ valueId = '', onChange, disabled = false }) {
+export function SeletorPessoaParteImovel({ onChange, disabled = false }) {
   const [termo, setTermo] = useState('');
   const [aberto, setAberto] = useState(false);
   const [resultados, setResultados] = useState([]);
@@ -111,11 +110,6 @@ export function SeletorPessoaParteImovel({ valueId = '', onChange, disabled = fa
           />
         </div>
       </label>
-      {valueId ? (
-        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-          Vínculo atual: pessoa <strong className="font-mono">#{valueId}</strong>
-        </p>
-      ) : null}
       {mostrarLista && resultados.length > 0 ? (
         <ul
           className="absolute z-50 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-[#141c2c] shadow-lg text-sm"

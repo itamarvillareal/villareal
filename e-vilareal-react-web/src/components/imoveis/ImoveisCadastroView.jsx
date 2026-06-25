@@ -688,7 +688,6 @@ export function ImoveisCadastroView(props) {
               tipo="proprietario"
               titulo="Proprietário"
               numeroPessoa={proprietarioNumeroPessoa}
-              onNumeroPessoaChange={setProprietarioNumeroPessoa}
               nome={proprietario}
               cpf={proprietarioCpf}
               contato={proprietarioContato}
@@ -701,7 +700,6 @@ export function ImoveisCadastroView(props) {
               tipo="inquilino"
               titulo="Inquilino"
               numeroPessoa={inquilinoNumeroPessoa}
-              onNumeroPessoaChange={setInquilinoNumeroPessoa}
               nome={inquilino}
               cpf={inquilinoCpf}
               contato={inquilinoContato}

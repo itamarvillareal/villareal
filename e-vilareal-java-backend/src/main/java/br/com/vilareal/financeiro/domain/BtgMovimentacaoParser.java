@@ -118,6 +118,39 @@ public final class BtgMovimentacaoParser {
         return m.group(1).replaceAll("\\s+", " ").trim().toUpperCase(Locale.ROOT);
     }
 
+    /** Vencimento parcial ou completo após "Venc.:" na descrição do extrato (ex.: 2026-06-24). */
+    public static String extrairVencimentoExtrato(String descricao) {
+        if (!StringUtils.hasText(descricao)) {
+            return null;
+        }
+        Matcher m = Pattern.compile("Venc\\.:\\s*(\\d{4}-\\d{2}(?:-\\d{2})?)", Pattern.CASE_INSENSITIVE)
+                .matcher(descricao);
+        return m.find() ? m.group(1).trim() : null;
+    }
+
+    /** IRRF/IOF sem produto (ex.: só "IRRF") — não atribuir a flip CDB/LCA/LCI. */
+    public static boolean isImpostoGenericoSemProduto(String descricao) {
+        if (!StringUtils.hasText(descricao)) {
+            return false;
+        }
+        String d = descricao.trim().toUpperCase(Locale.ROOT);
+        return "IRRF".equals(d) || "IOF".equals(d);
+    }
+
+    public static boolean emissoresInvestimentoCompat(String a, String b) {
+        if (!StringUtils.hasText(a) || !StringUtils.hasText(b)) {
+            return false;
+        }
+        String na = a.replaceAll("\\s+", " ").trim().toUpperCase(Locale.ROOT);
+        String nb = b.replaceAll("\\s+", " ").trim().toUpperCase(Locale.ROOT);
+        if (na.equals(nb) || na.startsWith(nb) || nb.startsWith(na)) {
+            return true;
+        }
+        String pa = na.length() >= 12 ? na.substring(0, 12) : na;
+        String pb = nb.length() >= 12 ? nb.substring(0, 12) : nb;
+        return pa.equals(pb) || pa.startsWith(pb) || pb.startsWith(pa);
+    }
+
     private static String extrairEmissor(String produto) {
         String[] parts = produto.split("-");
         if (parts.length < 3) {

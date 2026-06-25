@@ -549,7 +549,6 @@ import { SeletorPessoaParteImovel } from './SeletorPessoaParteImovel.jsx';
  *   tipo: 'proprietario' | 'inquilino',
  *   titulo: string,
  *   numeroPessoa: string,
- *   onNumeroPessoaChange: (v: string) => void,
  *   nome: string,
  *   cpf: string,
  *   contato: string,
@@ -559,11 +558,19 @@ import { SeletorPessoaParteImovel } from './SeletorPessoaParteImovel.jsx';
  *   onLimparPessoa: () => void,
  * }} props
  */
+function rotuloNomeComNumero(numeroPessoa, nome) {
+  const n = String(numeroPessoa ?? '').trim();
+  const nm = String(nome ?? '').trim();
+  if (n && nm) return `#${n} · ${nm}`;
+  if (nm) return nm;
+  if (n) return `#${n}`;
+  return '—';
+}
+
 export function CardParte({
   tipo,
   titulo,
   numeroPessoa,
-  onNumeroPessoaChange,
   nome,
   cpf,
   contato,
@@ -604,20 +611,8 @@ export function CardParte({
           <p className="text-sm text-amber-700 dark:text-amber-300/90 mt-1 max-w-xs">
             {erro ? erro : 'Nenhuma pessoa vinculada'}
           </p>
-          <label className="mt-4 w-full max-w-xs text-left">
-            <span className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1 block">Número da pessoa</span>
-            <input
-              type="text"
-              inputMode="numeric"
-              value={numeroPessoa}
-              onChange={(e) => onNumeroPessoaChange(e.target.value)}
-              className={imoveisInputClass}
-              autoComplete="off"
-            />
-          </label>
-          <div className="mt-3 w-full max-w-xs">
+          <div className="mt-4 w-full max-w-xs">
             <SeletorPessoaParteImovel
-              valueId={numeroPessoa}
               onChange={(p) => (p ? onSelecionarPessoa(p) : onLimparPessoa())}
             />
           </div>
@@ -634,27 +629,17 @@ export function CardParte({
           </div>
           <div className="flex-1 min-w-0 space-y-3">
             <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{titulo}</h3>
-            <label className="block">
-              <span className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1 block">Número da pessoa</span>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={numeroPessoa}
-                onChange={(e) => onNumeroPessoaChange(e.target.value)}
-                className={imoveisInputClass}
-                autoComplete="off"
-              />
-            </label>
             {carregando ? <p className="text-xs text-slate-500">Carregando cadastro…</p> : null}
             {erro ? <p className="text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5 shrink-0" />{erro}</p> : null}
             <div className="pt-1">
               <SeletorPessoaParteImovel
-                valueId={numeroPessoa}
                 onChange={(p) => (p ? onSelecionarPessoa(p) : onLimparPessoa())}
               />
             </div>
             <div>
-              <p className="text-base font-semibold text-slate-900 dark:text-slate-50 truncate">{nome?.trim() || '—'}</p>
+              <p className="text-base font-semibold text-slate-900 dark:text-slate-50 truncate">
+                {rotuloNomeComNumero(numeroPessoa, nome)}
+              </p>
               <p className="text-sm text-slate-600 dark:text-slate-400 mt-0.5 font-mono tabular-nums">
                 {cpf?.trim() ? formatDocBrExibicao(cpf.replace(/\D/g, '')) : cpf || '—'}
               </p>
