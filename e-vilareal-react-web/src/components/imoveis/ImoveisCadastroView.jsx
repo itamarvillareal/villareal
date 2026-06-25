@@ -163,8 +163,10 @@ export function ImoveisCadastroView(props) {
     onRelatorio,
     onFechar,
     onAbrirIptu,
-    onVincularProprietario,
-    onVincularInquilino,
+    onSelecionarPessoaProprietario,
+    onLimparPessoaProprietario,
+    onSelecionarPessoaInquilino,
+    onLimparPessoaInquilino,
   } = props;
 
   const unidadeResumo = unidadeResumoCabecalho(unidade, condominio);
@@ -692,7 +694,8 @@ export function ImoveisCadastroView(props) {
               contato={proprietarioContato}
               carregando={proprietarioCadastroCarregando}
               erro={proprietarioCadastroErro}
-              onVincular={onVincularProprietario}
+              onSelecionarPessoa={onSelecionarPessoaProprietario}
+              onLimparPessoa={onLimparPessoaProprietario}
             />
             <CardParte
               tipo="inquilino"
@@ -704,7 +707,8 @@ export function ImoveisCadastroView(props) {
               contato={inquilinoContato}
               carregando={inquilinoCadastroCarregando}
               erro={inquilinoCadastroErro}
-              onVincular={onVincularInquilino}
+              onSelecionarPessoa={onSelecionarPessoaInquilino}
+              onLimparPessoa={onLimparPessoaInquilino}
             />
           </div>
         </AccordionSection>

@@ -486,6 +486,44 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     };
   }, [inquilinoNumeroPessoa]);
 
+  function aplicarPessoaProprietario(p) {
+    if (!p || p.id == null) return;
+    setProprietarioNumeroPessoa(String(p.id));
+    setProprietario(String(p.nome ?? '').trim());
+    setProprietarioCpf(formatDocBrExibicao(p.cpf));
+    setProprietarioContato(String(p.telefone ?? '').trim() || '—');
+    setProprietarioCadastroErro('');
+    setProprietarioCadastroCarregando(false);
+  }
+
+  function limparPessoaProprietario() {
+    setProprietarioNumeroPessoa('');
+    setProprietario('');
+    setProprietarioCpf('');
+    setProprietarioContato('');
+    setProprietarioCadastroErro('');
+    setProprietarioCadastroCarregando(false);
+  }
+
+  function aplicarPessoaInquilino(p) {
+    if (!p || p.id == null) return;
+    setInquilinoNumeroPessoa(String(p.id));
+    setInquilino(String(p.nome ?? '').trim());
+    setInquilinoCpf(formatDocBrExibicao(p.cpf));
+    setInquilinoContato(String(p.telefone ?? '').trim() || '—');
+    setInquilinoCadastroErro('');
+    setInquilinoCadastroCarregando(false);
+  }
+
+  function limparPessoaInquilino() {
+    setInquilinoNumeroPessoa('');
+    setInquilino('');
+    setInquilinoCpf('');
+    setInquilinoContato('');
+    setInquilinoCadastroErro('');
+    setInquilinoCadastroCarregando(false);
+  }
+
   function navegarParaProcesso(codigoCliente, numeroInterno) {
     navigate('/processos', {
       state: buildRouterStateChaveClienteProcesso(codigoCliente, numeroInterno, {
@@ -863,26 +901,10 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
             onRelatorio={() => navigate('/relatorio-imoveis')}
             onFechar={modoModal && onFecharModal ? onFecharModal : () => window.history.back()}
             onAbrirIptu={() => setShowModalIptu(true)}
-            onVincularProprietario={() =>
-              navigate('/clientes/lista', {
-                state: {
-                  origemImoveis: true,
-                  papelPropriedade: 'proprietario',
-                  imovelId,
-                  codigoImovel: String(codigo ?? ''),
-                },
-              })
-            }
-            onVincularInquilino={() =>
-              navigate('/clientes/lista', {
-                state: {
-                  origemImoveis: true,
-                  papelPropriedade: 'inquilino',
-                  imovelId,
-                  codigoImovel: String(codigo ?? ''),
-                },
-              })
-            }
+            onSelecionarPessoaProprietario={aplicarPessoaProprietario}
+            onLimparPessoaProprietario={limparPessoaProprietario}
+            onSelecionarPessoaInquilino={aplicarPessoaInquilino}
+            onLimparPessoaInquilino={limparPessoaInquilino}
           />
         </div>
       </div>

@@ -634,12 +634,9 @@ function montarPayloadImovelFromUi(ui, clienteId, processoId, espelhoCodProc = n
   if (obsExtraLegado) extras.observacoesInquilino = obsExtraLegado;
 
   if (idProp) {
-    const nome = preservarChaveExtrasLegado(extrasOrig, ['proprietario']);
-    const cpf = preservarChaveExtrasLegado(extrasOrig, ['proprietarioCpf']);
-    const contato = preservarChaveExtrasLegado(extrasOrig, ['proprietarioContato']);
-    if (nome) extras.proprietario = nome;
-    if (cpf) extras.proprietarioCpf = cpf;
-    if (contato) extras.proprietarioContato = contato;
+    extras.proprietario = String(ui.proprietario ?? '').trim();
+    extras.proprietarioCpf = String(ui.proprietarioCpf ?? '').trim();
+    extras.proprietarioContato = String(ui.proprietarioContato ?? '').trim();
   } else {
     extras.proprietario = String(ui.proprietario ?? '');
     extras.proprietarioCpf = String(ui.proprietarioCpf ?? '');
@@ -647,12 +644,9 @@ function montarPayloadImovelFromUi(ui, clienteId, processoId, espelhoCodProc = n
   }
 
   if (idInq) {
-    const nome = preservarChaveExtrasLegado(extrasOrig, ['inquilino']);
-    const cpf = preservarChaveExtrasLegado(extrasOrig, ['inquilinoCpf']);
-    const contato = preservarChaveExtrasLegado(extrasOrig, ['inquilinoContato']);
-    if (nome) extras.inquilino = nome;
-    if (cpf) extras.inquilinoCpf = cpf;
-    if (contato) extras.inquilinoContato = contato;
+    extras.inquilino = String(ui.inquilino ?? '').trim();
+    extras.inquilinoCpf = String(ui.inquilinoCpf ?? '').trim();
+    extras.inquilinoContato = String(ui.inquilinoContato ?? '').trim();
   } else {
     extras.inquilino = String(ui.inquilino ?? '');
     extras.inquilinoCpf = String(ui.inquilinoCpf ?? '');

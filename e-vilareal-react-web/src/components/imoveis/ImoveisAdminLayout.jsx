@@ -17,7 +17,6 @@ import {
   Landmark,
   MapPin,
   Phone,
-  UserPlus,
   UserRound,
   X,
   Zap,
@@ -543,6 +542,8 @@ export function TabelaUtilidades({ rows, onChange, contratoExtra }) {
   );
 }
 
+import { SeletorPessoaParteImovel } from './SeletorPessoaParteImovel.jsx';
+
 /**
  * @param {{
  *   tipo: 'proprietario' | 'inquilino',
@@ -554,7 +555,8 @@ export function TabelaUtilidades({ rows, onChange, contratoExtra }) {
  *   contato: string,
  *   carregando: boolean,
  *   erro: string,
- *   onVincular: () => void,
+ *   onSelecionarPessoa: (pessoa: { id: number, nome?: string, cpf?: string, telefone?: string }) => void,
+ *   onLimparPessoa: () => void,
  * }} props
  */
 export function CardParte({
@@ -567,7 +569,8 @@ export function CardParte({
   contato,
   carregando,
   erro,
-  onVincular,
+  onSelecionarPessoa,
+  onLimparPessoa,
 }) {
   const vinculado = Boolean(String(nome ?? '').trim()) && !erro;
   const vazio = !vinculado && !carregando;
@@ -612,14 +615,12 @@ export function CardParte({
               autoComplete="off"
             />
           </label>
-          <button
-            type="button"
-            onClick={onVincular}
-            className="mt-4 w-full max-w-xs inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold border border-amber-300 dark:border-amber-500/40 bg-amber-100 dark:bg-amber-900/30 text-amber-900 dark:text-amber-100 hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors duration-150"
-          >
-            <UserPlus className="w-4 h-4 shrink-0" aria-hidden />
-            Vincular pessoa
-          </button>
+          <div className="mt-3 w-full max-w-xs">
+            <SeletorPessoaParteImovel
+              valueId={numeroPessoa}
+              onChange={(p) => (p ? onSelecionarPessoa(p) : onLimparPessoa())}
+            />
+          </div>
         </div>
       ) : (
         <div className="flex gap-4">
@@ -646,6 +647,12 @@ export function CardParte({
             </label>
             {carregando ? <p className="text-xs text-slate-500">Carregando cadastro…</p> : null}
             {erro ? <p className="text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5 shrink-0" />{erro}</p> : null}
+            <div className="pt-1">
+              <SeletorPessoaParteImovel
+                valueId={numeroPessoa}
+                onChange={(p) => (p ? onSelecionarPessoa(p) : onLimparPessoa())}
+              />
+            </div>
             <div>
               <p className="text-base font-semibold text-slate-900 dark:text-slate-50 truncate">{nome?.trim() || '—'}</p>
               <p className="text-sm text-slate-600 dark:text-slate-400 mt-0.5 font-mono tabular-nums">
@@ -663,10 +670,11 @@ export function CardParte({
                 <p className="text-sm text-slate-400 italic mt-1">{contato?.trim() || 'Telefone não informado'}</p>
               )}
             </div>
-            <button type="button" onClick={onVincular} className={imoveisBtnGhost}>
-              <UserPlus className="w-3.5 h-3.5 shrink-0" aria-hidden />
-              Vincular pessoa
-            </button>
+            {vinculado ? (
+              <button type="button" onClick={onLimparPessoa} className={imoveisBtnGhost}>
+                Remover vínculo
+              </button>
+            ) : null}
           </div>
         </div>
       )}
