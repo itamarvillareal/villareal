@@ -163,7 +163,7 @@ import {
   nomeArquivoProcuracaoPdf,
 } from '../repositories/documentosRepository.js';
 import { obterStatusDrive } from '../repositories/driveRepository.js';
-import DriveExplorer from './DriveExplorer.jsx';
+const DriveExplorerLazy = lazy(() => import('./DriveExplorer.jsx'));
 import { featureFlags } from '../config/featureFlags.js';
 import { obterClienteCadastroPorCodigo } from '../repositories/clientesRepository.js';
 import { CampoNumeroComContador } from './ui/CampoNumeroComContador.jsx';
@@ -708,6 +708,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const historicoApiCargaSeqRef = useRef(0);
   const carregarHistoricoApiRef = useRef(async () => {});
   const carregarProcessoApiAtualRef = useRef(async () => {});
+  /** Evita POST de tramitação/periodicidade logo após GET hidratar o formulário (embed Agenda). */
+  const ignorarSyncCamposLevesAposHidratarRef = useRef(false);
   const [historicoApiCarregando, setHistoricoApiCarregando] = useState(false);
   const [publicacoesRelatorioItens, setPublicacoesRelatorioItens] = useState([]);
   const [publicacoesRelatorioMeta, setPublicacoesRelatorioMeta] = useState(null);
@@ -1434,6 +1436,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     aplicarCabecalhoVazioProcessoNaoCadastradoApi();
     void carregarProcessoApiAtual().finally(() => {
       carregandoProcessoNavegacaoRef.current = false;
+      ignorarSyncCamposLevesAposHidratarRef.current = true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [codigoCliente, processo]);
@@ -2987,6 +2990,10 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   useEffect(() => {
     if (!edicaoDesabilitada) return;
     if (carregandoProcessoNavegacaoRef.current) return;
+    if (ignorarSyncCamposLevesAposHidratarRef.current) {
+      ignorarSyncCamposLevesAposHidratarRef.current = false;
+      return;
+    }
     if (featureFlags.useApiProcessos) {
       void sincronizarApiProcessoAtual(
         {},
@@ -3412,6 +3419,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
   // Agenda: replica a audiência para todos os colaboradores ao haver data válida (formulário Processos).
   useEffect(() => {
+    if (isEmbedded) return undefined;
+
     const payloadBase = {
       codigoCliente,
       numeroInterno: processo,
@@ -3478,6 +3487,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     parteCliente,
     parteOposta,
     competencia,
+    isEmbedded,
   ]);
 
   function eliminarAgendamentoAudiencia() {
@@ -6208,13 +6218,21 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       ) : null}
 
       {driveExplorerAberto && driveConfigurado ? (
-        <DriveExplorer
-          codigoCliente={String(codigoCliente ?? '').trim()}
-          numeroInterno={Number(processo)}
-          processoId={processoApiId}
-          numeroCnj={String(numeroProcessoNovo ?? '').trim()}
-          onClose={() => setDriveExplorerAberto(false)}
-        />
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4 text-sm text-white">
+              Carregando arquivos do Drive…
+            </div>
+          }
+        >
+          <DriveExplorerLazy
+            codigoCliente={String(codigoCliente ?? '').trim()}
+            numeroInterno={Number(processo)}
+            processoId={processoApiId}
+            numeroCnj={String(numeroProcessoNovo ?? '').trim()}
+            onClose={() => setDriveExplorerAberto(false)}
+          />
+        </Suspense>
       ) : null}
     </div>
     </div>

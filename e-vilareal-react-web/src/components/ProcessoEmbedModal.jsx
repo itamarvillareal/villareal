@@ -1,7 +1,11 @@
-import { Suspense } from 'react';
+import { lazy, Suspense } from 'react';
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 import { X } from 'lucide-react';
-import { LazyProcessos } from '../app/lazyScreens.jsx';
+import { ProcessoEmbedErrorBoundary } from './ProcessoEmbedErrorBoundary.jsx';
+
+const LazyProcessos = lazy(() =>
+  import('./Processos.jsx').then((module) => ({ default: module.Processos })),
+);
 
 /**
  * Janela suspensa com o formulário de Processos (embed), sem mudar de rota.
@@ -39,20 +43,22 @@ export function ProcessoEmbedModal({ embed, onFechar, titulo = 'Processo (cadast
           </button>
         </div>
         <div className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden overscroll-contain [-webkit-overflow-scrolling:touch]">
-          <Suspense
-            fallback={
-              <div className="flex min-h-[12rem] items-center justify-center p-8 text-sm text-slate-600 dark:text-slate-400">
-                Carregando formulário de processos…
-              </div>
-            }
-          >
-            <LazyProcessos
-              key={embed.revision}
-              embedIntent={embed.routerState}
-              embedIntentRevision={embed.revision}
-              onFecharEmbed={onFechar}
-            />
-          </Suspense>
+          <ProcessoEmbedErrorBoundary resetKey={embed.revision} onFechar={onFechar}>
+            <Suspense
+              fallback={
+                <div className="flex min-h-[12rem] items-center justify-center p-8 text-sm text-slate-600 dark:text-slate-400">
+                  Carregando formulário de processos…
+                </div>
+              }
+            >
+              <LazyProcessos
+                key={embed.revision}
+                embedIntent={embed.routerState}
+                embedIntentRevision={embed.revision}
+                onFecharEmbed={onFechar}
+              />
+            </Suspense>
+          </ProcessoEmbedErrorBoundary>
         </div>
       </div>
     </div>
