@@ -358,43 +358,44 @@ public class QualificacaoPessoaUtil {
 
         boolean feminino = determinarFeminino(nome, sexo);
         FlexaoGenero g = feminino ? FlexaoGenero.feminino() : FlexaoGenero.masculino();
+        final boolean escaparHtml = nomeEmNegrito;
 
         StringBuilder sb = new StringBuilder();
         String nomeNormalizado = normalizarNome(nome != null ? nome : "OUTORGANTE");
         if (nomeEmNegrito) {
             sb.append("<strong>").append(escapeHtml(nomeNormalizado.toUpperCase(Locale.ROOT))).append("</strong>");
         } else {
-            sb.append(escapeHtml(nomeNormalizado));
+            sb.append(formatarTrechoQualificacao(nomeNormalizado, escaparHtml));
         }
 
         if (cnpj != null && !cnpj.isBlank()) {
             sb.append(", pessoa jurídica de direito privado");
-            sb.append(", inscrita no CNPJ sob o nº ").append(escapeHtml(cnpj));
+            sb.append(", inscrita no CNPJ sob o nº ").append(formatarTrechoQualificacao(cnpj, escaparHtml));
             if (logradouro != null && !logradouro.isBlank()) {
-                sb.append(", com sede na ").append(escapeHtml(normalizarEndereco(logradouro)));
+                sb.append(", com sede na ").append(formatarTrechoQualificacao(normalizarEndereco(logradouro), escaparHtml));
                 if (numero != null && !numero.isBlank()) {
-                    sb.append(", nº ").append(escapeHtml(numero.trim()));
+                    sb.append(", nº ").append(formatarTrechoQualificacao(numero.trim(), escaparHtml));
                 }
                 if (complemento != null && !complemento.isBlank()) {
-                    sb.append(", ").append(escapeHtml(normalizarEndereco(complemento)));
+                    sb.append(", ").append(formatarTrechoQualificacao(normalizarEndereco(complemento), escaparHtml));
                 }
                 if (bairro != null && !bairro.isBlank()) {
-                    sb.append(", ").append(escapeHtml(normalizarBairro(bairro)));
+                    sb.append(", ").append(formatarTrechoQualificacao(normalizarBairro(bairro), escaparHtml));
                 }
                 if ((cidade != null && !cidade.isBlank()) || (uf != null && !uf.isBlank())) {
-                    sb.append(", ").append(escapeHtml(formatarCidadeEstadoParaQualificacao(cidade, uf)));
+                    sb.append(", ").append(formatarTrechoQualificacao(formatarCidadeEstadoParaQualificacao(cidade, uf), escaparHtml));
                 }
                 if (cep != null && !cep.isBlank()) {
-                    sb.append(", CEP ").append(escapeHtml(formatarCep(cep)));
+                    sb.append(", CEP ").append(formatarTrechoQualificacao(formatarCep(cep), escaparHtml));
                 }
             }
             return sb.toString();
         }
 
         if (nacionalidade != null && !nacionalidade.isBlank() && !contemDesconhecido(nacionalidade)) {
-            sb.append(", ").append(escapeHtml(flexionarNacionalidade(nacionalidade, feminino)));
+            sb.append(", ").append(formatarTrechoQualificacao(flexionarNacionalidade(nacionalidade, feminino), escaparHtml));
         } else {
-            sb.append(", ").append(escapeHtml(g.brasileiro()));
+            sb.append(", ").append(formatarTrechoQualificacao(g.brasileiro(), escaparHtml));
         }
 
         String ecFlexionado = flexionarEstadoCivil(estadoCivil, feminino);
@@ -405,49 +406,49 @@ public class QualificacaoPessoaUtil {
         if (ecFlexionado == null && profNormalizada == null) {
             sb.append(", estado civil e profissional desconhecidos");
         } else if (ecFlexionado == null) {
-            sb.append(", estado civil desconhecido, ").append(escapeHtml(profNormalizada));
+            sb.append(", estado civil desconhecido, ").append(formatarTrechoQualificacao(profNormalizada, escaparHtml));
         } else if (profNormalizada == null) {
-            sb.append(", ").append(escapeHtml(ecFlexionado)).append(", profissional desconhecido");
+            sb.append(", ").append(formatarTrechoQualificacao(ecFlexionado, escaparHtml)).append(", profissional desconhecido");
         } else {
-            sb.append(", ").append(escapeHtml(ecFlexionado)).append(", ").append(escapeHtml(profNormalizada));
+            sb.append(", ").append(formatarTrechoQualificacao(ecFlexionado, escaparHtml)).append(", ").append(formatarTrechoQualificacao(profNormalizada, escaparHtml));
         }
 
         if (rg != null && !rg.isBlank()) {
-            sb.append(", ").append(escapeHtml(g.portador())).append(" da carteira de identidade ");
+            sb.append(", ").append(formatarTrechoQualificacao(g.portador(), escaparHtml)).append(" da carteira de identidade ");
             if (ufRg != null && !ufRg.isBlank()) {
-                sb.append(escapeHtml(ufRg.toUpperCase(Locale.ROOT))).append(" ");
+                sb.append(formatarTrechoQualificacao(ufRg.toUpperCase(Locale.ROOT), escaparHtml)).append(" ");
             }
-            sb.append("nº ").append(escapeHtml(rg.trim()));
+            sb.append("nº ").append(formatarTrechoQualificacao(rg.trim(), escaparHtml));
         }
 
         if (cpf != null && !cpf.isBlank()) {
-            sb.append(", regularmente ").append(escapeHtml(g.inscrito()));
-            sb.append(" no CPF/MF sob o nº ").append(escapeHtml(cpf));
+            sb.append(", regularmente ").append(formatarTrechoQualificacao(g.inscrito(), escaparHtml));
+            sb.append(" no CPF/MF sob o nº ").append(formatarTrechoQualificacao(cpf, escaparHtml));
         }
 
         if (logradouro != null && !logradouro.isBlank()) {
-            sb.append(", ").append(escapeHtml(g.residenteDomiciliado())).append(" na ");
-            sb.append(escapeHtml(normalizarEndereco(logradouro)));
+            sb.append(", ").append(formatarTrechoQualificacao(g.residenteDomiciliado(), escaparHtml)).append(" na ");
+            sb.append(formatarTrechoQualificacao(normalizarEndereco(logradouro), escaparHtml));
             if (numero != null && !numero.isBlank()) {
-                sb.append(", nº ").append(escapeHtml(numero.trim()));
+                sb.append(", nº ").append(formatarTrechoQualificacao(numero.trim(), escaparHtml));
             }
             if (complemento != null && !complemento.isBlank()) {
-                sb.append(", ").append(escapeHtml(normalizarEndereco(complemento)));
+                sb.append(", ").append(formatarTrechoQualificacao(normalizarEndereco(complemento), escaparHtml));
             }
             if (bairro != null && !bairro.isBlank()) {
-                sb.append(", ").append(escapeHtml(normalizarBairro(bairro)));
+                sb.append(", ").append(formatarTrechoQualificacao(normalizarBairro(bairro), escaparHtml));
             }
-            sb.append(", ").append(escapeHtml(formatarCidadeEstadoParaQualificacao(cidade, uf)));
+            sb.append(", ").append(formatarTrechoQualificacao(formatarCidadeEstadoParaQualificacao(cidade, uf), escaparHtml));
             if (cep != null && !cep.isBlank()) {
-                sb.append(", CEP n° ").append(escapeHtml(formatarCep(cep)));
+                sb.append(", CEP n° ").append(formatarTrechoQualificacao(formatarCep(cep), escaparHtml));
             }
         }
 
         if (email != null && !email.isBlank()) {
-            sb.append(", utiliza endereço eletrônico: ").append(escapeHtml(email.toLowerCase(Locale.ROOT).trim()));
+            sb.append(", utiliza endereço eletrônico: ").append(formatarTrechoQualificacao(email.toLowerCase(Locale.ROOT).trim(), escaparHtml));
         }
         if (telefone != null && !telefone.isBlank()) {
-            sb.append(", e o número de telefone: ").append(escapeHtml(telefone.trim()));
+            sb.append(", e o número de telefone: ").append(formatarTrechoQualificacao(telefone.trim(), escaparHtml));
         }
 
         return sb.toString();
@@ -971,6 +972,14 @@ public class QualificacaoPessoaUtil {
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
                 .replace("\"", "&quot;");
+    }
+
+    /** Texto plano (modal/cópia) não escapa entidades; HTML (petições) escapa. */
+    private static String formatarTrechoQualificacao(String texto, boolean escaparHtml) {
+        if (texto == null) {
+            return "";
+        }
+        return escaparHtml ? escapeHtml(texto) : texto;
     }
 
     private static final Map<String, String> ESTADOS_POR_SIGLA = Map.ofEntries(

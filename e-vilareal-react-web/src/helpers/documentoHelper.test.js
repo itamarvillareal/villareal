@@ -14,6 +14,7 @@ import {
   montarTrechoAcaoPreambuloHtml,
   resolveSelectExato,
   resolveSelectInicial,
+  qualificacaoApiParaTextoPlano,
 } from './documentoHelper.js';
 
 describe('montarTrechoAcaoPreambuloHtml', () => {
@@ -182,5 +183,15 @@ describe('resolveSelectExato (endereçamento)', () => {
     const exato = resolveSelectExato(enderecoFamilia, opcoesSemFamiliaExata);
     expect(exato.select).toBe('__outro__');
     expect(exato.outro).toBe(enderecoFamilia);
+  });
+});
+
+describe('qualificacaoApiParaTextoPlano', () => {
+  it('decodifica entidades HTML legadas e remove negrito', () => {
+    expect(
+      qualificacaoApiParaTextoPlano(
+        'Transportadora de Leite <strong>M&amp;a</strong> Ltda, pessoa jurídica',
+      ),
+    ).toBe('Transportadora de Leite M&a Ltda, pessoa jurídica');
   });
 });

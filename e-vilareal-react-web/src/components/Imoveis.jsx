@@ -122,6 +122,8 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   const vinculoCodigoOriginalRef = useRef('');
   const vinculoProcOriginalRef = useRef('');
   const cargaInicialFeitaRef = useRef(false);
+  /** Invalida respostas de carga atrasadas após edição local (ex.: remover vínculo). */
+  const cargaFormularioSeqRef = useRef(0);
   const unidadeAlvo =
     !modoModal && location.state && typeof location.state === 'object' ? location.state.unidade : null;
 
@@ -298,6 +300,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   useEffect(() => {
     let ativo = true;
     const numero = Math.max(1, Number(imovelId) || 1);
+    const seqCarga = ++cargaFormularioSeqRef.current;
     setApiError('');
     setApiSuccess('');
     setApiLoading(true);
@@ -307,7 +310,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
         try {
           if (featureFlags.useApiImoveis) {
             const r = await carregarImovelCadastroParaPainel({ imovelId: numero });
-            if (!ativo) return;
+            if (!ativo || seqCarga !== cargaFormularioSeqRef.current) return;
             if (r.item) {
               popularFormulario(r.item);
               const sync = Number(r.item.imovelId);
@@ -320,7 +323,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
             if (!cargaInicialFeitaRef.current) {
               cargaInicialFeitaRef.current = true;
               const lista = await listarImoveisApi();
-              if (!ativo) return;
+              if (!ativo || seqCarga !== cargaFormularioSeqRef.current) return;
               if (lista.length > 0) {
                 const comPlanilha = lista.find(
                   (im) => im.numeroPlanilha != null && Number(im.numeroPlanilha) >= 1,
@@ -343,18 +346,18 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
           }
 
           const r = await carregarImovelCadastro({ imovelId: numero });
-          if (!ativo) return;
+          if (!ativo || seqCarga !== cargaFormularioSeqRef.current) return;
           if (r.item) {
             popularFormulario(r.item);
             return;
           }
           popularFormulario(null);
         } catch (e) {
-          if (!ativo) return;
+          if (!ativo || seqCarga !== cargaFormularioSeqRef.current) return;
           popularFormulario(null);
           setApiError(e?.message || 'Falha ao carregar imóvel.');
         } finally {
-          if (ativo) {
+          if (ativo && seqCarga === cargaFormularioSeqRef.current) {
             cargaInicialFeitaRef.current = true;
             setApiLoading(false);
           }
@@ -506,7 +509,26 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     setProprietarioCadastroCarregando(false);
   }
 
-  function limparPessoaProprietario() {
+  function limparExtrasParteNoRef(tipo) {
+    const ex = { ...(jsonExtrasOriginalRef.current || {}) };
+    if (tipo === 'proprietario') {
+      delete ex.proprietarioPessoaId;
+      delete ex.locadorPessoaId;
+      ex.proprietario = '';
+      ex.proprietarioCpf = '';
+      ex.proprietarioContato = '';
+    } else {
+      delete ex.inquilinoPessoaId;
+      delete ex.inquilinoNumeroPessoa;
+      ex.inquilino = '';
+      ex.inquilinoCpf = '';
+      ex.inquilinoContato = '';
+    }
+    jsonExtrasOriginalRef.current = ex;
+  }
+
+  async function limparPessoaProprietario() {
+    cargaFormularioSeqRef.current += 1;
     proprietarioFetchGenRef.current += 1;
     setProprietarioNumeroPessoa('');
     setProprietario('');
@@ -514,6 +536,37 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     setProprietarioContato('');
     setProprietarioCadastroErro('');
     setProprietarioCadastroCarregando(false);
+    limparExtrasParteNoRef('proprietario');
+    const idApi = _apiImovelId != null ? Number(_apiImovelId) : null;
+    if (featureFlags.useApiImoveis && Number.isFinite(idApi) && idApi >= 1) {
+      await salvarCadastroAtual({
+        proprietarioNumeroPessoa: '',
+        proprietario: '',
+        proprietarioCpf: '',
+        proprietarioContato: '',
+      });
+    }
+  }
+
+  async function limparPessoaInquilino() {
+    cargaFormularioSeqRef.current += 1;
+    inquilinoFetchGenRef.current += 1;
+    setInquilinoNumeroPessoa('');
+    setInquilino('');
+    setInquilinoCpf('');
+    setInquilinoContato('');
+    setInquilinoCadastroErro('');
+    setInquilinoCadastroCarregando(false);
+    limparExtrasParteNoRef('inquilino');
+    const idApi = _apiImovelId != null ? Number(_apiImovelId) : null;
+    if (featureFlags.useApiImoveis && Number.isFinite(idApi) && idApi >= 1) {
+      await salvarCadastroAtual({
+        inquilinoNumeroPessoa: '',
+        inquilino: '',
+        inquilinoCpf: '',
+        inquilinoContato: '',
+      });
+    }
   }
 
   function aplicarPessoaInquilino(p) {
@@ -527,17 +580,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     setInquilinoCadastroCarregando(false);
   }
 
-  function limparPessoaInquilino() {
-    inquilinoFetchGenRef.current += 1;
-    setInquilinoNumeroPessoa('');
-    setInquilino('');
-    setInquilinoCpf('');
-    setInquilinoContato('');
-    setInquilinoCadastroErro('');
-    setInquilinoCadastroCarregando(false);
-  }
-
-  function navegarParaProcesso(codigoCliente, numeroInterno) {
+  function aplicarPessoaInquilino(p) {
     navigate('/processos', {
       state: buildRouterStateChaveClienteProcesso(codigoCliente, numeroInterno, {
         imovelId: String(imovelId),
@@ -561,7 +604,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   const vinculoClienteProcOk =
     String(codigo ?? '').trim() !== '' && String(proc ?? '').trim() !== '';
 
-  async function salvarCadastroAtual() {
+  async function salvarCadastroAtual(overrides = {}) {
     setApiError('');
     setApiSuccess('');
     setApiSaving(true);
@@ -633,13 +676,21 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
         _contratoSnapshotOriginal: contratoSnapshotOriginalRef.current,
         _vinculoCodigoOriginal: vinculoCodigoOriginalRef.current,
         _vinculoProcOriginal: vinculoProcOriginalRef.current,
+        ...overrides,
       });
       if (r?.item) {
+        cargaFormularioSeqRef.current += 1;
         popularFormulario(r.item);
         setImovelId(Number(r.item.imovelId || imovelId));
       }
       if (featureFlags.useApiImoveis) {
-        setApiSuccess('Cadastro do imóvel salvo na API.');
+        const msgRemocao =
+          overrides.proprietarioNumeroPessoa === '' && overrides.proprietario === ''
+            ? 'Vínculo do proprietário removido.'
+            : overrides.inquilinoNumeroPessoa === '' && overrides.inquilino === ''
+              ? 'Vínculo do inquilino removido.'
+              : 'Cadastro do imóvel salvo na API.';
+        setApiSuccess(Object.keys(overrides).length > 0 ? msgRemocao : 'Cadastro do imóvel salvo na API.');
         recarregarListaImoveisPesquisa();
       } else {
         setApiSuccess('Fluxo em fallback legado/mock (sem persistência real).');

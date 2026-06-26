@@ -1,4 +1,5 @@
 import { request } from '../api/httpClient.js';
+import { decodificarEntidadesHtml } from '../data/manifestacoesProjudiDisplay.js';
 import { ENDERECAMENTOS, TIPOS_PECA, CIDADE_ESTADO_PADRAO } from '../pages/documentos/constants.js';
 import {
   primeiraPessoaIdParteCliente,
@@ -194,13 +195,20 @@ export function resolveSelectExato(valor, opcoes) {
   return { select: '__outro__', outro: v };
 }
 
+/** Converte resposta da API (texto plano ou HTML legado) para exibição/cópia sem entidades visíveis. */
+export function qualificacaoApiParaTextoPlano(texto) {
+  const bruto = String(texto ?? '').trim();
+  if (!bruto) return '';
+  return decodificarEntidadesHtml(bruto.replace(/<\/?strong>/gi, ''));
+}
+
 export async function buscarQualificacaoCompleta(pessoaId) {
   const id = Number(pessoaId);
   if (!Number.isFinite(id) || id < 1) return '';
 
   try {
     const data = await request(`/api/pessoas/${id}/qualificacao-juridica`);
-    return data?.qualificacao || '';
+    return qualificacaoApiParaTextoPlano(data?.qualificacao || data?.qualificacaoHtml || '');
   } catch (error) {
     console.error('Erro ao buscar qualificação:', error);
     return '';

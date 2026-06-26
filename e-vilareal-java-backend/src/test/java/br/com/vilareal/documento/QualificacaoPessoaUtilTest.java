@@ -212,4 +212,33 @@ class QualificacaoPessoaUtilTest {
     void formatarCepLegadoProcuracao_mantemApenasDigitos() {
         assertThat(QualificacaoPessoaUtil.formatarCepLegadoProcuracao("75.040-060")).isEqualTo("75040060");
     }
+
+    @Test
+    void qualificacaoPjTextoPlano_preservaAmpersandNoNome() {
+        String resultado = QualificacaoPessoaUtil.gerarQualificacao(
+                "TRANSPORTADORA DE LEITE M&A LTDA",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                "54.028.106/0001-22",
+                "Avenida São Paulo",
+                "1",
+                "Quadra 27, Lote 7",
+                "São João",
+                "Anápolis",
+                "GO",
+                "75133330",
+                null,
+                null,
+                false);
+
+        assertThat(resultado).contains("M&A").doesNotContain("&amp;");
+        assertThat(resultado).contains("Transportadora de Leite");
+        assertThat(resultado).contains("Ltda");
+    }
 }

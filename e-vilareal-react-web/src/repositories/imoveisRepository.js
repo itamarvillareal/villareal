@@ -794,11 +794,8 @@ function montarPayloadContratoFromUi(ui, imovelId) {
 }
 
 function contratoProntoParaPersistir(contratoBody, contratoId, uiPayload) {
-  const temPartes =
-    parseIdPessoa(uiPayload?.proprietarioNumeroPessoa) != null ||
-    parseIdPessoa(uiPayload?.inquilinoNumeroPessoa) != null;
+  if (contratoId) return true;
   const temContratoMinimo = Boolean(contratoBody.dataInicio && contratoBody.valorAluguel != null);
-  if (contratoId) return temContratoMinimo || temPartes;
   return temContratoMinimo;
 }
 
