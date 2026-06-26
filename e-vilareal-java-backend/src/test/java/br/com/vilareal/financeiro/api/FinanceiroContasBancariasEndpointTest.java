@@ -57,11 +57,11 @@ class FinanceiroContasBancariasEndpointTest {
     @Test
     void listarContasBancarias_devolveClassificacaoCorreta() throws Exception {
         when(contaBancariaService.listar()).thenReturn(List.of(
-                new ContaBancariaResponse(1, "Itau", "REAL", true, true),
-                new ContaBancariaResponse(9, "LANÇ MANUAIS", "MANUAL", false, true),
-                new ContaBancariaResponse(17, "LANÇ EM DINHEIRO", "MANUAL", false, true),
-                new ContaBancariaResponse(18, "LANÇ MANUAIS (2)", "MANUAL", false, true),
-                new ContaBancariaResponse(900, "REPASSE INTERNO", "VIRTUAL", false, true)));
+                new ContaBancariaResponse(1, "Itau", "REAL", true, true, null, null, null),
+                new ContaBancariaResponse(9, "LANÇ MANUAIS", "MANUAL", false, true, null, null, null),
+                new ContaBancariaResponse(17, "LANÇ EM DINHEIRO", "MANUAL", false, true, null, null, null),
+                new ContaBancariaResponse(18, "LANÇ MANUAIS (2)", "MANUAL", false, true, null, null, null),
+                new ContaBancariaResponse(900, "REPASSE INTERNO", "VIRTUAL", false, true, null, null, null)));
 
         mockMvc.perform(get("/api/financeiro/contas-bancarias"))
                 .andExpect(status().isOk())

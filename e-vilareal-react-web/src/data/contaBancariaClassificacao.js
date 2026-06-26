@@ -41,6 +41,9 @@ export function buildClassificacaoContasPorNumero(contasApi) {
       temExtrato: c?.temExtrato ?? CLASSIFICACAO_PADRAO.temExtrato,
       bancoNome: c?.bancoNome ?? null,
       ativo: c?.ativo ?? true,
+      ofxBankId: c?.ofxBankId ?? null,
+      ofxAgencia: c?.ofxAgencia ?? null,
+      ofxConta: c?.ofxConta ?? null,
     };
   }
   return map;

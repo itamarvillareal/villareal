@@ -15,5 +15,8 @@ public record ContaBancariaResponse(
         String bancoNome,
         String tipo,
         boolean temExtrato,
-        boolean ativo) {
+        boolean ativo,
+        String ofxBankId,
+        String ofxAgencia,
+        String ofxConta) {
 }

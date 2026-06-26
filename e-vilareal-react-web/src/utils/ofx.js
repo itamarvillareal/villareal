@@ -673,6 +673,22 @@ export function montarDescricoesOfxStmtrn({ name, memo, trnType }) {
   return { descricao, descricaoDetalhada };
 }
 
+/**
+ * Identificação da conta no arquivo OFX (tags BANKACCTFROM: BANKID, BRANCHID, ACCTID).
+ * @returns {{ bankId: string, agencia: string, conta: string, acctType: string } | null}
+ */
+export function parseOfxContaBancaria(ofxText) {
+  const txt = String(ofxText ?? '');
+  const blockMatch = txt.match(/<BANKACCTFROM>[\s\S]*?<\/BANKACCTFROM>/i);
+  const block = blockMatch ? blockMatch[0] : txt;
+  const bankId = getTagValue(block, 'BANKID') || getTagValue(txt, 'FID');
+  const agencia = getTagValue(block, 'BRANCHID');
+  const conta = getTagValue(block, 'ACCTID');
+  const acctType = getTagValue(block, 'ACCTTYPE');
+  if (!bankId && !agencia && !conta) return null;
+  return { bankId, agencia, conta, acctType };
+}
+
 export function parseOfxToExtrato(ofxText) {
   const txt = String(ofxText ?? '');
 

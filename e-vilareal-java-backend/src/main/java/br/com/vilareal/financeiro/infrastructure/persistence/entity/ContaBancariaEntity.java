@@ -31,6 +31,18 @@ public class ContaBancariaEntity {
     @Column(name = "banco_nome", length = 120)
     private String bancoNome;
 
+    /** Código FID/BANKID do OFX (ex.: 756 = Sicoob). */
+    @Column(name = "ofx_bank_id", length = 10)
+    private String ofxBankId;
+
+    /** Agência conforme tag BRANCHID do OFX. */
+    @Column(name = "ofx_agencia", length = 20)
+    private String ofxAgencia;
+
+    /** Conta conforme tag ACCTID do OFX. */
+    @Column(name = "ofx_conta", length = 30)
+    private String ofxConta;
+
     /** REAL (com extrato) | MANUAL (lançamentos manuais) | VIRTUAL (repasse interno 900). */
     @Column(nullable = false, length = 20)
     private String tipo;

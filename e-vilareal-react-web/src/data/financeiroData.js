@@ -100,6 +100,7 @@ const BANCO_TO_NUMERO = {
   'LANÇ EM DINHEIRO': 17, 'LANÇ MANUAIS (2)': 18,
   'BTG': 21, 'ITI': 22, 'Itaú Empresas': 23,
   'BTG Banking': 24, 'BTG (2)': 25, 'CORA': 26, 'BTG JA': 27, 'BTG RACHEL': 28, 'Sicoob VRV': 29,
+  'Sicoob JA': 31,
   'REPASSE INTERNO': 900,
 };
 
@@ -108,6 +109,7 @@ export const ORDEM_EXIBICAO_BANCOS = [
   'Itaú',
   'CORA',
   'Sicoob VRV',
+  'Sicoob JA',
   'CEF',
   'BTG',
   'BTG Banking',

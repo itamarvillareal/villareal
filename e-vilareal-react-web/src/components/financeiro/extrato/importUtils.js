@@ -7,17 +7,19 @@ import {
   arquivoExtratoEhOfx,
   arquivoExtratoEhPdf,
   carregarLancamentosDeExtratoPdf,
-  isInstituicaoExtratoOfxBloqueado,
+  instituicaoAceitaOfx,
   isInstituicaoExtratoPdfImport,
   mensagemFalhaExtratoPdf,
   rotuloInstituicaoExtratoPdf,
 } from '../../../utils/extratoPdfImport.js';
 import {
   analisarLancamentosNovosDedupe,
+  parseOfxContaBancaria,
   parseOfxToExtrato,
   readOfxFileAsText,
   sanitizarLancamentoImportacaoExtrato,
 } from '../../../utils/ofx.js';
+import { validarOfxParaContaDestino } from '../../../utils/ofxContaValidacao.js';
 import {
   aplicarProtecaoDataCorteImportacao,
   aplicarProtecaoDataCorteImportacaoComData,
@@ -36,12 +38,19 @@ export { arquivoExtratoEhOfx, arquivoExtratoEhPdf, isInstituicaoExtratoPdfImport
 /**
  * @param {File} file
  * @param {string} nomeBanco
- * @returns {Promise<{ ok: true, rows: object[], origem: 'OFX'|'PDF', total: number } | { ok: false, message: string }>}
+ * @param {{ bancos?: object[] }} [opcoes]
+ * @returns {Promise<
+ *   | { ok: true, rows: object[], origem: 'OFX'|'PDF', total: number, ofxConta?: object|null }
+ *   | { ok: false, message: string, contaSugerida?: { nome: string, numero: number }, ofxConta?: object|null }
+ * >}
  */
-export async function parseArquivoExtrato(file, nomeBanco) {
+export async function parseArquivoExtrato(file, nomeBanco, opcoes = {}) {
   if (!file) return { ok: false, message: 'Nenhum arquivo selecionado.' };
   const nome = String(nomeBanco ?? '').trim();
   if (!nome) return { ok: false, message: 'Selecione um banco.' };
+
+  const bancos = Array.isArray(opcoes.bancos) ? opcoes.bancos : [];
+  const bancoDestino = bancos.find((b) => b.nome === nome) ?? null;
 
   const pdf = arquivoExtratoEhPdf(file);
   const ofx = arquivoExtratoEhOfx(file);
@@ -72,7 +81,7 @@ export async function parseArquivoExtrato(file, nomeBanco) {
       };
     }
 
-    if (isInstituicaoExtratoOfxBloqueado(nome)) {
+    if (!instituicaoAceitaOfx(nome, bancoDestino)) {
       return {
         ok: false,
         message: `Para ${nome}, use PDF (${rotuloInstituicaoExtratoPdf(nome)}), não OFX.`,
@@ -80,6 +89,17 @@ export async function parseArquivoExtrato(file, nomeBanco) {
     }
 
     const text = await readOfxFileAsText(file);
+    const ofxConta = parseOfxContaBancaria(text);
+    const validacao = validarOfxParaContaDestino(ofxConta, bancoDestino, bancos);
+    if (!validacao.ok) {
+      return {
+        ok: false,
+        message: validacao.message,
+        contaSugerida: validacao.contaSugerida ?? null,
+        ofxConta: validacao.ofxConta ?? ofxConta,
+      };
+    }
+
     const rows = parseOfxToExtrato(text, { nomeBanco: nome });
     if (!rows?.length) {
       return { ok: false, message: 'Arquivo OFX sem lançamentos (<STMTTRN>).' };
@@ -89,6 +109,7 @@ export async function parseArquivoExtrato(file, nomeBanco) {
       rows: rows.map((r) => sanitizarLancamentoImportacaoExtrato({ ...r, origemImportacao: 'OFX' })),
       origem: 'OFX',
       total: rows.length,
+      ofxConta: validacao.ofxConta ?? ofxConta,
     };
   } catch (e) {
     return { ok: false, message: e?.message || String(e) };

@@ -41,7 +41,10 @@ public class ContaBancariaApplicationService {
                         c.getBancoNome(),
                         c.getTipo(),
                         Boolean.TRUE.equals(c.getTemExtrato()),
-                        Boolean.TRUE.equals(c.getAtivo())))
+                        Boolean.TRUE.equals(c.getAtivo()),
+                        c.getOfxBankId(),
+                        c.getOfxAgencia(),
+                        c.getOfxConta()))
                 .toList();
     }
 

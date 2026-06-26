@@ -71,6 +71,9 @@ export function FinanceiroProvider({
           count: contadores[numero] ?? contadores[nome] ?? null,
           tipo: cls.tipo,
           temExtrato: cls.temExtrato,
+          ofxBankId: cls.ofxBankId ?? null,
+          ofxAgencia: cls.ofxAgencia ?? null,
+          ofxConta: cls.ofxConta ?? null,
         };
       })
       .sort(compararOrdemExibicaoBancos);

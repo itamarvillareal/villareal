@@ -38,6 +38,7 @@ export function ExtratoImportModal({
   const [confirmSubstituir, setConfirmSubstituir] = useState(false);
   const [emailBusy, setEmailBusy] = useState(false);
   const [emailResult, setEmailResult] = useState(null);
+  const [contaMismatch, setContaMismatch] = useState(null);
 
   const isCora = useMemo(() => String(bancoNome ?? '').trim().toUpperCase() === 'CORA', [bancoNome]);
 
@@ -86,6 +87,7 @@ export function ExtratoImportModal({
     setBancoNome(resolverBancoInicial());
     setEmailResult(null);
     setEmailBusy(false);
+    setContaMismatch(null);
   }, [open, resolverBancoInicial]);
 
   /** Lista de bancos pode carregar após abrir o modal — preenche banco se ainda vazio. */
@@ -104,22 +106,34 @@ export function ExtratoImportModal({
   }, [onClose]);
 
   const handleFile = (f) => {
-    if (f) setFile(f);
+    if (f) {
+      setFile(f);
+      setContaMismatch(null);
+    }
   };
 
-  const runPreview = async () => {
-    if (!file || !bancoNome) return;
+  const runPreview = async (nomeDestino = bancoNome) => {
+    if (!file || !nomeDestino) return;
     setBusy(true);
-    const parsed = await parseArquivoExtrato(file, bancoNome);
+    setContaMismatch(null);
+    const parsed = await parseArquivoExtrato(file, nomeDestino, { bancos });
     if (!parsed.ok) {
       setBusy(false);
-      toast.error(parsed.message);
+      if (parsed.contaSugerida) {
+        setContaMismatch(parsed);
+      } else {
+        toast.error(parsed.message);
+      }
       return;
     }
+    if (nomeDestino !== bancoNome) {
+      setBancoNome(nomeDestino);
+    }
+    const numeroDestino = bancos.find((b) => b.nome === nomeDestino)?.numero ?? null;
     let resumoMesclar = null;
-    if (modo === 'mesclar' && featureFlags.useApiFinanceiro && numeroBanco != null) {
+    if (modo === 'mesclar' && featureFlags.useApiFinanceiro && numeroDestino != null) {
       try {
-        resumoMesclar = await resumirNovosImportacaoMesclar(parsed.rows, numeroBanco, undefined, parsed.origem);
+        resumoMesclar = await resumirNovosImportacaoMesclar(parsed.rows, numeroDestino, undefined, parsed.origem);
       } catch {
         resumoMesclar = null;
       }
@@ -268,6 +282,16 @@ export function ExtratoImportModal({
               </div>
             ) : step === 'preview' && preview ? (
               <div className="text-sm text-slate-700 dark:text-slate-200 space-y-2">
+                {preview.ofxConta?.bankId ? (
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Conta no arquivo OFX:{' '}
+                    <strong>
+                      {[preview.ofxConta.bankId, preview.ofxConta.agencia, preview.ofxConta.conta]
+                        .filter(Boolean)
+                        .join(' / ')}
+                    </strong>
+                  </p>
+                ) : null}
                 <p>
                   <strong>{preview.total.toLocaleString('pt-BR')}</strong> lançamentos no arquivo ({preview.origem}
                   ).
@@ -370,8 +394,23 @@ export function ExtratoImportModal({
                   </p>
                   <p className="text-xs text-slate-500 mt-1">ou clique para selecionar</p>
                   <p className="text-[11px] text-slate-400 mt-3">
-                    Formatos: .ofx (bancos em geral, Sicoob VRV) · .pdf (BTG, Bradesco, Sicoob, 99 Pay)
+                    Formatos: .ofx (Sicoob VRV/JA e demais) · .pdf (BTG, Bradesco, Sicoob, 99 Pay)
                   </p>
+                  {contaMismatch ? (
+                    <div className="mt-3 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-left text-xs text-amber-950 dark:text-amber-100">
+                      <p>{contaMismatch.message}</p>
+                      {contaMismatch.contaSugerida ? (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void runPreview(contaMismatch.contaSugerida.nome)}
+                          className="mt-2 inline-flex items-center rounded-md bg-amber-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                        >
+                          Importar em {contaMismatch.contaSugerida.nome}
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {file ? (
                     <p className="mt-2 text-xs font-medium text-blue-700 dark:text-blue-300">{file.name}</p>
                   ) : null}

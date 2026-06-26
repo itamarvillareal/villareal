@@ -20,6 +20,11 @@ export {
   isInstituicaoSicoobExtratoPdf,
 };
 
+/** Conta «Sicoob VRV» ou «Sicoob JA» — aceita PDF (SISBR) e OFX (internet banking). */
+export function isInstituicaoSicoobOfxMoney(nome) {
+  return /^(Sicoob\s*VRV|Sicoob\s*JA)$/i.test(String(nome ?? '').trim());
+}
+
 /** Conta «Sicoob VRV» — aceita PDF (SISBR) e OFX (exportação internet banking). */
 export function isInstituicaoSicoobVrv(nome) {
   return /^Sicoob\s*VRV$/i.test(String(nome ?? '').trim());
@@ -37,13 +42,26 @@ export function isInstituicaoExtratoPdfImport(nome) {
 
 /** Instituições que rejeitam OFX (Sicoob VRV aceita PDF e OFX). */
 export function isInstituicaoExtratoOfxBloqueado(nome) {
-  if (isInstituicaoSicoobVrv(nome)) return false;
+  if (isInstituicaoSicoobOfxMoney(nome)) return false;
   return isInstituicaoExtratoPdfImport(nome);
+}
+
+/**
+ * Aceita importação OFX quando a conta tem cadastro OFX ou a instituição já permite OFX.
+ * @param {string} nome
+ * @param {{ ofxBankId?: string|null, ofxConta?: string|null }|null} [banco]
+ */
+export function instituicaoAceitaOfx(nome, banco = null) {
+  const bankId = String(banco?.ofxBankId ?? '').trim();
+  const conta = String(banco?.ofxConta ?? '').trim();
+  if (bankId && conta) return true;
+  if (isInstituicaoSicoobOfxMoney(nome)) return true;
+  return !isInstituicaoExtratoOfxBloqueado(nome);
 }
 
 /** Texto curto dos formatos aceitos no importador, para tooltips e mensagens. */
 export function rotuloFormatosExtratoImport(nome) {
-  if (isInstituicaoSicoobVrv(nome)) {
+  if (isInstituicaoSicoobOfxMoney(nome)) {
     return 'PDF (SISBR) ou OFX (internet banking Sicoob)';
   }
   if (isInstituicaoExtratoPdfImport(nome)) {
