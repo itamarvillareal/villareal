@@ -224,7 +224,6 @@ class QualificacaoPessoaUtilTest {
                 null,
                 null,
                 null,
-                null,
                 "54.028.106/0001-22",
                 "Avenida São Paulo",
                 "1",
