@@ -283,6 +283,7 @@ public class DocumentoReformatarService {
         boolean temFecho = !parseado.fecho().isEmpty();
         String localData = DocumentoLocalDataResolver.resolver(cidadeEstado, dataIso, parseado.localData(), pdfService);
         List<ParagrafoDocumento> fecho = filtrarFechoSemLocalData(parseado.fecho(), localData);
+        String nomePecaTemplate = nomePecaParaTemplate(parseado);
 
         return new DocumentoRenderContext(
                 enderecamento,
@@ -290,7 +291,7 @@ public class DocumentoReformatarService {
                 cidade,
                 data,
                 true,
-                parseado.nomePeca(),
+                nomePecaTemplate,
                 null,
                 List.of(),
                 List.of(),
@@ -311,6 +312,15 @@ public class DocumentoReformatarService {
             return null;
         }
         return valor.trim().equalsIgnoreCase(placeholderPadrao.trim()) ? null : valor.trim();
+    }
+
+    private static String nomePecaParaTemplate(DocumentoParseado parseado) {
+        if (!StringUtils.hasText(parseado.nomePeca())) {
+            return null;
+        }
+        boolean noPreambulo =
+                parseado.preambulo().stream().anyMatch(p -> p.tipo() == TipoParagrafo.NOME_PECA);
+        return noPreambulo ? null : parseado.nomePeca();
     }
 
     private static List<ParagrafoDocumento> filtrarFechoSemLocalData(List<ParagrafoDocumento> fecho, String localDataFinal) {

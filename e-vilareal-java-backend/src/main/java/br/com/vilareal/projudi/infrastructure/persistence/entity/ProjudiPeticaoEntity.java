@@ -39,6 +39,9 @@ public class ProjudiPeticaoEntity {
     @Column(name = "protocolo_etapa", length = 160)
     private String protocoloEtapa;
 
+    @Column(name = "protocolo_agendado_para")
+    private Instant protocoloAgendadoPara;
+
     @Column(name = "protocolado_em")
     private Instant protocoladoEm;
 

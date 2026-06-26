@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -63,6 +64,18 @@ public class ApiExceptionHandler {
     @ExceptionHandler(BusinessRuleException.class)
     public ResponseEntity<Map<String, Object>> rule(BusinessRuleException ex, HttpServletRequest req) {
         return body(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage(), req);
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, Object>> dataIntegrity(DataIntegrityViolationException ex, HttpServletRequest req) {
+        if (violacaoUkImovelClienteNumeroPlanilha(ex)) {
+            return body(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Número da planilha já vinculado a outro imóvel deste cliente.",
+                    req);
+        }
+        log.warn("Violação de integridade {} — {}", req.getRequestURI(), ex.getMostSpecificCause());
+        return body(HttpStatus.UNPROCESSABLE_ENTITY, "Operação rejeitada: registro duplicado ou referência inválida.", req);
     }
 
     @ExceptionHandler(InvalidAssigneeException.class)
@@ -128,6 +141,17 @@ public class ApiExceptionHandler {
             }
         }
         return body(HttpStatus.INTERNAL_SERVER_ERROR, message, req);
+    }
+
+    private static boolean violacaoUkImovelClienteNumeroPlanilha(DataIntegrityViolationException ex) {
+        String msg = ex.getMostSpecificCause() != null
+                ? ex.getMostSpecificCause().getMessage()
+                : ex.getMessage();
+        if (msg == null) {
+            return false;
+        }
+        String lower = msg.toLowerCase();
+        return lower.contains("uk_imovel_cliente_numero_planilha");
     }
 
     private static ResponseEntity<Map<String, Object>> body(HttpStatus status, String message, HttpServletRequest req) {

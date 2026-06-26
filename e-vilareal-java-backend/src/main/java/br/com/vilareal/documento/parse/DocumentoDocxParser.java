@@ -85,7 +85,16 @@ public class DocumentoDocxParser {
                 default -> { /* fall through */ }
             }
 
-            if (estado == Estado.RODAPE) {
+            if ((estado == Estado.FECHO || estado == Estado.RODAPE)
+                    && DocumentoParseadoHeuristics.pareceReinicioCorpo(props.texto(), props.center(), props.bold())) {
+                fecho.clear();
+                localData = null;
+                nomeAdvogado = null;
+                oab = null;
+                removerFechoPrematuroDoPreambulo(preambulo);
+                estado = Estado.CORPO;
+                secaoAtual = null;
+            } else if (estado == Estado.RODAPE) {
                 if (DocumentoParseadoHeuristics.ehAssinatura(props.texto(), props.center(), props.bold())) {
                     if (props.texto().toUpperCase(Locale.ROOT).contains("OAB")) {
                         oab = props.texto().trim();
@@ -116,11 +125,13 @@ public class DocumentoDocxParser {
             }
 
             if (DocumentoParseadoHeuristics.ehFechoLinha(props.texto())) {
-                finalizarSecao(secoes, secaoAtual);
-                secaoAtual = null;
-                estado = Estado.FECHO;
-                fecho.add(criarParagrafo(props, TipoParagrafo.FECHO));
-                continue;
+                if (corpoMinimoAtingido(preambulo, secoes, secaoAtual)) {
+                    finalizarSecao(secoes, secaoAtual);
+                    secaoAtual = null;
+                    estado = Estado.FECHO;
+                    fecho.add(criarParagrafo(props, TipoParagrafo.FECHO));
+                    continue;
+                }
             }
 
             if (estado == Estado.PRE_CORPO) {
@@ -135,13 +146,17 @@ public class DocumentoDocxParser {
                     }
                 }
                 if (DocumentoParseadoHeuristics.ehTituloPrincipal(props.texto(), props.center(), props.bold())) {
+                    if (secoes.isEmpty() && secaoAtual == null) {
+                        removerFechoPrematuroDoPreambulo(preambulo);
+                    }
                     estado = Estado.CORPO;
                     finalizarSecao(secoes, secaoAtual);
                     secaoAtual = novaSecao(props.texto(), TipoTitulo.PRINCIPAL);
                     continue;
                 }
-                if (DocumentoParseadoHeuristics.ehNomePeca(props.texto(), props.center(), props.bold())) {
+                if (nomePeca == null && DocumentoParseadoHeuristics.ehNomePeca(props.texto(), props.center(), props.bold())) {
                     nomePeca = props.texto().trim();
+                    preambulo.add(criarParagrafo(props, TipoParagrafo.NOME_PECA));
                     continue;
                 }
                 preambulo.add(criarParagrafo(props, TipoParagrafo.CORPO));
@@ -184,6 +199,29 @@ public class DocumentoDocxParser {
                 localData,
                 nomeAdvogado,
                 oab);
+    }
+
+    private static void removerFechoPrematuroDoPreambulo(List<ParagrafoDocumento> preambulo) {
+        preambulo.removeIf(p -> {
+            String t = p.textoPlano();
+            return DocumentoParseadoHeuristics.ehFechoLinha(t)
+                    || DocumentoParseadoHeuristics.ehLocalData(t)
+                    || DocumentoParseadoHeuristics.ehLinhaAssinaturaOuOab(t);
+        });
+    }
+
+    private static boolean corpoMinimoAtingido(
+            List<ParagrafoDocumento> preambulo,
+            List<SecaoDocumento> secoes,
+            SecaoDocumento secaoAtual) {
+        int n = preambulo.size();
+        for (SecaoDocumento s : secoes) {
+            n += s.paragrafos().size();
+        }
+        if (secaoAtual != null) {
+            n += secaoAtual.paragrafos().size();
+        }
+        return n >= 8;
     }
 
     private static void finalizarSecao(List<SecaoDocumento> secoes, SecaoDocumento secaoAtual) {

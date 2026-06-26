@@ -212,4 +212,37 @@ final class DocumentoParseadoHeuristics {
         String t = texto.toUpperCase(Locale.ROOT);
         return (center || bold) && (t.contains("OAB") || t.contains("DR.") || t.contains("ITAMAR"));
     }
+
+    static boolean ehLinhaAssinaturaOuOab(String texto) {
+        if (!StringUtils.hasText(texto)) {
+            return false;
+        }
+        String t = texto.trim().toUpperCase(Locale.ROOT);
+        return t.contains("OAB/") || t.contains("OAB ");
+    }
+
+    /** Corpo substancial após fecho/assinatura intermediários (modelo Word com quebra de página). */
+    static boolean pareceReinicioCorpo(String texto, boolean center, boolean bold) {
+        if (!StringUtils.hasText(texto) || texto.trim().length() < 15) {
+            return false;
+        }
+        String t = texto.trim();
+        if (ehAssinatura(t, center, bold) || ehLocalData(t) || ehFechoLinha(t)) {
+            return false;
+        }
+        if (ehNomePeca(t, center, bold) || ehTituloPrincipal(t, center, bold) || ehTituloPrincipalTexto(t)) {
+            return true;
+        }
+        if (t.length() >= 80) {
+            return true;
+        }
+        String u = t.toUpperCase(Locale.ROOT);
+        return u.contains("RAZÕES")
+                || u.contains("RAZOES")
+                || u.contains("COLENDA")
+                || u.contains("EGRÉGIO")
+                || u.contains("EGREGIO")
+                || u.contains("EMÉRITOS")
+                || u.contains("EMERITOS");
+    }
 }

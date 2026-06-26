@@ -192,6 +192,7 @@ import {
   carregarImovelCadastroPorNumeroPlanilha,
   vincularProcessoAoNumeroImovel,
 } from '../repositories/imoveisRepository.js';
+import { ModalBuscaImovel } from './imoveis/ModalBuscaImovel.jsx';
 import {
   buildRouterStateChaveClienteProcesso,
   extrairIntentNavegacaoProcessos,
@@ -632,6 +633,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [imovelId, setImovelId] = useState('');
   const [imovelManual, setImovelManual] = useState(false);
   const [imovelVinculando, setImovelVinculando] = useState(false);
+  const [modalBuscaImovelAberto, setModalBuscaImovelAberto] = useState(false);
   const [imovelVinculoMsg, setImovelVinculoMsg] = useState('');
   /** Evita sobrescrever o texto da unidade quando o vínculo mock mudar, após edição manual. */
   const [unidadeEnderecoManual, setUnidadeEnderecoManual] = useState(false);
@@ -728,6 +730,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   );
 
   useCloseOnEscape(driveExplorerAberto, () => setDriveExplorerAberto(false));
+  useCloseOnEscape(modalBuscaImovelAberto, () => setModalBuscaImovelAberto(false));
   useCloseOnEscape(!!clientesEmbed, () => setClientesEmbed(null));
   useCloseOnEscape(modalAgendaAudiencia.aberto, fecharModalAgendaAudiencia);
   useCloseOnEscape(!!modalVinculoPartes, () => setModalVinculoPartes(null));
@@ -739,6 +742,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   useCloseOnEscape(
     isEmbedded &&
       !driveExplorerAberto &&
+      !modalBuscaImovelAberto &&
       !pessoaEmbed &&
       !clientesEmbed &&
       !modalAgendaAudiencia.aberto &&
@@ -1468,8 +1472,11 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vinculoImovelMock]);
 
-  async function handleImovelIdBlur() {
-    const np = Math.trunc(Number(String(imovelId ?? '').replace(/\D/g, '')));
+  async function handleImovelIdBlur(npOverride) {
+    const np =
+      npOverride != null
+        ? Math.trunc(Number(npOverride))
+        : Math.trunc(Number(String(imovelId ?? '').replace(/\D/g, '')));
     const procNum = Math.trunc(Number(normalizarProcesso(processo)));
     if (!featureFlags.useApiImoveis || !String(codigoCliente ?? '').trim() || procNum < 1 || np < 1) {
       return;
@@ -1494,6 +1501,22 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     } finally {
       setImovelVinculando(false);
     }
+  }
+
+  async function handleSelecionarImovelBusca(im) {
+    const np = im?.numeroPlanilha != null ? Math.trunc(Number(im.numeroPlanilha)) : NaN;
+    if (!Number.isFinite(np) || np < 1) {
+      setImovelVinculoMsg('Este imóvel não tem nº da planilha (col. A). Escolha outro ou corrija o cadastro.');
+      return;
+    }
+    setImovelManual(true);
+    setImovelId(String(np));
+    const un = String(im?.unidade ?? '').trim();
+    if (un && !unidadeEnderecoManual && !String(unidadeEndereco ?? '').trim()) {
+      setUnidadeEndereco(un);
+    }
+    setModalBuscaImovelAberto(false);
+    await handleImovelIdBlur(np);
   }
 
   function handleAbrirImovel() {
@@ -4543,7 +4566,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
             {/* Imóvel / agenda / cálculos — barra operacional */}
             <section className="rounded-lg border border-sky-200/80 bg-gradient-to-r from-sky-50/90 via-white to-cyan-50/50 px-2.5 py-2 mt-1.5 shadow-sm">
               <p className="w-full text-[10px] text-sky-900/80 leading-snug mb-1.5">
-                <strong className="text-sky-950">Imóveis:</strong> informe o nº sequencial do cadastro Imóveis (col. A). Ao sair do campo, o par <strong>Código + Proc.</strong> atual é vinculado na API e passa a aparecer em <strong>Abrir Proc.</strong> na ficha do imóvel. A <strong>Unidade</strong> acima preenche-se se estiver vazia.
+                <strong className="text-sky-950">Imóveis:</strong> informe o nº sequencial do cadastro Imóveis (col. A) ou <strong>duplo clique</strong> no campo para buscar. Ao sair do campo, o par <strong>Código + Proc.</strong> atual é vinculado na API e passa a aparecer em <strong>Abrir Proc.</strong> na ficha do imóvel. A <strong>Unidade</strong> acima preenche-se se estiver vazia.
               </p>
               <div className="flex flex-wrap items-end gap-2">
               <button
@@ -4557,7 +4580,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
               <Field
                 label="Imóvel"
                 className="w-24"
-                title="Número do imóvel na tela Imóveis — mesma base de dados (cadastro central)."
+                title="Número do imóvel na tela Imóveis (col. A) — duplo clique para buscar no cadastro."
               >
                 <input
                   type="number"
@@ -4568,6 +4591,10 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     setImovelManual(true);
                   }}
                   onBlur={() => void handleImovelIdBlur()}
+                  onDoubleClick={() => {
+                    if (camposBloqueados) return;
+                    setModalBuscaImovelAberto(true);
+                  }}
                   className={clsCampo}
                   placeholder="(vazio)"
                   disabled={imovelVinculando}
@@ -6235,6 +6262,12 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
           />
         </Suspense>
       ) : null}
+
+      <ModalBuscaImovel
+        open={modalBuscaImovelAberto}
+        onClose={() => setModalBuscaImovelAberto(false)}
+        onSelecionar={(im) => void handleSelecionarImovelBusca(im)}
+      />
     </div>
     </div>
   );

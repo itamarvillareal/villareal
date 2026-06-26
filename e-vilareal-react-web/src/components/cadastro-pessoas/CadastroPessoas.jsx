@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   FileText,
@@ -10,6 +10,7 @@ import {
   FileCheck2,
   ClipboardPaste,
   ClipboardList,
+  FolderOpen,
   Loader2,
   Link2,
   Download,
@@ -60,6 +61,9 @@ import {
   contatosApiParaUi,
 } from '../../repositories/pessoasEnderecosContatosRepository.js';
 import { featureFlags } from '../../config/featureFlags.js';
+import { obterStatusDrive } from '../../repositories/driveRepository.js';
+
+const DriveExplorerLazy = lazy(() => import('../DriveExplorer.jsx'));
 
 let __ultimoAcessoListaPessoas = 0;
 
@@ -212,6 +216,8 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
   const [docProcessando, setDocProcessando] = useState(false);
   const [docErroDetalhe, setDocErroDetalhe] = useState('');
   const [erroComplementar, setErroComplementar] = useState('');
+  const [driveExplorerAberto, setDriveExplorerAberto] = useState(false);
+  const [driveConfigurado, setDriveConfigurado] = useState(false);
   /** Dispara autosave quando complementares/endereços terminam de carregar da API. */
   const [fichaProntaAutosave, setFichaProntaAutosave] = useState(false);
   const inputDocRef = useRef(null);
@@ -451,15 +457,31 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
   );
   useCloseOnEscape(modalQualificacaoAberto, () => setModalQualificacaoAberto(false));
   useCloseOnEscape(!!modalCpfDuplicado, () => setModalCpfDuplicado(null));
+  useCloseOnEscape(driveExplorerAberto, () => setDriveExplorerAberto(false));
   useCloseOnEscape(
     isEmbedded &&
       !modalEnderecos &&
       !modalContatos &&
       !modalVinculosSistema &&
       !modalQualificacaoAberto &&
-      !modalCpfDuplicado,
+      !modalCpfDuplicado &&
+      !driveExplorerAberto,
     onFecharEmbed,
   );
+
+  useEffect(() => {
+    let cancelado = false;
+    obterStatusDrive()
+      .then((ok) => {
+        if (!cancelado) setDriveConfigurado(ok);
+      })
+      .catch(() => {
+        if (!cancelado) setDriveConfigurado(false);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, []);
 
   const ehPessoaJuridica = useMemo(
     () => normalizarDigitosCpfCnpj(form.cpf).length === 14,
@@ -1748,6 +1770,22 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                           Qualificação
                         </button>
                       ) : null}
+                      {modo === 'editar' && editId != null ? (
+                        <button
+                          type="button"
+                          onClick={() => setDriveExplorerAberto(true)}
+                          disabled={!driveConfigurado}
+                          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-rose-300 bg-rose-50 text-rose-900 text-sm font-medium hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          title={
+                            !driveConfigurado
+                              ? 'Google Drive não configurado no servidor'
+                              : `Documentos da pessoa ${String(editId).padStart(8, '0')} no Google Drive`
+                          }
+                        >
+                          <FolderOpen className="w-4 h-4" aria-hidden />
+                          Arquivos
+                        </button>
+                      ) : null}
                       <input
                         ref={inputDocRef}
                         id="upload-doc-pessoal"
@@ -2682,6 +2720,18 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
         >
           {toastDocumento.mensagem}
         </div>
+      ) : null}
+
+      {driveExplorerAberto && driveConfigurado && editId != null ? (
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4 text-sm text-white">
+              Carregando arquivos do Drive…
+            </div>
+          }
+        >
+          <DriveExplorerLazy pessoaId={Number(editId)} onClose={() => setDriveExplorerAberto(false)} />
+        </Suspense>
       ) : null}
     </div>
   );

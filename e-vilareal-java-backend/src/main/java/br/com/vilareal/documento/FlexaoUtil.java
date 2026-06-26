@@ -37,6 +37,7 @@ public final class FlexaoUtil {
             Map.entry("ele", new String[] {"ele", "ela", "eles", "elas"}),
             Map.entry("do", new String[] {"do", "da", "dos", "das"}),
             Map.entry("pelo", new String[] {"pelo", "pela", "pelos", "pelas"}),
+            Map.entry("ao", new String[] {"ao", "à", "aos", "às"}),
             Map.entry("no", new String[] {"no", "na", "nos", "nas"}),
             Map.entry("executado", new String[] {"executado", "executada", "executados", "executadas"}),
             Map.entry("exequente", new String[] {"exequente", "exequente", "exequentes", "exequentes"}),

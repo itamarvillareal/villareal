@@ -32,6 +32,7 @@ public final class DocumentoParagrafoHtmlUtil {
                     case ENUMERACAO -> "enumeracao";
                     case FECHO -> "fecho";
                     case CITACAO -> "citacao";
+                    case NOME_PECA -> "nome-peca";
                     default -> "corpo";
                 };
         return "<p class=\"" + cls + "\">" + runsToHtml(paragrafo.conteudo()) + "</p>";
@@ -196,6 +197,9 @@ public final class DocumentoParagrafoHtmlUtil {
         }
         if (c.contains("citacao")) {
             return TipoParagrafo.CITACAO;
+        }
+        if (c.contains("nome-peca")) {
+            return TipoParagrafo.NOME_PECA;
         }
         return padrao;
     }

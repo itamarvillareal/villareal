@@ -12,6 +12,10 @@
 <th:block th:replace="~{documentos/fragments-peca :: rodape}"/>
 
 <div class="corpo-documento">
+    <p class="contrato-texto contrato-titulo"
+       th:if="${tituloContrato != null and !#strings.isEmpty(tituloContrato)}"
+       th:text="${tituloContrato}">CONTRATO DE LOCAÇÃO</p>
+
     <p class="contrato-texto contrato-preambulo" th:utext="${preambuloHtml}">
         Pelo presente instrumento particular...
     </p>
@@ -32,12 +36,12 @@
         <tr>
             <td>
                 <div class="linha"></div>
-                <p class="nome" th:text="${nomeLocador}">NOME DO LOCADOR</p>
+                <p class="nome"><strong th:text="${nomeLocador}">NOME DO LOCADOR</strong></p>
                 <p class="rotulo">Locador</p>
             </td>
             <td>
                 <div class="linha"></div>
-                <p class="nome" th:text="${nomeLocatario}">NOME DO LOCATÁRIO</p>
+                <p class="nome"><strong th:text="${nomeLocatario}">NOME DO LOCATÁRIO</strong></p>
                 <p class="rotulo">Locatário</p>
             </td>
         </tr>

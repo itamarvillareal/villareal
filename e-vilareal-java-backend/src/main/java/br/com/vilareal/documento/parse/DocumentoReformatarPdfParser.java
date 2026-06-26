@@ -104,6 +104,7 @@ public class DocumentoReformatarPdfParser {
 
             if (nomePeca == null && DocumentoParseadoHeuristics.ehNomePecaTexto(linha)) {
                 nomePeca = linha;
+                preambulo.add(paragrafoSimples(linha, TipoParagrafo.NOME_PECA));
                 continue;
             }
 

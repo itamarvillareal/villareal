@@ -1032,6 +1032,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
       <ModalGerarContratoLocacao
         open={showModalContratoLocacao}
         onClose={() => setShowModalContratoLocacao(false)}
+        imovelIdApi={_apiImovelId}
         contratoLocacaoId={_apiContratoId}
         codigoCliente={codigo}
         numeroInterno={proc}

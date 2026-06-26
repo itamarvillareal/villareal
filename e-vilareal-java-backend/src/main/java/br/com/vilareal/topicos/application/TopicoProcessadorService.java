@@ -1,6 +1,8 @@
 package br.com.vilareal.topicos.application;
 
 import br.com.vilareal.common.exception.ResourceNotFoundException;
+import br.com.vilareal.documento.FlexaoUtil;
+import br.com.vilareal.documento.LocacaoTemplateLegadoSupport;
 import br.com.vilareal.documento.QualificacaoPessoaUtil;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
@@ -32,13 +34,15 @@ public class TopicoProcessadorService {
     private static final Pattern SEPARADOR_BLOCO = Pattern.compile("8\\*&\\*@&#\\(\\*@&93837942");
     private static final Pattern TAG_FORMATACAO = Pattern.compile("\\(\"([^\"]+)\"\\)");
     private static final Pattern PLACEHOLDER_NOME =
-            Pattern.compile("Nome\\(\"(Autor|Reu)\",\"all\"\\)", Pattern.CASE_INSENSITIVE);
+            Pattern.compile("Nome\\(\"(Autor|Reu|Fiador)\",\"all\"\\)", Pattern.CASE_INSENSITIVE);
     private static final Pattern PLACEHOLDER_QUALIFICA = Pattern.compile(
-            "Qualifica_Sem_Nome_\\(\"(Autor|Reu)\",\"all\"\\)", Pattern.CASE_INSENSITIVE);
+            "Qualifica_Sem_Nome_?\\(\"(Autor|Reu|Fiador)\",\"all\"\\)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern PLACEHOLDER_QUALIFICA_FIADOR =
+            Pattern.compile("Qualifica\\(\"Fiador\",\"all\",[^)]+\\)", Pattern.CASE_INSENSITIVE);
     private static final Pattern PLACEHOLDER_ADEQUA =
-            Pattern.compile("(?:Ucase|Lcase|Propercase)?\\(Adequa\\(\"@\",\"(Autor|Reu)\",\"(.+?)\"\\)\\)", Pattern.CASE_INSENSITIVE);
+            Pattern.compile("(?:Ucase|Lcase|Propercase)?\\(Adequa\\(\"@\",\"(Autor|Reu|Fiador)\",\"(.+?)\"\\)\\)", Pattern.CASE_INSENSITIVE);
     private static final Pattern PLACEHOLDER_ADEQUA_SIMPLES =
-            Pattern.compile("Adequa\\(\"@\",\"(Autor|Reu)\",\"(.+?)\"\\)", Pattern.CASE_INSENSITIVE);
+            Pattern.compile("Adequa\\(\"@\",\"(Autor|Reu|Fiador)\",\"(.+?)\"\\)", Pattern.CASE_INSENSITIVE);
     private static final Pattern PLACEHOLDER_EXTENSO =
             Pattern.compile("Extensoreais\\(\"(.+?)\"\\)", Pattern.CASE_INSENSITIVE);
     private static final Pattern PLACEHOLDER_DATA =
@@ -120,19 +124,23 @@ public class TopicoProcessadorService {
     }
 
     ResultadoProcessamento processarTemplate(String template, Long processoId, Map<String, String> parametros) {
-        return processarTemplateComContexto(template, carregarPartes(processoId), parametros);
+        return processarTemplateComContexto(template, carregarPartes(processoId), parametros, false);
     }
 
     /** Locador = Autor; locatário = Réu (mesma convenção dos modelos legados de locação). */
     @Transactional(readOnly = true)
     public ResultadoProcessamento processarTemplateLocacao(
             String template, Long locadorPessoaId, Long locatarioPessoaId, Map<String, String> parametros) {
+        Map<String, String> params = parametros != null ? parametros : Map.of();
         return processarTemplateComContexto(
-                template, carregarPartesPorPessoasLocacao(locadorPessoaId, locatarioPessoaId), parametros);
+                template,
+                carregarPartesPorPessoasLocacao(locadorPessoaId, locatarioPessoaId),
+                params,
+                true);
     }
 
     private ResultadoProcessamento processarTemplateComContexto(
-            String template, ContextoPartes ctx, Map<String, String> parametros) {
+            String template, ContextoPartes ctx, Map<String, String> parametros, boolean locacao) {
         if (!StringUtils.hasText(template)) {
             return new ResultadoProcessamento("", List.of());
         }
@@ -141,15 +149,22 @@ public class TopicoProcessadorService {
 
         Map<String, String> params = parametros != null ? parametros : Map.of();
 
+        if (locacao) {
+            texto = LocacaoTemplateLegadoSupport.preprocessar(texto, params);
+        }
+
+        texto = substituirPadrao(texto, PLACEHOLDER_QUALIFICA_FIADOR, m -> "");
         texto = substituirPadrao(texto, PLACEHOLDER_NOME, m -> resolverNome(ctx, m.group(1)));
         texto = substituirPadrao(texto, PLACEHOLDER_QUALIFICA, m -> resolverQualificacao(ctx, m.group(1)));
         texto = substituirPadrao(texto, PLACEHOLDER_ADEQUA, m -> adequar(ctx, m.group(1), m.group(2), m.group(0)));
         texto = substituirPadrao(texto, PLACEHOLDER_ADEQUA_SIMPLES, m -> adequar(ctx, m.group(1), m.group(2), m.group(0)));
         texto = substituirPadrao(texto, PLACEHOLDER_EXTENSO, m -> valorPorExtenso(m.group(1), params));
         texto = substituirPadrao(texto, PLACEHOLDER_DATA, m -> dataPorExtenso(m.group(1), params));
-        texto = substituirPadrao(texto, PLACEHOLDER_UCASE, m -> m.group(1).trim().toUpperCase(Locale.ROOT));
-        texto = substituirPadrao(texto, PLACEHOLDER_LCASE, m -> m.group(1).trim().toLowerCase(Locale.ROOT));
-        texto = substituirPadrao(texto, PLACEHOLDER_PROPER, m -> properCase(m.group(1).trim()));
+        texto = aplicarCaixasLegado(texto);
+
+        if (locacao) {
+            texto = LocacaoTemplateLegadoSupport.limparArtefatosLegado(texto);
+        }
 
         List<String> naoResolvidos = new ArrayList<>();
         Matcher restante = PLACEHOLDER_GENERICO.matcher(texto);
@@ -252,14 +267,10 @@ public class TopicoProcessadorService {
         String resultado;
         if (opcoes != null) {
             resultado = plural ? (feminino ? opcoes[3] : opcoes[2]) : (feminino ? opcoes[1] : opcoes[0]);
-        } else if (plural) {
-            resultado = feminino && palavraBase.endsWith("or") ? palavraBase + "as" : palavraBase + "s";
-        } else if (feminino && palavraBase.endsWith("or")) {
-            resultado = palavraBase.substring(0, palavraBase.length() - 2) + "ora";
-        } else if (feminino && palavraBase.endsWith("o")) {
-            resultado = palavraBase.substring(0, palavraBase.length() - 1) + "a";
         } else {
-            resultado = palavraBase;
+            FlexaoUtil.Genero genero = feminino ? FlexaoUtil.Genero.FEMININO : FlexaoUtil.Genero.MASCULINO;
+            FlexaoUtil.Numero numero = plural ? FlexaoUtil.Numero.PLURAL : FlexaoUtil.Numero.SINGULAR;
+            resultado = FlexaoUtil.adequar(palavraBase, genero, numero);
         }
         String expr = expressaoOriginal.toLowerCase(Locale.ROOT);
         if (expr.startsWith("ucase")) {
@@ -293,7 +304,27 @@ public class TopicoProcessadorService {
     }
 
     private static List<ProcessoParteEntity> partesPorReferencia(ContextoPartes ctx, String poloRef) {
-        return "reu".equalsIgnoreCase(poloRef) ? ctx.reus() : ctx.autores();
+        if ("reu".equalsIgnoreCase(poloRef)) {
+            return ctx.reus();
+        }
+        if ("fiador".equalsIgnoreCase(poloRef)) {
+            return List.of();
+        }
+        return ctx.autores();
+    }
+
+    private static String aplicarCaixasLegado(String texto) {
+        String atual = texto;
+        for (int i = 0; i < 6; i++) {
+            String proximo = substituirPadrao(atual, PLACEHOLDER_UCASE, m -> m.group(1).trim().toUpperCase(Locale.ROOT));
+            proximo = substituirPadrao(proximo, PLACEHOLDER_LCASE, m -> m.group(1).trim().toLowerCase(Locale.ROOT));
+            proximo = substituirPadrao(proximo, PLACEHOLDER_PROPER, m -> properCase(m.group(1).trim()));
+            if (proximo.equals(atual)) {
+                return proximo;
+            }
+            atual = proximo;
+        }
+        return atual;
     }
 
     private static String nomeParte(ProcessoParteEntity parte) {

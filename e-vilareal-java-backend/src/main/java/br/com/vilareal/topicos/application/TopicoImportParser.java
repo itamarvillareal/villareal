@@ -94,6 +94,9 @@ final class TopicoImportParser {
         }
         String tag = m.group(1).replace('\n', ' ').replace('\r', ' ').trim().toUpperCase(Locale.ROOT);
         tag = tag.replaceAll("\\s+", " ");
+        if (tag.contains("PARAG") && (tag.contains("CLAUSULA") || tag.contains("CLÁUSULA"))) {
+            return "PARAG_CLAUSULA";
+        }
         if (tag.contains("TÍTULO") && tag.contains("CLAUSULA")
                 || tag.contains("TITULO") && tag.contains("CLAUSULA")
                 || tag.contains("TÍTULO") && tag.contains("CLÁUSULA")

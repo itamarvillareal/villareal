@@ -54,6 +54,7 @@ public class ProjudiPeticaoProtocoloLoteService {
     private final ProjudiOrquestradorGate orquestradorGate;
     private final GoogleDriveService googleDriveService;
     private final DocumentoPastaAssinarService documentoPastaAssinarService;
+    private final ProjudiPeticaoProtocoloEmailService protocoloEmailService;
     private final Path storeDir;
 
     /**
@@ -75,6 +76,7 @@ public class ProjudiPeticaoProtocoloLoteService {
             ProjudiOrquestradorGate orquestradorGate,
             GoogleDriveService googleDriveService,
             DocumentoPastaAssinarService documentoPastaAssinarService,
+            ProjudiPeticaoProtocoloEmailService protocoloEmailService,
             @Value("${projudi.peticao.store-dir:/Users/itamar/projudi-peticoes}") String storeDirConfig) {
         this.peticaoRepository = peticaoRepository;
         this.registroService = registroService;
@@ -83,6 +85,7 @@ public class ProjudiPeticaoProtocoloLoteService {
         this.orquestradorGate = orquestradorGate;
         this.googleDriveService = googleDriveService;
         this.documentoPastaAssinarService = documentoPastaAssinarService;
+        this.protocoloEmailService = protocoloEmailService;
         this.storeDir = Path.of(storeDirConfig.trim());
     }
 
@@ -511,6 +514,9 @@ public class ProjudiPeticaoProtocoloLoteService {
                 referencia.getNumeroProcesso(),
                 arquivosP7s.size());
 
+        protocoloEmailService.notificarInicioProtocolo(
+                referencia.getNumeroProcesso(), List.copyOf(claimadas), arquivosP7s.size());
+
         List<Long> idsGrupo = List.copyOf(claimadas);
         ResultadoProtocoloPeticao protocolo;
         try {
@@ -531,6 +537,8 @@ public class ProjudiPeticaoProtocoloLoteService {
                 resultados.put(
                         peticaoId, new ResultadoItemLote(peticaoId, referencia.getNumeroProcesso(), RESULTADO_ERRO, msg));
             }
+            protocoloEmailService.notificarFimProtocolo(
+                    referencia.getNumeroProcesso(), List.copyOf(claimadas), false, msg);
             return resultados;
         }
 
@@ -542,6 +550,11 @@ public class ProjudiPeticaoProtocoloLoteService {
                         new ResultadoItemLote(
                                 peticaoId, referencia.getNumeroProcesso(), RESULTADO_PROTOCOLADA, protocolo.mensagem()));
             }
+            protocoloEmailService.notificarFimProtocolo(
+                    referencia.getNumeroProcesso(),
+                    List.copyOf(claimadas),
+                    true,
+                    protocolo.mensagem());
             finalizarProcessoAposProtocolo(referencia.getNumeroProcesso());
             return resultados;
         }
@@ -554,6 +567,8 @@ public class ProjudiPeticaoProtocoloLoteService {
             resultados.put(
                     peticaoId, new ResultadoItemLote(peticaoId, referencia.getNumeroProcesso(), RESULTADO_ERRO, msg));
         }
+        protocoloEmailService.notificarFimProtocolo(
+                referencia.getNumeroProcesso(), List.copyOf(claimadas), false, msg);
         return resultados;
     }
 

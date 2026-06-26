@@ -1,7 +1,11 @@
 package br.com.vilareal.imovel.application;
 
+import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.imovel.api.dto.ImovelResponse;
+import br.com.vilareal.imovel.api.dto.ImovelWriteRequest;
 import br.com.vilareal.imovel.infrastructure.persistence.entity.ImovelEntity;
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.imovel.infrastructure.persistence.repository.ContratoLocacaoRepository;
 import br.com.vilareal.imovel.infrastructure.persistence.repository.ImovelProcessoRepository;
 import br.com.vilareal.imovel.infrastructure.persistence.repository.ImovelRepository;
@@ -18,8 +22,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -71,5 +77,35 @@ class ImovelApplicationServiceNumeroPlanilhaDuplicataTest {
 
         assertThat(ImovelApplicationService.scoreImovelCadastroPlanilha(rico))
                 .isGreaterThan(ImovelApplicationService.scoreImovelCadastroPlanilha(vazio));
+    }
+
+    @Test
+    void atualizarImovel_rejeitaClienteNovoQuandoPlanilhaJaExisteParaOutroRegistro() {
+        ClienteEntity cliente693 = new ClienteEntity();
+        cliente693.setId(693L);
+        PessoaEntity pessoa = new PessoaEntity();
+        pessoa.setId(692L);
+        cliente693.setPessoa(pessoa);
+
+        ImovelEntity canonico = new ImovelEntity();
+        canonico.setId(28L);
+        canonico.setCliente(cliente693);
+        canonico.setNumeroPlanilha(24);
+
+        ImovelEntity fantasma = new ImovelEntity();
+        fantasma.setId(91L);
+        fantasma.setNumeroPlanilha(24);
+
+        when(imovelRepository.findById(91L)).thenReturn(Optional.of(fantasma));
+        when(clienteResolverService.buscarPorId(693L)).thenReturn(cliente693);
+        when(imovelRepository.findByCliente_IdAndNumeroPlanilha(693L, 24)).thenReturn(Optional.of(canonico));
+
+        ImovelWriteRequest req = new ImovelWriteRequest();
+        req.setClienteId(693L);
+        req.setSituacao("OCUPADO");
+
+        assertThatThrownBy(() -> service.atualizarImovel(91L, req))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("já vinculado");
     }
 }

@@ -1,33 +1,9 @@
-import { useEffect, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
+import { HtmlEditor } from './HtmlEditor.jsx';
 import { btnPrimary, btnSecondary } from '../documentosStyles.js';
 
 const corpoUnicoClass =
-  'doc-edicao-preview prose prose-sm max-w-none min-h-[520px] rounded-lg border border-slate-300/90 bg-white px-4 py-5 text-slate-900 shadow-sm transition focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/25 dark:prose-invert dark:border-slate-600 dark:bg-slate-900/60 dark:text-slate-100';
-
-function CorpoUnicoEditable({ html, onChange }) {
-  const ref = useRef(null);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (el && el.innerHTML !== (html || '')) {
-      el.innerHTML = html || '';
-    }
-  }, [html]);
-
-  return (
-    <div
-      ref={ref}
-      role="textbox"
-      aria-multiline="true"
-      aria-label="Documento completo"
-      contentEditable
-      suppressContentEditableWarning
-      onInput={(e) => onChange(e.currentTarget.innerHTML)}
-      className={corpoUnicoClass}
-    />
-  );
-}
+  'doc-edicao-preview prose prose-sm max-w-none min-h-[520px] rounded-b-lg border border-t-0 border-slate-300/90 bg-white px-4 py-5 text-slate-900 shadow-sm transition focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/25 dark:prose-invert dark:border-slate-600 dark:bg-slate-900/60 dark:text-slate-100 [&_mark]:bg-yellow-200';
 
 export function PreviewArquivoDocumento({
   conteudo,
@@ -56,7 +32,8 @@ export function PreviewArquivoDocumento({
             Prévia editável
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Edite o documento completo — cabeçalho, endereçamento e texto — como aparecerá no PDF.
+            Selecione o trecho e use a barra de formatação — alinhamento, fonte, negrito, itálico,
+            sublinhado e cor de fundo — como aparecerá no PDF.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -115,9 +92,13 @@ export function PreviewArquivoDocumento({
 
       <div className="grid lg:grid-cols-2">
         <div className="max-h-[min(85vh,960px)] overflow-y-auto border-b border-slate-200 px-4 py-4 dark:border-slate-700 lg:border-b-0 lg:border-r">
-          <CorpoUnicoEditable
-            html={conteudo.corpoUnico}
+          <HtmlEditor
+            ariaLabel="Documento completo"
+            value={conteudo.corpoUnico}
             onChange={(corpoUnico) => onConteudoChange?.({ ...conteudo, corpoUnico })}
+            minHeight="520px"
+            surfaceClassName={corpoUnicoClass}
+            toolbar="completo"
           />
         </div>
 

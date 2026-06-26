@@ -15,11 +15,16 @@ import {
 } from 'lucide-react';
 import {
   acompanharProtocolo,
+  agendarProtocoloLote,
   baixarZip,
+  cancelarAgendamentoLote,
+  cancelarAgendamentoProtocolo,
+  datetimeLocalParaIso,
   enviarAssinados,
   excluirPeticao,
   listar,
   listarCredenciais,
+  podeCancelarAgendamentoProtocolo,
   previaProtocoloLote,
   protocolarLote,
   reabrirProtocolo,
@@ -357,6 +362,7 @@ export function PeticionamentoProjudi() {
 
   const [partesPorProcesso, setPartesPorProcesso] = useState({});
   const [selecionadas, setSelecionadas] = useState(() => new Set());
+  const [protocoloAgendadoInput, setProtocoloAgendadoInput] = useState('');
   const [modalProtocolo, setModalProtocolo] = useState(false);
   const [previa, setPrevia] = useState(null);
   const [carregandoPrevia, setCarregandoPrevia] = useState(false);
@@ -627,6 +633,83 @@ export function PeticionamentoProjudi() {
       setOperacao(null);
     }
   };
+
+  function formatarAgendamentoProtocolo(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  }
+
+  const onAgendarProtocolo = async () => {
+    const ids = [...selecionadas];
+    if (!ids.length) {
+      setApiError('Selecione ao menos uma petição para agendar.');
+      return;
+    }
+    const iso = datetimeLocalParaIso(protocoloAgendadoInput);
+    if (!iso) {
+      setApiError('Informe data e hora do agendamento.');
+      return;
+    }
+    setOperacao('agendar');
+    setApiError('');
+    try {
+      await agendarProtocoloLote(ids, iso);
+      setToast(`Protocolo agendado para ${formatarAgendamentoProtocolo(iso)}.`);
+      setSelecionadas(new Set());
+      await recarregar();
+    } catch (err) {
+      setApiError(err?.message || 'Falha ao agendar protocolo.');
+    } finally {
+      setOperacao(null);
+    }
+  };
+
+  const onCancelarAgendamento = async (peticaoId) => {
+    setOperacao(`cancelar-ag-${peticaoId}`);
+    setApiError('');
+    try {
+      await cancelarAgendamentoProtocolo(peticaoId);
+      setToast(`Agendamento da petição #${peticaoId} cancelado.`);
+      await recarregar();
+    } catch (err) {
+      setApiError(err?.message || 'Falha ao cancelar agendamento.');
+    } finally {
+      setOperacao(null);
+    }
+  };
+
+  const onCancelarAgendamentoSelecionadas = async () => {
+    const ids = [...selecionadas].filter((id) => {
+      const p = peticoes.find((x) => x.id === id);
+      return podeCancelarAgendamentoProtocolo(p);
+    });
+    if (!ids.length) {
+      setApiError('Nenhuma petição selecionada possui agendamento cancelável.');
+      return;
+    }
+    setOperacao('cancelar-ag-lote');
+    setApiError('');
+    try {
+      await cancelarAgendamentoLote(ids);
+      setToast(`Agendamento cancelado para ${ids.length} petição(ões).`);
+      setSelecionadas(new Set());
+      await recarregar();
+    } catch (err) {
+      setApiError(err?.message || 'Falha ao cancelar agendamentos.');
+    } finally {
+      setOperacao(null);
+    }
+  };
+
+  const selecionadasComAgendamento = useMemo(
+    () =>
+      [...selecionadas].filter((id) =>
+        podeCancelarAgendamentoProtocolo(peticoes.find((x) => x.id === id)),
+      ).length,
+    [selecionadas, peticoes],
+  );
 
   const onReabrirProtocolo = async (peticaoId) => {
     setOperacao(`reabrir-${peticaoId}`);
@@ -1042,6 +1125,20 @@ export function PeticionamentoProjudi() {
                               {a.nomeOriginal} ({labelTipoArquivoPeticao(a.idArquivoTipo)})
                             </div>
                           ))}
+                          {podeCancelarAgendamentoProtocolo(p) ? (
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-violet-800">
+                              <Clock className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                              <span>Agendado: {formatarAgendamentoProtocolo(p.protocoloAgendadoPara)}</span>
+                              <button
+                                type="button"
+                                className="text-rose-700 hover:underline disabled:opacity-50"
+                                disabled={operacao === `cancelar-ag-${p.id}` || operacao === 'cancelar-ag-lote'}
+                                onClick={() => void onCancelarAgendamento(p.id)}
+                              >
+                                Cancelar agendamento
+                              </button>
+                            </div>
+                          ) : null}
                         </div>
                         <button
                           type="button"
@@ -1060,6 +1157,54 @@ export function PeticionamentoProjudi() {
                       </li>
                     ))}
                   </ul>
+                  <div className="rounded-lg border border-violet-200 bg-violet-50/60 p-3 space-y-2">
+                    <p className="text-xs font-medium text-violet-900">Agendar protocolo automático</p>
+                    <p className="text-xs text-violet-800/90">
+                      Após a petição assinada entrar na fila, o robô protocola no horário escolhido. O agendamento pode
+                      ser cancelado a qualquer momento antes do protocolo iniciar. E-mails de início e resultado vão
+                      para a lista fixa do escritório.
+                    </p>
+                    <div className="flex flex-wrap items-end gap-2">
+                      <label className="flex flex-col gap-1 text-xs text-slate-700">
+                        Data e hora
+                        <input
+                          type="datetime-local"
+                          className="rounded border border-slate-300 px-2 py-1.5 text-sm"
+                          value={protocoloAgendadoInput}
+                          onChange={(e) => setProtocoloAgendadoInput(e.target.value)}
+                          disabled={selecionadas.size === 0 || operacao === 'agendar'}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className={`${processosBtnPrimary} bg-violet-700 hover:bg-violet-800`}
+                        disabled={
+                          selecionadas.size === 0 || operacao === 'agendar' || !protocoloAgendadoInput
+                        }
+                        onClick={() => void onAgendarProtocolo()}
+                      >
+                        {operacao === 'agendar' ? (
+                          <Loader2 className="w-4 h-4 animate-spin inline mr-1" aria-hidden />
+                        ) : (
+                          <Clock className="w-4 h-4 inline mr-1" aria-hidden />
+                        )}
+                        Agendar protocolo
+                      </button>
+                      {selecionadasComAgendamento > 0 ? (
+                        <button
+                          type="button"
+                          className="rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm text-rose-800 hover:bg-rose-50 disabled:opacity-50"
+                          disabled={operacao === 'cancelar-ag-lote'}
+                          onClick={() => void onCancelarAgendamentoSelecionadas()}
+                        >
+                          {operacao === 'cancelar-ag-lote' ? (
+                            <Loader2 className="w-4 h-4 animate-spin inline mr-1" aria-hidden />
+                          ) : null}
+                          Cancelar agendamento ({selecionadasComAgendamento})
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
                   <button
                     type="button"
                     className={`${processosBtnPrimary} bg-amber-700 hover:bg-amber-800 w-full sm:w-auto`}
@@ -1095,6 +1240,7 @@ export function PeticionamentoProjudi() {
               <PeticaoHistoricoLista
                 peticoes={historico}
                 onReabrir={onReabrirProtocolo}
+                onCancelarAgendamento={(id) => void onCancelarAgendamento(id)}
                 operacao={operacao}
               />
             )}

@@ -586,27 +586,17 @@ public class ImovelApplicationService {
         e.setInscricaoImobiliaria(trimToNull(req.getInscricaoImobiliaria()));
         e.setObservacoes(trimToNull(req.getObservacoes()));
         e.setCamposExtrasJson(trimToNull(req.getCamposExtrasJson()));
+        Integer numeroPlanilhaEfetivo;
         if (req.getNumeroPlanilha() != null) {
-            if (e.getCliente() != null) {
-                imovelRepository
-                        .findByCliente_IdAndNumeroPlanilha(e.getCliente().getId(), req.getNumeroPlanilha())
-                        .ifPresent(other -> {
-                            if (e.getId() == null || !other.getId().equals(e.getId())) {
-                                throw new BusinessRuleException(
-                                        "Número da planilha já vinculado a outro imóvel deste cliente.");
-                            }
-                        });
-            } else {
-                imovelRepository.findByNumeroPlanilha(req.getNumeroPlanilha()).ifPresent(other -> {
-                    if (e.getId() == null || !other.getId().equals(e.getId())) {
-                        throw new BusinessRuleException("Número da planilha já vinculado a outro imóvel.");
-                    }
-                });
-            }
             e.setNumeroPlanilha(req.getNumeroPlanilha());
+            numeroPlanilhaEfetivo = req.getNumeroPlanilha();
         } else if (e.getId() == null) {
             e.setNumeroPlanilha(null);
+            numeroPlanilhaEfetivo = null;
+        } else {
+            numeroPlanilhaEfetivo = e.getNumeroPlanilha();
         }
+        validarUnicidadeClienteNumeroPlanilha(e, numeroPlanilhaEfetivo);
         if (req.getResponsavelPessoaId() != null) {
             PessoaEntity resp = pessoaRepository
                     .findById(req.getResponsavelPessoaId())
@@ -621,6 +611,31 @@ public class ImovelApplicationService {
         } else if (e.getId() == null) {
             e.setAtivo(true);
         }
+    }
+
+    private void validarUnicidadeClienteNumeroPlanilha(ImovelEntity e, Integer numeroPlanilha) {
+        if (numeroPlanilha == null) {
+            return;
+        }
+        if (e.getCliente() != null) {
+            imovelRepository
+                    .findByCliente_IdAndNumeroPlanilha(e.getCliente().getId(), numeroPlanilha)
+                    .ifPresent(other -> {
+                        if (e.getId() == null || !other.getId().equals(e.getId())) {
+                            throw new BusinessRuleException(
+                                    "Número da planilha " + numeroPlanilha + " já vinculado a outro imóvel deste cliente"
+                                            + " (id " + other.getId() + ").");
+                        }
+                    });
+            return;
+        }
+        imovelRepository.findByNumeroPlanilha(numeroPlanilha).ifPresent(other -> {
+            if (e.getId() == null || !other.getId().equals(e.getId())) {
+                throw new BusinessRuleException(
+                        "Número da planilha " + numeroPlanilha + " já vinculado a outro imóvel (id " + other.getId()
+                                + ").");
+            }
+        });
     }
 
     private void aplicarContrato(ContratoLocacaoEntity c, ContratoLocacaoWriteRequest req, boolean novo) {

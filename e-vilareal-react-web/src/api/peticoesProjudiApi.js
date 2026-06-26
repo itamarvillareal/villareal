@@ -23,6 +23,7 @@ import { postFormData, request } from './httpClient.js';
  * @property {string|null} protocoladoEm
  * @property {string|null} protocoloMensagem
  * @property {string|null} protocoloEtapa
+ * @property {string|null} protocoloAgendadoPara
  * @property {ProjudiPeticaoArquivo[]} arquivos
  */
 
@@ -81,6 +82,47 @@ export async function protocolarLote(peticaoIds) {
     body: { peticaoIds, confirmar: true },
   });
 }
+
+/**
+ * Agenda protocolo para horário fixo (petições ASSINADA ou pendentes de assinatura).
+ * @param {number[]} peticaoIds
+ * @param {string} agendadoPara ISO-8601 (ex.: new Date(...).toISOString())
+ */
+export async function agendarProtocoloLote(peticaoIds, agendadoPara) {
+  return request('/api/projudi/peticoes/agendar-protocolo-lote', {
+    method: 'POST',
+    body: { peticaoIds, agendadoPara },
+  });
+}
+
+/** @param {number} peticaoId */
+export async function cancelarAgendamentoProtocolo(peticaoId) {
+  return request(`/api/projudi/peticoes/${peticaoId}/agendamento-protocolo`, { method: 'DELETE' });
+}
+
+/** @param {number[]} peticaoIds */
+export async function cancelarAgendamentoLote(peticaoIds) {
+  return request('/api/projudi/peticoes/cancelar-agendamento-lote', {
+    method: 'POST',
+    body: { peticaoIds },
+  });
+}
+
+/** Petição com agendamento ativo que ainda pode ser cancelado. */
+export function podeCancelarAgendamentoProtocolo(peticao) {
+  if (!peticao?.protocoloAgendadoPara) return false;
+  const status = String(peticao.status || '').toUpperCase();
+  return status !== 'PROTOCOLANDO' && status !== 'PROTOCOLADA';
+}
+
+function datetimeLocalParaIso(localValue) {
+  if (!localValue) return null;
+  const d = new Date(localValue);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+export { datetimeLocalParaIso };
 
 /**
  * @param {string} numeroProcesso

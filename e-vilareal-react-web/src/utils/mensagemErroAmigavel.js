@@ -90,6 +90,15 @@ export function mensagemErroAmigavel(erro, contexto = '') {
   if (
     /failed to fetch|networkerror|load failed|sem ligação|network error|aborted/i.test(lower)
   ) {
+    const emDevLocal =
+      typeof window !== 'undefined'
+      && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    if (emDevLocal) {
+      return (
+        'Sem conexão com o backend local. Inicie o servidor Java (pasta e-vilareal-java-backend: ./scripts/run-dev.sh) ' +
+        'ou acesse o portal em produção.'
+      );
+    }
     return 'Sem conexão com o servidor. Verifique sua internet e tente novamente.';
   }
 

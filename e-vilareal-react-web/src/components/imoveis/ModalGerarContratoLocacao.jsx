@@ -11,7 +11,9 @@ import {
   gerarContratoLocacao,
   nomeArquivoContratoPdf,
 } from '../../repositories/documentosRepository.js';
+import { resolverContratoLocacaoIdParaImovel } from '../../repositories/imoveisRepository.js';
 import { FORMAS_ASSINATURA_CONTRATO } from '../../pages/documentos/contratoModelos.js';
+import { mensagemErroAmigavel } from '../../utils/mensagemErroAmigavel.js';
 import { imoveisBtnPrimary, imoveisBtnSecondary, imoveisInputClass } from './ImoveisAdminLayout.jsx';
 
 function hojeIso() {
@@ -22,6 +24,7 @@ function hojeIso() {
  * @param {{
  *   open: boolean,
  *   onClose: () => void,
+ *   imovelIdApi?: number|null,
  *   contratoLocacaoId?: number|null,
  *   codigoCliente?: string,
  *   numeroInterno?: string|number,
@@ -33,6 +36,7 @@ function hojeIso() {
 export function ModalGerarContratoLocacao({
   open,
   onClose,
+  imovelIdApi,
   contratoLocacaoId,
   codigoCliente,
   numeroInterno,
@@ -49,17 +53,25 @@ export function ModalGerarContratoLocacao({
   if (!open) return null;
 
   const contratoId = Number(contratoLocacaoId);
-  const podeGerar = Number.isFinite(contratoId) && contratoId > 0;
+  const imovelApi = Number(imovelIdApi);
+  const podeGerar =
+    (Number.isFinite(contratoId) && contratoId > 0) ||
+    (Number.isFinite(imovelApi) && imovelApi > 0);
 
   async function handleGerar() {
-    if (!podeGerar) {
+    if (!podeGerar && !imovelIdApi) {
       onErro?.('Salve o cadastro do imóvel na API antes de gerar o contrato (contrato de locação ainda não gravado).');
       return;
     }
     setLoading(true);
     try {
+      const contratoIdResolvido = await resolverContratoLocacaoIdParaImovel(imovelIdApi, contratoLocacaoId);
+      if (!contratoIdResolvido) {
+        onErro?.('Salve o imóvel com locador, inquilino e dados do contrato antes de gerar o PDF.');
+        return;
+      }
       const blob = await gerarContratoLocacao({
-        contratoLocacaoId: contratoId,
+        contratoLocacaoId: contratoIdResolvido,
         variante,
         cidadeEstado: cidadeEstado.trim() || LOCAL_DATA_LOCACAO_PADRAO,
         data,
@@ -72,7 +84,7 @@ export function ModalGerarContratoLocacao({
       downloadPdfBlob(blob, nomeArquivoContratoPdf(base, 'locacao'));
       onClose();
     } catch (e) {
-      onErro?.(e?.message || 'Falha ao gerar contrato de locação.');
+      onErro?.(mensagemErroAmigavel(e, 'gerar o contrato de locação'));
     } finally {
       setLoading(false);
     }

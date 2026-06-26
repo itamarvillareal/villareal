@@ -22,6 +22,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -87,22 +88,70 @@ public class ContratoLocacaoDocumentoService {
         LocalDate data = request.data() != null ? request.data() : LocalDate.now();
         Map<String, String> parametros = montarParametros(contrato, data);
 
+        String tituloContrato = ContratoLocacaoBlocoUtil.tituloPadrao();
         List<String> clausulasHtml = new ArrayList<>();
         String preambuloHtml = "";
+        int numeroClausula = 0;
+        StringBuilder clausulaAtual = null;
+
         for (TopicoEntity bloco : blocos) {
+            String template = bloco.getConteudoTemplate();
+            if (!StringUtils.hasText(template)) {
+                continue;
+            }
+            if (ContratoLocacaoBlocoUtil.isCentral(template)) {
+                tituloContrato = ContratoLocacaoBlocoUtil.extrairTituloCentral(template);
+                continue;
+            }
+            if (ContratoLocacaoBlocoUtil.isCabecalhoFecho(template)
+                    || ContratoLocacaoBlocoUtil.isCabecalhoMetadados(template)) {
+                continue;
+            }
+
             TopicoProcessadorService.ResultadoProcessamento proc =
                     topicoProcessadorService.processarTemplateLocacao(
-                            bloco.getConteudoTemplate(), locador.getId(), inquilino.getId(), parametros);
-            String texto = proc.texto();
+                            template, locador.getId(), inquilino.getId(), parametros);
+            String texto = ContratoLocacaoBlocoUtil.limparMetadadosFormato(proc.texto());
             if (!StringUtils.hasText(texto)) {
                 continue;
             }
-            String html = textoProcessadoParaHtml(texto);
+
             if (!StringUtils.hasText(preambuloHtml) && parecePreambulo(texto)) {
-                preambuloHtml = html;
+                preambuloHtml = textoProcessadoParaHtml(texto);
+                continue;
+            }
+
+            String html = textoProcessadoParaHtml(texto);
+            if (ContratoLocacaoBlocoUtil.isParagrafoClausula(template, bloco)) {
+                if (clausulaAtual != null) {
+                    clausulaAtual.append("<br/><br/>").append(html);
+                } else {
+                    numeroClausula++;
+                    clausulaAtual = new StringBuilder(ContratoLocacaoBlocoUtil.prefixoClausulaHtml(numeroClausula))
+                            .append(html);
+                }
+                continue;
+            }
+
+            if (ContratoLocacaoBlocoUtil.isClausulaPrincipal(template, bloco)) {
+                if (clausulaAtual != null) {
+                    clausulasHtml.add(clausulaAtual.toString());
+                    clausulaAtual = null;
+                }
+                numeroClausula++;
+                clausulaAtual = new StringBuilder(ContratoLocacaoBlocoUtil.prefixoClausulaHtml(numeroClausula))
+                        .append(html);
+                continue;
+            }
+
+            if (clausulaAtual != null) {
+                clausulaAtual.append("<br/><br/>").append(html);
             } else {
                 clausulasHtml.add(html);
             }
+        }
+        if (clausulaAtual != null) {
+            clausulasHtml.add(clausulaAtual.toString());
         }
         if (!StringUtils.hasText(preambuloHtml) && !clausulasHtml.isEmpty()) {
             preambuloHtml = clausulasHtml.remove(0);
@@ -118,6 +167,11 @@ public class ContratoLocacaoDocumentoService {
         if (!StringUtils.hasText(preambuloHtml)) {
             preambuloHtml = QualificacaoPessoaUtil.montarPreambuloContratoAluguel(
                     qualificacaoLocador, qualificacaoLocatario);
+        } else {
+            preambuloHtml = ContratoLocacaoNegritoUtil.aplicarNegritoNomesCompletos(
+                    preambuloHtml,
+                    Utf8MojibakeUtil.corrigir(locador.getNome()),
+                    Utf8MojibakeUtil.corrigir(inquilino.getNome()));
         }
 
         String nomeLocador = ContratoHonorariosClausulas.normalizarNomeAssinatura(
@@ -133,6 +187,7 @@ public class ContratoLocacaoDocumentoService {
         TemaDocumento tema = resolverTema(contrato.getImovel());
 
         Map<String, Object> variables = new HashMap<>();
+        variables.put("tituloContrato", tituloContrato);
         variables.put("preambuloHtml", preambuloHtml);
         variables.put("clausulas", clausulasHtml);
         variables.put(
@@ -197,15 +252,19 @@ public class ContratoLocacaoDocumentoService {
             if (StringUtils.hasText(im.getCondominio())) {
                 params.put("condominio", im.getCondominio().trim());
             }
+            if (StringUtils.hasText(im.getGaragens())) {
+                params.put("garagens", im.getGaragens().trim());
+            }
             if (StringUtils.hasText(im.getInscricaoImobiliaria())) {
                 params.put("inscricaoImobiliaria", im.getInscricaoImobiliaria().trim());
             }
         }
+        LocacaoTemplateLegadoSupport.registrarAliasesLegado(params, contrato, data);
         return params;
     }
 
     private static boolean parecePreambulo(String texto) {
-        String t = texto.trim().toLowerCase();
+        String t = texto.trim().toLowerCase(Locale.ROOT);
         return t.contains("pelo presente instrumento") || t.contains("têm por justo e contratado");
     }
 
@@ -221,7 +280,7 @@ public class ContratoLocacaoDocumentoService {
                 .collect(Collectors.joining("<br/><br/>"));
     }
 
-    private static String escapeHtml(String texto) {
+    static String escapeHtml(String texto) {
         return texto
                 .replace("&", "&amp;")
                 .replace("<", "&lt;")

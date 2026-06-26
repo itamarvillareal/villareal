@@ -41,8 +41,9 @@ class DocumentoDocxParserTest {
             assertThat(r.enderecoJuizo()).contains("EXCELENTÍSSIMO");
             assertThat(r.numeroProcesso()).isEqualTo("5009686-73.2026.8.09.0007");
             assertThat(r.nomePeca()).isEqualTo("JUSTIFICATIVA DE AUSÊNCIA EM AUDIÊNCIA");
-            assertThat(r.preambulo()).hasSize(1);
+            assertThat(r.preambulo()).hasSize(2);
             assertThat(r.preambulo().get(0).textoPlano()).contains("ITAMAR ALEXANDRE");
+            assertThat(r.preambulo().get(1).tipo()).isEqualTo(TipoParagrafo.NOME_PECA);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

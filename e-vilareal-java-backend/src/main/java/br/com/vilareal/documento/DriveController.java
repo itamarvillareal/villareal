@@ -120,6 +120,86 @@ public class DriveController {
         }
     }
 
+    @GetMapping("/pasta-pessoa")
+    @Operation(summary = "Retorna link e ID da pasta da pessoa no Drive (Pessoas/{id8} - nome; cria se necessário)")
+    public ResponseEntity<DrivePastaProcessoDto> obterPastaPessoa(@RequestParam Long pessoaId) {
+        if (!googleDriveService.isConfigurado()) {
+            return ResponseEntity.status(503).build();
+        }
+        if (pessoaId == null || pessoaId < 1) {
+            return ResponseEntity.badRequest().build();
+        }
+        try {
+            DrivePastaProcessoDto pasta = documentoDrivePastaService.resolverPastaPessoa(pessoaId);
+            if (pasta == null || !StringUtils.hasText(pasta.pastaId())) {
+                return ResponseEntity.notFound().build();
+            }
+            return ResponseEntity.ok()
+                    .cacheControl(CacheControl.noStore())
+                    .body(pasta);
+        } catch (Exception e) {
+            log.warn("Erro ao obter pasta da pessoa no Drive: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @GetMapping("/arquivos-pessoa")
+    @Operation(summary = "Lista arquivos e subpastas da pasta da pessoa (ou subpasta informada)")
+    public ResponseEntity<List<DriveArquivoDto>> listarArquivosPessoa(
+            @RequestParam Long pessoaId,
+            @RequestParam(required = false) String pastaId) {
+        if (!googleDriveService.isConfigurado()) {
+            return ResponseEntity.ok(List.of());
+        }
+        if (pessoaId == null || pessoaId < 1) {
+            return ResponseEntity.badRequest().build();
+        }
+        try {
+            String pastaDestino = resolverPastaIdPessoa(pessoaId, pastaId);
+            if (!StringUtils.hasText(pastaDestino)) {
+                return ResponseEntity.ok(List.of());
+            }
+            return ResponseEntity.ok()
+                    .cacheControl(CacheControl.noStore())
+                    .body(googleDriveService.listarConteudo(pastaDestino));
+        } catch (Exception e) {
+            log.warn("Erro ao listar arquivos da pessoa no Drive: {}", e.getMessage());
+            return ResponseEntity.ok(List.of());
+        }
+    }
+
+    @PostMapping(value = "/upload-pessoa", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Envia arquivo para a pasta da pessoa no Drive")
+    public ResponseEntity<DriveArquivoDto> uploadArquivoPessoa(
+            @RequestParam Long pessoaId,
+            @RequestParam(required = false) String pastaId,
+            @RequestParam("arquivo") MultipartFile arquivo) throws Exception {
+        if (!googleDriveService.isConfigurado()) {
+            return ResponseEntity.status(503).build();
+        }
+        if (pessoaId == null || pessoaId < 1) {
+            return ResponseEntity.badRequest().build();
+        }
+        if (arquivo == null || arquivo.isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+        String pastaDestino = resolverPastaIdPessoa(pessoaId, pastaId);
+        if (!StringUtils.hasText(pastaDestino)) {
+            return ResponseEntity.notFound().build();
+        }
+        DriveArquivoDto enviado = googleDriveService.uploadArquivo(
+                arquivo.getBytes(),
+                arquivo.getOriginalFilename(),
+                arquivo.getContentType(),
+                pastaDestino);
+        if (enviado == null) {
+            return ResponseEntity.internalServerError().build();
+        }
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(enviado);
+    }
+
     @GetMapping("/pasta-imovel")
     @Operation(summary = "Retorna link e ID da pasta do imóvel no Drive (cria se necessário)")
     public ResponseEntity<DrivePastaProcessoDto> obterPastaImovel(
@@ -182,6 +262,14 @@ public class DriveController {
         }
         DrivePastaProcessoDto pasta = documentoDrivePastaService.resolverPastaRaizProcesso(
                 googleDriveService, codigoCliente, numeroInterno);
+        return pasta != null ? pasta.pastaId() : null;
+    }
+
+    private String resolverPastaIdPessoa(Long pessoaId, String pastaId) throws Exception {
+        if (StringUtils.hasText(pastaId)) {
+            return pastaId.trim();
+        }
+        DrivePastaProcessoDto pasta = documentoDrivePastaService.resolverPastaPessoa(pessoaId);
         return pasta != null ? pasta.pastaId() : null;
     }
 }

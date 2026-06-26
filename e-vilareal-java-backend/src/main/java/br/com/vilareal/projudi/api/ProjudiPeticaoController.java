@@ -1,6 +1,9 @@
 package br.com.vilareal.projudi.api;
 
+import br.com.vilareal.projudi.api.dto.AgendarProtocoloLoteRequest;
+import br.com.vilareal.projudi.api.dto.AgendarProtocoloRequest;
 import br.com.vilareal.projudi.api.dto.AtualizarCredencialPeticaoRequest;
+import br.com.vilareal.projudi.api.dto.CancelarAgendamentoLoteRequest;
 import br.com.vilareal.projudi.api.dto.ProjudiPeticaoDetailResponse;
 import br.com.vilareal.projudi.api.dto.PreviaProtocoloResponse;
 import br.com.vilareal.projudi.api.dto.PreviaValidarLoteRequest;
@@ -9,6 +12,7 @@ import br.com.vilareal.projudi.api.dto.ProtocolarProcessoRequest;
 import br.com.vilareal.projudi.api.dto.ProtocoloAceitoResponse;
 import br.com.vilareal.projudi.api.dto.ValidarProtocoloRequest;
 import br.com.vilareal.projudi.api.dto.ValidarProtocoloResponse;
+import br.com.vilareal.projudi.application.ProjudiPeticaoAgendamentoService;
 import br.com.vilareal.projudi.application.ProjudiPeticaoAssinaturaService;
 import br.com.vilareal.projudi.application.ProjudiPeticaoAssinaturaService.ArquivoAssinadoRecebido;
 import br.com.vilareal.projudi.application.ProjudiPeticaoAssinaturaService.ItemAssinado;
@@ -32,6 +36,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -51,16 +56,19 @@ public class ProjudiPeticaoController {
     private final ProjudiPeticaoRegistroService registroService;
     private final ProjudiPeticaoAssinaturaService assinaturaService;
     private final ProjudiPeticaoProtocoloLoteService protocoloLoteService;
+    private final ProjudiPeticaoAgendamentoService agendamentoService;
     private final ProjudiCredencialService credencialService;
 
     public ProjudiPeticaoController(
             ProjudiPeticaoRegistroService registroService,
             ProjudiPeticaoAssinaturaService assinaturaService,
             ProjudiPeticaoProtocoloLoteService protocoloLoteService,
+            ProjudiPeticaoAgendamentoService agendamentoService,
             ProjudiCredencialService credencialService) {
         this.registroService = registroService;
         this.assinaturaService = assinaturaService;
         this.protocoloLoteService = protocoloLoteService;
+        this.agendamentoService = agendamentoService;
         this.credencialService = credencialService;
     }
 
@@ -230,6 +238,37 @@ public class ProjudiPeticaoController {
                 .contentType(MediaType.APPLICATION_JSON)
                 .cacheControl(CacheControl.noStore())
                 .body(ProtocoloAceitoResponse.de(aceitas));
+    }
+
+    @PostMapping(value = "/agendar-protocolo-lote", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Agenda protocolo PROJUDI para horário fixo (petições ASSINADA ou pendentes)")
+    public ResponseEntity<Void> agendarProtocoloLote(@Valid @RequestBody AgendarProtocoloLoteRequest body) {
+        agendamentoService.agendarProtocoloLote(body.peticaoIds(), body.agendadoPara());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping(value = "/{peticaoId}/agendar-protocolo", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Agenda protocolo de uma petição para horário fixo")
+    public ResponseEntity<Void> agendarProtocolo(
+            @PathVariable Long peticaoId, @Valid @RequestBody AgendarProtocoloRequest body) {
+        agendamentoService.agendarProtocolo(peticaoId, body.agendadoPara());
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/{peticaoId}/agendamento-protocolo")
+    @Operation(
+            summary = "Cancela agendamento de protocolo",
+            description = "Permitido enquanto o protocolo não tiver iniciado (PROTOCOLANDO) nem sido concluído (PROTOCOLADA).")
+    public ResponseEntity<Void> cancelarAgendamentoProtocolo(@PathVariable Long peticaoId) {
+        agendamentoService.cancelarAgendamento(peticaoId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping(value = "/cancelar-agendamento-lote", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Cancela agendamento de protocolo em lote")
+    public ResponseEntity<Void> cancelarAgendamentoLote(@Valid @RequestBody CancelarAgendamentoLoteRequest body) {
+        agendamentoService.cancelarAgendamentoLote(body.peticaoIds());
+        return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/{peticaoId}")

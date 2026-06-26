@@ -20,9 +20,12 @@ import {
 } from '../repositories/processosRepository.js';
 import {
   listarArquivos,
+  listarArquivosPessoa,
   obterInfoPasta,
   obterLinkPasta,
+  obterLinkPastaPessoa,
   uploadArquivo,
+  uploadArquivoPessoa,
 } from '../repositories/driveRepository.js';
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 
@@ -67,11 +70,19 @@ function IconeArquivo({ mimeType, tipo }) {
 }
 
 /**
- * Navegador de arquivos do Google Drive vinculado a um processo.
+ * Navegador de arquivos do Google Drive vinculado a um processo ou a uma pessoa.
  *
- * @param {{ codigoCliente: string, numeroInterno: number, processoId?: number|null, numeroCnj?: string, onClose: () => void }} props
+ * @param {{ codigoCliente?: string, numeroInterno?: number, processoId?: number|null, numeroCnj?: string, pessoaId?: number|null, onClose: () => void }} props
  */
-export default function DriveExplorer({ codigoCliente, numeroInterno, processoId, numeroCnj, onClose }) {
+export default function DriveExplorer({
+  codigoCliente,
+  numeroInterno,
+  processoId,
+  numeroCnj,
+  pessoaId = null,
+  onClose,
+}) {
+  const modoPessoa = Number.isFinite(Number(pessoaId)) && Number(pessoaId) > 0;
   const [arquivos, setArquivos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState('');
@@ -105,7 +116,9 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, processoId
     setLoading(true);
     setErro('');
     try {
-      const data = await listarArquivos(codigoCliente, numeroInterno, pastaAtual);
+      const data = modoPessoa
+        ? await listarArquivosPessoa(pessoaId, pastaAtual)
+        : await listarArquivos(codigoCliente, numeroInterno, pastaAtual);
       setArquivos(Array.isArray(data) ? data : []);
     } catch (e) {
       setErro(e?.message || 'Não foi possível carregar os arquivos.');
@@ -113,12 +126,14 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, processoId
     } finally {
       setLoading(false);
     }
-  }, [codigoCliente, numeroInterno, pastaAtual]);
+  }, [modoPessoa, pessoaId, codigoCliente, numeroInterno, pastaAtual]);
 
   const caminhoRaiz =
     pastaRaiz?.caminho ||
     pastaRaiz?.nomePasta ||
-    `Proc. ${String(numeroInterno).padStart(2, '0')}`;
+    (modoPessoa
+      ? String(pastaRaiz?.nomePasta ?? '').trim() || `Pessoa ${String(pessoaId).padStart(8, '0')}`
+      : `Proc. ${String(numeroInterno).padStart(2, '0')}`);
 
   useEffect(() => {
     let cancelado = false;
@@ -127,7 +142,9 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, processoId
     setPaiInfo({ paiId: null, paiNome: null });
     (async () => {
       try {
-        const pasta = await obterLinkPasta(codigoCliente, numeroInterno);
+        const pasta = modoPessoa
+          ? await obterLinkPastaPessoa(pessoaId)
+          : await obterLinkPasta(codigoCliente, numeroInterno);
         if (cancelado) return;
         setPastaRaiz(pasta);
         if (pasta?.pastaId) {
@@ -138,7 +155,9 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, processoId
               nome:
                 pasta.caminho ||
                 pasta.nomePasta ||
-                `Proc. ${String(numeroInterno).padStart(2, '0')}`,
+                (modoPessoa
+                  ? pasta.nomePasta || `Pessoa ${String(pessoaId).padStart(8, '0')}`
+                  : `Proc. ${String(numeroInterno).padStart(2, '0')}`),
             },
           ]);
         }
@@ -149,7 +168,7 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, processoId
     return () => {
       cancelado = true;
     };
-  }, [codigoCliente, numeroInterno]);
+  }, [modoPessoa, pessoaId, codigoCliente, numeroInterno]);
 
   useEffect(() => {
     void carregarArquivos();
@@ -206,7 +225,11 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, processoId
     setErro('');
     try {
       for (const file of files) {
-        await uploadArquivo(codigoCliente, numeroInterno, file, pastaAtual);
+        if (modoPessoa) {
+          await uploadArquivoPessoa(pessoaId, file, pastaAtual);
+        } else {
+          await uploadArquivo(codigoCliente, numeroInterno, file, pastaAtual);
+        }
       }
       await carregarArquivos();
     } catch (e) {
@@ -240,7 +263,7 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, processoId
 
   const qtdSelecionados = selecionados.size;
   const podeConsolidarProcesso =
-    Number.isFinite(Number(processoId)) && Number(processoId) > 0 && !consolidando;
+    !modoPessoa && Number.isFinite(Number(processoId)) && Number(processoId) > 0 && !consolidando;
 
   function fecharModalSelecao() {
     if (consolidando) return;
@@ -322,7 +345,7 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, processoId
   }
 
   const caminho = trilha.map((t) => t.nome).join(' / ') || caminhoRaiz;
-  const naRaizProcesso = pastaAtual && pastaRaiz?.pastaId === pastaAtual;
+  const naRaizContexto = pastaAtual && pastaRaiz?.pastaId === pastaAtual;
   const linkAbrirDrive = pastaAtual
     ? `https://drive.google.com/drive/folders/${pastaAtual}`
     : pastaRaiz?.webViewLink;
@@ -352,7 +375,7 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, processoId
             <div className="min-w-0">
               <h2 id="drive-explorer-title" className="flex items-center gap-2 text-base font-bold text-slate-900 dark:text-slate-50">
                 <Folder className="w-5 h-5 text-amber-500 shrink-0" aria-hidden />
-                Arquivos do Processo
+                {modoPessoa ? 'Arquivos da Pessoa' : 'Arquivos do Processo'}
               </h2>
               <p className="mt-1 flex items-start gap-1 text-xs text-slate-500" title={caminho}>
                 <Folder className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" aria-hidden />
@@ -393,13 +416,13 @@ export default function DriveExplorer({ codigoCliente, numeroInterno, processoId
               <ChevronLeft className="w-3.5 h-3.5" aria-hidden />
               {paiInfo.paiNome ? `Voltar (${paiInfo.paiNome})` : 'Voltar'}
             </button>
-            {!naRaizProcesso && pastaRaiz?.pastaId ? (
+            {!naRaizContexto && pastaRaiz?.pastaId ? (
               <button
                 type="button"
                 onClick={irParaRaiz}
                 className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
               >
-                Raiz do processo
+                {modoPessoa ? 'Raiz da pessoa' : 'Raiz do processo'}
               </button>
             ) : null}
             <div className="ml-auto flex flex-wrap items-center justify-end gap-2">

@@ -1,4 +1,5 @@
-import { Loader2 } from 'lucide-react';
+import { Clock, Loader2 } from 'lucide-react';
+import { podeCancelarAgendamentoProtocolo } from '../../api/peticoesProjudiApi.js';
 
 function formatDateTime(iso) {
   if (!iso) return '—';
@@ -13,10 +14,11 @@ function formatDateTime(iso) {
  * @param {{
  *   peticoes: import('../../api/peticoesProjudiApi.js').ProjudiPeticao[],
  *   onReabrir?: (peticaoId: number) => void,
+ *   onCancelarAgendamento?: (peticaoId: number) => void,
  *   operacao?: string | null,
  * }} props
  */
-export function PeticaoHistoricoLista({ peticoes, onReabrir, operacao = null }) {
+export function PeticaoHistoricoLista({ peticoes, onReabrir, onCancelarAgendamento, operacao = null }) {
   if (!peticoes.length) {
     return <p className="text-sm text-slate-500">Nenhum registro no histórico.</p>;
   }
@@ -42,6 +44,22 @@ export function PeticaoHistoricoLista({ peticoes, onReabrir, operacao = null }) 
             <p className="text-xs text-slate-600 bg-slate-50 border border-slate-100 rounded px-2 py-1 line-clamp-3">
               {p.protocoloMensagem}
             </p>
+          ) : null}
+          {podeCancelarAgendamentoProtocolo(p) ? (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-violet-800">
+              <Clock className="w-3.5 h-3.5 shrink-0" aria-hidden />
+              <span>Protocolo agendado: {formatDateTime(p.protocoloAgendadoPara)}</span>
+              {onCancelarAgendamento ? (
+                <button
+                  type="button"
+                  className="text-rose-700 hover:underline disabled:opacity-50"
+                  disabled={operacao === `cancelar-ag-${p.id}`}
+                  onClick={() => onCancelarAgendamento(p.id)}
+                >
+                  Cancelar agendamento
+                </button>
+              ) : null}
+            </div>
           ) : null}
           {p.status === 'ERRO' && onReabrir ? (
             <button

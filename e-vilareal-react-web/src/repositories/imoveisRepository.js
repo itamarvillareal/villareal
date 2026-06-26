@@ -322,6 +322,37 @@ export function selecionarContratoVigente(contratos, dataReferencia = new Date()
   })[0];
 }
 
+/**
+ * Descarta id de contrato que não pertence ao imóvel e devolve o vigente desta lista.
+ * Evita PUT/PDF com contrato de outro imóvel (erro «Contrato não pertence ao imóvel informado»).
+ */
+export function alinharContratoIdAoImovel(contratoIdHint, contratosLista) {
+  const lista = Array.isArray(contratosLista) ? contratosLista : [];
+  if (!lista.length) return null;
+  const hint =
+    contratoIdHint != null && Number.isFinite(Number(contratoIdHint)) && Number(contratoIdHint) > 0
+      ? Number(contratoIdHint)
+      : null;
+  const referenciado = hint != null ? lista.find((c) => Number(c.id) === hint) : null;
+  const base = referenciado ?? selecionarContratoVigente(lista);
+  return base?.id != null && Number(base.id) > 0 ? Number(base.id) : null;
+}
+
+export async function resolverContratoLocacaoIdParaImovel(imovelIdApi, contratoIdHint = null) {
+  const imovelId = Number(imovelIdApi);
+  if (!Number.isFinite(imovelId) || imovelId < 1) {
+    const hint = Number(contratoIdHint);
+    return Number.isFinite(hint) && hint > 0 ? hint : null;
+  }
+  try {
+    const contratos = await request('/api/locacoes/contratos', { query: { imovelId } });
+    return alinharContratoIdAoImovel(contratoIdHint, Array.isArray(contratos) ? contratos : []);
+  } catch {
+    const hint = Number(contratoIdHint);
+    return Number.isFinite(hint) && hint > 0 ? hint : null;
+  }
+}
+
 /** Mapeia o objeto legado `getImovelMock` para o formato de formulário/UI (sem IDs de API). */
 export function mapMockToUi(mock, imovelId) {
   if (!mock) return null;
@@ -583,7 +614,26 @@ export async function resolverClienteIdPorCodigo(codigoCliente) {
   const c = (list || []).find((x) => String(x.codigoCliente) === cod);
   if (!c) return null;
   if (c.clienteId != null && Number.isFinite(Number(c.clienteId))) return Number(c.clienteId);
-  return c.id != null && c.pessoaId != null ? Number(c.id) : null;
+  if (c.id != null && Number.isFinite(Number(c.id))) return Number(c.id);
+  return null;
+}
+
+/** Antes de POST/PUT: usa o id canônico do par (cliente, nº planilha) quando existir. */
+async function resolverIdImovelParaPersistencia(clienteId, numeroPlanilha, apiImovelIdAtual) {
+  const cli = Number(clienteId);
+  const np = Number(numeroPlanilha);
+  if (!Number.isFinite(cli) || cli < 1 || !Number.isFinite(np) || np < 1) {
+    return apiImovelIdAtual != null ? Number(apiImovelIdAtual) : null;
+  }
+  try {
+    const im = await request(`/api/imoveis/por-numero-planilha/${Math.floor(np)}`, {
+      query: { clienteId: cli },
+    });
+    if (im?.id != null) return Number(im.id);
+  } catch {
+    // par inexistente — mantém id atual ou POST
+  }
+  return apiImovelIdAtual != null ? Number(apiImovelIdAtual) : null;
 }
 
 export async function resolverProcessoIdPorChave(codigoCliente, procInterno) {
@@ -713,12 +763,16 @@ async function resolverContratoParaSaveImovel(imovelIdApi, uiPayload) {
   try {
     const contratos = await request('/api/locacoes/contratos', { query: { imovelId: imovelIdApi } });
     const lista = Array.isArray(contratos) ? contratos : [];
-    const vigente = selecionarContratoVigente(lista);
-    const contratoBase =
-      (contratoId != null ? lista.find((c) => Number(c.id) === Number(contratoId)) : null) ?? vigente;
+    const referenciado =
+      contratoId != null ? lista.find((c) => Number(c.id) === Number(contratoId)) : null;
+    const contratoBase = referenciado ?? selecionarContratoVigente(lista);
     if (contratoBase?.id != null) {
-      if (!contratoId) contratoId = Number(contratoBase.id);
-      if (!snapshot) snapshot = contratoSnapshotFromApi(contratoBase);
+      contratoId = Number(contratoBase.id);
+      if (!snapshot || referenciado == null) {
+        snapshot = contratoSnapshotFromApi(contratoBase);
+      }
+    } else {
+      contratoId = null;
     }
   } catch {
     /* mantém refs carregadas na UI */
@@ -1157,7 +1211,7 @@ async function montarItemCadastroResiliente(apiImovel) {
   }
 }
 
-export async function carregarImovelCadastroPorNumeroPlanilha(numeroPlanilha) {
+export async function carregarImovelCadastroPorNumeroPlanilha(numeroPlanilha, opts = {}) {
   if (!featureFlags.useApiImoveis) {
     return { fonte: 'legado', item: null, encontrado: false };
   }
@@ -1165,8 +1219,18 @@ export async function carregarImovelCadastroPorNumeroPlanilha(numeroPlanilha) {
   if (!Number.isFinite(n) || n < 1) {
     return { fonte: 'api', item: null, encontrado: false };
   }
+  const query = {};
+  const clienteIdOpt = Number(opts.clienteId);
+  if (Number.isFinite(clienteIdOpt) && clienteIdOpt >= 1) {
+    query.clienteId = clienteIdOpt;
+  } else {
+    const codigo = String(opts.codigoCliente ?? '').trim();
+    if (codigo) query.codigoCliente = padCliente8(codigo);
+  }
   try {
-    const apiImovel = await request(`/api/imoveis/por-numero-planilha/${n}`);
+    const apiImovel = await request(`/api/imoveis/por-numero-planilha/${n}`, {
+      query: Object.keys(query).length ? query : undefined,
+    });
     const item = await montarItemCadastroResiliente(apiImovel);
     return { fonte: 'api', item, encontrado: true };
   } catch {
@@ -1195,13 +1259,13 @@ export async function carregarImovelCadastroPorNumeroPlanilha(numeroPlanilha) {
  * Resolve cadastro para painéis/navegação: prioriza nº da planilha (col. A).
  * Só usa `imovelIdApi` como PK interna — nunca confunde nº da planilha com `GET /api/imoveis/{id}`.
  */
-export async function carregarImovelCadastroParaPainel({ imovelId, imovelIdApi } = {}) {
+export async function carregarImovelCadastroParaPainel({ imovelId, imovelIdApi, codigoCliente, clienteId } = {}) {
   if (!featureFlags.useApiImoveis) {
     return { fonte: 'legado', item: null, encontrado: false };
   }
   const np = Number(imovelId);
   if (Number.isFinite(np) && np >= 1) {
-    const porPlanilha = await carregarImovelCadastroPorNumeroPlanilha(np);
+    const porPlanilha = await carregarImovelCadastroPorNumeroPlanilha(np, { codigoCliente, clienteId });
     if (porPlanilha.item) return porPlanilha;
   }
   const apiId = Number(imovelIdApi);
@@ -1368,8 +1432,13 @@ export async function salvarImovelCadastro(uiPayload) {
     codigo: vinculo.espelhoCodigo,
     proc: vinculo.espelhoProc,
   });
-  const imovelSalvo = uiPayload._apiImovelId
-    ? await request(`/api/imoveis/${uiPayload._apiImovelId}`, { method: 'PUT', body: bodyImovel })
+  const idPersistencia = await resolverIdImovelParaPersistencia(
+    clienteId,
+    bodyImovel.numeroPlanilha,
+    uiPayload._apiImovelId,
+  );
+  const imovelSalvo = idPersistencia
+    ? await request(`/api/imoveis/${idPersistencia}`, { method: 'PUT', body: bodyImovel })
     : await request('/api/imoveis', { method: 'POST', body: bodyImovel });
 
   const { contratoId, snapshot } = await resolverContratoParaSaveImovel(imovelSalvo.id, uiPayload);

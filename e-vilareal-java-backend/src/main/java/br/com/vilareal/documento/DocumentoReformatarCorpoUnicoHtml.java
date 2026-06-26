@@ -73,7 +73,7 @@ public final class DocumentoReformatarCorpoUnicoHtml {
                     .append("</div>");
         }
 
-        if (StringUtils.hasText(req.nomePeca())) {
+        if (StringUtils.hasText(req.nomePeca()) && !nomePecaJaNoPreambulo(req.preambulo(), req.nomePeca())) {
             sb.append("<p data-doc-part=\"nome-peca\" style=\"margin:18pt 0;font-weight:bold;text-transform:uppercase;text-align:center;\">")
                     .append(escapeTexto(req.nomePeca().trim()))
                     .append("</p>");
@@ -305,6 +305,14 @@ public final class DocumentoReformatarCorpoUnicoHtml {
                         "(?iu).+(?:de\\s+)?(?:janeiro|fevereiro|março|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro).+\\d{4}")
                 .matcher(t)
                 .find();
+    }
+
+    private static boolean nomePecaJaNoPreambulo(String preambuloHtml, String nomePeca) {
+        if (!StringUtils.hasText(preambuloHtml) || !StringUtils.hasText(nomePeca)) {
+            return false;
+        }
+        String pre = preambuloHtml.toLowerCase(Locale.ROOT);
+        return pre.contains("class=\"nome-peca\"") || pre.contains(nomePeca.trim().toLowerCase(Locale.ROOT));
     }
 
     private static String valorOuPadrao(String valor, String padrao) {

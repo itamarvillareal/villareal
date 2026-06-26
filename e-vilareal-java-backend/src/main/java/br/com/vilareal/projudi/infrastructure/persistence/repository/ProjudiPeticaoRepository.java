@@ -46,7 +46,8 @@ public interface ProjudiPeticaoRepository extends JpaRepository<ProjudiPeticaoEn
             SET p.status = :status,
                 p.protocoloMensagem = :mensagem,
                 p.protocoladoEm = :protocoladoEm,
-                p.protocoloEtapa = null
+                p.protocoloEtapa = null,
+                p.protocoloAgendadoPara = CASE WHEN :status = 'PROTOCOLADA' THEN null ELSE p.protocoloAgendadoPara END
             WHERE p.id = :id
             """)
     void finalizarProtocolo(
@@ -80,6 +81,41 @@ public interface ProjudiPeticaoRepository extends JpaRepository<ProjudiPeticaoEn
             WHERE p.id IN :ids AND p.status = 'ASSINADA'
             """)
     void registrarMensagemFila(@Param("ids") List<Long> ids, @Param("mensagem") String mensagem);
+
+    @Query("""
+            SELECT p.id FROM ProjudiPeticaoEntity p
+            WHERE p.status = 'ASSINADA'
+              AND p.protocoloAgendadoPara IS NOT NULL
+              AND p.protocoloAgendadoPara <= :agora
+            ORDER BY p.protocoloAgendadoPara ASC, p.id ASC
+            """)
+    List<Long> findIdsProntasParaProtocoloAgendado(@Param("agora") Instant agora);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE ProjudiPeticaoEntity p
+            SET p.protocoloAgendadoPara = null
+            WHERE p.id IN :ids
+            """)
+    void limparAgendamento(@Param("ids") List<Long> ids);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE ProjudiPeticaoEntity p
+            SET p.protocoloAgendadoPara = null
+            WHERE p.id = :id
+              AND p.protocoloAgendadoPara IS NOT NULL
+              AND p.status NOT IN ('PROTOCOLANDO', 'PROTOCOLADA')
+            """)
+    int cancelarAgendamentoSePermitido(@Param("id") Long id);
+
+    @Query("""
+            SELECT p.id FROM ProjudiPeticaoEntity p
+            WHERE p.id IN :ids
+              AND p.protocoloAgendadoPara IS NOT NULL
+              AND p.status = 'ASSINADA'
+            """)
+    List<Long> filtrarIdsComAgendamentoAtivo(@Param("ids") List<Long> ids);
 
     @Override
     Optional<ProjudiPeticaoEntity> findById(Long id);
