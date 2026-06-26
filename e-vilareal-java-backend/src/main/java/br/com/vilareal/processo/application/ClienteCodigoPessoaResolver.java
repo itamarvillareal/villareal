@@ -6,7 +6,9 @@ import br.com.vilareal.importacao.infrastructure.persistence.entity.PlanilhaPast
 import br.com.vilareal.importacao.infrastructure.persistence.repository.PlanilhaPasta1ClienteRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
+import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.Optional;
@@ -70,9 +72,23 @@ public class ClienteCodigoPessoaResolver {
     }
 
     /**
-     * Código de cliente para exibição em listagens (8 dígitos ou chave da planilha), alinhado a
-     * {@code ProcessoResponse#getCodigoCliente()} e à tela Processos.
+     * Código do cliente contratante do processo ({@code processo.cliente_id}), alinhado a
+     * {@code ProcessoResponse#getCodigoCliente()}. Só usa o titular ({@code processo.pessoa_id})
+     * quando não há cliente vinculado.
      */
+    public String codigoClienteExibicaoParaProcesso(ProcessoEntity processo) {
+        if (processo == null) {
+            return null;
+        }
+        if (processo.getCliente() != null && StringUtils.hasText(processo.getCliente().getCodigoCliente())) {
+            return CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(processo.getCliente().getCodigoCliente());
+        }
+        if (processo.getPessoa() != null) {
+            return codigoClienteExibicaoParaPessoaId(processo.getPessoa().getId());
+        }
+        return null;
+    }
+
     public String codigoClienteExibicaoParaPessoaId(long pessoaIdDonoProcesso) {
         List<ClienteEntity> clientes =
                 clienteRepository.findByPessoa_IdOrderByCodigoClienteAsc(pessoaIdDonoProcesso);

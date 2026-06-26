@@ -547,11 +547,9 @@ public class ProcessoApplicationService {
     }
 
     private String resolverCodigoClienteExibicaoProcesso(ProcessoEntity e) {
-        if (e.getCliente() != null && StringUtils.hasText(e.getCliente().getCodigoCliente())) {
-            return codigoClienteNormalizadoParaMapa(e.getCliente().getCodigoCliente());
-        }
-        if (e.getPessoa() != null) {
-            return resolverCodigoClienteExibicaoParaPessoa(e.getPessoa().getId());
+        String cod = clienteCodigoPessoaResolver.codigoClienteExibicaoParaProcesso(e);
+        if (StringUtils.hasText(cod)) {
+            return codigoClienteNormalizadoParaMapa(cod);
         }
         return CodigoClienteUtil.formatar(1L);
     }

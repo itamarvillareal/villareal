@@ -23,8 +23,8 @@ export function obterParteOpostaLinha(row) {
 }
 
 /**
- * Chave curta: código do titular + id do processo (+ nº interno quando existir).
- * Ex.: `00000600 / id 8536 (nº 192)`
+ * Chave curta: código do cliente contratante + id do processo (+ nº interno quando existir).
+ * Ex.: `00000703 / id 8536 (nº 2)`
  */
 export function formatarChaveProcessoVinculo(row) {
   const cod = str(row?.codCliente);

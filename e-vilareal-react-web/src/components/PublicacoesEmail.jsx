@@ -241,7 +241,13 @@ function resolverStateProcessosDesdeLinha(row, indiceCnj, sugestoesApi) {
   if (!cod) return null;
   const procNum = Number(procRaw);
   if (!Number.isFinite(procNum) || procNum < 1) return null;
-  return buildRouterStateChaveClienteProcesso(cod, procNum);
+  const apiIdRaw = row?._processoId ?? row?.processoId ?? sug?.processoId;
+  const processoApiId =
+    apiIdRaw != null && Number.isFinite(Number(apiIdRaw)) && Number(apiIdRaw) > 0
+      ? Number(apiIdRaw)
+      : null;
+  const extra = processoApiId != null ? { processoApiId } : {};
+  return buildRouterStateChaveClienteProcesso(cod, procNum, extra);
 }
 
 function construirStateProcessosDesdeLinha(row, indiceCnj, sugestoesApi) {

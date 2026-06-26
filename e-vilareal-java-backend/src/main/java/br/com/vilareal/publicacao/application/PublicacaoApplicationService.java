@@ -263,10 +263,11 @@ public class PublicacaoApplicationService {
                 return Optional.empty();
             }
             List<BigInteger> ids = buscarIdsProcessoPorNumeroPublicacao(cnj);
-            if (ids.size() != 1) {
+            Optional<Long> processoIdOpt = escolherProcessoParaVinculoAutomaticoPorCnj(pub, ids);
+            if (processoIdOpt.isEmpty()) {
                 return Optional.empty();
             }
-            long processoId = ids.getFirst().longValue();
+            long processoId = processoIdOpt.get();
             ProcessoEntity proc = processoRepository
                     .findById(processoId)
                     .orElseThrow(() -> new ResourceNotFoundException("Processo não encontrado: " + processoId));
@@ -284,6 +285,57 @@ public class PublicacaoApplicationService {
 
     private List<BigInteger> buscarIdsProcessoPorNumeroPublicacao(String numeroBruto) {
         return ProcessoDiagnosticoNumeroBuscaUtil.buscarIdsProcessoPorNumero(numeroBruto, processoRepository);
+    }
+
+    /**
+     * Um CNJ pode existir em cadastros duplicados (legado). Preferimos o processo cujo texto da publicação
+     * bate com titular/partes e, em empate, o que tem cliente contratante distinto do titular.
+     */
+    private Optional<Long> escolherProcessoParaVinculoAutomaticoPorCnj(PublicacaoEntity pub, List<BigInteger> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return Optional.empty();
+        }
+        if (ids.size() == 1) {
+            return Optional.of(ids.getFirst().longValue());
+        }
+        int melhorPontuacao = Integer.MIN_VALUE;
+        Long melhorId = null;
+        int empates = 0;
+        for (BigInteger idBi : ids) {
+            long id = idBi.longValue();
+            Optional<ProcessoEntity> procOpt = processoRepository.findById(id);
+            if (procOpt.isEmpty()) {
+                continue;
+            }
+            int pontuacao = pontuacaoProcessoParaVinculoAutomaticoPorCnj(pub, procOpt.get());
+            if (pontuacao > melhorPontuacao) {
+                melhorPontuacao = pontuacao;
+                melhorId = id;
+                empates = 1;
+            } else if (pontuacao == melhorPontuacao && pontuacao > 0) {
+                empates++;
+            }
+        }
+        if (melhorId != null && empates == 1 && melhorPontuacao > 0) {
+            return Optional.of(melhorId);
+        }
+        return Optional.empty();
+    }
+
+    private int pontuacaoProcessoParaVinculoAutomaticoPorCnj(PublicacaoEntity pub, ProcessoEntity proc) {
+        int score = 0;
+        if (textoPublicacaoContemNomeTitularOuParte(pub, proc)) {
+            score += 10;
+        }
+        if (proc.getCliente() != null) {
+            score += 2;
+            if (proc.getPessoa() != null
+                    && proc.getCliente().getPessoa() != null
+                    && proc.getCliente().getPessoa().getId() != proc.getPessoa().getId()) {
+                score += 5;
+            }
+        }
+        return score;
     }
 
     private String montarObservacaoVinculoAutomaticoPorCnj(PublicacaoEntity pub, ProcessoEntity proc) {
@@ -416,14 +468,13 @@ public class PublicacaoApplicationService {
         if (proc != null) {
             r.setProcessoId(proc.getId());
             r.setNumeroInternoProcesso(proc.getNumeroInterno());
+            r.setCodigoClienteProcesso(trimToNull(clienteCodigoPessoaResolver.codigoClienteExibicaoParaProcesso(proc)));
             if (proc.getPessoa() != null) {
                 long pessoaId = proc.getPessoa().getId();
-                r.setCodigoClienteProcesso(clienteCodigoPessoaResolver.codigoClienteExibicaoParaPessoaId(pessoaId));
                 String titularNome = Utf8MojibakeUtil.corrigir(proc.getPessoa().getNome());
                 r.setTitularNome(trimToNull(titularNome));
                 r.setPessoaRefId(pessoaId);
             } else {
-                r.setCodigoClienteProcesso(null);
                 r.setTitularNome(null);
             }
             r.setPapelCliente(trimToNull(proc.getPapelCliente()));
