@@ -696,6 +696,7 @@ export function ImoveisCadastroView(props) {
               onSelecionarPessoa={onSelecionarPessoaProprietario}
               onLimparPessoa={onLimparPessoaProprietario}
               removendo={apiSaving}
+              salvando={apiSaving}
             />
             <CardParte
               tipo="inquilino"
@@ -709,6 +710,7 @@ export function ImoveisCadastroView(props) {
               onSelecionarPessoa={onSelecionarPessoaInquilino}
               onLimparPessoa={onLimparPessoaInquilino}
               removendo={apiSaving}
+              salvando={apiSaving}
             />
           </div>
         </AccordionSection>

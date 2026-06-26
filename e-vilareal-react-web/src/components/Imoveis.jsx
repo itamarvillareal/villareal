@@ -498,25 +498,26 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     };
   }, [inquilinoNumeroPessoa]);
 
-  function aplicarPessoaProprietario(p) {
-    if (!p || p.id == null) return;
-    proprietarioFetchGenRef.current += 1;
-    setProprietarioNumeroPessoa(String(p.id));
-    setProprietario(String(p.nome ?? '').trim());
-    setProprietarioCpf(formatDocBrExibicao(p.cpf));
-    setProprietarioContato(String(p.telefone ?? '').trim() || '—');
-    setProprietarioCadastroErro('');
-    setProprietarioCadastroCarregando(false);
-  }
-
-  function limparExtrasParteNoRef(tipo) {
+  function atualizarExtrasParteNoRef(tipo, dados) {
     const ex = { ...(jsonExtrasOriginalRef.current || {}) };
     if (tipo === 'proprietario') {
-      delete ex.proprietarioPessoaId;
-      delete ex.locadorPessoaId;
-      ex.proprietario = '';
-      ex.proprietarioCpf = '';
-      ex.proprietarioContato = '';
+      if (dados?.id) {
+        ex.proprietarioPessoaId = String(dados.id);
+        ex.proprietario = String(dados.nome ?? '').trim();
+        ex.proprietarioCpf = String(dados.cpf ?? '').trim();
+        ex.proprietarioContato = String(dados.contato ?? '').trim();
+      } else {
+        delete ex.proprietarioPessoaId;
+        delete ex.locadorPessoaId;
+        ex.proprietario = '';
+        ex.proprietarioCpf = '';
+        ex.proprietarioContato = '';
+      }
+    } else if (dados?.id) {
+      ex.inquilinoPessoaId = String(dados.id);
+      ex.inquilino = String(dados.nome ?? '').trim();
+      ex.inquilinoCpf = String(dados.cpf ?? '').trim();
+      ex.inquilinoContato = String(dados.contato ?? '').trim();
     } else {
       delete ex.inquilinoPessoaId;
       delete ex.inquilinoNumeroPessoa;
@@ -525,6 +526,36 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
       ex.inquilinoContato = '';
     }
     jsonExtrasOriginalRef.current = ex;
+  }
+
+  async function aplicarPessoaProprietario(p) {
+    if (!p || p.id == null) return;
+    cargaFormularioSeqRef.current += 1;
+    proprietarioFetchGenRef.current += 1;
+    const id = String(p.id);
+    const nome = String(p.nome ?? '').trim();
+    const cpf = formatDocBrExibicao(p.cpf);
+    const contato = String(p.telefone ?? '').trim() || '—';
+    setProprietarioNumeroPessoa(id);
+    setProprietario(nome);
+    setProprietarioCpf(cpf);
+    setProprietarioContato(contato);
+    setProprietarioCadastroErro('');
+    setProprietarioCadastroCarregando(false);
+    atualizarExtrasParteNoRef('proprietario', { id, nome, cpf, contato });
+    const idApi = _apiImovelId != null ? Number(_apiImovelId) : null;
+    if (featureFlags.useApiImoveis && Number.isFinite(idApi) && idApi >= 1) {
+      await salvarCadastroAtual({
+        proprietarioNumeroPessoa: id,
+        proprietario: nome,
+        proprietarioCpf: cpf,
+        proprietarioContato: contato,
+      });
+    }
+  }
+
+  function limparExtrasParteNoRef(tipo) {
+    atualizarExtrasParteNoRef(tipo, null);
   }
 
   async function limparPessoaProprietario() {
@@ -569,18 +600,33 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     }
   }
 
-  function aplicarPessoaInquilino(p) {
+  async function aplicarPessoaInquilino(p) {
     if (!p || p.id == null) return;
+    cargaFormularioSeqRef.current += 1;
     inquilinoFetchGenRef.current += 1;
-    setInquilinoNumeroPessoa(String(p.id));
-    setInquilino(String(p.nome ?? '').trim());
-    setInquilinoCpf(formatDocBrExibicao(p.cpf));
-    setInquilinoContato(String(p.telefone ?? '').trim() || '—');
+    const id = String(p.id);
+    const nome = String(p.nome ?? '').trim();
+    const cpf = formatDocBrExibicao(p.cpf);
+    const contato = String(p.telefone ?? '').trim() || '—';
+    setInquilinoNumeroPessoa(id);
+    setInquilino(nome);
+    setInquilinoCpf(cpf);
+    setInquilinoContato(contato);
     setInquilinoCadastroErro('');
     setInquilinoCadastroCarregando(false);
+    atualizarExtrasParteNoRef('inquilino', { id, nome, cpf, contato });
+    const idApi = _apiImovelId != null ? Number(_apiImovelId) : null;
+    if (featureFlags.useApiImoveis && Number.isFinite(idApi) && idApi >= 1) {
+      await salvarCadastroAtual({
+        inquilinoNumeroPessoa: id,
+        inquilino: nome,
+        inquilinoCpf: cpf,
+        inquilinoContato: contato,
+      });
+    }
   }
 
-  function aplicarPessoaInquilino(p) {
+  function navegarParaProcesso(codigoCliente, numeroInterno) {
     navigate('/processos', {
       state: buildRouterStateChaveClienteProcesso(codigoCliente, numeroInterno, {
         imovelId: String(imovelId),
@@ -684,13 +730,19 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
         setImovelId(Number(r.item.imovelId || imovelId));
       }
       if (featureFlags.useApiImoveis) {
-        const msgRemocao =
-          overrides.proprietarioNumeroPessoa === '' && overrides.proprietario === ''
-            ? 'Vínculo do proprietário removido.'
-            : overrides.inquilinoNumeroPessoa === '' && overrides.inquilino === ''
-              ? 'Vínculo do inquilino removido.'
-              : 'Cadastro do imóvel salvo na API.';
-        setApiSuccess(Object.keys(overrides).length > 0 ? msgRemocao : 'Cadastro do imóvel salvo na API.');
+        const msgPartes =
+          Object.keys(overrides).length === 0
+            ? 'Cadastro do imóvel salvo na API.'
+            : overrides.proprietarioNumeroPessoa === '' && Object.hasOwn(overrides, 'proprietario')
+              ? 'Vínculo do proprietário removido.'
+              : overrides.inquilinoNumeroPessoa === '' && Object.hasOwn(overrides, 'inquilino')
+                ? 'Vínculo do inquilino removido.'
+                : overrides.proprietarioNumeroPessoa
+                  ? `Proprietário vinculado (#${overrides.proprietarioNumeroPessoa}).`
+                  : overrides.inquilinoNumeroPessoa
+                    ? `Inquilino vinculado (#${overrides.inquilinoNumeroPessoa}).`
+                    : 'Cadastro do imóvel salvo na API.';
+        setApiSuccess(msgPartes);
         recarregarListaImoveisPesquisa();
       } else {
         setApiSuccess('Fluxo em fallback legado/mock (sem persistência real).');

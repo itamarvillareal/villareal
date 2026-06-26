@@ -557,6 +557,7 @@ import { SeletorPessoaParteImovel } from './SeletorPessoaParteImovel.jsx';
  *   onSelecionarPessoa: (pessoa: { id: number, nome?: string, cpf?: string, telefone?: string }) => void,
  *   onLimparPessoa: () => void,
  *   removendo?: boolean,
+ *   salvando?: boolean,
  * }} props
  */
 function rotuloNomeComNumero(numeroPessoa, nome) {
@@ -580,6 +581,7 @@ export function CardParte({
   onSelecionarPessoa,
   onLimparPessoa,
   removendo = false,
+  salvando = false,
 }) {
   const temNumero = Boolean(String(numeroPessoa ?? '').trim());
   const temNome = Boolean(String(nome ?? '').trim());
@@ -663,10 +665,10 @@ export function CardParte({
               <button
                 type="button"
                 onClick={() => void onLimparPessoa()}
-                disabled={removendo}
-                className={`${imoveisBtnGhost}${removendo ? ' opacity-50 pointer-events-none' : ''}`}
+                disabled={removendo || salvando}
+                className={`${imoveisBtnGhost}${removendo || salvando ? ' opacity-50 pointer-events-none' : ''}`}
               >
-                {removendo ? 'Removendo…' : 'Remover vínculo'}
+                {removendo ? 'Removendo…' : salvando ? 'Salvando…' : 'Remover vínculo'}
               </button>
             ) : null}
           </div>
