@@ -34,6 +34,7 @@ public class DocumentoController {
     private final ContratoHonorariosService contratoHonorariosService;
     private final ContratoHonorariosPersistenciaService contratoHonorariosPersistenciaService;
     private final ContratoAluguelService contratoAluguelService;
+    private final ContratoLocacaoDocumentoService contratoLocacaoDocumentoService;
     private final GoogleDriveService googleDriveService;
     private final DocumentoDrivePastaService documentoDrivePastaService;
     private final DocumentoArquivoImportacaoService arquivoImportacaoService;
@@ -48,6 +49,7 @@ public class DocumentoController {
             ContratoHonorariosService contratoHonorariosService,
             ContratoHonorariosPersistenciaService contratoHonorariosPersistenciaService,
             ContratoAluguelService contratoAluguelService,
+            ContratoLocacaoDocumentoService contratoLocacaoDocumentoService,
             GoogleDriveService googleDriveService,
             DocumentoDrivePastaService documentoDrivePastaService,
             DocumentoArquivoImportacaoService arquivoImportacaoService,
@@ -60,6 +62,7 @@ public class DocumentoController {
         this.contratoHonorariosService = contratoHonorariosService;
         this.contratoHonorariosPersistenciaService = contratoHonorariosPersistenciaService;
         this.contratoAluguelService = contratoAluguelService;
+        this.contratoLocacaoDocumentoService = contratoLocacaoDocumentoService;
         this.googleDriveService = googleDriveService;
         this.documentoDrivePastaService = documentoDrivePastaService;
         this.arquivoImportacaoService = arquivoImportacaoService;
@@ -339,6 +342,22 @@ public class DocumentoController {
         LocalDate data = request.data() != null ? request.data() : LocalDate.now();
         String nomeArquivo = DocumentoDrivePastaService.formatarNomeArquivoContrato(
                 "Contrato Aluguel", "Processo " + request.processoId(), data);
+        salvarPdfNoDriveAsync(
+                pdf,
+                nomeArquivo,
+                request.codigoCliente(),
+                request.numeroInterno(),
+                null,
+                TipoDocumento.CONTRATO);
+        return respostaPdf(nomeArquivo, pdf);
+    }
+
+    @PostMapping("/contrato-locacao")
+    public ResponseEntity<byte[]> gerarContratoLocacao(@RequestBody ContratoLocacaoRequest request) {
+        byte[] pdf = contratoLocacaoDocumentoService.gerarContrato(request);
+        LocalDate data = request.data() != null ? request.data() : LocalDate.now();
+        String nomeArquivo = DocumentoDrivePastaService.formatarNomeArquivoContrato(
+                "Contrato Locacao", "Contrato " + request.contratoLocacaoId(), data);
         salvarPdfNoDriveAsync(
                 pdf,
                 nomeArquivo,

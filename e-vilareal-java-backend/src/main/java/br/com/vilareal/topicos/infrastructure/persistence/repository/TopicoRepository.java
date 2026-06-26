@@ -24,6 +24,8 @@ public interface TopicoRepository extends JpaRepository<TopicoEntity, Long> {
     List<TopicoEntity> findByChaveNavegacaoAndAtivoTrueAndConteudoHtmlIsNotNullOrderByBlocoIndiceAsc(
             String chaveNavegacao);
 
+    List<TopicoEntity> findByChaveNavegacaoAndAtivoTrueOrderByBlocoIndiceAsc(String chaveNavegacao);
+
     @Query(
             """
             SELECT DISTINCT t.categoria FROM TopicoEntity t

@@ -12,6 +12,7 @@ import {
 } from './imoveis/ImoveisAdminLayout.jsx';
 import { ImoveisCadastroView } from './imoveis/ImoveisCadastroView.jsx';
 import { ModalVinculosProcessoImovel } from './imoveis/ModalVinculosProcessoImovel.jsx';
+import { ModalGerarContratoLocacao } from './imoveis/ModalGerarContratoLocacao.jsx';
 import { padCliente } from '../data/processosDadosRelatorio.js';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import {
@@ -97,6 +98,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   const [showModalIptu, setShowModalIptu] = useState(false);
   const [infoIptuTexto, setInfoIptuTexto] = useState('IPTU 2025 cinco parcelas em atraso + duas à vencer R$1.323,30');
   const [showModalVinculosProc, setShowModalVinculosProc] = useState(false);
+  const [showModalContratoLocacao, setShowModalContratoLocacao] = useState(false);
   const [contratoAssinadoInquilino, setContratoAssinadoInquilino] = useState('nao');
   const [contratoAssinadoProprietario, setContratoAssinadoProprietario] = useState('nao');
   const [contratoAssinadoGarantidor, setContratoAssinadoGarantidor] = useState('nao');
@@ -1016,6 +1018,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
             onGerenciarIptu={() => navigate(`/iptu/${_apiImovelId}`)}
             onCatalogo={abrirCatalogoImovel}
             onRelatorio={() => navigate('/relatorio-imoveis')}
+            onGerarContratoLocacao={() => setShowModalContratoLocacao(true)}
             onFechar={modoModal && onFecharModal ? onFecharModal : () => window.history.back()}
             onAbrirIptu={() => setShowModalIptu(true)}
             onSelecionarPessoaProprietario={aplicarPessoaProprietario}
@@ -1025,6 +1028,17 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
           />
         </div>
       </div>
+
+      <ModalGerarContratoLocacao
+        open={showModalContratoLocacao}
+        onClose={() => setShowModalContratoLocacao(false)}
+        contratoLocacaoId={_apiContratoId}
+        codigoCliente={codigo}
+        numeroInterno={proc}
+        locadorNome={proprietario}
+        locatarioNome={inquilino}
+        onErro={(msg) => setApiError(msg)}
+      />
 
       <ModalVinculosProcessoImovel
         open={showModalVinculosProc}

@@ -68,7 +68,7 @@ export function TopicosHierarchyPicker({ raiz, onCarregar }) {
     const ehCaminhoLocacao =
       pathStack.length >= 2 &&
       pathStack[0] === 'contratos' &&
-      pathStack[pathStack.length - 1] === 'contratos-loc';
+      pathStack[pathStack.length - 1] === 'contratos-locacao';
     if (ehCaminhoLocacao && marcados.length > 0) {
       void gerarEBaixarDocxLocacao(payload).catch((err) => {
         console.error(err);

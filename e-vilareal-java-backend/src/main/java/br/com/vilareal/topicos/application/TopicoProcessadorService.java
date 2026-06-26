@@ -3,6 +3,8 @@ package br.com.vilareal.topicos.application;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
 import br.com.vilareal.documento.QualificacaoPessoaUtil;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
+import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoParteEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoParteRepository;
 import br.com.vilareal.topicos.api.dto.TopicoProcessarResponse;
@@ -63,14 +65,17 @@ public class TopicoProcessadorService {
 
     private final TopicoRepository topicoRepository;
     private final ProcessoParteRepository processoParteRepository;
+    private final PessoaRepository pessoaRepository;
     private final QualificacaoPessoaUtil qualificacaoPessoaUtil;
 
     public TopicoProcessadorService(
             TopicoRepository topicoRepository,
             ProcessoParteRepository processoParteRepository,
+            PessoaRepository pessoaRepository,
             QualificacaoPessoaUtil qualificacaoPessoaUtil) {
         this.topicoRepository = topicoRepository;
         this.processoParteRepository = processoParteRepository;
+        this.pessoaRepository = pessoaRepository;
         this.qualificacaoPessoaUtil = qualificacaoPessoaUtil;
     }
 
@@ -115,13 +120,25 @@ public class TopicoProcessadorService {
     }
 
     ResultadoProcessamento processarTemplate(String template, Long processoId, Map<String, String> parametros) {
+        return processarTemplateComContexto(template, carregarPartes(processoId), parametros);
+    }
+
+    /** Locador = Autor; locatário = Réu (mesma convenção dos modelos legados de locação). */
+    @Transactional(readOnly = true)
+    public ResultadoProcessamento processarTemplateLocacao(
+            String template, Long locadorPessoaId, Long locatarioPessoaId, Map<String, String> parametros) {
+        return processarTemplateComContexto(
+                template, carregarPartesPorPessoasLocacao(locadorPessoaId, locatarioPessoaId), parametros);
+    }
+
+    private ResultadoProcessamento processarTemplateComContexto(
+            String template, ContextoPartes ctx, Map<String, String> parametros) {
         if (!StringUtils.hasText(template)) {
             return new ResultadoProcessamento("", List.of());
         }
         String texto = SEPARADOR_BLOCO.matcher(template).replaceAll("\n\n");
         texto = TAG_FORMATACAO.matcher(texto).replaceAll("");
 
-        ContextoPartes ctx = carregarPartes(processoId);
         Map<String, String> params = parametros != null ? parametros : Map.of();
 
         texto = substituirPadrao(texto, PLACEHOLDER_NOME, m -> resolverNome(ctx, m.group(1)));
@@ -170,6 +187,29 @@ public class TopicoProcessadorService {
             }
         }
         return new ContextoPartes(autores, reus);
+    }
+
+    private ContextoPartes carregarPartesPorPessoasLocacao(Long locadorPessoaId, Long locatarioPessoaId) {
+        List<ProcessoParteEntity> autores = new ArrayList<>();
+        List<ProcessoParteEntity> reus = new ArrayList<>();
+        if (locadorPessoaId != null) {
+            pessoaRepository
+                    .findById(locadorPessoaId)
+                    .ifPresent(p -> autores.add(parteComPessoa(p, "AUTOR")));
+        }
+        if (locatarioPessoaId != null) {
+            pessoaRepository
+                    .findById(locatarioPessoaId)
+                    .ifPresent(p -> reus.add(parteComPessoa(p, "REU")));
+        }
+        return new ContextoPartes(autores, reus);
+    }
+
+    private static ProcessoParteEntity parteComPessoa(PessoaEntity pessoa, String polo) {
+        ProcessoParteEntity parte = new ProcessoParteEntity();
+        parte.setPessoa(pessoa);
+        parte.setPolo(polo);
+        return parte;
     }
 
     private String resolverNome(ContextoPartes ctx, String poloRef) {
@@ -394,5 +434,5 @@ public class TopicoProcessadorService {
         }
     }
 
-    record ResultadoProcessamento(String texto, List<String> naoResolvidos) {}
+    public record ResultadoProcessamento(String texto, List<String> naoResolvidos) {}
 }

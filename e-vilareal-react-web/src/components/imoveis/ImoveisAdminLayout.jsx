@@ -10,6 +10,7 @@ import {
   Droplets,
   ExternalLink,
   FileSpreadsheet,
+  FileText,
   Flame,
   FolderOpen,
   Home,
@@ -290,7 +291,8 @@ export function AccordionSection({
  *   catalogoDisabled?: boolean,
  *   catalogoTitle?: string,
  *   onRelatorio?: () => void,
- *   showRelatorio?: boolean,
+ *   onGerarContratoLocacao?: () => void,
+ *   showGerarContratoLocacao?: boolean,
  *   onFechar: () => void,
  * }} props
  */
@@ -314,6 +316,8 @@ export function ImoveisStickyHeader({
   catalogoTitle,
   onRelatorio,
   showRelatorio,
+  onGerarContratoLocacao,
+  showGerarContratoLocacao,
   onFechar,
 }) {
   const { headerRef, scrolled } = useHeaderScrollShadow();
@@ -393,6 +397,12 @@ export function ImoveisStickyHeader({
             <button type="button" onClick={onRelatorio} className={`${imoveisBtnSecondary} text-xs py-2 px-3`}>
               <FileSpreadsheet className="w-4 h-4" aria-hidden />
               Relatório
+            </button>
+          ) : null}
+          {showGerarContratoLocacao && onGerarContratoLocacao ? (
+            <button type="button" onClick={onGerarContratoLocacao} className={imoveisBtnSecondary}>
+              <FileText className="w-4 h-4 shrink-0" aria-hidden />
+              Contrato locação
             </button>
           ) : null}
           <button type="button" onClick={onFechar} className={imoveisBtnIconGhost} aria-label="Fechar">

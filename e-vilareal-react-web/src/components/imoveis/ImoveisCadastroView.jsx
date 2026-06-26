@@ -161,6 +161,7 @@ export function ImoveisCadastroView(props) {
     onGerenciarIptu,
     onCatalogo,
     onRelatorio,
+    onGerarContratoLocacao,
     onFechar,
     onAbrirIptu,
     onSelecionarPessoaProprietario,
@@ -327,6 +328,8 @@ export function ImoveisCadastroView(props) {
           catalogoTitle={catalogoTitle}
           onRelatorio={onRelatorio}
           showRelatorio={featureFlags.useApiImoveis}
+          onGerarContratoLocacao={onGerarContratoLocacao}
+          showGerarContratoLocacao={featureFlags.useApiImoveis}
           onFechar={onFechar}
         />
 

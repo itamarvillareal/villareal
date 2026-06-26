@@ -328,6 +328,28 @@ export async function gerarContratoAluguel(
   return postPdf('/api/documentos/contrato-aluguel', body, opts);
 }
 
+export async function gerarContratoLocacao(
+  {
+    contratoLocacaoId,
+    variante,
+    cidadeEstado,
+    data,
+    codigoCliente,
+    numeroInterno,
+    formaAssinatura,
+  },
+  opts = {},
+) {
+  const body = { contratoLocacaoId: Number(contratoLocacaoId) };
+  if (variante) body.variante = String(variante);
+  if (cidadeEstado) body.cidadeEstado = cidadeEstado;
+  if (data) body.data = data;
+  if (codigoCliente) body.codigoCliente = String(codigoCliente);
+  if (numeroInterno != null && numeroInterno !== '') body.numeroInterno = Number(numeroInterno);
+  if (formaAssinatura) body.formaAssinatura = formaAssinatura;
+  return postPdf('/api/documentos/contrato-locacao', body, opts);
+}
+
 /** Gera a petição de Execução de Taxa Condominial (PDF). Retorna Blob. */
 export function gerarPeticaoExecucao(body, opts = {}) {
   return postPdf('/api/documentos/peticao-execucao', body, opts);
