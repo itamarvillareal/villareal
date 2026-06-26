@@ -32,6 +32,8 @@ function papelLabel(p) {
   if (p === 'CUSTO') return 'Custo';
   return p ?? '—';
 }
+
+function statusLabel(s) {
   if (s === 'FECHADA') return 'Encerrada';
   if (s === 'ABERTA') return 'Em carteira';
   if (s === 'LEGADO') return 'Venda sem compra';
