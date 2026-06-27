@@ -3,6 +3,15 @@ import { formatValorMoedaCampo } from '../utils/moneyBr.js';
 import { parseValorMonetarioBr } from '../utils/parseValorMonetarioBr.js';
 import { featureFlags, FEATURE_IPTU_NOVO } from '../config/featureFlags.js';
 import {
+  carregarVinculoLocatarioImovel,
+  extrairExtrasVinculoLocatarioJsonDoUi,
+  mesclarExtrasVinculoLocatarioNoItem,
+  removerExtrasVinculoLocatarioDoObjeto,
+  resolverProcessoIdParaVinculoUi,
+  salvarVinculoLocatarioImovel,
+  usuarioAlterouVinculoProcessoNoFormulario,
+} from './imoveisVinculoLocatario.js';
+import {
   getTransacoesContaCorrenteCompleto,
   normalizarCodigoClienteFinanceiro,
   normalizarProcFinanceiro,
@@ -869,6 +878,8 @@ function montarPayloadImovelFromUi(ui, clienteId, processoId, espelhoCodProc = n
   const numeroPlanilhaBody =
     Number.isFinite(nPlan) && nPlan >= 1 ? Math.floor(nPlan) : null;
 
+  const extrasImovel = removerExtrasVinculoLocatarioDoObjeto(extras);
+
   return {
     clienteId,
     processoId: processoId || null,
@@ -881,8 +892,8 @@ function montarPayloadImovelFromUi(ui, clienteId, processoId, espelhoCodProc = n
     situacao: ui.imovelOcupado ? 'OCUPADO' : 'DESOCUPADO',
     garagens: String(ui.garagens || '').trim() || null,
     inscricaoImobiliaria: String(ui.inscricaoImobiliaria || '').trim() || null,
-    observacoes: String(ui.observacoesInquilino || '').trim() || null,
-    camposExtrasJson: JSON.stringify(extras),
+    observacoes: null,
+    camposExtrasJson: JSON.stringify(extrasImovel),
     ativo: true,
   };
 }
@@ -906,9 +917,10 @@ function contratoSnapshotFromApi(contrato) {
   };
 }
 
-async function resolverContratoParaSaveImovel(imovelIdApi, uiPayload) {
+async function resolverContratoParaSaveImovel(imovelIdApi, uiPayload, processoIdEfetivo = null) {
+  const alterouVinculo = usuarioAlterouVinculoProcessoNoFormulario(uiPayload);
   let contratoId =
-    uiPayload?._apiContratoId != null && Number(uiPayload._apiContratoId) > 0
+    !alterouVinculo && uiPayload?._apiContratoId != null && Number(uiPayload._apiContratoId) > 0
       ? Number(uiPayload._apiContratoId)
       : null;
   let snapshot =
@@ -917,7 +929,11 @@ async function resolverContratoParaSaveImovel(imovelIdApi, uiPayload) {
       : null;
 
   try {
-    const contratos = await request('/api/locacoes/contratos', { query: { imovelId: imovelIdApi } });
+    const query = { imovelId: imovelIdApi };
+    if (processoIdEfetivo != null && Number(processoIdEfetivo) > 0) {
+      query.processoId = Number(processoIdEfetivo);
+    }
+    const contratos = await request('/api/locacoes/contratos', { query });
     const lista = Array.isArray(contratos) ? contratos : [];
     const alinhado = alinharContratoIdAoImovel(contratoId, lista);
     if (alinhado != null) {
@@ -988,6 +1004,8 @@ function montarPayloadContratoFromUi(ui, imovelId) {
 
   return {
     imovelId,
+    processoId:
+      ui._apiProcessoId != null && Number(ui._apiProcessoId) > 0 ? Number(ui._apiProcessoId) : null,
     locadorPessoaId: parseIdPessoa(ui.proprietarioNumeroPessoa),
     inquilinoPessoaId: inquilinosIds[0] ?? parseIdPessoa(ui.inquilinoNumeroPessoa),
     ...(inquilinosIds.length > 0 ? { inquilinosPessoaIds: inquilinosIds } : {}),
@@ -1375,11 +1393,123 @@ async function aplicarInquilinosMescladosComProcesso(item) {
   return item;
 }
 
+async function aplicarVinculoLocatarioNaUi(item) {
+  if (!item) return item;
+  const np = Number(item.numeroPlanilhaColA ?? item.imovelId);
+  const cod = padCliente8(item.codigo);
+  const proc = normalizarProcUi(item.proc);
+  if (!Number.isFinite(np) || np < 1 || !cod || !proc) return item;
+  const vinculo = await carregarVinculoLocatarioImovel({
+    numeroPlanilha: np,
+    codigoCliente: cod,
+    numeroInterno: Number(proc),
+  });
+  if (!vinculo?.camposExtrasJson) return item;
+  const extrasRaw = parseJsonSafe(vinculo.camposExtrasJson, {});
+  let merged = mesclarExtrasVinculoLocatarioNoItem(item, extrasRaw, normalizarExtrasImovelParaUi);
+  if (vinculo.processoId != null && Number(vinculo.processoId) > 0) {
+    merged = { ...merged, _apiProcessoId: Number(vinculo.processoId) };
+  }
+  return merged;
+}
+
 async function montarItemCadastroFromApiImovel(apiImovel) {
-  const contratos = await request('/api/locacoes/contratos', { query: { imovelId: apiImovel.id } });
+  let itemPreview = mapApiToUi(apiImovel, null);
+  itemPreview = await enriquecerCodigoProcDoVinculo(itemPreview, apiImovel);
+  const processoId = await resolverProcessoIdParaVinculoUi(itemPreview, resolverProcessoIdPorChave);
+
+  const queryContratos = { imovelId: apiImovel.id };
+  if (processoId != null && Number(processoId) > 0) {
+    queryContratos.processoId = Number(processoId);
+  }
+  const contratos = await request('/api/locacoes/contratos', { query: queryContratos });
   const contratoAtual = selecionarContratoVigente(Array.isArray(contratos) ? contratos : []);
   let item = mapApiToUi(apiImovel, contratoAtual);
-  item = await enriquecerCodigoProcDoVinculo(item, apiImovel);
+  item.codigo = itemPreview.codigo;
+  item.proc = itemPreview.proc;
+  item._vinculoCodigoOriginal = itemPreview._vinculoCodigoOriginal ?? itemPreview.codigo;
+  item._vinculoProcOriginal = itemPreview._vinculoProcOriginal ?? itemPreview.proc;
+  if (processoId != null && Number(processoId) > 0) {
+    item._apiProcessoId = Number(processoId);
+  }
+  item = await aplicarVinculoLocatarioNaUi(item);
+  item = await enriquecerNomesPartesImovelUi(item);
+  return aplicarInquilinosMescladosComProcesso(item);
+}
+
+/**
+ * Carrega o cadastro do imóvel com locatário/contrato do par Cod.+Proc. escolhido (modal «Abrir Proc.»).
+ * Não usa o vínculo principal — respeita exatamente o par selecionado.
+ */
+export async function carregarCadastroPorVinculoImovel({
+  numeroPlanilha,
+  imovelIdApi,
+  codigoCliente,
+  numeroInterno,
+}) {
+  if (!featureFlags.useApiImoveis) {
+    return null;
+  }
+  const np = Number(numeroPlanilha);
+  const cod = padCliente8(codigoCliente);
+  const proc = normalizarProcUi(numeroInterno);
+  if (!Number.isFinite(np) || np < 1 || !cod || !proc) {
+    return null;
+  }
+
+  let apiImovel = null;
+  const preferId = Number(imovelIdApi);
+  if (Number.isFinite(preferId) && preferId >= 1) {
+    try {
+      apiImovel = await request(`/api/imoveis/${Math.floor(preferId)}`);
+    } catch {
+      apiImovel = null;
+    }
+  }
+  if (!apiImovel) {
+    try {
+      apiImovel = await request(`/api/imoveis/por-numero-planilha/${Math.floor(np)}`);
+    } catch {
+      const list = await listarImoveisApi();
+      const candidatos = (Array.isArray(list) ? list : []).filter((i) => Number(i.numeroPlanilha) === np);
+      apiImovel = escolherMelhorImovelApiPorNumeroPlanilha(candidatos);
+      if (apiImovel?.id) {
+        try {
+          apiImovel = await request(`/api/imoveis/${apiImovel.id}`);
+        } catch {
+          /* usa resumo da listagem */
+        }
+      }
+    }
+  }
+  if (!apiImovel?.id) {
+    return null;
+  }
+
+  let processoId = null;
+  try {
+    processoId = await resolverProcessoIdPorChave(cod, proc);
+  } catch {
+    processoId = null;
+  }
+
+  const queryContratos = { imovelId: apiImovel.id };
+  if (processoId != null && Number(processoId) > 0) {
+    queryContratos.processoId = Number(processoId);
+  }
+  const contratos = await request('/api/locacoes/contratos', { query: queryContratos });
+  const contratoAtual = selecionarContratoVigente(Array.isArray(contratos) ? contratos : []);
+
+  let item = mapApiToUi(apiImovel, contratoAtual);
+  item.codigo = cod;
+  item.proc = proc;
+  item._vinculoCodigoOriginal = cod;
+  item._vinculoProcOriginal = proc;
+  if (processoId != null && Number(processoId) > 0) {
+    item._apiProcessoId = Number(processoId);
+  }
+
+  item = await aplicarVinculoLocatarioNaUi(item);
   item = await enriquecerNomesPartesImovelUi(item);
   return aplicarInquilinosMescladosComProcesso(item);
 }
@@ -1490,13 +1620,11 @@ export async function carregarImovelCadastro({ imovelId }) {
   }
   try {
     const apiImovel = await request(`/api/imoveis/${Number(imovelId)}`);
-    const contratos = await request('/api/locacoes/contratos', { query: { imovelId: apiImovel.id } });
-    const contratoAtual = selecionarContratoVigente(Array.isArray(contratos) ? contratos : []);
-    let item = mapApiToUi(apiImovel, contratoAtual);
-    item = await enriquecerCodigoProcDoVinculo(item, apiImovel);
-    item = await enriquecerNomesPartesImovelUi(item);
-    item = await aplicarInquilinosMescladosComProcesso(item);
-    return { fonte: 'api', item, encontrado: true };
+    return montarItemCadastroFromApiImovel(apiImovel).then((item) => ({
+      fonte: 'api',
+      item,
+      encontrado: true,
+    }));
   } catch {
     return { fonte: 'api', item: null, encontrado: false };
   }
@@ -1648,13 +1776,40 @@ export async function salvarImovelCadastro(uiPayload) {
     ? await request(`/api/imoveis/${idPersistencia}`, { method: 'PUT', body: bodyImovel })
     : await request('/api/imoveis', { method: 'POST', body: bodyImovel });
 
-  const { contratoId, snapshot } = await resolverContratoParaSaveImovel(imovelSalvo.id, uiPayload);
+  const processoIdEfetivo =
+    vinculo.processoIdPayload ??
+    (uiPayload._apiProcessoId != null && Number(uiPayload._apiProcessoId) > 0
+      ? Number(uiPayload._apiProcessoId)
+      : null);
+
+  if (vinculo.espelhoCodigo && vinculo.espelhoProc && bodyImovel.numeroPlanilha) {
+    await salvarVinculoLocatarioImovel({
+      numeroPlanilha: bodyImovel.numeroPlanilha,
+      codigoCliente: vinculo.espelhoCodigo,
+      numeroInterno: Number(vinculo.espelhoProc),
+      processoId: processoIdEfetivo,
+      camposExtrasJson: extrairExtrasVinculoLocatarioJsonDoUi(
+        uiPayload,
+        uiPayload._jsonExtrasOriginal,
+      ),
+    });
+  }
+
+  const { contratoId, snapshot } = await resolverContratoParaSaveImovel(
+    imovelSalvo.id,
+    uiPayload,
+    processoIdEfetivo,
+  );
   const uiContrato = {
     ...uiPayload,
     _apiContratoId: contratoId ?? uiPayload._apiContratoId,
+    _apiProcessoId: processoIdEfetivo ?? uiPayload._apiProcessoId,
     _contratoSnapshotOriginal: snapshot ?? uiPayload._contratoSnapshotOriginal,
   };
   const contratoBody = montarPayloadContratoFromUi(uiContrato, imovelSalvo.id);
+  if (processoIdEfetivo != null && Number(processoIdEfetivo) > 0) {
+    contratoBody.processoId = Number(processoIdEfetivo);
+  }
   let contratoSalvo = null;
   if (contratoProntoParaPersistir(contratoBody, contratoId, uiContrato)) {
     contratoSalvo = contratoId
@@ -1706,7 +1861,12 @@ export async function salvarImovelCadastro(uiPayload) {
   return {
     fonte: 'api',
     salvo: true,
-    item,
+    item: {
+      ...item,
+      _vinculoCodigoOriginal: vinculo.espelhoCodigo || item.codigo,
+      _vinculoProcOriginal: vinculo.espelhoProc || item.proc,
+      _apiProcessoId: processoIdEfetivo ?? item._apiProcessoId,
+    },
   };
 }
 

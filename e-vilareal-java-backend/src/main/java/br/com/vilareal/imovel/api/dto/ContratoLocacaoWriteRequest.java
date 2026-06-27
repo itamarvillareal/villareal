@@ -11,6 +11,9 @@ public class ContratoLocacaoWriteRequest {
     @NotNull
     private Long imovelId;
 
+    /** Par Cod.+Proc. — escopo do contrato/locatário. */
+    private Long processoId;
+
     private Long locadorPessoaId;
     private Long inquilinoPessoaId;
 
@@ -42,6 +45,14 @@ public class ContratoLocacaoWriteRequest {
 
     public void setImovelId(Long imovelId) {
         this.imovelId = imovelId;
+    }
+
+    public Long getProcessoId() {
+        return processoId;
+    }
+
+    public void setProcessoId(Long processoId) {
+        this.processoId = processoId;
     }
 
     public Long getLocadorPessoaId() {

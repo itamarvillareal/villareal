@@ -42,17 +42,47 @@ export function editarMoedaCampo(texto, { finalizar = false } = {}) {
   if (!raw.trim()) return '';
 
   const semEspacos = raw.replace(/\u00a0/g, ' ').trim();
-  if (!finalizar) {
-    if (semEspacos.endsWith(',')) return semEspacos;
-    if (/,\d?$/.test(semEspacos.replace(/\./g, '')) && semEspacos.includes(',')) {
-      return semEspacos;
-    }
-    const digitos = semEspacos.replace(/R\$/gi, '').replace(/\s/g, '').replace(/\D/g, '');
-    if (digitos.length > 0 && digitos.length <= 2 && !semEspacos.includes(',') && !semEspacos.includes('.')) {
-      return semEspacos;
-    }
+
+  if (finalizar) {
+    const n = parseValorMonetarioBr(semEspacos);
+    return n != null ? formatValorMoedaCampo(n) : semEspacos;
   }
 
-  const n = parseValorMonetarioBr(semEspacos);
-  return n != null ? formatValorMoedaCampo(n) : semEspacos;
+  const semSimbolo = semEspacos.replace(/R\$/gi, '').trim();
+  if (!semSimbolo) return '';
+
+  // Vírgula explícita: centavos parciais (ex.: «17,5»), sem forçar «,00» enquanto digita.
+  if (semSimbolo.includes(',')) {
+    const [parteInteira = '', parteDecimal = ''] = semSimbolo.replace(/\./g, '').split(',');
+    const intDigitos = parteInteira.replace(/\D/g, '');
+    const decDigitos = parteDecimal.replace(/\D/g, '').slice(0, 2);
+    const intFmt = intDigitos ? Number(intDigitos).toLocaleString('pt-BR') : '';
+    if (semSimbolo.endsWith(',')) {
+      return intFmt ? `${intFmt},` : ',';
+    }
+    return decDigitos.length > 0 ? `${intFmt || '0'},${decDigitos}` : `${intFmt},`;
+  }
+
+  // Parte inteira: milhar progressivo, sem «,00» até o blur.
+  const digitos = semSimbolo.replace(/\D/g, '');
+  if (!digitos) return '';
+  const normalizado = digitos.replace(/^0+(?=\d)/, '');
+  return Number(normalizado).toLocaleString('pt-BR');
+}
+
+/** Reposiciona o cursor após inserir separadores de milhar. */
+export function calcularPosicaoCursorMoedaBr(textoAntes, posicaoCursor, textoDepois) {
+  const alvo = String(textoAntes ?? '')
+    .slice(0, posicaoCursor ?? 0)
+    .replace(/\D/g, '').length;
+  if (alvo <= 0) return 0;
+  let digitos = 0;
+  const depois = String(textoDepois ?? '');
+  for (let i = 0; i < depois.length; i++) {
+    if (/\d/.test(depois[i])) {
+      digitos++;
+      if (digitos === alvo) return i + 1;
+    }
+  }
+  return depois.length;
 }

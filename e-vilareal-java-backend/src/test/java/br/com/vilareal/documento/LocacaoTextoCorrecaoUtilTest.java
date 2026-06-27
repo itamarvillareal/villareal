@@ -79,4 +79,11 @@ class LocacaoTextoCorrecaoUtilTest {
         assertThat(LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao(fecho))
                 .contains("justas e contratadas, as partes");
     }
+
+    @Test
+    void normalizaRedacaoParagrafoTaxaCondominial() {
+        assertThat(LocacaoTextoCorrecaoUtil.normalizar(
+                        "devendo fazer o pagamento por igual período de meses da locação, ou seja, 6 meses"))
+                .contains("mesma quantidade de taxas condominiais correspondente ao número de meses da locação");
+    }
 }

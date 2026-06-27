@@ -6,6 +6,8 @@ describe('parseValorMonetarioBr', () => {
     expect(parseValorMonetarioBr('R$1.200,45')).toBe(1200.45);
     expect(parseValorMonetarioBr('R$ 1.200,45')).toBe(1200.45);
     expect(parseValorMonetarioBr('1.200,45')).toBe(1200.45);
+    expect(parseValorMonetarioBr('1.700')).toBe(1700);
+    expect(parseValorMonetarioBr('12.345.678')).toBe(12345678);
   });
 
   it('aceita apenas vírgula decimal sem milhar', () => {

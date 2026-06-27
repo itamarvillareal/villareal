@@ -1,6 +1,7 @@
 package br.com.vilareal.imovel.infrastructure.persistence.entity;
 
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
+import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -22,6 +23,11 @@ public class ContratoLocacaoEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "imovel_id", nullable = false)
     private ImovelEntity imovel;
+
+    /** Par Cod.+Proc. ao qual este contrato/locatário pertence. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "processo_id")
+    private ProcessoEntity processo;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "locador_pessoa_id")

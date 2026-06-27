@@ -47,6 +47,7 @@ class ImovelApplicationServiceVinculoPrincipalTest {
     @Mock private ImovelProcessoLinkService imovelProcessoLinkService;
     @Mock private ImovelProcessoRepository imovelProcessoRepository;
     @Mock private ImovelVinculoProcessoPrincipalRepository imovelVinculoProcessoPrincipalRepository;
+    @Mock private ImovelVinculoLocatarioService imovelVinculoLocatarioService;
 
     private ImovelApplicationService service;
 
@@ -63,7 +64,8 @@ class ImovelApplicationServiceVinculoPrincipalTest {
                 clienteResolverService,
                 imovelProcessoLinkService,
                 imovelProcessoRepository,
-                imovelVinculoProcessoPrincipalRepository);
+                imovelVinculoProcessoPrincipalRepository,
+                imovelVinculoLocatarioService);
     }
 
     @Test

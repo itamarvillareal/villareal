@@ -41,9 +41,10 @@ public class LocacoesController {
     }
 
     @GetMapping("/contratos")
-    @Operation(summary = "Listar contratos por imóvel")
-    public List<ContratoLocacaoResponse> listarContratos(@RequestParam Long imovelId) {
-        return imovelApplicationService.listarContratos(imovelId);
+    @Operation(summary = "Listar contratos por imóvel (opcionalmente filtrados por processo/Cod.+Proc.)")
+    public List<ContratoLocacaoResponse> listarContratos(
+            @RequestParam Long imovelId, @RequestParam(required = false) Long processoId) {
+        return imovelApplicationService.listarContratos(imovelId, processoId);
     }
 
     @PostMapping("/contratos")

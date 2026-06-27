@@ -119,6 +119,16 @@ final class ContratoLocacaoBlocoUtil {
         return texto.toLowerCase(Locale.ROOT).contains("votação em assembleias condominiais");
     }
 
+    /** Cláusula 18ª — prazos/obrigações do locatário sem necessidade de interpelação (bloco 41). */
+    static boolean isClausulaPrazosObrigacoesLocatario(String texto) {
+        if (!StringUtils.hasText(texto)) {
+            return false;
+        }
+        String lower = texto.toLowerCase(Locale.ROOT);
+        return lower.contains("prazos e as obriga")
+                && lower.contains("independentemente de interpela");
+    }
+
     static boolean pareceClausulaFiador(String template, TopicoEntity bloco) {
         if (!StringUtils.hasText(template)) {
             return false;

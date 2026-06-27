@@ -25,4 +25,6 @@ public record ContratoLocacaoRequest(
         /** Opcional: dia de vencimento do formulário (sobrescreve contrato gravado só na geração do PDF). */
         Integer diaVencimentoAluguel,
         /** Opcional: {@code DEPOSITO_TED} ou {@code BOLETO} — Cláusula 3ª. */
-        String formaPagamentoAluguel) {}
+        String formaPagamentoAluguel,
+        /** Opcional: data da 1ª taxa condominial (§3º) — sobrescreve imóvel gravado só na geração do PDF. */
+        LocalDate dataPagamentoPrimeiraTaxaCondominial) {}

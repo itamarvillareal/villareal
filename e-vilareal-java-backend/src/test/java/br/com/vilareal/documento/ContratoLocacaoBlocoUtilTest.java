@@ -55,4 +55,13 @@ class ContratoLocacaoBlocoUtilTest {
         assertThat(ContratoLocacaoBlocoUtil.isClausulaVotacaoAssembleiaCondominial("O Locador dá em locação o imóvel."))
                 .isFalse();
     }
+
+    @Test
+    void isClausulaPrazosObrigacoesLocatario() {
+        assertThat(ContratoLocacaoBlocoUtil.isClausulaPrazosObrigacoesLocatario(
+                        "Os prazos e as obrigações do Locatário se vencerão independentemente de interpelação, notificação ou aviso, judicial ou extrajudicial;"))
+                .isTrue();
+        assertThat(ContratoLocacaoBlocoUtil.isClausulaPrazosObrigacoesLocatario("O Locador dá em locação o imóvel."))
+                .isFalse();
+    }
 }

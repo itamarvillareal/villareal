@@ -120,6 +120,8 @@ public class ContratoLocacaoDocumentoService {
         LocacaoTemplateLegadoSupport.aplicarDiaVencimento(parametros, resolverDiaVencimento(request, contrato));
         LocacaoTemplateLegadoSupport.aplicarFormaPagamentoAluguel(
                 parametros, resolverFormaPagamentoAluguel(request, contrato));
+        LocacaoTemplateLegadoSupport.aplicarDataPagamentoPrimeiraTaxaCondominial(
+                parametros, resolverDataPagamentoPrimeiraTaxaCondominial(request, contrato, vigenciaInicio));
         parametros.put("quantidadeLocatarios", String.valueOf(locatariosPessoaIds.size()));
         final String prazoLocacaoTexto = parametros.get("prazoLocacaoTexto");
         List<Long> fiadoresPessoaIds = ContratoLocacaoFiadorSupport.extrairPessoaIds(contrato.getFiadoresJson());
@@ -178,6 +180,9 @@ public class ContratoLocacaoDocumentoService {
                 }
                 clausulaVotacaoAssembleiaIncluida = true;
             }
+            if (ContratoLocacaoBlocoUtil.isClausulaPrazosObrigacoesLocatario(texto)) {
+                continue;
+            }
 
             if (ContratoLocacaoBlocoUtil.isParagrafoClausula(template, bloco)) {
                 if (clausulaTextoAtual != null) {
@@ -219,10 +224,6 @@ public class ContratoLocacaoDocumentoService {
         }
         String nomeLocador = ContratoHonorariosClausulas.normalizarNomeAssinatura(
                 Utf8MojibakeUtil.corrigir(locador.getNome()));
-        String nomeLocatario = locatarios.stream()
-                .map(p -> ContratoHonorariosClausulas.normalizarNomeAssinatura(Utf8MojibakeUtil.corrigir(p.getNome())))
-                .filter(StringUtils::hasText)
-                .collect(Collectors.joining(" E "));
         preambuloPlain = LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao(preambuloPlain);
         preambuloPlain = ContratoLocacaoPreambuloUtil.aplicarPosProcessamentoPreambuloLocacao(
                 preambuloPlain, locatarios, locador, qualificacaoPessoaUtil);
@@ -264,9 +265,9 @@ public class ContratoLocacaoDocumentoService {
                 "fechoHtml",
                 ContratoFechoTexto.montarFechoAluguel(ContratoFormaAssinatura.resolver(request.formaAssinatura())));
         variables.put("localData", localData);
-        variables.put("nomeLocador", nomeLocador);
-        variables.put("nomeLocatario", nomeLocatario);
-        variables.put("rotuloLocatario", pluralLocatarios ? "Locatários" : "Locatário");
+        variables.put(
+                "linhasAssinatura",
+                ContratoLocacaoAssinaturaUtil.montarVariaveisLinhasAssinaturaLocadorLocatario(locador, locatarios));
         variables.put("temFiadores", temFiadores);
         variables.put("fiadorAssinaturas", ContratoLocacaoAssinaturaUtil.montarVariaveisAssinaturaFiadores(fiadores));
 
@@ -378,6 +379,21 @@ public class ContratoLocacaoDocumentoService {
             return FormaPagamentoAluguelLocacao.normalizar(contrato.getFormaPagamentoAluguel());
         }
         return FormaPagamentoAluguelLocacao.PADRAO;
+    }
+
+    private static LocalDate resolverDataPagamentoPrimeiraTaxaCondominial(
+            ContratoLocacaoRequest request, ContratoLocacaoEntity contrato, LocalDate vigenciaInicio) {
+        if (request != null && request.dataPagamentoPrimeiraTaxaCondominial() != null) {
+            return request.dataPagamentoPrimeiraTaxaCondominial();
+        }
+        if (contrato != null && contrato.getImovel() != null) {
+            LocalDate fromImovel =
+                    LocacaoTemplateLegadoSupport.extrairDataPagamentoPrimeiraTaxaCondominialImovel(contrato.getImovel());
+            if (fromImovel != null) {
+                return fromImovel;
+            }
+        }
+        return vigenciaInicio;
     }
 
     private String montarPreambuloProgramatico(

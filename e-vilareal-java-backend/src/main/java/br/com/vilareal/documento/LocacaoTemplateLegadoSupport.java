@@ -2,6 +2,7 @@ package br.com.vilareal.documento;
 
 import br.com.vilareal.imovel.infrastructure.persistence.entity.ContratoLocacaoEntity;
 import br.com.vilareal.imovel.infrastructure.persistence.entity.ImovelEntity;
+import br.com.vilareal.julia.domain.JuliaTriagemDateParseUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.util.StringUtils;
@@ -62,7 +63,6 @@ public final class LocacaoTemplateLegadoSupport {
 
         registrar(campos, "Data_Inicio_Aluguel", dataInicio != null ? dataInicio.toString() : "");
         registrar(campos, "Data_Fim_Aluguel", dataFim != null ? dataFim.toString() : "");
-        registrar(campos, "Data_Pag_1_Tx_Cond", dataInicio != null ? dataInicio.toString() : "");
         registrar(campos, "data", dataDocumento != null ? dataDocumento.toString() : LocalDate.now().toString());
 
         if (contrato.getValorAluguel() != null) {
@@ -121,8 +121,37 @@ public final class LocacaoTemplateLegadoSupport {
             registrar(campos, "Gas_Imovel", "");
         }
 
+        LocalDate dataPrimeiraTxCond = extrairDataPagamentoPrimeiraTaxaCondominialImovel(im);
+        if (dataPrimeiraTxCond == null) {
+            dataPrimeiraTxCond = dataInicio;
+        }
+        registrar(
+                campos,
+                "Data_Pag_1_Tx_Cond",
+                dataPrimeiraTxCond != null ? dataPrimeiraTxCond.toString() : "");
+
         registrar(campos, "Class_do_Processo", "");
         return campos;
+    }
+
+    /** Lê {@code dataPag1TxCond} de {@code camposExtrasJson} do imóvel (ISO ou dd/MM/yyyy). */
+    public static LocalDate extrairDataPagamentoPrimeiraTaxaCondominialImovel(ImovelEntity imovel) {
+        if (imovel == null) {
+            return null;
+        }
+        JsonNode extras = parseExtrasJson(imovel.getCamposExtrasJson());
+        String raw = textoExtra(extras, "dataPag1TxCond", "dataPagamento1TxCondominial");
+        return parseDataFlexivel(raw);
+    }
+
+    /** Atualiza a data da 1ª taxa condominial (§3º). */
+    public static void aplicarDataPagamentoPrimeiraTaxaCondominial(Map<String, String> params, LocalDate data) {
+        if (params == null || data == null) {
+            return;
+        }
+        String iso = data.toString();
+        registrar(params, "Data_Pag_1_Tx_Cond", iso);
+        params.put("dataPag1TxCond", iso);
     }
 
     /** Lê {@code linkVistoria} de {@code camposExtrasJson} do imóvel. */
@@ -578,6 +607,17 @@ public final class LocacaoTemplateLegadoSupport {
         } catch (Exception e) {
             return OBJECT_MAPPER.createObjectNode();
         }
+    }
+
+    private static LocalDate parseDataFlexivel(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        String s = raw.trim();
+        if (s.matches("\\d{8}")) {
+            s = s.substring(0, 2) + "/" + s.substring(2, 4) + "/" + s.substring(4, 8);
+        }
+        return JuliaTriagemDateParseUtil.parseDataResposta(s);
     }
 
     private static String textoExtra(JsonNode extras, String... campos) {

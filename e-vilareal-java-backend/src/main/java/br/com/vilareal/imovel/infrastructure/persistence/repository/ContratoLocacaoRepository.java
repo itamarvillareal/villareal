@@ -12,6 +12,9 @@ public interface ContratoLocacaoRepository extends JpaRepository<ContratoLocacao
 
     List<ContratoLocacaoEntity> findByImovel_IdOrderByDataInicioDescIdDesc(Long imovelId);
 
+    List<ContratoLocacaoEntity> findByImovel_IdAndProcesso_IdOrderByDataInicioDescIdDesc(
+            Long imovelId, Long processoId);
+
     /** Contratos do imóvel cujo processo é o informado (mais recente primeiro). */
     @Query("""
             SELECT c FROM ContratoLocacaoEntity c

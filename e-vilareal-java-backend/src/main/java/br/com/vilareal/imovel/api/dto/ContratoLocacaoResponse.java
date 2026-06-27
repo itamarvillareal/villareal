@@ -8,6 +8,7 @@ public class ContratoLocacaoResponse {
 
     private Long id;
     private Long imovelId;
+    private Long processoId;
     private Long locadorPessoaId;
     private Long inquilinoPessoaId;
     private LocalDate dataInicio;
@@ -40,6 +41,14 @@ public class ContratoLocacaoResponse {
 
     public void setImovelId(Long imovelId) {
         this.imovelId = imovelId;
+    }
+
+    public Long getProcessoId() {
+        return processoId;
+    }
+
+    public void setProcessoId(Long processoId) {
+        this.processoId = processoId;
     }
 
     public Long getLocadorPessoaId() {

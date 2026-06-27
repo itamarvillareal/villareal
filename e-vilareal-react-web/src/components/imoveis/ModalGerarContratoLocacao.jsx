@@ -51,6 +51,7 @@ function brDateToIsoOptional(br) {
  *   linkVistoria?: string,
  *   diaPagAluguel?: string,
  *   formaPagamentoAluguel?: string,
+ *   dataPag1TxCond?: string,
  *   onAntesDeGerar?: () => void | Promise<void>,
  *   onErro?: (msg: string) => void,
  * }} props
@@ -71,6 +72,7 @@ export function ModalGerarContratoLocacao({
   linkVistoria,
   diaPagAluguel,
   formaPagamentoAluguel,
+  dataPag1TxCond,
   onAntesDeGerar,
   onErro,
 }) {
@@ -119,6 +121,7 @@ export function ModalGerarContratoLocacao({
         linkVistoria: String(linkVistoria ?? '').trim() || undefined,
         diaVencimentoAluguel: parseDiaVencimentoAluguel(diaPagAluguel),
         formaPagamentoAluguel: normalizarFormaPagamentoAluguel(formaPagamentoAluguel),
+        dataPagamentoPrimeiraTaxaCondominial: brDateToIsoOptional(dataPag1TxCond),
       });
       const base = locatarioNome || locadorNome || 'locacao';
       downloadPdfBlob(blob, nomeArquivoContratoPdf(base, 'locacao'));

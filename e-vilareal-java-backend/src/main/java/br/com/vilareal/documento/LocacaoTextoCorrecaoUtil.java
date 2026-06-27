@@ -101,7 +101,10 @@ public final class LocacaoTextoCorrecaoUtil {
                 .replaceAll("(?i)\\bt[eêë]?m\\s+por\\s+justo", "têm por justo")
                 .replaceAll("(?i)\\bOS (Locatários|Locatárias|Locatarios|Locatarias)\\b", "Os $1")
                 .replaceAll("(?i)Propercase\\(\\s*S\\s*\\)\\s*ublocar", "Sublocar")
-                .replaceAll("(?i)\\bS\\s+ublocar\\b", "Sublocar");
+                .replaceAll("(?i)\\bS\\s+ublocar\\b", "Sublocar")
+                .replaceAll(
+                        "(?i)devendo fazer o pagamento por igual período de meses da locação, ou seja,",
+                        "devendo pagar a mesma quantidade de taxas condominiais correspondente ao número de meses da locação, ou seja,");
     }
 
     static String normalizarMarcadoresParagrafo(String texto) {

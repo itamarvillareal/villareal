@@ -329,6 +329,58 @@ class LocacaoTemplateLegadoSupportTest {
     }
 
     @Test
+    void montarCamposLegacy_dataPag1TxCondDoExtras() {
+        ImovelEntity imovel = new ImovelEntity();
+        imovel.setCamposExtrasJson("{\"dataPag1TxCond\":\"10/07/2026\"}");
+
+        ContratoLocacaoEntity contrato = new ContratoLocacaoEntity();
+        contrato.setImovel(imovel);
+        contrato.setDataInicio(LocalDate.of(2025, 5, 30));
+
+        Map<String, String> campos = LocacaoTemplateLegadoSupport.montarCamposLegacy(contrato, LocalDate.now());
+
+        assertThat(campos.get("Data_Pag_1_Tx_Cond")).isEqualTo("2026-07-10");
+    }
+
+    @Test
+    void preprocessar_paragrafoTaxaCondominial_usaDataPag1TxCondEPrazoLocacao() {
+        ImovelEntity imovel = new ImovelEntity();
+        imovel.setCamposExtrasJson("{\"dataPag1TxCond\":\"10/07/2026\"}");
+
+        ContratoLocacaoEntity contrato = new ContratoLocacaoEntity();
+        contrato.setImovel(imovel);
+        contrato.setDataInicio(LocalDate.of(2025, 5, 30));
+        contrato.setDataFim(LocalDate.of(2025, 11, 30));
+
+        Map<String, String> campos = LocacaoTemplateLegadoSupport.montarCamposLegacy(contrato, LocalDate.now());
+        LocacaoTemplateLegadoSupport.aplicarVigenciaLocacao(
+                campos, LocalDate.of(2025, 5, 30), LocalDate.of(2025, 11, 30));
+
+        String template =
+                "§3º Os Locatários ficam responsáveis pelo pagamento da taxa condominial que vence a partir de "
+                        + "Formatar_Texto(Data_Pag_1_Tx_Cond(\"@\"),\"dd'de'mês'de'aaaa\"), "
+                        + "devendo fazer o pagamento por igual período de meses da locação, ou seja, 12 meses, "
+                        + "caso o contrato não seja renovado;";
+
+        String out = LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao(
+                LocacaoTemplateLegadoSupport.preprocessar(template, campos));
+
+        assertThat(out).contains("10 de julho de 2026");
+        assertThat(out).doesNotContain("30 de maio de 2025");
+        assertThat(out).contains("6 meses");
+        assertThat(out).contains("mesma quantidade de taxas condominiais");
+    }
+
+    @Test
+    void aplicarDataPagamentoPrimeiraTaxaCondominial_atualizaCamposLegados() {
+        Map<String, String> params = new HashMap<>();
+        LocacaoTemplateLegadoSupport.aplicarDataPagamentoPrimeiraTaxaCondominial(params, LocalDate.of(2026, 7, 10));
+
+        assertThat(params.get("Data_Pag_1_Tx_Cond")).isEqualTo("2026-07-10");
+        assertThat(params.get("dataPag1TxCond")).isEqualTo("2026-07-10");
+    }
+
+    @Test
     void aplicarDiaVencimento_eFormaPagamento_atualizamCamposLegados() {
         Map<String, String> params = new HashMap<>();
         LocacaoTemplateLegadoSupport.aplicarDiaVencimento(params, 15);

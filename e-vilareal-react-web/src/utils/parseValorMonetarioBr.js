@@ -26,6 +26,11 @@ export function parseValorMonetarioBr(v) {
   }
 
   if (lastDot !== -1 && lastDot > lastComma) {
+    // Milhar BR sem vírgula (campo durante digitação/blur: «1.700» → 1700).
+    if (lastComma === -1 && /^\d{1,3}(\.\d{3})+$/.test(s)) {
+      const n = Number(s.replace(/\./g, ''));
+      return Number.isFinite(n) ? n : null;
+    }
     const intPart = s.slice(0, lastDot).replace(/,/g, '').replace(/[^\d-]/g, '');
     const frac = s.slice(lastDot + 1).replace(/\D/g, '');
     if (!intPart && !frac) return null;

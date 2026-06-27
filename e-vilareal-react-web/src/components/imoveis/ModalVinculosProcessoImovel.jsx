@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ExternalLink, Loader2, Star, X } from 'lucide-react';
+import { ExternalLink, Eye, Loader2, Star, X } from 'lucide-react';
 import { padCliente } from '../../data/processosDadosRelatorio.js';
 import { featureFlags } from '../../config/featureFlags.js';
 import {
@@ -17,6 +17,7 @@ export function ModalVinculosProcessoImovel({
   codigoCadastro,
   procCadastro,
   onAbrirProcesso,
+  onSelecionarVinculo,
   onPrincipalAlterado,
 }) {
   const [carregando, setCarregando] = useState(false);
@@ -96,8 +97,9 @@ export function ModalVinculosProcessoImovel({
               Processos do imóvel {numeroPlanilha}
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              Pares Código + Proc. com este nº no campo Imóvel (Processos). Escolha qual é o{' '}
-              <strong>vínculo principal</strong> — ele alimenta a conta corrente e o relatório financeiro.
+              Pares Código + Proc. vinculados a este imóvel. Use <strong>Ver cadastro</strong> para carregar locatário
+              e contrato daquele par; <strong>Ir ao processo</strong> abre a ficha em Processos. O{' '}
+              <strong>vínculo principal</strong> alimenta conta corrente e relatório financeiro.
             </p>
           </div>
           <button type="button" onClick={onClose} className={imoveisBtnIconGhost} aria-label="Fechar">
@@ -148,6 +150,16 @@ export function ModalVinculosProcessoImovel({
                       ) : null}
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                      {onSelecionarVinculo ? (
+                        <button
+                          type="button"
+                          className={`${imoveisBtnPrimary} text-xs py-1.5 px-2.5 inline-flex items-center gap-1`}
+                          onClick={() => onSelecionarVinculo(cod, procN)}
+                        >
+                          <Eye className="w-3.5 h-3.5" aria-hidden />
+                          Ver cadastro
+                        </button>
+                      ) : null}
                       {!ehPrincipal && featureFlags.useApiImoveis ? (
                         <button
                           type="button"
@@ -165,11 +177,11 @@ export function ModalVinculosProcessoImovel({
                       ) : null}
                       <button
                         type="button"
-                        className={`${imoveisBtnSecondary} text-xs py-1.5 px-2.5`}
+                        className={`${imoveisBtnSecondary} text-xs py-1.5 px-2.5 inline-flex items-center gap-1`}
                         onClick={() => onAbrirProcesso(cod, procN)}
                       >
                         <ExternalLink className="w-3.5 h-3.5" aria-hidden />
-                        Abrir
+                        Ir ao processo
                       </button>
                     </div>
                   </li>
@@ -179,20 +191,36 @@ export function ModalVinculosProcessoImovel({
           )}
         </div>
 
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-slate-200/80 dark:border-white/[0.08]">
+        <div className="flex flex-wrap justify-end gap-2 px-5 py-4 border-t border-slate-200/80 dark:border-white/[0.08]">
           <button type="button" onClick={onClose} className={imoveisBtnSecondary}>
             Fechar
           </button>
           {vinculoPrincipal ? (
-            <button
-              type="button"
-              className={imoveisBtnPrimary}
-              onClick={() => {
-                onAbrirProcesso(padCliente(vinculoPrincipal.codigoCliente), Number(vinculoPrincipal.numeroInterno));
-              }}
-            >
-              Abrir processo principal
-            </button>
+            <>
+              {onSelecionarVinculo ? (
+                <button
+                  type="button"
+                  className={imoveisBtnPrimary}
+                  onClick={() => {
+                    onSelecionarVinculo(
+                      padCliente(vinculoPrincipal.codigoCliente),
+                      Number(vinculoPrincipal.numeroInterno),
+                    );
+                  }}
+                >
+                  Ver cadastro principal
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className={imoveisBtnSecondary}
+                onClick={() => {
+                  onAbrirProcesso(padCliente(vinculoPrincipal.codigoCliente), Number(vinculoPrincipal.numeroInterno));
+                }}
+              >
+                Ir ao processo principal
+              </button>
+            </>
           ) : null}
         </div>
       </div>

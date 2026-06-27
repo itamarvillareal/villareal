@@ -5,6 +5,8 @@ import br.com.vilareal.imovel.api.dto.ImovelProcessoPatchRequest;
 import br.com.vilareal.imovel.api.dto.ImovelProcessoResponse;
 import br.com.vilareal.imovel.api.dto.ImovelProcessoWriteRequest;
 import br.com.vilareal.imovel.api.dto.ImovelResponse;
+import br.com.vilareal.imovel.api.dto.ImovelVinculoLocatarioResponse;
+import br.com.vilareal.imovel.api.dto.ImovelVinculoLocatarioWriteRequest;
 import br.com.vilareal.imovel.api.dto.ImovelVinculoPrincipalWriteRequest;
 import br.com.vilareal.imovel.api.dto.ImovelVinculosProcessoResponse;
 import br.com.vilareal.imovel.api.dto.ImovelWriteRequest;
@@ -90,6 +92,22 @@ public class ImoveisController {
     public ImovelVinculosProcessoResponse definirVinculoPrincipalPorImovelId(
             @PathVariable Long id, @Valid @RequestBody ImovelVinculoPrincipalWriteRequest request) {
         return imovelApplicationService.definirVinculoProcessoPrincipalPorImovelId(id, request);
+    }
+
+    @GetMapping("/por-numero-planilha/{numeroPlanilha}/vinculo-locatario")
+    @Operation(summary = "Dados de locatário/contrato gravados para um par Cod.+Proc. da planilha")
+    public ImovelVinculoLocatarioResponse vinculoLocatarioPorNumeroPlanilha(
+            @PathVariable int numeroPlanilha,
+            @RequestParam String codigoCliente,
+            @RequestParam int numeroInterno) {
+        return imovelApplicationService.buscarVinculoLocatario(numeroPlanilha, codigoCliente, numeroInterno);
+    }
+
+    @PutMapping("/por-numero-planilha/{numeroPlanilha}/vinculo-locatario")
+    @Operation(summary = "Gravar dados de locatário/contrato para um par Cod.+Proc. da planilha")
+    public ImovelVinculoLocatarioResponse salvarVinculoLocatarioPorNumeroPlanilha(
+            @PathVariable int numeroPlanilha, @Valid @RequestBody ImovelVinculoLocatarioWriteRequest request) {
+        return imovelApplicationService.salvarVinculoLocatario(numeroPlanilha, request);
     }
 
     @GetMapping("/{id}/processos")

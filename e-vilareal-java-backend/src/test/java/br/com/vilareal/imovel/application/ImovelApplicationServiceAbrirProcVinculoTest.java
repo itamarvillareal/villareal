@@ -50,6 +50,7 @@ class ImovelApplicationServiceAbrirProcVinculoTest {
     @Mock private ImovelProcessoLinkService imovelProcessoLinkService;
     @Mock private ImovelProcessoRepository imovelProcessoRepository;
     @Mock private ImovelVinculoProcessoPrincipalRepository imovelVinculoProcessoPrincipalRepository;
+    @Mock private ImovelVinculoLocatarioService imovelVinculoLocatarioService;
 
     private ImovelApplicationService service;
 
@@ -69,7 +70,8 @@ class ImovelApplicationServiceAbrirProcVinculoTest {
                 clienteResolverService,
                 imovelProcessoLinkService,
                 imovelProcessoRepository,
-                imovelVinculoProcessoPrincipalRepository);
+                imovelVinculoProcessoPrincipalRepository,
+                imovelVinculoLocatarioService);
 
         pessoa = new PessoaEntity();
         pessoa.setId(929L);

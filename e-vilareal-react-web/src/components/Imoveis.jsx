@@ -18,6 +18,7 @@ import { padCliente } from '../data/processosDadosRelatorio.js';
 import { dataNascimentoParaExibicaoBr } from '../services/hjDateAliasService.js';
 import { CampoDataBr } from './ui/CampoDataBr.jsx';
 import {
+  carregarCadastroPorVinculoImovel,
   carregarImovelCadastro,
   carregarImovelCadastroParaPainel,
   listarImoveisApi,
@@ -158,6 +159,18 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
       setListaImoveisPesquisa(Array.isArray(list) ? list : []);
     });
   }, []);
+
+  const recarregarCadastroAtual = useCallback(async () => {
+    if (!featureFlags.useApiImoveis) return;
+    const numero = Math.max(1, Number(imovelId) || 1);
+    const r = await carregarImovelCadastroParaPainel({
+      imovelId: numero,
+      imovelIdApi: apiImovelIdRef.current,
+    });
+    if (r.item) {
+      popularFormulario(r.item);
+    }
+  }, [imovelId]);
 
   useEffect(() => {
     if (!featureFlags.useApiImoveis) return undefined;
@@ -669,6 +682,43 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     }
   }
 
+  async function carregarFormularioPorVinculo(codigoCliente, numeroInterno) {
+    const np = Number(imovelId);
+    if (!Number.isFinite(np) || np < 1) return;
+    setShowModalVinculosProc(false);
+    setApiError('');
+    setApiSuccess('');
+    setApiLoading(true);
+    cargaFormularioSeqRef.current += 1;
+    const seq = cargaFormularioSeqRef.current;
+    try {
+      const item = await carregarCadastroPorVinculoImovel({
+        numeroPlanilha: np,
+        imovelIdApi: apiImovelIdRef.current ?? _apiImovelId,
+        codigoCliente,
+        numeroInterno,
+      });
+      if (seq !== cargaFormularioSeqRef.current) return;
+      if (!item) {
+        setApiError('Não foi possível carregar o cadastro deste vínculo.');
+        return;
+      }
+      popularFormulario(item);
+      const cod = padCliente(codigoCliente);
+      setApiSuccess(
+        `Cadastro do vínculo Cliente ${cod} · Proc. ${numeroInterno} carregado.` +
+          ' Dados salvos a partir de agora ficam gravados por par Cod.+Proc.',
+      );
+    } catch (e) {
+      if (seq !== cargaFormularioSeqRef.current) return;
+      setApiError(e?.message || 'Falha ao carregar dados do vínculo.');
+    } finally {
+      if (seq === cargaFormularioSeqRef.current) {
+        setApiLoading(false);
+      }
+    }
+  }
+
   function navegarParaProcesso(codigoCliente, numeroInterno) {
     navigate('/processos', {
       state: buildRouterStateChaveClienteProcesso(codigoCliente, numeroInterno, {
@@ -1134,6 +1184,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
         linkVistoria={linkVistoria}
         diaPagAluguel={diaPagAluguel}
         formaPagamentoAluguel={formaPagamentoAluguel}
+        dataPag1TxCond={dataPag1TxCond}
         onAntesDeGerar={() =>
           salvarCadastroAtual({
             fiadores,
@@ -1161,7 +1212,13 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
           setShowModalVinculosProc(false);
           navegarParaProcesso(codigoCliente, numeroInterno);
         }}
-        onPrincipalAlterado={recarregarListaImoveisPesquisa}
+        onSelecionarVinculo={(codigoCliente, numeroInterno) => {
+          void carregarFormularioPorVinculo(codigoCliente, numeroInterno);
+        }}
+        onPrincipalAlterado={async () => {
+          recarregarListaImoveisPesquisa();
+          await recarregarCadastroAtual();
+        }}
       />
 
       {/* Modal Informações sobre o IPTU (legado; desligado quando FEATURE_IPTU_NOVO) */}

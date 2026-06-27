@@ -45,6 +45,7 @@ public class ImovelApplicationService {
     private final ImovelProcessoLinkService imovelProcessoLinkService;
     private final ImovelProcessoRepository imovelProcessoRepository;
     private final ImovelVinculoProcessoPrincipalRepository imovelVinculoProcessoPrincipalRepository;
+    private final ImovelVinculoLocatarioService imovelVinculoLocatarioService;
 
     public ImovelApplicationService(
             ImovelRepository imovelRepository,
@@ -57,7 +58,8 @@ public class ImovelApplicationService {
             ClienteResolverService clienteResolverService,
             ImovelProcessoLinkService imovelProcessoLinkService,
             ImovelProcessoRepository imovelProcessoRepository,
-            ImovelVinculoProcessoPrincipalRepository imovelVinculoProcessoPrincipalRepository) {
+            ImovelVinculoProcessoPrincipalRepository imovelVinculoProcessoPrincipalRepository,
+            ImovelVinculoLocatarioService imovelVinculoLocatarioService) {
         this.imovelRepository = imovelRepository;
         this.contratoLocacaoRepository = contratoLocacaoRepository;
         this.pessoaRepository = pessoaRepository;
@@ -69,6 +71,7 @@ public class ImovelApplicationService {
         this.imovelProcessoLinkService = imovelProcessoLinkService;
         this.imovelProcessoRepository = imovelProcessoRepository;
         this.imovelVinculoProcessoPrincipalRepository = imovelVinculoProcessoPrincipalRepository;
+        this.imovelVinculoLocatarioService = imovelVinculoLocatarioService;
     }
 
     @Transactional(readOnly = true)
@@ -454,11 +457,30 @@ public class ImovelApplicationService {
     }
 
     @Transactional(readOnly = true)
-    public List<ContratoLocacaoResponse> listarContratos(Long imovelId) {
+    public List<ContratoLocacaoResponse> listarContratos(Long imovelId, Long processoId) {
         requireImovel(imovelId);
-        return contratoLocacaoRepository.findByImovel_IdOrderByDataInicioDescIdDesc(imovelId).stream()
-                .map(this::toContratoResponse)
-                .collect(Collectors.toList());
+        List<ContratoLocacaoEntity> contratos;
+        if (processoId != null) {
+            contratos =
+                    contratoLocacaoRepository.findByImovel_IdAndProcesso_IdOrderByDataInicioDescIdDesc(
+                            imovelId, processoId);
+        } else {
+            contratos = contratoLocacaoRepository.findByImovel_IdOrderByDataInicioDescIdDesc(imovelId);
+        }
+        return contratos.stream().map(this::toContratoResponse).collect(Collectors.toList());
+    }
+
+    @Transactional
+    public ImovelVinculoLocatarioResponse buscarVinculoLocatario(
+            int numeroPlanilha, String codigoCliente, int numeroInterno) {
+        return imovelVinculoLocatarioService.buscarOuMigrarLegadoPorVinculo(
+                numeroPlanilha, codigoCliente, numeroInterno);
+    }
+
+    @Transactional
+    public ImovelVinculoLocatarioResponse salvarVinculoLocatario(
+            int numeroPlanilha, ImovelVinculoLocatarioWriteRequest req) {
+        return imovelVinculoLocatarioService.salvarPorVinculo(numeroPlanilha, req);
     }
 
     /**
@@ -724,6 +746,14 @@ public class ImovelApplicationService {
                 c.setFiadoresJson(ContratoLocacaoFiadorSupport.serializarPessoaIds(req.getFiadoresPessoaIds()));
             }
         }
+        if (req.getProcessoId() != null) {
+            ProcessoEntity proc = processoRepository
+                    .findById(req.getProcessoId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Processo não encontrado: " + req.getProcessoId()));
+            c.setProcesso(proc);
+        } else if (novo) {
+            c.setProcesso(null);
+        }
     }
 
     private ImovelResponse toImovelResponse(ImovelEntity e) {
@@ -783,6 +813,7 @@ public class ImovelApplicationService {
         ContratoLocacaoResponse r = new ContratoLocacaoResponse();
         r.setId(c.getId());
         r.setImovelId(c.getImovel().getId());
+        r.setProcessoId(c.getProcesso() != null ? c.getProcesso().getId() : null);
         r.setLocadorPessoaId(c.getLocadorPessoa() != null ? c.getLocadorPessoa().getId() : null);
         r.setInquilinoPessoaId(c.getInquilinoPessoa() != null ? c.getInquilinoPessoa().getId() : null);
         r.setDataInicio(c.getDataInicio());

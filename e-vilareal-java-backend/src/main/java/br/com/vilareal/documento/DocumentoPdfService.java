@@ -29,7 +29,6 @@ public class DocumentoPdfService {
     private static final String TEMPLATE_PETICAO = "documentos/peticao-base";
     private static final Locale LOCALE_PT_BR = Locale.forLanguageTag("pt-BR");
     private static final String FONTE_LUCIDA_CALLIGRAPHY = "Lucida Calligraphy";
-    private static final String FONTE_DEJAVU_SANS = "DejaVu Sans";
     private static final String[] CAMINHOS_FONTE_LUCIDA = {
             "fonts/documentos/LucidaCalligraphy.ttf",
             "fonts/documentos/LCALLIG.TTF",
@@ -185,7 +184,6 @@ public class DocumentoPdfService {
         try (ByteArrayOutputStream os = new ByteArrayOutputStream()) {
             PdfRendererBuilder builder = new PdfRendererBuilder();
             builder.useFastMode();
-            registrarFonteDejaVuSans(builder);
             registrarFonteLucidaCalligraphy(builder);
             builder.withHtmlContent(htmlRenderizado, "/");
             builder.toStream(os);
@@ -193,29 +191,6 @@ public class DocumentoPdfService {
             return os.toByteArray();
         } catch (Exception e) {
             throw new IllegalStateException("Falha ao gerar PDF do documento", e);
-        }
-    }
-
-    private void registrarFonteDejaVuSans(PdfRendererBuilder builder) {
-        registrarFonteClasspath(builder, FONTE_DEJAVU_SANS, "fonts/DejaVuSans.ttf");
-    }
-
-    private void registrarFonteClasspath(PdfRendererBuilder builder, String nomeFamilia, String caminho) {
-        ClassPathResource resource = new ClassPathResource(caminho);
-        if (!resource.exists()) {
-            return;
-        }
-        try {
-            FSSupplier<InputStream> supplier = () -> {
-                try {
-                    return resource.getInputStream();
-                } catch (IOException e) {
-                    throw new IllegalStateException("Falha ao carregar fonte " + caminho, e);
-                }
-            };
-            builder.useFont(supplier, nomeFamilia);
-        } catch (Exception e) {
-            throw new IllegalStateException("Falha ao registrar fonte " + caminho, e);
         }
     }
 

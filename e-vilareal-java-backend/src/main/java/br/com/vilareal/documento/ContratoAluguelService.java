@@ -50,8 +50,6 @@ public class ContratoAluguelService {
                         qualificacaoLocador, qualificacaoLocatario, partes.nomesLocatario().size() > 1));
 
         List<String> clausulas = ContratoAluguelClausulas.montarClausulas();
-        String nomeLocador = partes.nomesLocador().stream().collect(Collectors.joining(" E "));
-        String nomeLocatario = partes.nomesLocatario().stream().collect(Collectors.joining(" E "));
 
         LocalDate data = request.data() != null ? request.data() : LocalDate.now();
         String cidadeEstado = request.cidadeEstado() != null && !request.cidadeEstado().isBlank()
@@ -67,8 +65,12 @@ public class ContratoAluguelService {
         variables.put("fechoHtml", ContratoFechoTexto.montarFechoAluguel(
                 ContratoFormaAssinatura.resolver(request.formaAssinatura())));
         variables.put("localData", localData);
-        variables.put("nomeLocador", nomeLocador);
-        variables.put("nomeLocatario", nomeLocatario);
+        variables.put(
+                "linhasAssinatura",
+                ContratoLocacaoAssinaturaUtil.montarVariaveisLinhasAssinaturaLocadorLocatario(
+                        partes.nomesLocador(), partes.nomesLocatario()));
+        variables.put("temFiadores", false);
+        variables.put("fiadorAssinaturas", List.of());
 
         return pdfService.gerarPdfDeTemplate(TEMPLATE_CONTRATO, variables, tema);
     }

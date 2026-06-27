@@ -344,6 +344,7 @@ export async function gerarContratoLocacao(
     linkVistoria,
     diaVencimentoAluguel,
     formaPagamentoAluguel,
+    dataPagamentoPrimeiraTaxaCondominial,
   },
   opts = {},
 ) {
@@ -367,6 +368,9 @@ export async function gerarContratoLocacao(
   }
   if (formaPagamentoAluguel && String(formaPagamentoAluguel).trim()) {
     body.formaPagamentoAluguel = String(formaPagamentoAluguel).trim();
+  }
+  if (dataPagamentoPrimeiraTaxaCondominial) {
+    body.dataPagamentoPrimeiraTaxaCondominial = String(dataPagamentoPrimeiraTaxaCondominial).slice(0, 10);
   }
   if (Array.isArray(inquilinosPessoaIds) && inquilinosPessoaIds.length) {
     body.inquilinosPessoaIds = inquilinosPessoaIds
