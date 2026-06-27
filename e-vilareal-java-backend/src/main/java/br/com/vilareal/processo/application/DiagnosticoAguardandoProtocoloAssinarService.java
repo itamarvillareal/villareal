@@ -9,6 +9,7 @@ import br.com.vilareal.processo.api.dto.DiagnosticoAguardandoProtocoloItemReques
 import br.com.vilareal.processo.api.dto.DiagnosticoUploadAssinadosResponse;
 import br.com.vilareal.processo.api.dto.PrepararAssinarResultado;
 import br.com.vilareal.processo.api.dto.PrepararAssinarResultado.ResumoProcessoPrepararAssinar;
+import br.com.vilareal.processo.api.dto.ProcessoDiagnosticoPessoaItemResponse;
 import br.com.vilareal.processo.api.dto.ProcessoResponse;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.projudi.ProjudiAssinaturaP7sUtil;
@@ -51,6 +52,7 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
     private static final Logger log = LoggerFactory.getLogger(DiagnosticoAguardandoProtocoloAssinarService.class);
     private static final String PASTA_ASSINAR = "Assinar";
     private static final String STATUS_ARQUIVO_PENDENTE = "PENDENTE_ASSINATURA";
+    private static final String STATUS_PETICAO_PENDENTE = "PENDENTE_ASSINATURA";
     private static final String STATUS_PETICAO_ASSINADA = "ASSINADA";
     private static final String STATUS_PETICAO_PROTOCOLADA = "PROTOCOLADA";
     private static final String STATUS_PETICAO_PROTOCOLANDO = "PROTOCOLANDO";
@@ -87,6 +89,20 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
         this.peticaoRepository = peticaoRepository;
         this.objectMapper = objectMapper;
         this.storeDir = Path.of(storeDirConfig.trim());
+    }
+
+    /** CNJs (só dígitos) com petição na fila PROJUDI — não devem voltar ao diagnóstico «Aguardando Protocolo». */
+    @Transactional(readOnly = true)
+    public Set<String> cnjDigitosComFilaProtocoloAtiva() {
+        return new HashSet<>(peticaoRepository.findCnjDigitosComFilaProtocoloAtiva());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProcessoDiagnosticoPessoaItemResponse> listarDiagnosticoAguardandoProtocolo() {
+        Set<String> comFila = cnjDigitosComFilaProtocoloAtiva();
+        return processoApplicationService.buscarDiagnosticoAguardandoProtocolo().stream()
+                .filter(item -> !cnjTemFilaProtocoloAtiva(item.getNumeroProcessoNovo(), comFila))
+                .toList();
     }
 
     @Transactional
@@ -177,6 +193,16 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
             }
 
             String cnjDigitos = ProjudiNumeroReduzidoUtil.somenteDigitos(cnj);
+            if (cnjTemFilaProtocoloAtiva(cnj, cnjDigitosComFilaProtocoloAtiva())) {
+                log.info(
+                        "Preparar Assinar: processo {} ({}/{}) já possui petição na fila PROJUDI — ignorado",
+                        cnj,
+                        cod,
+                        proc);
+                resumos.add(new ResumoProcessoPrepararAssinar(cnj, cod, 0, 0, 0, true));
+                continue;
+            }
+
             List<ArquivoParaAssinar> paraRegistrar = new ArrayList<>();
 
             for (PdfDriveItem pdf : pdfs) {
@@ -391,7 +417,10 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
                 continue;
             }
             String petStatus = peticao.getStatus();
-            if (STATUS_PETICAO_PROTOCOLANDO.equals(petStatus) || STATUS_PETICAO_PROTOCOLADA.equals(petStatus)) {
+            if (STATUS_PETICAO_PROTOCOLANDO.equals(petStatus)
+                    || STATUS_PETICAO_PROTOCOLADA.equals(petStatus)
+                    || STATUS_PETICAO_ASSINADA.equals(petStatus)
+                    || STATUS_PETICAO_PENDENTE.equals(petStatus)) {
                 continue;
             }
             if (!peticoesDescartadas.add(peticao.getId())) {
@@ -424,7 +453,9 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
             }
             String petStatus = peticao.getStatus();
             if (STATUS_PETICAO_PROTOCOLANDO.equals(petStatus)
-                    || STATUS_PETICAO_PROTOCOLADA.equals(petStatus)) {
+                    || STATUS_PETICAO_PROTOCOLADA.equals(petStatus)
+                    || STATUS_PETICAO_ASSINADA.equals(petStatus)
+                    || STATUS_PETICAO_PENDENTE.equals(petStatus)) {
                 return DedupResultado.ignorar();
             }
         }
@@ -436,6 +467,14 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
             return false;
         }
         return ProjudiNumeroReduzidoUtil.somenteDigitos(numeroProcesso).equals(cnjDigitos);
+    }
+
+    private static boolean cnjTemFilaProtocoloAtiva(String cnj, Set<String> digitosComFila) {
+        if (!StringUtils.hasText(cnj) || digitosComFila == null || digitosComFila.isEmpty()) {
+            return false;
+        }
+        String dig = ProjudiNumeroReduzidoUtil.somenteDigitos(cnj);
+        return StringUtils.hasText(dig) && digitosComFila.contains(dig);
     }
 
     private String resolverCodigoClientePorCnj(String cnj) {

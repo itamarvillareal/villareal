@@ -545,32 +545,52 @@ async function filtrarLocaisAguardandoProtocoloSemContradizerApi(locais) {
   return validados.filter(Boolean);
 }
 
+function cnjDigitosItem(item) {
+  return String(item.numeroProcessoNovo ?? '').replace(/\D/g, '');
+}
+
+function itemTemFilaProjudi(item, cnjsFilaSet) {
+  const dig = cnjDigitosItem(item);
+  return dig.length >= 18 && cnjsFilaSet.has(dig);
+}
+
 /**
  * Diagnóstico «Aguardando Protocolo»: cadastro na API + histórico local só quando não contradiz a API.
+ * Omite processos que já têm petição na fila PROJUDI (assinada/agendada, pendente ou protocolando).
  */
 export async function listarProcessosFaseAguardandoProtocoloDiagnostico() {
   const locais = listarProcessosFaseAguardandoProtocolo();
   if (!featureFlags.useApiProcessos) return locais;
   try {
-    const arr = await request('/api/processos/diagnostico/aguardando-protocolo');
-    const fromApi = (Array.isArray(arr) ? arr : []).map((row) => {
-      const codCliente = padCliente8(row.codigoCliente ?? row.codigo_cliente ?? '1');
-      const procNum = Number(row.numeroInterno ?? row.numero_interno);
-      const proc = String(Number.isFinite(procNum) && procNum >= 0 ? procNum : 0);
-      return {
-        codCliente,
-        proc,
-        cliente: String(row.cliente ?? ''),
-        parteCliente: String(row.parteCliente ?? row.cliente ?? ''),
-        parteOposta: String(row.parteOposta ?? ''),
-        numeroProcessoNovo: String(row.numeroProcessoNovo ?? row.numero_processo_novo ?? '').trim(),
-        faseSelecionada: 'Protocolo / Movimentação',
-      };
-    });
+    const [arr, cnjsFila] = await Promise.all([
+      request('/api/processos/diagnostico/aguardando-protocolo'),
+      request('/api/processos/diagnostico/aguardando-protocolo/cnjs-fila-projudi').catch(() => []),
+    ]);
+    const cnjsFilaSet = new Set(
+      (Array.isArray(cnjsFila) ? cnjsFila : []).map((d) => String(d).replace(/\D/g, '')).filter(Boolean),
+    );
+    const fromApi = (Array.isArray(arr) ? arr : [])
+      .map((row) => {
+        const codCliente = padCliente8(row.codigoCliente ?? row.codigo_cliente ?? '1');
+        const procNum = Number(row.numeroInterno ?? row.numero_interno);
+        const proc = String(Number.isFinite(procNum) && procNum >= 0 ? procNum : 0);
+        return {
+          codCliente,
+          proc,
+          cliente: String(row.cliente ?? ''),
+          parteCliente: String(row.parteCliente ?? row.cliente ?? ''),
+          parteOposta: String(row.parteOposta ?? ''),
+          numeroProcessoNovo: String(row.numeroProcessoNovo ?? row.numero_processo_novo ?? '').trim(),
+          faseSelecionada: 'Protocolo / Movimentação',
+        };
+      })
+      .filter((item) => !itemTemFilaProjudi(item, cnjsFilaSet));
     const m = new Map();
     for (const x of fromApi) m.set(chaveClienteProcItemFase(x), x);
     const locaisExtras = locais.filter((x) => !m.has(chaveClienteProcItemFase(x)));
-    const locaisValidos = await filtrarLocaisAguardandoProtocoloSemContradizerApi(locaisExtras);
+    const locaisValidos = (await filtrarLocaisAguardandoProtocoloSemContradizerApi(locaisExtras)).filter(
+      (item) => !itemTemFilaProjudi(item, cnjsFilaSet),
+    );
     for (const x of locaisValidos) {
       m.set(chaveClienteProcItemFase(x), x);
     }

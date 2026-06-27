@@ -120,6 +120,17 @@ public interface ProjudiPeticaoRepository extends JpaRepository<ProjudiPeticaoEn
             """)
     List<ProjudiPeticaoEntity> findByIdInWithArquivos(@Param("ids") List<Long> ids);
 
+    @Query(
+            value =
+                    """
+                    SELECT DISTINCT REGEXP_REPLACE(p.numero_processo, '[^0-9]', '')
+                    FROM projudi_peticao p
+                    WHERE p.status IN ('PENDENTE_ASSINATURA', 'ASSINADA', 'PROTOCOLANDO')
+                      AND REGEXP_REPLACE(p.numero_processo, '[^0-9]', '') <> ''
+                    """,
+            nativeQuery = true)
+    List<String> findCnjDigitosComFilaProtocoloAtiva();
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             UPDATE ProjudiPeticaoEntity p

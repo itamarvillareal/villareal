@@ -30,6 +30,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -191,7 +192,17 @@ public class ProcessosController {
             description =
                     "Lista processos cuja fase na API corresponde a «Protocolo / Movimentação» (ou sinónimos como «Aguardando Protocolo»).")
     public List<ProcessoDiagnosticoPessoaItemResponse> buscarDiagnosticoAguardandoProtocolo() {
-        return processoApplicationService.buscarDiagnosticoAguardandoProtocolo();
+        return diagnosticoAguardandoProtocoloAssinarService.listarDiagnosticoAguardandoProtocolo();
+    }
+
+    @GetMapping("/diagnostico/aguardando-protocolo/cnjs-fila-projudi")
+    @Operation(
+            summary = "CNJs com petição ativa na fila PROJUDI",
+            description =
+                    "Processos que já têm petição PENDENTE_ASSINATURA, ASSINADA (incl. agendada) ou PROTOCOLANDO — "
+                            + "devem ser omitidos do diagnóstico «Aguardando Protocolo».")
+    public List<String> cnjsComFilaProjudiAtiva() {
+        return new ArrayList<>(diagnosticoAguardandoProtocoloAssinarService.cnjDigitosComFilaProtocoloAtiva());
     }
 
     @PostMapping("/diagnostico/aguardando-protocolo/preparar-assinar")

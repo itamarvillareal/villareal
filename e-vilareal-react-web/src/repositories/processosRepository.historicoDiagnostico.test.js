@@ -175,6 +175,7 @@ describe('listarProcessosFaseAguardandoProtocoloDiagnostico', () => {
   it('não reintroduz processo local quando a API já mudou a fase', async () => {
     vi.mocked(request).mockImplementation(async (path, opts) => {
       if (path === '/api/processos/diagnostico/aguardando-protocolo') return [];
+      if (path === '/api/processos/diagnostico/aguardando-protocolo/cnjs-fila-projudi') return [];
       if (path === '/api/processos') {
         expect(opts?.query?.codigoCliente).toBe('00000578');
         expect(opts?.query?.numeroInterno).toBe('134');
@@ -198,6 +199,7 @@ describe('listarProcessosFaseAguardandoProtocoloDiagnostico', () => {
   it('mantém processo só no histórico local quando não existe na API', async () => {
     vi.mocked(request).mockImplementation(async (path) => {
       if (path === '/api/processos/diagnostico/aguardando-protocolo') return [];
+      if (path === '/api/processos/diagnostico/aguardando-protocolo/cnjs-fila-projudi') return [];
       if (path === '/api/processos') {
         const err = new Error('404 não encontrado');
         throw err;
@@ -219,14 +221,20 @@ describe('listarProcessosFaseAguardandoProtocoloDiagnostico', () => {
   });
 
   it('prioriza linhas da API e deduplica com local', async () => {
-    vi.mocked(request).mockResolvedValue([
-      {
-        codigoCliente: '578',
-        numeroInterno: 134,
-        cliente: 'API',
-        parteOposta: 'Réu',
-      },
-    ]);
+    vi.mocked(request).mockImplementation(async (path) => {
+      if (path === '/api/processos/diagnostico/aguardando-protocolo/cnjs-fila-projudi') return [];
+      if (path === '/api/processos/diagnostico/aguardando-protocolo') {
+        return [
+          {
+            codigoCliente: '578',
+            numeroInterno: 134,
+            cliente: 'API',
+            parteOposta: 'Réu',
+          },
+        ];
+      }
+      throw new Error(`unexpected ${path}`);
+    });
     historicoData.listarProcessosFaseAguardandoProtocolo.mockReturnValue([
       {
         codCliente: '00000578',
@@ -239,5 +247,27 @@ describe('listarProcessosFaseAguardandoProtocoloDiagnostico', () => {
     const itens = await listarProcessosFaseAguardandoProtocoloDiagnostico();
     expect(itens).toHaveLength(1);
     expect(itens[0].cliente).toBe('API');
+  });
+
+  it('omite processo com petição na fila PROJUDI (ex.: agendada)', async () => {
+    vi.mocked(request).mockImplementation(async (path) => {
+      if (path === '/api/processos/diagnostico/aguardando-protocolo/cnjs-fila-projudi') {
+        return ['57861278820258090007'];
+      }
+      if (path === '/api/processos/diagnostico/aguardando-protocolo') {
+        return [
+          {
+            codigoCliente: '703',
+            numeroInterno: 2,
+            cliente: 'Maria',
+            numeroProcessoNovo: '5786127-88.2025.8.09.0007',
+          },
+        ];
+      }
+      throw new Error(`unexpected ${path}`);
+    });
+
+    const itens = await listarProcessosFaseAguardandoProtocoloDiagnostico();
+    expect(itens).toHaveLength(0);
   });
 });
