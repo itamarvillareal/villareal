@@ -46,6 +46,22 @@ export async function listar(status) {
   return request('/api/projudi/peticoes', { query });
 }
 
+const HISTORICO_PAGE_SIZE_PADRAO = 30;
+const HISTORICO_DIAS_PADRAO = 7;
+
+/**
+ * Histórico paginado (PROTOCOLADA, ERRO, PENDENTE_ASSINATURA).
+ * @param {{ page?: number, size?: number, dias?: number, numeroProcesso?: string }} [opts]
+ */
+export async function listarHistorico(opts = {}) {
+  const page = Number(opts.page ?? 0);
+  const size = Number(opts.size ?? HISTORICO_PAGE_SIZE_PADRAO);
+  const dias = opts.dias ?? HISTORICO_DIAS_PADRAO;
+  const query = { page, size, dias };
+  if (opts.numeroProcesso) query.numeroProcesso = opts.numeroProcesso;
+  return request('/api/projudi/peticoes/historico/page', { query });
+}
+
 /** @returns {Promise<{ blob: Blob, filename: string }>} */
 export async function baixarZip(opts = {}) {
   const url = `${API_BASE_URL}/api/projudi/peticoes/lote-assinar.zip`;
@@ -84,6 +100,18 @@ export async function protocolarLote(peticaoIds) {
 }
 
 /**
+ * Agenda protocolo de uma petição para horário fixo.
+ * @param {number} peticaoId
+ * @param {string} agendadoPara ISO-8601
+ */
+export async function agendarProtocolo(peticaoId, agendadoPara) {
+  return request(`/api/projudi/peticoes/${peticaoId}/agendar-protocolo`, {
+    method: 'PUT',
+    body: { agendadoPara },
+  });
+}
+
+/**
  * Agenda protocolo para horário fixo (petições ASSINADA ou pendentes de assinatura).
  * @param {number[]} peticaoIds
  * @param {string} agendadoPara ISO-8601 (ex.: new Date(...).toISOString())
@@ -115,6 +143,8 @@ export function podeCancelarAgendamentoProtocolo(peticao) {
   return status !== 'PROTOCOLANDO' && status !== 'PROTOCOLADA';
 }
 
+export const AGENDAMENTO_ANTECEDENCIA_MINUTOS = 15;
+
 function datetimeLocalParaIso(localValue) {
   if (!localValue) return null;
   const d = new Date(localValue);
@@ -122,7 +152,32 @@ function datetimeLocalParaIso(localValue) {
   return d.toISOString();
 }
 
-export { datetimeLocalParaIso };
+function isoParaDatetimeLocal(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** @returns {string|null} mensagem de erro ou null se válido */
+export function validarAntecedenciaAgendamento(isoOrLocal) {
+  if (!isoOrLocal) return 'Informe data e hora do agendamento.';
+  const d = new Date(isoOrLocal);
+  if (Number.isNaN(d.getTime())) return 'Informe data e hora do agendamento.';
+  const minimo = Date.now() + AGENDAMENTO_ANTECEDENCIA_MINUTOS * 60 * 1000;
+  if (d.getTime() < minimo) {
+    return `O agendamento deve ser com pelo menos ${AGENDAMENTO_ANTECEDENCIA_MINUTOS} minutos de antecedência.`;
+  }
+  return null;
+}
+
+/** Valor mínimo para input datetime-local (now + antecedência). */
+export function minDatetimeLocalAgendamento() {
+  return isoParaDatetimeLocal(new Date(Date.now() + AGENDAMENTO_ANTECEDENCIA_MINUTOS * 60 * 1000).toISOString());
+}
+
+export { datetimeLocalParaIso, isoParaDatetimeLocal };
 
 /**
  * @param {string} numeroProcesso

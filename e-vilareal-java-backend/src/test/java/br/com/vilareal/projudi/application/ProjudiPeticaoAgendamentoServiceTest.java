@@ -47,7 +47,31 @@ class ProjudiPeticaoAgendamentoServiceTest {
     void agendarProtocolo_rejeitaHorarioPassado() {
         service = new ProjudiPeticaoAgendamentoService(peticaoRepository, Clock.fixed(AGORA, ZoneOffset.UTC));
         assertThatThrownBy(() -> service.agendarProtocolo(1L, AGORA.minusSeconds(60)))
-                .isInstanceOf(BusinessRuleException.class);
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("15 minutos");
+    }
+
+    @Test
+    void agendarProtocolo_rejeitaMenosDe15MinutosAntecedencia() {
+        service = new ProjudiPeticaoAgendamentoService(peticaoRepository, Clock.fixed(AGORA, ZoneOffset.UTC));
+        assertThatThrownBy(() -> service.agendarProtocolo(1L, AGORA.plusSeconds(14 * 60)))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("15 minutos");
+    }
+
+    @Test
+    void agendarProtocolo_aceitaExatamente15MinutosAntecedencia() {
+        service = new ProjudiPeticaoAgendamentoService(peticaoRepository, Clock.fixed(AGORA, ZoneOffset.UTC));
+        ProjudiPeticaoEntity peticao = new ProjudiPeticaoEntity();
+        peticao.setId(10L);
+        peticao.setStatus(ProjudiPeticaoAssinaturaService.STATUS_PETICAO_ASSINADA);
+        when(peticaoRepository.findById(10L)).thenReturn(Optional.of(peticao));
+
+        Instant quando = AGORA.plusSeconds(15 * 60);
+        service.agendarProtocolo(10L, quando);
+
+        verify(peticaoRepository).save(peticao);
+        org.assertj.core.api.Assertions.assertThat(peticao.getProtocoloAgendadoPara()).isEqualTo(quando);
     }
 
     @Test

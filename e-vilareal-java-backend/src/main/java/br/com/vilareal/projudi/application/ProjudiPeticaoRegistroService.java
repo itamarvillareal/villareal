@@ -24,9 +24,19 @@ import org.springframework.util.StringUtils;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 
 @Service
 public class ProjudiPeticaoRegistroService {
@@ -238,6 +248,33 @@ public class ProjudiPeticaoRegistroService {
             return peticaoRepository.findByStatusWithArquivos(status.trim());
         }
         return peticaoRepository.findAllWithArquivos();
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ProjudiPeticaoEntity> listarHistoricoPaginado(String numeroProcesso, Integer dias, Pageable pageable) {
+        String digitos = null;
+        if (StringUtils.hasText(numeroProcesso)) {
+            digitos = ProjudiNumeroReduzidoUtil.somenteDigitos(numeroProcesso);
+            if (!StringUtils.hasText(digitos)) {
+                digitos = null;
+            }
+        }
+        Instant desde = null;
+        if (dias != null && dias > 0) {
+            desde = Instant.now().minus(dias.longValue(), ChronoUnit.DAYS);
+        }
+        Page<Long> idPage = peticaoRepository.findHistoricoIds(digitos, desde, pageable);
+        if (idPage.isEmpty()) {
+            return Page.empty(pageable);
+        }
+        List<ProjudiPeticaoEntity> entities = peticaoRepository.findByIdInWithArquivos(idPage.getContent());
+        Map<Long, ProjudiPeticaoEntity> porId =
+                entities.stream().collect(Collectors.toMap(ProjudiPeticaoEntity::getId, e -> e, (a, b) -> a, LinkedHashMap::new));
+        List<ProjudiPeticaoEntity> ordenadas = idPage.getContent().stream()
+                .map(porId::get)
+                .filter(Objects::nonNull)
+                .toList();
+        return new PageImpl<>(ordenadas, pageable, idPage.getTotalElements());
     }
 
     @Transactional(readOnly = true)

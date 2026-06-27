@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 @Service
@@ -15,6 +16,7 @@ public class ProjudiPeticaoAgendamentoService {
 
     private static final String STATUS_ASSINADA = ProjudiPeticaoAssinaturaService.STATUS_PETICAO_ASSINADA;
     private static final String STATUS_PENDENTE = ProjudiPeticaoRegistroService.STATUS_PENDENTE_ASSINATURA;
+    static final long ANTECEDENCIA_MINIMA_MINUTOS = 15;
 
     private final ProjudiPeticaoRepository peticaoRepository;
     private final Clock clock;
@@ -118,8 +120,10 @@ public class ProjudiPeticaoAgendamentoService {
         if (agendadoPara == null) {
             throw new IllegalArgumentException("agendadoPara é obrigatório.");
         }
-        if (!agendadoPara.isAfter(clock.instant())) {
-            throw new BusinessRuleException("O horário do agendamento deve ser no futuro.");
+        Instant minimo = clock.instant().plus(ANTECEDENCIA_MINIMA_MINUTOS, ChronoUnit.MINUTES);
+        if (agendadoPara.isBefore(minimo)) {
+            throw new BusinessRuleException(
+                    "O agendamento deve ser com pelo menos " + ANTECEDENCIA_MINIMA_MINUTOS + " minutos de antecedência.");
         }
     }
 

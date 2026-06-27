@@ -26,6 +26,9 @@ import br.com.vilareal.projudi.infrastructure.persistence.entity.ProjudiPeticaoE
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -84,6 +87,15 @@ public class ProjudiPeticaoController {
         return registroService.listarDetalhadas(status).stream()
                 .map(ProjudiPeticaoDetailResponse::de)
                 .toList();
+    }
+
+    @GetMapping("/historico/page")
+    @Operation(summary = "Histórico paginado de petições protocoladas, com erro ou pendentes de assinatura")
+    public Page<ProjudiPeticaoDetailResponse> listarHistorico(
+            @RequestParam(required = false) String numeroProcesso,
+            @RequestParam(defaultValue = "7") int dias,
+            @PageableDefault(size = 30) Pageable pageable) {
+        return registroService.listarHistoricoPaginado(numeroProcesso, dias, pageable).map(ProjudiPeticaoDetailResponse::de);
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

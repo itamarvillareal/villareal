@@ -15,14 +15,17 @@ import {
 } from 'lucide-react';
 import {
   acompanharProtocolo,
-  agendarProtocoloLote,
+  agendarProtocolo,
   baixarZip,
-  cancelarAgendamentoLote,
   cancelarAgendamentoProtocolo,
   datetimeLocalParaIso,
+  isoParaDatetimeLocal,
+  minDatetimeLocalAgendamento,
+  validarAntecedenciaAgendamento,
   enviarAssinados,
   excluirPeticao,
   listar,
+  listarHistorico,
   listarCredenciais,
   podeCancelarAgendamentoProtocolo,
   previaProtocoloLote,
@@ -44,6 +47,9 @@ import { ProcessosToast, processosBtnPrimary } from '../processos/ProcessosAdmin
 
 const inputClass =
   'w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white text-slate-900';
+
+const HISTORICO_PAGE_SIZE = 30;
+const HISTORICO_DIAS_PADRAO = 7;
 
 const TIPOS_ARQUIVO = [
   { id: 16, label: 'Petição' },
@@ -345,7 +351,13 @@ export function PeticionamentoProjudi() {
   );
 
   const [aba, setAba] = useState('protocolar');
-  const [peticoes, setPeticoes] = useState([]);
+  const [filaPeticoes, setFilaPeticoes] = useState([]);
+  const [historicoPeticoes, setHistoricoPeticoes] = useState([]);
+  const [historicoMeta, setHistoricoMeta] = useState({ page: 0, totalPages: 0, totalElements: 0 });
+  const [historicoDias, setHistoricoDias] = useState(HISTORICO_DIAS_PADRAO);
+  const [historicoCarregando, setHistoricoCarregando] = useState(false);
+  const [historicoCarregandoMais, setHistoricoCarregandoMais] = useState(false);
+  const [protocoloLiveRows, setProtocoloLiveRows] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [apiError, setApiError] = useState('');
   const [toast, setToast] = useState('');
@@ -362,7 +374,7 @@ export function PeticionamentoProjudi() {
 
   const [partesPorProcesso, setPartesPorProcesso] = useState({});
   const [selecionadas, setSelecionadas] = useState(() => new Set());
-  const [protocoloAgendadoInput, setProtocoloAgendadoInput] = useState('');
+  const [agendamentoInputPorPeticao, setAgendamentoInputPorPeticao] = useState({});
   const [modalProtocolo, setModalProtocolo] = useState(false);
   const [previa, setPrevia] = useState(null);
   const [carregandoPrevia, setCarregandoPrevia] = useState(false);
@@ -373,19 +385,64 @@ export function PeticionamentoProjudi() {
     if (numeroProcessoOrigem) setNumeroProcesso(numeroProcessoOrigem);
   }, [numeroProcessoOrigem]);
 
+  const processoFiltro = useMemo(() => {
+    return (numeroProcesso.trim() || numeroProcessoOrigem || '').replace(/\D/g, '');
+  }, [numeroProcesso, numeroProcessoOrigem]);
+
+  const recarregarFila = useCallback(async () => {
+    const rows = await listar('ASSINADA');
+    setFilaPeticoes(Array.isArray(rows) ? rows : []);
+  }, []);
+
+  const carregarHistorico = useCallback(
+    async (page = 0, append = false, dias = historicoDias) => {
+      if (append) setHistoricoCarregandoMais(true);
+      else setHistoricoCarregando(true);
+      try {
+        const res = await listarHistorico({
+          page,
+          size: HISTORICO_PAGE_SIZE,
+          dias,
+          numeroProcesso: processoFiltro || undefined,
+        });
+        const chunk = Array.isArray(res?.content) ? res.content : [];
+        setHistoricoPeticoes((prev) => (append ? [...prev, ...chunk] : chunk));
+        setHistoricoMeta({
+          page: Number(res?.number ?? page),
+          totalPages: Number(res?.totalPages ?? 0),
+          totalElements: Number(res?.totalElements ?? chunk.length),
+        });
+        setHistoricoDias(dias);
+      } catch (e) {
+        if (!append) {
+          setHistoricoPeticoes([]);
+          setHistoricoMeta({ page: 0, totalPages: 0, totalElements: 0 });
+        }
+        throw e;
+      } finally {
+        if (append) setHistoricoCarregandoMais(false);
+        else setHistoricoCarregando(false);
+      }
+    },
+    [processoFiltro, historicoDias],
+  );
+
+  const verHistoricoAnterior = useCallback(() => {
+    void carregarHistorico(0, false, 0);
+  }, [carregarHistorico]);
+
   const recarregar = useCallback(async () => {
     setCarregando(true);
     setApiError('');
     try {
-      const rows = await listar();
-      setPeticoes(Array.isArray(rows) ? rows : []);
+      await Promise.all([recarregarFila(), carregarHistorico(0, false, HISTORICO_DIAS_PADRAO)]);
     } catch (e) {
       setApiError(e?.message || 'Falha ao carregar petições.');
-      setPeticoes([]);
+      setFilaPeticoes([]);
     } finally {
       setCarregando(false);
     }
-  }, []);
+  }, [recarregarFila, carregarHistorico]);
 
   useEffect(() => {
     void recarregar();
@@ -414,27 +471,18 @@ export function PeticionamentoProjudi() {
     return () => window.clearTimeout(t);
   }, [toast]);
 
-  const processoFiltro = useMemo(() => {
-    return (numeroProcesso.trim() || numeroProcessoOrigem || '').replace(/\D/g, '');
-  }, [numeroProcesso, numeroProcessoOrigem]);
-
   const peticoesFiltradas = useMemo(() => {
-    if (!processoFiltro) return peticoes;
-    return peticoes.filter((p) => String(p.numeroProcesso || '').replace(/\D/g, '') === processoFiltro);
-  }, [peticoes, processoFiltro]);
+    if (!processoFiltro) return filaPeticoes;
+    return filaPeticoes.filter((p) => String(p.numeroProcesso || '').replace(/\D/g, '') === processoFiltro);
+  }, [filaPeticoes, processoFiltro]);
 
   const assinadas = useMemo(
     () => peticoesFiltradas.filter((p) => p.status === 'ASSINADA'),
     [peticoesFiltradas],
   );
 
-  const historico = useMemo(
-    () =>
-      peticoesFiltradas.filter((p) =>
-        ['PROTOCOLADA', 'ERRO', 'PENDENTE_ASSINATURA'].includes(p.status),
-      ),
-    [peticoesFiltradas],
-  );
+  const historicoTemMais =
+    historicoMeta.totalPages > 0 && historicoMeta.page + 1 < historicoMeta.totalPages;
 
   useEffect(() => {
     const digitosUnicos = [
@@ -577,7 +625,7 @@ export function PeticionamentoProjudi() {
       return;
     }
     const itensSnapshot = ids.map((id) => {
-      const p = peticoes.find((x) => x.id === id);
+      const p = filaPeticoes.find((x) => x.id === id);
       const dig = String(p?.numeroProcesso || '').replace(/\D/g, '');
       const partes = partesPorProcesso[dig] || {};
       return {
@@ -611,7 +659,11 @@ export function PeticionamentoProjudi() {
     setPrevia(null);
     setToast('Protocolo iniciado em segundo plano…');
     try {
-      const r = await acompanharProtocolo(ids, (rows) => setPeticoes(rows), {
+      const r = await acompanharProtocolo(ids, (rows) => {
+        const lista = Array.isArray(rows) ? rows : [];
+        setFilaPeticoes(lista.filter((p) => p.status === 'ASSINADA'));
+        setProtocoloLiveRows(lista.filter((p) => ids.includes(p.id)));
+      }, {
         onProgress: (statusPorId) =>
           setProtocoloProgresso((prev) => (prev ? { ...prev, statusPorId } : prev)),
       });
@@ -641,23 +693,28 @@ export function PeticionamentoProjudi() {
     return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
   }
 
-  const onAgendarProtocolo = async () => {
-    const ids = [...selecionadas];
-    if (!ids.length) {
-      setApiError('Selecione ao menos uma petição para agendar.');
+  const onAgendarProtocoloPeticao = async (peticaoId) => {
+    const p = filaPeticoes.find((x) => x.id === peticaoId);
+    const local =
+      agendamentoInputPorPeticao[peticaoId] ??
+      isoParaDatetimeLocal(p?.protocoloAgendadoPara) ??
+      '';
+    const iso = datetimeLocalParaIso(local);
+    const erroAntecedencia = validarAntecedenciaAgendamento(iso ?? local);
+    if (erroAntecedencia) {
+      setApiError(erroAntecedencia);
       return;
     }
-    const iso = datetimeLocalParaIso(protocoloAgendadoInput);
-    if (!iso) {
-      setApiError('Informe data e hora do agendamento.');
-      return;
-    }
-    setOperacao('agendar');
+    setOperacao(`agendar-${peticaoId}`);
     setApiError('');
     try {
-      await agendarProtocoloLote(ids, iso);
-      setToast(`Protocolo agendado para ${formatarAgendamentoProtocolo(iso)}.`);
-      setSelecionadas(new Set());
+      await agendarProtocolo(peticaoId, iso);
+      setToast(`Petição #${peticaoId} agendada para ${formatarAgendamentoProtocolo(iso)}.`);
+      setAgendamentoInputPorPeticao((prev) => {
+        const next = { ...prev };
+        delete next[peticaoId];
+        return next;
+      });
       await recarregar();
     } catch (err) {
       setApiError(err?.message || 'Falha ao agendar protocolo.');
@@ -679,37 +736,6 @@ export function PeticionamentoProjudi() {
       setOperacao(null);
     }
   };
-
-  const onCancelarAgendamentoSelecionadas = async () => {
-    const ids = [...selecionadas].filter((id) => {
-      const p = peticoes.find((x) => x.id === id);
-      return podeCancelarAgendamentoProtocolo(p);
-    });
-    if (!ids.length) {
-      setApiError('Nenhuma petição selecionada possui agendamento cancelável.');
-      return;
-    }
-    setOperacao('cancelar-ag-lote');
-    setApiError('');
-    try {
-      await cancelarAgendamentoLote(ids);
-      setToast(`Agendamento cancelado para ${ids.length} petição(ões).`);
-      setSelecionadas(new Set());
-      await recarregar();
-    } catch (err) {
-      setApiError(err?.message || 'Falha ao cancelar agendamentos.');
-    } finally {
-      setOperacao(null);
-    }
-  };
-
-  const selecionadasComAgendamento = useMemo(
-    () =>
-      [...selecionadas].filter((id) =>
-        podeCancelarAgendamentoProtocolo(peticoes.find((x) => x.id === id)),
-      ).length,
-    [selecionadas, peticoes],
-  );
 
   const onReabrirProtocolo = async (peticaoId) => {
     setOperacao(`reabrir-${peticaoId}`);
@@ -840,8 +866,8 @@ export function PeticionamentoProjudi() {
           >
             <History className="w-4 h-4" aria-hidden />
             Histórico
-            {historico.length > 0 ? (
-              <span className="rounded-full bg-white/20 px-1.5 text-xs">{historico.length}</span>
+            {historicoMeta.totalElements > 0 ? (
+              <span className="rounded-full bg-white/20 px-1.5 text-xs">{historicoMeta.totalElements}</span>
             ) : null}
           </button>
         </div>
@@ -1060,7 +1086,7 @@ export function PeticionamentoProjudi() {
               {protocoloProgresso ? (
                 <ProtocoloProgressoPainel
                   progresso={protocoloProgresso}
-                  peticoes={peticoes}
+                  peticoes={protocoloLiveRows}
                   onFechar={() => setProtocoloProgresso(null)}
                 />
               ) : null}
@@ -1080,6 +1106,10 @@ export function PeticionamentoProjudi() {
                   <p className="text-xs text-slate-600">
                     Selecione as petições do <strong>mesmo processo</strong> para uma juntada. O robô envia todos os
                     arquivos e dá um único Concluir.
+                  </p>
+                  <p className="text-xs text-violet-800">
+                    Protocolo automático: escolha data e hora em cada petição. O agendamento pode ser cancelado antes do
+                    protocolo iniciar.
                   </p>
                   <label className="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer select-none">
                     <input
@@ -1132,13 +1162,54 @@ export function PeticionamentoProjudi() {
                               <button
                                 type="button"
                                 className="text-rose-700 hover:underline disabled:opacity-50"
-                                disabled={operacao === `cancelar-ag-${p.id}` || operacao === 'cancelar-ag-lote'}
+                                disabled={operacao === `cancelar-ag-${p.id}`}
                                 onClick={() => void onCancelarAgendamento(p.id)}
                               >
                                 Cancelar agendamento
                               </button>
                             </div>
                           ) : null}
+                          <div className="mt-2 flex flex-wrap items-end gap-2 rounded border border-violet-200 bg-violet-50/60 p-2">
+                            <label className="flex flex-col gap-1 text-xs text-slate-700">
+                              Data e hora
+                              <input
+                                type="datetime-local"
+                                className="rounded border border-slate-300 px-2 py-1 text-sm bg-white"
+                                min={minDatetimeLocalAgendamento()}
+                                value={
+                                  agendamentoInputPorPeticao[p.id] ??
+                                  isoParaDatetimeLocal(p.protocoloAgendadoPara) ??
+                                  ''
+                                }
+                                onChange={(e) =>
+                                  setAgendamentoInputPorPeticao((prev) => ({
+                                    ...prev,
+                                    [p.id]: e.target.value,
+                                  }))
+                                }
+                                disabled={operacao === `agendar-${p.id}`}
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              className={`${processosBtnPrimary} bg-violet-700 hover:bg-violet-800 text-xs py-1.5 px-2.5`}
+                              disabled={
+                                operacao === `agendar-${p.id}` ||
+                                !(
+                                  agendamentoInputPorPeticao[p.id] ??
+                                  isoParaDatetimeLocal(p.protocoloAgendadoPara)
+                                )
+                              }
+                              onClick={() => void onAgendarProtocoloPeticao(p.id)}
+                            >
+                              {operacao === `agendar-${p.id}` ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin inline mr-1" aria-hidden />
+                              ) : (
+                                <Clock className="w-3.5 h-3.5 inline mr-1" aria-hidden />
+                              )}
+                              Agendar protocolo
+                            </button>
+                          </div>
                         </div>
                         <button
                           type="button"
@@ -1157,54 +1228,6 @@ export function PeticionamentoProjudi() {
                       </li>
                     ))}
                   </ul>
-                  <div className="rounded-lg border border-violet-200 bg-violet-50/60 p-3 space-y-2">
-                    <p className="text-xs font-medium text-violet-900">Agendar protocolo automático</p>
-                    <p className="text-xs text-violet-800/90">
-                      Após a petição assinada entrar na fila, o robô protocola no horário escolhido. O agendamento pode
-                      ser cancelado a qualquer momento antes do protocolo iniciar. E-mails de início e resultado vão
-                      para a lista fixa do escritório.
-                    </p>
-                    <div className="flex flex-wrap items-end gap-2">
-                      <label className="flex flex-col gap-1 text-xs text-slate-700">
-                        Data e hora
-                        <input
-                          type="datetime-local"
-                          className="rounded border border-slate-300 px-2 py-1.5 text-sm"
-                          value={protocoloAgendadoInput}
-                          onChange={(e) => setProtocoloAgendadoInput(e.target.value)}
-                          disabled={selecionadas.size === 0 || operacao === 'agendar'}
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        className={`${processosBtnPrimary} bg-violet-700 hover:bg-violet-800`}
-                        disabled={
-                          selecionadas.size === 0 || operacao === 'agendar' || !protocoloAgendadoInput
-                        }
-                        onClick={() => void onAgendarProtocolo()}
-                      >
-                        {operacao === 'agendar' ? (
-                          <Loader2 className="w-4 h-4 animate-spin inline mr-1" aria-hidden />
-                        ) : (
-                          <Clock className="w-4 h-4 inline mr-1" aria-hidden />
-                        )}
-                        Agendar protocolo
-                      </button>
-                      {selecionadasComAgendamento > 0 ? (
-                        <button
-                          type="button"
-                          className="rounded-lg border border-rose-300 bg-white px-3 py-2 text-sm text-rose-800 hover:bg-rose-50 disabled:opacity-50"
-                          disabled={operacao === 'cancelar-ag-lote'}
-                          onClick={() => void onCancelarAgendamentoSelecionadas()}
-                        >
-                          {operacao === 'cancelar-ag-lote' ? (
-                            <Loader2 className="w-4 h-4 animate-spin inline mr-1" aria-hidden />
-                          ) : null}
-                          Cancelar agendamento ({selecionadasComAgendamento})
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
                   <button
                     type="button"
                     className={`${processosBtnPrimary} bg-amber-700 hover:bg-amber-800 w-full sm:w-auto`}
@@ -1224,21 +1247,29 @@ export function PeticionamentoProjudi() {
           </div>
         ) : (
           <section className="space-y-3">
-            <h2 className="text-sm font-semibold text-slate-800">Histórico</h2>
+            <h2 className="text-sm font-semibold text-slate-800">
+              Histórico — {historicoDias > 0 ? `últimos ${historicoDias} dias` : 'completo'}
+            </h2>
             {processoExibicao ? (
               <p className="text-xs text-slate-500">
                 Processo <span className="font-mono">{processoExibicao}</span>
                 {processoFiltro ? '' : ' — exibindo todos'}
               </p>
             ) : null}
-            {carregando ? (
+            {carregando || historicoCarregando ? (
               <div className="flex items-center gap-2 text-sm text-slate-600">
                 <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
                 Carregando…
               </div>
             ) : (
               <PeticaoHistoricoLista
-                peticoes={historico}
+                peticoes={historicoPeticoes}
+                totalElements={historicoMeta.totalElements}
+                dias={historicoDias}
+                hasMore={historicoTemMais}
+                loadingMore={historicoCarregandoMais}
+                onLoadMore={() => void carregarHistorico(historicoMeta.page + 1, true, historicoDias)}
+                onVerHistoricoAnterior={historicoDias > 0 ? verHistoricoAnterior : undefined}
                 onReabrir={onReabrirProtocolo}
                 onCancelarAgendamento={(id) => void onCancelarAgendamento(id)}
                 operacao={operacao}
