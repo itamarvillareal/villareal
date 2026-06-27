@@ -82,6 +82,9 @@ public class ProjudiPeticaoProtocoloEstadoService {
     @Transactional
     public void devolverParaProtocolar(Long peticaoId, String mensagem) {
         peticaoRepository.finalizarProtocolo(peticaoId, STATUS_ASSINADA, truncarMensagem(mensagem), null);
+        // Falha no protocolo: remove agendamento vencido para a UI mostrar o erro em «Prontas»,
+        // em vez de repetir tentativa a cada minuto sem feedback visível.
+        peticaoRepository.limparAgendamento(List.of(peticaoId));
     }
 
     @Transactional

@@ -289,6 +289,7 @@ public class ProjudiPeticaoAssinaturaService {
         arquivo.setP7sSha256(ProjudiAssinaturaP7sUtil.sha256(p7sBytes));
         arquivo.setConteudoAssinadoSha256(shaConteudo);
         arquivo.setStatus(STATUS_ARQUIVO_ASSINADO);
+        registroService.sincronizarP7sAssinadoNoDrive(peticao.getNumeroProcesso(), arquivo, p7sBytes);
         arquivoRepository.save(arquivo);
 
         atualizarStatusPeticaoSeCompleta(peticao);

@@ -409,6 +409,25 @@ public class ProjudiPeticaoRegistroService {
         }
     }
 
+    /**
+     * Cópia durável do .p7s na pasta «Assinar» do Drive (best-effort). Usado após assinatura via ZIP
+     * para que o protocolo possa recuperar o arquivo se o cache local sumir (recreate de container).
+     */
+    public void sincronizarP7sAssinadoNoDrive(
+            String numeroProcesso, ProjudiPeticaoArquivoEntity arquivo, byte[] p7sBytes) {
+        if (!StringUtils.hasText(numeroProcesso) || arquivo == null || p7sBytes == null || p7sBytes.length == 0) {
+            return;
+        }
+        processoRepository
+                .findByNumeroCnj(numeroProcesso.trim())
+                .ifPresent(processo -> {
+                    String nome = StringUtils.hasText(arquivo.getP7sRef())
+                            ? Path.of(arquivo.getP7sRef()).getFileName().toString()
+                            : "assinado.p7s";
+                    copiarP7sParaPastaAssinar(processo, nome, p7sBytes, arquivo);
+                });
+    }
+
     /** Copia o PDF para a subpasta «Assinar» da pasta do processo no Drive (best-effort). */
     private void copiarPdfParaPastaAssinar(
             ProcessoEntity processo,

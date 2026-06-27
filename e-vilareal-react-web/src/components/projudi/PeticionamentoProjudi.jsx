@@ -1184,6 +1184,11 @@ export function PeticionamentoProjudi() {
                                   Cancelar agendamento
                                 </button>
                               </div>
+                              {p.protocoloMensagem ? (
+                                <p className="text-xs text-rose-800 bg-rose-50 border border-rose-200 rounded px-2 py-1 whitespace-pre-wrap break-words">
+                                  {p.protocoloMensagem}
+                                </p>
+                              ) : null}
                               <div className="flex flex-wrap items-end gap-2 rounded border border-violet-200 bg-violet-50/60 p-2">
                                 <label className="flex flex-col gap-1 text-xs text-slate-700">
                                   Alterar data e hora
@@ -1298,6 +1303,11 @@ export function PeticionamentoProjudi() {
                                   {a.nomeOriginal} ({labelTipoArquivoPeticao(a.idArquivoTipo)})
                                 </div>
                               ))}
+                              {p.protocoloMensagem ? (
+                                <p className="text-xs text-rose-800 bg-rose-50 border border-rose-200 rounded px-2 py-1 whitespace-pre-wrap break-words">
+                                  {p.protocoloMensagem}
+                                </p>
+                              ) : null}
                               <div className="mt-2 flex flex-wrap items-end gap-2 rounded border border-violet-200 bg-violet-50/60 p-2">
                                 <label className="flex flex-col gap-1 text-xs text-slate-700">
                                   Data e hora
