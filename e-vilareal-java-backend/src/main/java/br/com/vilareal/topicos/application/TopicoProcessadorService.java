@@ -378,7 +378,24 @@ public class TopicoProcessadorService {
         if (pessoa == null) {
             return false;
         }
+        if (parecePessoaJuridicaPorNome(pessoa.getNome())) {
+            return true;
+        }
         return QualificacaoPessoaUtil.determinarFeminino(pessoa.getNome(), null);
+    }
+
+    /** PJ usa flexão feminina nos modelos legados (LOCADORA, inscrita no CNPJ, etc.). */
+    private static boolean parecePessoaJuridicaPorNome(String nome) {
+        if (!StringUtils.hasText(nome)) {
+            return false;
+        }
+        String upper = nome.toUpperCase(Locale.ROOT);
+        return upper.contains(" LTDA")
+                || upper.contains(" S/A")
+                || upper.contains(" S.A.")
+                || upper.contains(" EIRELI")
+                || upper.contains(" MEI")
+                || upper.contains(" ME ");
     }
 
     private static List<ProcessoParteEntity> partesPorReferencia(ContextoPartes ctx, String poloRef) {

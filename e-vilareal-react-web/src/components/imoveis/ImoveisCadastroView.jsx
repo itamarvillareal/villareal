@@ -27,14 +27,10 @@ import {
 } from './ImoveisAdminLayout.jsx';
 import { ListaFiadoresImovel } from './ListaFiadoresImovel.jsx';
 import { ListaInquilinosImovel } from './ListaInquilinosImovel.jsx';
+import { CampoDataBr } from '../ui/CampoDataBr.jsx';
 import { CampoNumeroComContador } from '../ui/CampoNumeroComContador.jsx';
 import { Field } from '../ui/Field.jsx';
 import { featureFlags, FEATURE_IPTU_NOVO } from '../../config/featureFlags.js';
-import {
-  formatarDataBrInput,
-  normalizarDataNascimentoBrAoBlur,
-  resolverAliasHojeEmTexto,
-} from '../../services/hjDateAliasService.js';
 import { FORMAS_PAGAMENTO_ALUGUEL } from '../../data/locacaoFormaPagamentoAluguel.js';
 
 /**
@@ -605,20 +601,7 @@ export function ImoveisCadastroView(props) {
           </fieldset>
           <div className="flex flex-wrap items-end gap-3 pt-1">
             <Field label="Data pag. 1ª Tx. Cond." className="w-full sm:w-44">
-              <input
-                type="text"
-                inputMode="numeric"
-                autoComplete="off"
-                value={dataPag1TxCond}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  const hj = resolverAliasHojeEmTexto(v, 'br');
-                  setDataPag1TxCond(hj ?? formatarDataBrInput(v));
-                }}
-                onBlur={(e) => setDataPag1TxCond(normalizarDataNascimentoBrAoBlur(e.target.value))}
-                placeholder="dd/mm/aaaa ou hj"
-                className={imoveisInputClass}
-              />
+              <CampoDataBr value={dataPag1TxCond} onChange={setDataPag1TxCond} className={imoveisInputClass} />
             </Field>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 items-end pt-5 border-t border-slate-200/90 dark:border-white/[0.08]">
@@ -636,7 +619,7 @@ export function ImoveisCadastroView(props) {
                   <input type="text" value={existeDebIptu} onChange={(e) => setExisteDebIptu(e.target.value)} className={imoveisInputClass} />
                 </Field>
                 <Field label="Data Cons.">
-                  <input type="text" value={dataConsIptu} onChange={(e) => setDataConsIptu(e.target.value)} className={imoveisInputClass} />
+                  <CampoDataBr value={dataConsIptu} onChange={setDataConsIptu} className={imoveisInputClass} />
                 </Field>
                 <div className="sm:col-span-2 lg:col-span-1 flex pb-0.5">
                   <button type="button" onClick={onAbrirIptu} className={`${imoveisBtnPrimary} w-full sm:w-auto`}>
@@ -663,36 +646,10 @@ export function ImoveisCadastroView(props) {
         >
           <div className="flex flex-wrap items-end gap-4">
             <Field label="Data início" className="w-full sm:w-40">
-              <input
-                type="text"
-                inputMode="numeric"
-                autoComplete="off"
-                value={dataInicioContrato}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  const hj = resolverAliasHojeEmTexto(v, 'br');
-                  setDataInicioContrato(hj ?? formatarDataBrInput(v));
-                }}
-                onBlur={(e) => setDataInicioContrato(normalizarDataNascimentoBrAoBlur(e.target.value))}
-                placeholder="dd/mm/aaaa ou hj"
-                className={imoveisInputClass}
-              />
+              <CampoDataBr value={dataInicioContrato} onChange={setDataInicioContrato} className={imoveisInputClass} />
             </Field>
             <Field label="Data fim" className="w-full sm:w-40">
-              <input
-                type="text"
-                inputMode="numeric"
-                autoComplete="off"
-                value={dataFimContrato}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  const hj = resolverAliasHojeEmTexto(v, 'br');
-                  setDataFimContrato(hj ?? formatarDataBrInput(v));
-                }}
-                onBlur={(e) => setDataFimContrato(normalizarDataNascimentoBrAoBlur(e.target.value))}
-                placeholder="dd/mm/aaaa ou hj"
-                className={imoveisInputClass}
-              />
+              <CampoDataBr value={dataFimContrato} onChange={setDataFimContrato} className={imoveisInputClass} />
             </Field>
           </div>
         </AccordionSection>

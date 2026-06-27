@@ -15,7 +15,8 @@ import { ModalVinculosProcessoImovel } from './imoveis/ModalVinculosProcessoImov
 import { ModalGerarContratoLocacao } from './imoveis/ModalGerarContratoLocacao.jsx';
 import { PessoaEmbedModal } from './PessoaEmbedModal.jsx';
 import { padCliente } from '../data/processosDadosRelatorio.js';
-import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
+import { dataNascimentoParaExibicaoBr } from '../services/hjDateAliasService.js';
+import { CampoDataBr } from './ui/CampoDataBr.jsx';
 import {
   carregarImovelCadastro,
   carregarImovelCadastroParaPainel,
@@ -251,25 +252,25 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     setTaxaAdministracaoPercent(String(data.taxaAdministracaoPercent ?? '10'));
     setDiaPagAluguel(String(data.diaPagAluguel ?? ''));
     setFormaPagamentoAluguel(normalizarFormaPagamentoAluguel(data.formaPagamentoAluguel));
-    setDataPag1TxCond(String(data.dataPag1TxCond ?? ''));
+    setDataPag1TxCond(dataNascimentoParaExibicaoBr(data.dataPag1TxCond));
     setInscricaoImobiliaria(String(data.inscricaoImobiliaria ?? ''));
     setExisteDebIptu(String(data.existeDebIptu ?? ''));
-    setDataConsIptu(String(data.dataConsIptu ?? ''));
+    setDataConsIptu(dataNascimentoParaExibicaoBr(data.dataConsIptu));
     setAguaNumero(String(data.aguaNumero ?? ''));
-    setDataConsAgua(String(data.dataConsAgua ?? ''));
+    setDataConsAgua(dataNascimentoParaExibicaoBr(data.dataConsAgua));
     setExisteDebAgua(String(data.existeDebAgua ?? ''));
     setDiaVencAgua(String(data.diaVencAgua ?? ''));
     setEnergiaNumero(String(data.energiaNumero ?? ''));
-    setDataConsEnergia(String(data.dataConsEnergia ?? ''));
+    setDataConsEnergia(dataNascimentoParaExibicaoBr(data.dataConsEnergia));
     setExisteDebEnergia(String(data.existeDebEnergia ?? ''));
     setDiaVencEnergia(String(data.diaVencEnergia ?? ''));
     setGasNumero(String(data.gasNumero ?? ''));
-    setDataConsGas(String(data.dataConsGas ?? ''));
+    setDataConsGas(dataNascimentoParaExibicaoBr(data.dataConsGas));
     setExisteDebGas(String(data.existeDebGas ?? ''));
     setDiaVencGas(String(data.diaVencGas ?? ''));
-    setDataInicioContrato(String(data.dataInicioContrato ?? ''));
-    setDataFimContrato(String(data.dataFimContrato ?? ''));
-    setDataConsDebitoCond(String(data.dataConsDebitoCond ?? ''));
+    setDataInicioContrato(dataNascimentoParaExibicaoBr(data.dataInicioContrato));
+    setDataFimContrato(dataNascimentoParaExibicaoBr(data.dataFimContrato));
+    setDataConsDebitoCond(dataNascimentoParaExibicaoBr(data.dataConsDebitoCond));
     setExisteDebitoCond(String(data.existeDebitoCond ?? ''));
     setDiaRepasse(String(data.diaRepasse ?? ''));
     setBanco(String(data.banco ?? ''));
@@ -1184,16 +1185,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
                   <input type="text" value={existeDebIptu} onChange={(e) => setExisteDebIptu(e.target.value)} className={inputClass} />
                 </Field>
                 <Field label="Data Consulta débito IPTU">
-                  <input
-                    type="text"
-                    value={dataConsIptu}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setDataConsIptu(resolverAliasHojeEmTexto(v, 'br') ?? v);
-                    }}
-                    className={inputClass}
-                    placeholder="dd/mm/aaaa ou hj"
-                  />
+                  <CampoDataBr value={dataConsIptu} onChange={setDataConsIptu} className={inputClass} />
                 </Field>
               </div>
             </div>

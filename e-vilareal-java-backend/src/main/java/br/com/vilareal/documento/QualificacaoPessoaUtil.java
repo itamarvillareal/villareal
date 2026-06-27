@@ -172,14 +172,38 @@ public class QualificacaoPessoaUtil {
 
     static String montarPreambuloContratoAluguel(
             String qualificacaoLocador, String qualificacaoLocatario, boolean pluralLocatario) {
+        return montarPreambuloContratoAluguel(
+                qualificacaoLocador, qualificacaoLocatario, pluralLocatario, inferirFemininoLocadorNaQualificacao(qualificacaoLocador));
+    }
+
+    static String montarPreambuloContratoAluguel(
+            String qualificacaoLocador,
+            String qualificacaoLocatario,
+            boolean pluralLocatario,
+            boolean locadorFeminino) {
+        String rotuloLocador = locadorFeminino ? "LOCADORA" : "LOCADOR";
         String rotuloLocatario = pluralLocatario ? "LOCATÁRIOS" : "LOCATÁRIO";
-        return "Pelo presente instrumento particular, como LOCADOR, "
+        return "Pelo presente instrumento particular, como "
+                + rotuloLocador
+                + ", "
                 + semVirgulaFinal(qualificacaoLocador)
                 + ", e, como "
                 + rotuloLocatario
                 + ", "
                 + semVirgulaFinal(qualificacaoLocatario)
                 + ", têm por justo e contratado o seguinte:";
+    }
+
+    /** PJ e nomes femininos usam «LOCADORA» no preâmbulo (como o template legado com Adequa). */
+    static boolean inferirFemininoLocadorNaQualificacao(String qualificacaoLocador) {
+        if (!StringUtils.hasText(qualificacaoLocador)) {
+            return false;
+        }
+        String lower = qualificacaoLocador.toLowerCase(Locale.ROOT);
+        if (lower.contains("pessoa jurídica") || lower.contains("cnpj")) {
+            return true;
+        }
+        return false;
     }
 
     /** Remove vírgulas (e espaços) finais antes de encadear qualificações no preâmbulo. */

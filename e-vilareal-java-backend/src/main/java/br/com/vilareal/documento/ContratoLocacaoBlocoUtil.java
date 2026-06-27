@@ -50,7 +50,7 @@ final class ContratoLocacaoBlocoUtil {
                 && (template.contains("+++") || lower.contains("como locador") || lower.contains("nome(\"autor\""));
     }
 
-    /** Bloco do preâmbulo (partes) — montado programaticamente, não via template legado. */
+    /** Bloco do preâmbulo (partes) — processado via template legado (Autor antes de Réu). */
     static boolean isBlocoPreambuloInstrumento(String template) {
         if (!StringUtils.hasText(template)) {
             return false;

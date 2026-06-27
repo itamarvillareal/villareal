@@ -22,6 +22,7 @@ import {
   X,
   Zap,
 } from 'lucide-react';
+import { CampoDataBr } from '../ui/CampoDataBr.jsx';
 import { formatValorMoeda, formatValorMoedaCampo } from '../../utils/moneyBr.js';
 
 export { formatValorMoeda, formatValorMoedaCampo };
@@ -511,11 +512,10 @@ export function TabelaUtilidades({ rows, onChange, contratoExtra }) {
                   />
                 </td>
                 <td className="px-2 py-1.5">
-                  <input
-                    type="text"
+                  <CampoDataBr
                     value={row.dataCons}
-                    onChange={(e) => onChange(row.key, 'dataCons', e.target.value)}
-                    placeholder="dd/mm/aaaa"
+                    onChange={(v) => onChange(row.key, 'dataCons', v)}
+                    placeholder="dd/mm/aaaa ou hj"
                     className={`${imoveisInputClass} py-2 text-xs`}
                   />
                 </td>

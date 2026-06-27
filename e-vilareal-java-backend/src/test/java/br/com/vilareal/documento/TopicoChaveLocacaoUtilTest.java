@@ -18,11 +18,15 @@ class TopicoChaveLocacaoUtilTest {
     }
 
     @Test
-    void textoProcessadoParaHtml_converteQuebrasParaBr() {
+    void textoProcessadoParaHtml_converteQuebrasParaLinhasJustificaveis() {
         assertThat(ContratoLocacaoDocumentoService.textoProcessadoParaHtml("a) item\nb) item"))
-                .isEqualTo("a) item<br/>b) item");
+                .isEqualTo(
+                        "<span class=\"contrato-linha\">a) item</span>"
+                                + "<span class=\"contrato-linha\">b) item</span>");
         assertThat(ContratoLocacaoDocumentoService.textoProcessadoParaHtml("a) item\n\nb) item"))
-                .isEqualTo("a) item<br/>b) item");
+                .isEqualTo(
+                        "<span class=\"contrato-linha\">a) item</span>"
+                                + "<span class=\"contrato-linha\">b) item</span>");
     }
 
     @Test

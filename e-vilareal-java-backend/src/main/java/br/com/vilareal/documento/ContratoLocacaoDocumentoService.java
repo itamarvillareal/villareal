@@ -124,6 +124,7 @@ public class ContratoLocacaoDocumentoService {
 
         String tituloContrato = ContratoLocacaoBlocoUtil.tituloPadrao();
         List<String> clausulasHtml = new ArrayList<>();
+        String preambuloPlain = "";
         String preambuloHtml = "";
         int numeroClausula = 0;
         StringBuilder clausulaTextoAtual = null;
@@ -139,8 +140,19 @@ public class ContratoLocacaoDocumentoService {
                 continue;
             }
             if (ContratoLocacaoBlocoUtil.isCabecalhoFecho(template)
-                    || ContratoLocacaoBlocoUtil.isCabecalhoMetadados(template)
-                    || ContratoLocacaoBlocoUtil.isBlocoPreambuloInstrumento(template)) {
+                    || ContratoLocacaoBlocoUtil.isCabecalhoMetadados(template)) {
+                continue;
+            }
+            if (ContratoLocacaoBlocoUtil.isBlocoPreambuloInstrumento(template)) {
+                TopicoProcessadorService.ResultadoProcessamento procPreambulo =
+                        topicoProcessadorService.processarTemplateLocacao(
+                                template, locador.getId(), locatariosPessoaIds, fiadoresPessoaIds, parametros);
+                String textoPreambulo =
+                        ContratoLocacaoBlocoUtil.limparMetadadosFormato(procPreambulo.texto());
+                textoPreambulo = LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao(textoPreambulo);
+                if (StringUtils.hasText(textoPreambulo)) {
+                    preambuloPlain = textoPreambulo;
+                }
                 continue;
             }
             if (!temFiadores && ContratoLocacaoBlocoUtil.pareceClausulaFiador(template, bloco)) {
@@ -188,21 +200,15 @@ public class ContratoLocacaoDocumentoService {
             throw new BusinessRuleException("O modelo selecionado não produziu texto após processar os dados do imóvel.");
         }
 
-        String qualificacaoLocador =
-                qualificacaoPessoaUtil.gerarQualificacaoContratoLocacaoPorPessoaId(locador.getId());
-        String qualificacaoLocatario = locatarios.stream()
-                .map(p -> qualificacaoPessoaUtil.gerarQualificacaoContratoLocacaoPorPessoaId(p.getId()))
-                .filter(StringUtils::hasText)
-                .map(QualificacaoPessoaUtil::semVirgulaFinal)
-                .collect(Collectors.joining(", e "));
+        if (!StringUtils.hasText(preambuloPlain)) {
+            preambuloPlain = montarPreambuloProgramatico(locador, locatarios, pluralLocatarios);
+        }
         String nomeLocador = ContratoHonorariosClausulas.normalizarNomeAssinatura(
                 Utf8MojibakeUtil.corrigir(locador.getNome()));
         String nomeLocatario = locatarios.stream()
                 .map(p -> ContratoHonorariosClausulas.normalizarNomeAssinatura(Utf8MojibakeUtil.corrigir(p.getNome())))
                 .filter(StringUtils::hasText)
                 .collect(Collectors.joining(" E "));
-        String preambuloPlain = QualificacaoPessoaUtil.montarPreambuloContratoAluguel(
-                qualificacaoLocador, qualificacaoLocatario, pluralLocatarios);
         preambuloPlain = LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao(preambuloPlain);
         preambuloPlain = LocacaoConcordanciaReuUtil.aplicarConcordanciaLocatarioProcessado(
                 preambuloPlain, locatarios.size(), inferirFemininoLocatarios(locatarios));
@@ -358,6 +364,34 @@ public class ContratoLocacaoDocumentoService {
         return FormaPagamentoAluguelLocacao.PADRAO;
     }
 
+    private String montarPreambuloProgramatico(
+            PessoaEntity locador, List<PessoaEntity> locatarios, boolean pluralLocatarios) {
+        String qualLocador = montarQualificacaoPreambuloParte(locador);
+        String qualLocatario = locatarios.stream()
+                .map(this::montarQualificacaoPreambuloParte)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.joining(", e "));
+        return QualificacaoPessoaUtil.montarPreambuloContratoAluguel(qualLocador, qualLocatario, pluralLocatarios);
+    }
+
+    /** Espelha o modelo legado: {@code Nome()} + {@code Qualifica_Sem_Nome()}. */
+    private String montarQualificacaoPreambuloParte(PessoaEntity pessoa) {
+        if (pessoa == null || pessoa.getId() == null) {
+            return "";
+        }
+        String nome = ContratoHonorariosClausulas.normalizarNomeAssinatura(
+                Utf8MojibakeUtil.corrigir(pessoa.getNome()));
+        String qualSemNome =
+                qualificacaoPessoaUtil.gerarQualificacaoContratoLocacaoSemNomePorPessoaId(pessoa.getId());
+        if (!StringUtils.hasText(nome)) {
+            return qualSemNome;
+        }
+        if (!StringUtils.hasText(qualSemNome)) {
+            return nome;
+        }
+        return nome + ", " + QualificacaoPessoaUtil.semVirgulaFinal(qualSemNome);
+    }
+
     private static boolean inferirFemininoLocatarios(List<PessoaEntity> locatarios) {
         if (locatarios == null || locatarios.isEmpty()) {
             return false;
@@ -414,12 +448,23 @@ public class ContratoLocacaoDocumentoService {
         return quebrarLinhasHtml(sb.toString());
     }
 
-    /** Quebras explícitas para o PDF justificar cada linha (evita {@code white-space: pre-line}). */
+    /** Quebras explícitas em blocos justificáveis (OpenHTMLToPDF não justifica bem {@code <br/>}). */
     static String quebrarLinhasHtml(String html) {
         if (!StringUtils.hasText(html)) {
             return html != null ? html : "";
         }
-        return html.replace("\n", "<br/>");
+        if (!html.contains("\n")) {
+            return html;
+        }
+        String[] linhas = html.split("\\n", -1);
+        StringBuilder sb = new StringBuilder();
+        for (String linha : linhas) {
+            if (linha.isEmpty()) {
+                continue;
+            }
+            sb.append("<span class=\"contrato-linha\">").append(linha).append("</span>");
+        }
+        return sb.isEmpty() ? html : sb.toString();
     }
 
     private static String removerPontuacaoFinalUrl(String url) {

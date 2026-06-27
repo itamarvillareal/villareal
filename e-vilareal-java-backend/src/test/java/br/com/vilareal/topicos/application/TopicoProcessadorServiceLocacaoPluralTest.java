@@ -90,6 +90,33 @@ class TopicoProcessadorServiceLocacaoPluralTest {
     }
 
     @Test
+    void processarTemplateLocacao_preambuloLocadoraAntesDeLocatario() {
+        when(pessoaRepository.findById(1985L)).thenReturn(Optional.of(pessoa(1985L, "VRV SOLUÇÕES LTDA")));
+        when(pessoaRepository.findById(3113L)).thenReturn(Optional.of(pessoa(3113L, "MARCUS ANTONIO CARDOSO ANACLETO")));
+        when(qualificacaoPessoaUtil.gerarQualificacaoContratoLocacaoSemNomePorPessoaId(1985L))
+                .thenReturn("pessoa jurídica de direito privado, inscrita no CNPJ nº 39.720.563/0001-90");
+        when(qualificacaoPessoaUtil.gerarQualificacaoContratoLocacaoSemNomePorPessoaId(3113L))
+                .thenReturn("brasileiro, solteiro, portador do CPF nº 000.000.000-00");
+
+        String template =
+                "Pelo presente instrumento particular, como Ucase(Adequa(\"@\",\"Autor\",\"Locador\")), "
+                        + "Nome(\"Autor\",\"all\"), Qualifica_Sem_Nome_(\"Autor\",\"all\"), e, "
+                        + "como Ucase(Adequa(\"@\",\"Reu\",\"Locatário\")), Nome(\"Reu\",\"all\"), "
+                        + "Qualifica_Sem_Nome_(\"Reu\",\"all\"), têm por justo e contratado o seguinte:";
+
+        TopicoProcessadorService.ResultadoProcessamento resultado =
+                service.processarTemplateLocacao(template, 1985L, List.of(3113L), List.of(), Map.of());
+
+        String texto = resultado.texto();
+        int idxLocadora = texto.indexOf("VRV SOLUÇÕES LTDA");
+        int idxLocatario = texto.indexOf("MARCUS ANTONIO CARDOSO ANACLETO");
+        assertThat(idxLocadora).isGreaterThanOrEqualTo(0);
+        assertThat(idxLocatario).isGreaterThan(idxLocadora);
+        assertThat(texto).contains("como LOCADORA, VRV SOLUÇÕES LTDA");
+        assertThat(texto).contains("como LOCATÁRIO, MARCUS ANTONIO CARDOSO ANACLETO");
+    }
+
+    @Test
     void processarTemplateLocacao_preambuloComQualificacaoCompletaPorLocatario() {
         when(pessoaRepository.findById(1L)).thenReturn(Optional.of(pessoa(1L, "Locador Teste")));
         when(pessoaRepository.findById(2L)).thenReturn(Optional.of(pessoa(2L, "Carlos Silva")));

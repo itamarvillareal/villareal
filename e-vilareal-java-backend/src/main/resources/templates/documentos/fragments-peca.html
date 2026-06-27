@@ -315,10 +315,19 @@
             font-family: Arial, sans-serif;
             font-size: 9pt;
             text-align: justify;
+            text-align-last: justify;
+            text-justify: inter-word;
             margin-top: 0;
             margin-bottom: 0;
             padding-left: 0;
             text-indent: 0;
+        }
+
+        .contrato-linha {
+            display: block;
+            text-align: justify;
+            text-align-last: justify;
+            text-justify: inter-word;
         }
 
         .contrato-preambulo,
@@ -346,11 +355,18 @@
             display: block;
             margin-bottom: 0;
             white-space: normal;
-            /* Recuo francês só nas cláusulas: 1ª linha na margem; da 2ª em diante, leve recuo. */
+            /* Recuo francês só na 1ª linha da cláusula. */
             padding-left: 1.25cm;
+        }
+
+        .contrato-clausula > .contrato-linha:first-child {
             text-indent: -1.25cm;
+        }
+
+        .contrato-clausula > .contrato-linha {
             text-align: justify;
             text-align-last: justify;
+            text-justify: inter-word;
         }
 
         .contrato-clausula strong {

@@ -12,19 +12,19 @@
 <th:block th:replace="~{documentos/fragments-peca :: rodape}"/>
 
 <div class="corpo-documento">
-    <p class="contrato-texto contrato-preambulo" th:utext="${preambuloHtml}">
+    <div class="contrato-texto contrato-preambulo" th:utext="${preambuloHtml}">
         Pelo presente instrumento particular...
-    </p>
+    </div>
 
-    <p class="contrato-texto contrato-clausula"
+    <div class="contrato-texto contrato-clausula"
        th:each="clausula : ${clausulas}"
        th:utext="${clausula}">
         Cláusula...
-    </p>
+    </div>
 
-    <p class="contrato-texto contrato-fecho" th:utext="${fechoHtml}">
+    <div class="contrato-texto contrato-fecho" th:utext="${fechoHtml}">
         Para firmar e como prova...
-    </p>
+    </div>
 
     <p class="contrato-data" th:text="${localData}">Anápolis, estado de Goiás, data.</p>
 
