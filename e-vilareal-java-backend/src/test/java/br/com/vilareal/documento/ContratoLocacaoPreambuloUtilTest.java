@@ -57,4 +57,36 @@ class ContratoLocacaoPreambuloUtilTest {
 
         assertThat(out).isEqualTo(preambulo);
     }
+
+    @Test
+    void removerRequalificacaoLocadorDuplicada_retiraLocadorRepetidoAntesDeTemPorJusto() {
+        String qualVrv =
+                "VRV SOLUÇÕES LTDA, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº 39.720.563/0001-90, "
+                        + "com sede na Avenida Pinheiro Chagas, 232, nº 1, Jundiaí, cidade de Anápolis, estado de Goiás, "
+                        + "CEP 75.110-580";
+        String qualCarlos =
+                "Carlos Ricardo de Carvalho Reimer, brasileiro, solteiro, portador do CPF nº 000.000.000-00";
+        String qualMarcus =
+                "MARCUS ANTONIO CARDOSO ANACLETO, brasileiro, solteiro, portador do CPF nº 111.111.111-11, "
+                        + "telefone nº (62)98495-2521";
+
+        String preambulo =
+                "Pelo presente instrumento particular, como LOCADORA, "
+                        + qualVrv
+                        + ", e, como LOCATÁRIOS, "
+                        + qualCarlos
+                        + ", e "
+                        + qualMarcus
+                        + ", e Vrv Soluções Ltda, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº 39.720.563/0001-90, "
+                        + "com sede na Avenida Pinheiro Chagas, 232, nº 1, Jundiaí, cidade de Anápolis, estado de Goiás, "
+                        + "CEP 75.110-580, têm por justo e contratado o seguinte:";
+
+        String out = ContratoLocacaoPreambuloUtil.removerRequalificacaoLocadorDuplicada(preambulo);
+
+        assertThat(out).contains("como LOCADORA, " + qualVrv);
+        assertThat(out).contains(qualMarcus);
+        assertThat(out).doesNotContain("39.720.563/0001-90, têm por justo");
+        assertThat(out).contains(qualMarcus + ", têm por justo e contratado o seguinte:");
+        assertThat(out).doesNotContain(", e Vrv Soluções Ltda");
+    }
 }

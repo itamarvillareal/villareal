@@ -210,6 +210,7 @@ public class ContratoLocacaoDocumentoService {
                 .filter(StringUtils::hasText)
                 .collect(Collectors.joining(" E "));
         preambuloPlain = LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao(preambuloPlain);
+        preambuloPlain = ContratoLocacaoPreambuloUtil.removerRequalificacaoLocadorDuplicada(preambuloPlain);
         preambuloPlain = LocacaoConcordanciaReuUtil.aplicarConcordanciaLocatarioProcessado(
                 preambuloPlain, locatarios.size(), inferirFemininoLocatarios(locatarios));
         preambuloHtml = textoProcessadoParaHtml(preambuloPlain);
