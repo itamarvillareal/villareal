@@ -27,6 +27,9 @@ import java.util.regex.Pattern;
  */
 public final class LocacaoTemplateLegadoSupport {
 
+    /** Nome do advogado do locador na Cláusula 17ª (modelo legado). */
+    static final String NOME_ADVOGADO_CONTRATO_LOCACAO = "Itamar Alexandre Félix Villa Real Junior";
+
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private static final Pattern CAMPO_AT = Pattern.compile("[A-Za-zÀ-ÿ][A-Za-z0-9_À-ÿ]*\\(\"@\"\\)");
@@ -158,6 +161,14 @@ public final class LocacaoTemplateLegadoSupport {
             registrar(params, "Data_Fim_Aluguel", "");
             params.put("dataFim", "");
         }
+        String prazoTexto = LocacaoPrazoUtil.calcularPrazoLocacaoTexto(dataInicio, dataFim);
+        if (StringUtils.hasText(prazoTexto)) {
+            int meses = LocacaoPrazoUtil.calcularMesesLocacao(dataInicio, dataFim);
+            registrar(params, "Prazo_Locacao_Texto", prazoTexto);
+            registrar(params, "Prazo_Locacao_Meses", String.valueOf(meses));
+            params.put("prazoLocacaoTexto", prazoTexto);
+            params.put("prazoLocacaoMeses", String.valueOf(meses));
+        }
     }
 
     /** Atualiza campos de valor do aluguel nos parâmetros do template legado. */
@@ -253,6 +264,7 @@ public final class LocacaoTemplateLegadoSupport {
         t = processarVerificaPlural(t, mapa);
         t = processarExtensoreais(t, mapa);
         t = substituirCamposBare(t, mapa);
+        t = LocacaoPrazoUtil.substituirPrazoLocacaoHardcoded(t, resolverCampo("Prazo_Locacao_Texto", mapa));
 
         return t;
     }
@@ -262,14 +274,24 @@ public final class LocacaoTemplateLegadoSupport {
         if (!StringUtils.hasText(texto)) {
             return texto != null ? texto : "";
         }
-        return texto
+        String t = LocacaoTextoCorrecaoUtil.normalizar(texto);
+        t = normalizarNomeAdvogadoContratoLocacao(t);
+        return t
                 .replaceAll(",\\s*,\\s*", ", ")
                 .replaceAll("\\s+,", ",")
                 .replaceAll(",\\s{2,}", ", ")
-                .replaceAll(";{2,}", ";")
-                .replaceAll("\\bOS (Locatários|Locatárias)\\b", "Os $1")
-                .replaceAll("(?i)Propercase\\(\\s*S\\s*\\)\\s*ublocar", "Sublocar")
-                .replaceAll("(?i)\\bS ublocar\\b", "Sublocar");
+                .replaceAll(";{2,}", ";");
+    }
+
+    /** Corrige grafias corrompidas do advogado padrão (Cláusula 17ª e afins). */
+    static String normalizarNomeAdvogadoContratoLocacao(String texto) {
+        if (!StringUtils.hasText(texto)) {
+            return texto != null ? texto : "";
+        }
+        return texto
+                .replaceAll("(?i)Itamar Alexandre Fsãolix Villa Real Junior", NOME_ADVOGADO_CONTRATO_LOCACAO)
+                .replaceAll("(?i)Itamar Alexandre FÃ©lix Villa Real Junior", NOME_ADVOGADO_CONTRATO_LOCACAO)
+                .replaceAll("(?i)Itamar Alexandre Felix Villa Real Junior", NOME_ADVOGADO_CONTRATO_LOCACAO);
     }
 
     /** Remove parênteses vazios, ramos opcionais legados e marcadores {@code +++}. */

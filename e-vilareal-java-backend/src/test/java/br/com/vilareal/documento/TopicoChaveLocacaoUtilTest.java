@@ -30,6 +30,20 @@ class TopicoChaveLocacaoUtilTest {
     }
 
     @Test
+    void montarCorpoClausulaHtml_caputNaMesmaLinhaParagrafosEmBloco() {
+        String caput = "O prazo da locação é de 6 meses, iniciando no dia 30 de maio de 2025.";
+        String par1 = "§1º Terminado o prazo inicialmente convencionado.";
+        String par2 = "§2º Caso o Locatário não conceda o aviso prévio.";
+
+        String html = ContratoLocacaoDocumentoService.montarCorpoClausulaHtml(caput + "\n" + par1 + "\n" + par2);
+
+        assertThat(html).startsWith(caput);
+        assertThat(html).doesNotStartWith("<span class=\"contrato-linha\">" + caput);
+        assertThat(html).contains("<span class=\"contrato-linha\">§1º Terminado");
+        assertThat(html).contains("<span class=\"contrato-linha\">§2º Caso");
+    }
+
+    @Test
     void textoProcessadoParaHtml_linkVistoriaEmAzul() {
         String url = "https://www.dropbox.com/scl/fo/abc/test?rlkey=xyz&dl=0";
         String urlHtml = "https://www.dropbox.com/scl/fo/abc/test?rlkey=xyz&amp;dl=0";

@@ -28,6 +28,7 @@ import {
 import { ListaFiadoresImovel } from './ListaFiadoresImovel.jsx';
 import { ListaInquilinosImovel } from './ListaInquilinosImovel.jsx';
 import { CampoDataBr } from '../ui/CampoDataBr.jsx';
+import { CampoMoedaBr } from '../ui/CampoMoedaBr.jsx';
 import { CampoNumeroComContador } from '../ui/CampoNumeroComContador.jsx';
 import { Field } from '../ui/Field.jsx';
 import { featureFlags, FEATURE_IPTU_NOVO } from '../../config/featureFlags.js';
@@ -180,6 +181,8 @@ export function ImoveisCadastroView(props) {
   } = props;
 
   const unidadeResumo = unidadeResumoCabecalho(unidade, condominio);
+  const salvarDisabled =
+    apiLoading || (featureFlags.useApiImoveis && !(Number(_apiImovelId) > 0));
 
   const summaryCards = useMemo(
     () => [
@@ -324,6 +327,7 @@ export function ImoveisCadastroView(props) {
           valorLocacao={valorLocacao}
           inquilinoNome={inquilino}
           apiSaving={apiSaving}
+          salvarDisabled={salvarDisabled}
           onSalvar={onSalvar}
           onAbrirProc={onAbrirProc}
           onContaCorrente={onContaCorrente}
@@ -551,10 +555,10 @@ export function ImoveisCadastroView(props) {
               <input type="text" value={garantia} onChange={(e) => setGarantia(e.target.value)} className={imoveisInputClass} />
             </Field>
             <Field label="Valor da Garantia">
-              <input type="text" value={valorGarantia} onChange={(e) => setValorGarantia(e.target.value)} className={imoveisInputClass} />
+              <CampoMoedaBr value={valorGarantia} onChange={setValorGarantia} className={imoveisInputClass} />
             </Field>
             <Field label="Valor da Locação">
-              <input type="text" value={valorLocacao} onChange={(e) => setValorLocacao(e.target.value)} className={imoveisInputClass} />
+              <CampoMoedaBr value={valorLocacao} onChange={setValorLocacao} className={imoveisInputClass} />
             </Field>
             <Field label="Honorários / taxa adm. (%)" title="Percentual retido sobre o aluguel (ex.: 10 = 10%)">
               <input

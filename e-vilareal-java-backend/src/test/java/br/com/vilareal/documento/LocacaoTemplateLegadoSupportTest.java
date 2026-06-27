@@ -123,9 +123,22 @@ class LocacaoTemplateLegadoSupportTest {
     }
 
     @Test
+    void corrigirArtefatosTextoLocacao_normalizaNomeAdvogadoClausula17() {
+        String errado =
+                "Dr. Itamar Alexandre Fsãolix Villa Real Junior (OAB/GO 33.329), ficando ainda os Locatários";
+        String out = LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao(errado);
+        assertThat(out).contains("Itamar Alexandre Félix Villa Real Junior");
+        assertThat(out).doesNotContain("Fsãolix");
+        assertThat(out).doesNotContain("Felix Villa");
+    }
+
+    @Test
     void corrigirArtefatosTextoLocacao_corrigeSublocarQuebrado() {
         assertThat(LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao("d) S ublocar o imóvel"))
                 .isEqualTo("d) Sublocar o imóvel");
+        assertThat(LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao(
+                        "d) S\tublocar o imóvel sem autorização expressa da Locadora;"))
+                .isEqualTo("d) Sublocar o imóvel sem autorização expressa da Locadora;");
         assertThat(LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao("Propercase(S) ublocar o imóvel"))
                 .isEqualTo("Sublocar o imóvel");
     }
@@ -134,6 +147,12 @@ class LocacaoTemplateLegadoSupportTest {
     void corrigirArtefatosTextoLocacao_normalizaOsLocatarios() {
         assertThat(LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao("§3º OS Locatários fica"))
                 .isEqualTo("§3º Os Locatários fica");
+    }
+
+    @Test
+    void corrigirArtefatosTextoLocacao_normalizaTmPorJusto() {
+        assertThat(LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao("Marcus, tm por justo e contratado"))
+                .isEqualTo("Marcus, têm por justo e contratado");
     }
 
     @Test
@@ -207,12 +226,52 @@ class LocacaoTemplateLegadoSupportTest {
         params.put("Data_Fim_Aluguel", "2025-12-31");
 
         LocacaoTemplateLegadoSupport.aplicarVigenciaLocacao(
+                params, LocalDate.of(2025, 5, 30), LocalDate.of(2025, 11, 30));
+
+        assertThat(params.get("Data_Inicio_Aluguel")).isEqualTo("2025-05-30");
+        assertThat(params.get("Data_Fim_Aluguel")).isEqualTo("2025-11-30");
+        assertThat(params.get("dataInicio")).isEqualTo("2025-05-30");
+        assertThat(params.get("dataFim")).isEqualTo("2025-11-30");
+        assertThat(params.get("Prazo_Locacao_Meses")).isEqualTo("6");
+        assertThat(params.get("prazoLocacaoTexto")).isEqualTo("6 meses");
+    }
+
+    @Test
+    void preprocessar_clausula2_substituiDozeMesesPeloPrazoCalculado() {
+        Map<String, String> campos = new HashMap<>();
+        campos.put("Data_Inicio_Aluguel", "2025-05-30");
+        campos.put("Data_Fim_Aluguel", "2025-11-30");
+        LocacaoTemplateLegadoSupport.aplicarVigenciaLocacao(
+                campos, LocalDate.of(2025, 5, 30), LocalDate.of(2025, 11, 30));
+
+        String template =
+                "O prazo da locação é de 12 meses, iniciando no dia "
+                        + "Formatar_Texto(Data_Inicio_Aluguel(\"@\"),\"dd'de'mês'de'aaaa\") e terminando no dia "
+                        + "Formatar_Texto(Data_Fim_Aluguel(\"@\"),\"dd'de'mês'de'aaaa\");";
+
+        String out = LocacaoTemplateLegadoSupport.preprocessar(template, campos);
+
+        assertThat(out).contains("é de 6 meses");
+        assertThat(out).doesNotContain("12 meses");
+        assertThat(out).contains("30 de maio de 2025");
+        assertThat(out).contains("30 de novembro de 2025");
+    }
+
+    @Test
+    void aplicarVigenciaLocacao_atualizaDatasECalculaPrazoJunhoADezembro() {
+        Map<String, String> params = new HashMap<>();
+        params.put("Data_Inicio_Aluguel", "2025-01-01");
+        params.put("Data_Fim_Aluguel", "2025-12-31");
+
+        LocacaoTemplateLegadoSupport.aplicarVigenciaLocacao(
                 params, LocalDate.of(2026, 6, 29), LocalDate.of(2026, 12, 29));
 
         assertThat(params.get("Data_Inicio_Aluguel")).isEqualTo("2026-06-29");
         assertThat(params.get("Data_Fim_Aluguel")).isEqualTo("2026-12-29");
         assertThat(params.get("dataInicio")).isEqualTo("2026-06-29");
         assertThat(params.get("dataFim")).isEqualTo("2026-12-29");
+        assertThat(params.get("Prazo_Locacao_Meses")).isEqualTo("6");
+        assertThat(params.get("prazoLocacaoTexto")).isEqualTo("6 meses");
     }
 
     @Test

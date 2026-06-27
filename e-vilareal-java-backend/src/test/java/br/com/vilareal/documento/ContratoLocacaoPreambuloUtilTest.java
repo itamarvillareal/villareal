@@ -115,6 +115,80 @@ class ContratoLocacaoPreambuloUtilTest {
         assertThat(out).doesNotContain("como LOCATÁRIO,");
     }
 
+    @Test
+    void removerLocadorEspuriaAntesDeTemPorJusto_retiraVrvRepetidaAposLocatarios() {
+        String qualVrv =
+                "VRV SOLUÇÕES LTDA, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº 39.720.563/0001-90";
+        String preambulo =
+                "Pelo presente instrumento particular, como LOCADORA, "
+                        + qualVrv
+                        + ", e, como LOCATÁRIOS, Carlos, e Marcus, e Vrv Soluções Ltda, pessoa jurídica, "
+                        + "inscrita no CNPJ sob o nº 39.720.563/0001-90, têm por justo e contratado o seguinte:";
+
+        String out = ContratoLocacaoPreambuloUtil.removerLocadorEspuriaAntesDeTemPorJusto(
+                preambulo, "39.720.563/0001-90");
+
+        assertThat(out).contains("como LOCADORA, " + qualVrv);
+        assertThat(out).contains("Carlos, e Marcus");
+        assertThat(out).doesNotContain(", e Vrv Soluções Ltda");
+        assertThat(out).contains("Marcus, têm por justo");
+    }
+
+    @Test
+    void aplicarPosProcessamentoPreambuloLocacao_locadoraDoisLocatariosSemVrvRepetida() {
+        PessoaEntity vrv = pessoa(1985L, "VRV SOLUÇÕES LTDA");
+        PessoaEntity carlos = pessoa(6631L, "CARLOS RICARDO DE CARVALHO REIMER");
+        PessoaEntity marcus = pessoa(3113L, "MARCUS ANTONIO CARDOSO ANACLETO");
+        when(qualificacaoPessoaUtil.gerarQualificacaoContratoLocacaoPorPessoaId(1985L))
+                .thenReturn("VRV SOLUÇÕES LTDA, inscrita no CNPJ sob o nº 39.720.563/0001-90");
+        when(qualificacaoPessoaUtil.gerarQualificacaoContratoLocacaoSemNomePorPessoaId(6631L))
+                .thenReturn("brasileiro, portador do CPF nº 250.200.088-26");
+        when(qualificacaoPessoaUtil.gerarQualificacaoContratoLocacaoSemNomePorPessoaId(3113L))
+                .thenReturn("brasileiro, portador do CPF nº 045.408.031-07");
+
+        String qualVrv =
+                "VRV SOLUÇÕES LTDA, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº 39.720.563/0001-90";
+        String qualCarlos = "Carlos Ricardo de Carvalho Reimer, brasileiro, portador do CPF nº 250.200.088-26";
+        String qualMarcus =
+                "MARCUS ANTONIO CARDOSO ANACLETO, brasileiro, portador do CPF nº 045.408.031-07";
+
+        String preambulo =
+                "Pelo presente instrumento particular, como LOCADORA, "
+                        + qualVrv
+                        + ", e, como LOCATÁRIO, "
+                        + qualMarcus
+                        + ", e "
+                        + qualVrv
+                        + ", têm por justo e contratado o seguinte:";
+
+        String out = ContratoLocacaoPreambuloUtil.aplicarPosProcessamentoPreambuloLocacao(
+                preambulo, List.of(carlos, marcus), vrv, qualificacaoPessoaUtil);
+
+        assertThat(out).contains("como LOCADORA, " + qualVrv);
+        assertThat(out).contains("como LOCATÁRIOS");
+        assertThat(out).contains("CARLOS RICARDO DE CARVALHO REIMER");
+        assertThat(out).contains("250.200.088-26");
+        assertThat(out).contains("MARCUS ANTONIO CARDOSO ANACLETO");
+        assertThat(out).contains("045.408.031-07");
+        assertThat(out).doesNotContain(", e VRV SOLUÇÕES LTDA");
+        assertThat(out).doesNotContain("39.720.563/0001-90, têm por justo");
+    }
+
+    @Test
+    void removerLocadorEspuriaAntesDeTemPorJusto_aceitaArtefatoTmPorJusto() {
+        String preambulo =
+                "Pelo presente instrumento particular, como LOCADORA, VRV SOLUÇÕES LTDA, inscrita no CNPJ nº 39.720.563/0001-90, "
+                        + "e, como LOCATÁRIOS, Carlos, e Marcus, e Vrv Soluções Ltda, inscrita no CNPJ nº 39.720.563/0001-90, "
+                        + "tm por justo e contratado o seguinte:";
+
+        String out = ContratoLocacaoPreambuloUtil.removerLocadorEspuriaAntesDeTemPorJusto(
+                preambulo, "39.720.563/0001-90");
+
+        assertThat(out).contains("Carlos, e Marcus");
+        assertThat(out).doesNotContain(", e Vrv Soluções Ltda");
+        assertThat(out).contains("Marcus, tm por justo");
+    }
+
     private static PessoaEntity pessoa(Long id, String nome) {
         PessoaEntity p = new PessoaEntity();
         p.setId(id);

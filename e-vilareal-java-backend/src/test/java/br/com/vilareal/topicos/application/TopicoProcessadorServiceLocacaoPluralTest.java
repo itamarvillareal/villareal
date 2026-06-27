@@ -138,6 +138,35 @@ class TopicoProcessadorServiceLocacaoPluralTest {
         assertThat(resultado.texto()).doesNotContain("Nome(\"Reu\"");
     }
 
+    @Test
+    void processarTemplateLocacao_pluralLocatarios_preservaEAgudoDentroDePalavras() {
+        when(pessoaRepository.findById(1L)).thenReturn(Optional.of(pessoa(1L, "Locador")));
+        when(pessoaRepository.findById(2L)).thenReturn(Optional.of(pessoa(2L, "Carlos")));
+        when(pessoaRepository.findById(3L)).thenReturn(Optional.of(pessoa(3L, "Marcus")));
+
+        String template =
+                "§2º Caso o Locatário não conceda o aviso prévio quando da desocupação. "
+                        + "§2º Também é de responsabilidade do Locatário. "
+                        + "contas de energia elétrica. "
+                        + "20% do valor do débito atualizado. "
+                        + "Dr. Itamar Alexandre Félix Villa Real Junior.";
+
+        TopicoProcessadorService.ResultadoProcessamento resultado = service.processarTemplateLocacao(
+                template, 1L, List.of(2L, 3L), List.of(), Map.of());
+
+        String texto = resultado.texto();
+        assertThat(texto).contains("prévio");
+        assertThat(texto).contains("Também");
+        assertThat(texto).contains("elétrica");
+        assertThat(texto).contains("débito");
+        assertThat(texto).contains("Félix");
+        assertThat(texto).doesNotContain("prsãovio");
+        assertThat(texto).doesNotContain("Tambsãom");
+        assertThat(texto).doesNotContain("elsãotrica");
+        assertThat(texto).doesNotContain("dsãobito");
+        assertThat(texto).doesNotContain("Fsãolix");
+    }
+
     private static PessoaEntity pessoa(Long id, String nome) {
         PessoaEntity p = new PessoaEntity();
         p.setId(id);

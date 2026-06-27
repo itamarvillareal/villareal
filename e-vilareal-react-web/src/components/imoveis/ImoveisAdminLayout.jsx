@@ -280,6 +280,7 @@ export function AccordionSection({
  *   valorLocacao: string,
  *   inquilinoNome: string,
  *   apiSaving: boolean,
+ *   salvarDisabled?: boolean,
  *   onSalvar: () => void,
  *   onAbrirProc: () => void,
  *   onContaCorrente: () => void,
@@ -304,6 +305,7 @@ export function ImoveisStickyHeader({
   valorLocacao,
   inquilinoNome,
   apiSaving,
+  salvarDisabled = false,
   onSalvar,
   onAbrirProc,
   onContaCorrente,
@@ -361,7 +363,17 @@ export function ImoveisStickyHeader({
           ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2 shrink-0 pt-1 border-t border-slate-200/60 dark:border-white/[0.06] xl:border-t-0 xl:pt-0">
-          <button type="button" onClick={onSalvar} disabled={apiSaving} className={imoveisBtnPrimary}>
+          <button
+            type="button"
+            onClick={onSalvar}
+            disabled={apiSaving || salvarDisabled}
+            title={
+              salvarDisabled && !apiSaving
+                ? 'Aguarde o cadastro carregar na API antes de salvar.'
+                : undefined
+            }
+            className={imoveisBtnPrimary}
+          >
             {apiSaving ? 'Salvando…' : 'Salvar'}
           </button>
           <button type="button" onClick={onAbrirProc} className={imoveisBtnSecondary}>

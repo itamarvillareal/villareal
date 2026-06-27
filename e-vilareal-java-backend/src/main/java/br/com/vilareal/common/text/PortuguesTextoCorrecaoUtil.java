@@ -11,6 +11,7 @@ public final class PortuguesTextoCorrecaoUtil {
 
     private static final String REPL = "\uFFFD";
     private static final Pattern MULTI_SPACE = Pattern.compile("\\s{2,}");
+    private static final Pattern ESPACOS_HORIZONTAIS = Pattern.compile("[ \\t\\f\\r]{2,}");
 
     private static final String[][] SUBSTITUICOES_REPLACEMENT = {
         {"DECIS" + REPL + "ÕES", "DECISÕES"},
@@ -124,11 +125,21 @@ public final class PortuguesTextoCorrecaoUtil {
         if (s == null) {
             return null;
         }
+        String cur = normalizarPreservandoQuebras(s);
+        cur = MULTI_SPACE.matcher(cur).replaceAll(" ");
+        return cur.trim();
+    }
+
+    /** Como {@link #normalizar(String)}, mas não colapsa quebras de linha (contratos com parágrafos §). */
+    public static String normalizarPreservandoQuebras(String s) {
+        if (s == null) {
+            return null;
+        }
         String cur = Utf8MojibakeUtil.corrigir(s);
         cur = corrigirCaractereSubstituicao(cur);
         cur = corrigirLexicoJuridico(cur);
-        cur = MULTI_SPACE.matcher(cur).replaceAll(" ");
-        return cur.trim();
+        cur = ESPACOS_HORIZONTAIS.matcher(cur).replaceAll(" ");
+        return cur;
     }
 
     static String corrigirCaractereSubstituicao(String s) {

@@ -61,4 +61,24 @@ class LocacaoConcordanciaReuUtilTest {
         assertThat(FlexaoUtil.adequar("fica", MASCULINO, SINGULAR)).isEqualTo("fica");
         assertThat(FlexaoUtil.adequar("fica", FEMININO, SINGULAR)).isEqualTo("fica");
     }
+
+    @Test
+    void injetarAdequaReuPalavrasSoltas_naoFlexionaEAgudoDentroDePalavras() {
+        String template =
+                "aviso prévio de 30 dias. §2º Também é de responsabilidade. energia elétrica e débito. "
+                        + "Dr. Itamar Alexandre Félix Villa Real Junior.";
+
+        String out = LocacaoConcordanciaReuUtil.injetarAdequaReuPalavrasSoltas(template);
+
+        assertThat(out).contains("aviso prévio");
+        assertThat(out).contains("Também Adequa(\"@\",\"Reu\",\"é\") de responsabilidade");
+        assertThat(out).contains("energia elétrica");
+        assertThat(out).contains("débito");
+        assertThat(out).contains("Félix");
+        assertThat(out).doesNotContain("prsãovio");
+        assertThat(out).doesNotContain("Tambsãom");
+        assertThat(out).doesNotContain("elsãotrica");
+        assertThat(out).doesNotContain("dsãobito");
+        assertThat(out).doesNotContain("Fsãolix");
+    }
 }

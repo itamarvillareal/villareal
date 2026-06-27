@@ -115,7 +115,7 @@ public final class LocacaoConcordanciaReuUtil {
             if (forma.equalsIgnoreCase(alvo)) {
                 continue;
             }
-            Pattern p = Pattern.compile("\\b" + Pattern.quote(forma) + "\\b", Pattern.UNICODE_CASE);
+            Pattern p = padraoPalavraIsolada(forma);
             Matcher m = p.matcher(resultado);
             StringBuffer sb = new StringBuffer();
             while (m.find()) {
@@ -141,7 +141,7 @@ public final class LocacaoConcordanciaReuUtil {
     }
 
     private static String injetarLema(String texto, String lema) {
-        Pattern p = Pattern.compile("\\b" + Pattern.quote(lema) + "\\b", Pattern.UNICODE_CASE | Pattern.CASE_INSENSITIVE);
+        Pattern p = padraoPalavraIsolada(lema);
         Matcher m = p.matcher(texto);
         StringBuffer sb = new StringBuffer();
         while (m.find()) {
@@ -149,6 +149,16 @@ public final class LocacaoConcordanciaReuUtil {
         }
         m.appendTail(sb);
         return sb.toString();
+    }
+
+    /**
+     * {@code \\b} em Java não trata letras acentuadas como parte da palavra (ASCII-only).
+     * Sem isso, «é» em «prévio»/«Também»/«Félix» era flexionado para «são» → «prsãovio», «Fsãolix», etc.
+     */
+    private static Pattern padraoPalavraIsolada(String palavra) {
+        return Pattern.compile(
+                "(?<![\\p{L}])" + Pattern.quote(palavra) + "(?![\\p{L}])",
+                Pattern.UNICODE_CASE | Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CHARACTER_CLASS);
     }
 
     private static String corrigirOsLocatarios(String texto) {

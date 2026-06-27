@@ -46,4 +46,13 @@ class ContratoLocacaoBlocoUtilTest {
         assertThat(ContratoLocacaoBlocoUtil.pareceClausulaFiador("(\"CLAUSULA\")()O Locador dá", null))
                 .isFalse();
     }
+
+    @Test
+    void isClausulaVotacaoAssembleiaCondominial() {
+        assertThat(ContratoLocacaoBlocoUtil.isClausulaVotacaoAssembleiaCondominial(
+                        "O presente contrato, por si, não dá direito à votação em assembleias condominiais."))
+                .isTrue();
+        assertThat(ContratoLocacaoBlocoUtil.isClausulaVotacaoAssembleiaCondominial("O Locador dá em locação o imóvel."))
+                .isFalse();
+    }
 }

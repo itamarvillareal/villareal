@@ -264,6 +264,8 @@ async function enriquecerCodigoProcDoVinculo(item, apiImovel) {
       ...item,
       codigo: principal.codigo,
       proc: principal.proc,
+      _vinculoCodigoOriginal: principal.codigo,
+      _vinculoProcOriginal: principal.proc,
       _apiProcessoId: principal.processoId ?? item._apiProcessoId ?? null,
     };
   }
@@ -791,6 +793,7 @@ function montarPayloadImovelFromUi(ui, clienteId, processoId, espelhoCodProc = n
   const procEspelho = espelhoCodProc?.proc ?? String(ui.proc ?? '');
 
   const extras = {
+    ...extrasOrig,
     codigo: codEspelho,
     proc: procEspelho,
     dataPag1TxCond: String(ui.dataPag1TxCond ?? ''),
@@ -891,6 +894,7 @@ function contratoSnapshotFromApi(contrato) {
     dataFim: contrato.dataFim ?? null,
     valorAluguel: contrato.valorAluguel ?? null,
     diaVencimentoAluguel: contrato.diaVencimentoAluguel ?? null,
+    formaPagamentoAluguel: contrato.formaPagamentoAluguel ?? null,
     diaRepasse: contrato.diaRepasse ?? null,
     taxaAdministracaoPercent: contrato.taxaAdministracaoPercent ?? null,
     garantiaTipo: contrato.garantiaTipo ?? null,
@@ -915,12 +919,11 @@ async function resolverContratoParaSaveImovel(imovelIdApi, uiPayload) {
   try {
     const contratos = await request('/api/locacoes/contratos', { query: { imovelId: imovelIdApi } });
     const lista = Array.isArray(contratos) ? contratos : [];
-    const referenciado =
-      contratoId != null ? lista.find((c) => Number(c.id) === Number(contratoId)) : null;
-    const contratoBase = referenciado ?? selecionarContratoVigente(lista);
-    if (contratoBase?.id != null) {
-      contratoId = Number(contratoBase.id);
-      if (!snapshot || referenciado == null) {
+    const alinhado = alinharContratoIdAoImovel(contratoId, lista);
+    if (alinhado != null) {
+      contratoId = alinhado;
+      const contratoBase = lista.find((c) => Number(c.id) === Number(contratoId));
+      if (contratoBase) {
         snapshot = contratoSnapshotFromApi(contratoBase);
       }
     } else {
@@ -981,12 +984,13 @@ function montarPayloadContratoFromUi(ui, imovelId) {
     : orig?.dadosBancariosRepasseJson ?? JSON.stringify(dadosBancUi);
 
   const inquilinosIds = extrairInquilinosPessoaIds(ui);
+  const formaPagUi = String(ui.formaPagamentoAluguel ?? '').trim();
 
   return {
     imovelId,
     locadorPessoaId: parseIdPessoa(ui.proprietarioNumeroPessoa),
     inquilinoPessoaId: inquilinosIds[0] ?? parseIdPessoa(ui.inquilinoNumeroPessoa),
-    inquilinosPessoaIds: inquilinosIds,
+    ...(inquilinosIds.length > 0 ? { inquilinosPessoaIds: inquilinosIds } : {}),
     dataInicio,
     dataFim,
     valorAluguel,
@@ -998,7 +1002,7 @@ function montarPayloadContratoFromUi(ui, imovelId) {
         : orig?.diaVencimentoAluguel != null
           ? Number(orig.diaVencimentoAluguel)
           : null,
-    formaPagamentoAluguel: String(ui.formaPagamentoAluguel ?? '').trim() || orig?.formaPagamentoAluguel || null,
+    formaPagamentoAluguel: formaPagUi || orig?.formaPagamentoAluguel || null,
     diaRepasse:
       Number.isFinite(diaRepasseUi) && diaRepasseUi >= 1
         ? diaRepasseUi
@@ -1399,6 +1403,18 @@ export async function carregarImovelCadastroPorNumeroPlanilha(numeroPlanilha, op
   if (!Number.isFinite(n) || n < 1) {
     return { fonte: 'api', item: null, encontrado: false };
   }
+  const preferId = Number(opts.preferirImovelId ?? opts.imovelIdApi);
+  if (Number.isFinite(preferId) && preferId >= 1) {
+    try {
+      const apiImovel = await request(`/api/imoveis/${Math.floor(preferId)}`);
+      if (Number(apiImovel?.numeroPlanilha) === n) {
+        const item = await montarItemCadastroResiliente(apiImovel);
+        return { fonte: 'api', item, encontrado: true };
+      }
+    } catch {
+      /* tenta rotas abaixo */
+    }
+  }
   const query = {};
   const clienteIdOpt = Number(opts.clienteId);
   if (Number.isFinite(clienteIdOpt) && clienteIdOpt >= 1) {
@@ -1417,7 +1433,11 @@ export async function carregarImovelCadastroPorNumeroPlanilha(numeroPlanilha, op
     try {
       const list = await listarImoveisApi();
       const candidatos = (Array.isArray(list) ? list : []).filter((i) => Number(i.numeroPlanilha) === n);
-      const melhor = escolherMelhorImovelApiPorNumeroPlanilha(candidatos);
+      const preferido =
+        Number.isFinite(preferId) && preferId >= 1
+          ? candidatos.find((i) => Number(i.id) === preferId)
+          : null;
+      const melhor = preferido ?? escolherMelhorImovelApiPorNumeroPlanilha(candidatos);
       if (!melhor?.id) {
         return { fonte: 'api', item: null, encontrado: false };
       }
@@ -1445,7 +1465,11 @@ export async function carregarImovelCadastroParaPainel({ imovelId, imovelIdApi, 
   }
   const np = Number(imovelId);
   if (Number.isFinite(np) && np >= 1) {
-    const porPlanilha = await carregarImovelCadastroPorNumeroPlanilha(np, { codigoCliente, clienteId });
+    const porPlanilha = await carregarImovelCadastroPorNumeroPlanilha(np, {
+      codigoCliente,
+      clienteId,
+      preferirImovelId: imovelIdApi,
+    });
     if (porPlanilha.item) return porPlanilha;
   }
   const apiId = Number(imovelIdApi);
@@ -1607,6 +1631,8 @@ export async function salvarImovelCadastro(uiPayload) {
     if (!clienteId) {
       throw new Error('Cliente não encontrado para o código informado.');
     }
+  } else if (uiPayload._apiClienteId != null && Number(uiPayload._apiClienteId) > 0) {
+    clienteId = Number(uiPayload._apiClienteId);
   }
 
   const bodyImovel = montarPayloadImovelFromUi(uiPayload, clienteId, vinculo.processoIdPayload, {

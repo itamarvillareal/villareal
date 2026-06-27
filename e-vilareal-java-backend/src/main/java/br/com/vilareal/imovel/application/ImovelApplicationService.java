@@ -568,7 +568,7 @@ public class ImovelApplicationService {
             var cliente = clienteResolverService.buscarPorId(req.getClienteId());
             e.setCliente(cliente);
             e.setPessoa(cliente.getPessoa());
-        } else {
+        } else if (e.getId() == null) {
             e.setPessoa(null);
             e.setCliente(null);
         }
@@ -579,7 +579,7 @@ public class ImovelApplicationService {
                         .orElseThrow(() -> new ResourceNotFoundException(
                                 "Processo não encontrado: " + req.getProcessoId()));
                 e.setProcesso(proc);
-            } else {
+            } else if (e.getId() == null) {
                 e.setProcesso(null);
             }
         }
@@ -713,7 +713,7 @@ public class ImovelApplicationService {
             c.setInquilinoPessoa(inq);
             c.setInquilinosJson(
                     ContratoLocacaoFiadorSupport.serializarPessoaIds(List.of(req.getInquilinoPessoaId())));
-        } else if (req.getInquilinosPessoaIds() == null) {
+        } else if (novo && req.getInquilinosPessoaIds() == null) {
             c.setInquilinoPessoa(null);
         }
         if (req.getFiadoresPessoaIds() != null) {

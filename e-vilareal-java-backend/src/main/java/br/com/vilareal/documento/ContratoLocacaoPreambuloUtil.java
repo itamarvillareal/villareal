@@ -14,14 +14,19 @@ import java.util.stream.Collectors;
 /** Complemento do preâmbulo do contrato de locação com fiadores. */
 final class ContratoLocacaoPreambuloUtil {
 
+    /** Aceita «têm», «tem» e artefato «tm» (encoding legado no banco de tópicos). */
     private static final Pattern ANTES_TEM_POR_JUSTO = Pattern.compile(
-            ",\\s*t[eê]m por justo e contratado", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+            ",\\s*t[eêë]?m\\s+por\\s+justo(?:\\s+e\\s+contratado)?",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern INICIO_LOCADOR = Pattern.compile(
             "(?i),\\s*como\\s+(?:LOCADOR|LOCADORA),\\s*");
     private static final Pattern INICIO_LOCATARIO = Pattern.compile(
             "(?i),\\s*e,\\s*como\\s+(?:LOCATÁRIO|LOCATÁRIOS|LOCATARIA|LOCATARIAS),\\s*");
     private static final Pattern INICIO_LOCATARIO_FLEX = Pattern.compile(
             "(?i),\\s*e,?\\s*como\\s+(?:LOCATÁRIO|LOCATÁRIOS|LOCATARIA|LOCATARIAS)\\s*,\\s*");
+    /** «como LOCATÁRIO(S),» sem vírgula «e» imediatamente antes (modelo legado variante). */
+    private static final Pattern INICIO_LOCATARIO_SEM_E = Pattern.compile(
+            "(?i)(?<![\\w])como\\s+(?:LOCATÁRIO|LOCATÁRIOS|LOCATARIA|LOCATARIAS)\\s*,\\s*");
     private static final Pattern SEPARADOR_E = Pattern.compile("(?i),\\s*e\\s*,?");
     private static final Pattern CPF_CNPJ = Pattern.compile(
             "(\\d{3}\\.\\d{3}\\.\\d{3}-\\d{2}|\\d{2}\\.\\d{3}\\.\\d{3}/\\d{4}-\\d{2})");
@@ -112,7 +117,76 @@ final class ContratoLocacaoPreambuloUtil {
         if (inicioBloco >= 0) {
             return preambulo.substring(0, inicioBloco) + blocoLocatarios + preambulo.substring(idxTem);
         }
+
+        int aposLocador = localizarFimRotuloLocador(preambulo);
+        if (aposLocador >= 0 && aposLocador < idxTem) {
+            return preambulo.substring(0, aposLocador) + blocoLocatarios + preambulo.substring(idxTem);
+        }
         return preambulo.substring(0, idxTem) + blocoLocatarios + preambulo.substring(idxTem);
+    }
+
+    /** CPF/CNPJ formatado do locador para detectar repetição indevida no preâmbulo. */
+    static String extrairDocumentoLocador(PessoaEntity locador, QualificacaoPessoaUtil util) {
+        if (locador == null) {
+            return "";
+        }
+        if (util != null && locador.getId() != null) {
+            String qual = util.gerarQualificacaoContratoLocacaoPorPessoaId(locador.getId());
+            String doc = extrairCpfCnpj(qual);
+            if (StringUtils.hasText(doc)) {
+                return doc;
+            }
+        }
+        return extrairCpfCnpj(StringUtils.hasText(locador.getCpf()) ? locador.getCpf().trim() : "");
+    }
+
+    /**
+     * Remove repetição do locador (mesmo CPF/CNPJ) colada antes de «têm por justo» — artefato do
+     * {@code Nome("Autor")}/{@code Qualifica("Autor")} final do modelo legado.
+     */
+    static String removerLocadorEspuriaAntesDeTemPorJusto(String preambulo, String documentoLocador) {
+        if (!StringUtils.hasText(preambulo) || !StringUtils.hasText(documentoLocador)) {
+            return preambulo != null ? preambulo : "";
+        }
+        Matcher temPorJusto = ANTES_TEM_POR_JUSTO.matcher(preambulo);
+        if (!temPorJusto.find()) {
+            return preambulo;
+        }
+        int idxTem = temPorJusto.start();
+        int firstDoc = preambulo.indexOf(documentoLocador);
+        if (firstDoc < 0) {
+            return preambulo;
+        }
+        int secondDoc = preambulo.indexOf(documentoLocador, firstDoc + documentoLocador.length());
+        while (secondDoc >= 0 && secondDoc < idxTem) {
+            int cut = indexSeparadorEAntes(preambulo, secondDoc);
+            if (cut < 0 || cut <= firstDoc) {
+                cut = secondDoc;
+            }
+            preambulo = preambulo.substring(0, cut) + preambulo.substring(idxTem);
+            temPorJusto = ANTES_TEM_POR_JUSTO.matcher(preambulo);
+            if (!temPorJusto.find()) {
+                return preambulo;
+            }
+            idxTem = temPorJusto.start();
+            firstDoc = preambulo.indexOf(documentoLocador);
+            secondDoc =
+                    firstDoc >= 0 ? preambulo.indexOf(documentoLocador, firstDoc + documentoLocador.length()) : -1;
+        }
+        return preambulo;
+    }
+
+    static String aplicarPosProcessamentoPreambuloLocacao(
+            String preambulo, List<PessoaEntity> locatarios, PessoaEntity locador, QualificacaoPessoaUtil util) {
+        if (!StringUtils.hasText(preambulo)) {
+            return preambulo != null ? preambulo : "";
+        }
+        String docLocador = extrairDocumentoLocador(locador, util);
+        String out = removerRequalificacaoLocadorDuplicada(preambulo);
+        out = sincronizarQualificacaoLocatariosNoPreambulo(out, locatarios, util);
+        out = removerRequalificacaoLocadorDuplicada(out);
+        out = removerLocadorEspuriaAntesDeTemPorJusto(out, docLocador);
+        return out;
     }
 
     /** Espelha o modelo legado: {@code Nome()} + {@code Qualifica_Sem_Nome()}. */
@@ -138,7 +212,24 @@ final class ContratoLocacaoPreambuloUtil {
             return mLat.start();
         }
         mLat = INICIO_LOCATARIO_FLEX.matcher(preambulo);
+        if (mLat.find()) {
+            return mLat.start();
+        }
+        mLat = INICIO_LOCATARIO_SEM_E.matcher(preambulo);
         return mLat.find() ? mLat.start() : -1;
+    }
+
+    /** Posição após o rótulo «, como LOCADOR(A),» (substitui bloco locatário mal delimitado). */
+    private static int localizarFimRotuloLocador(String preambulo) {
+        Matcher mLoc = INICIO_LOCADOR.matcher(preambulo);
+        if (!mLoc.find()) {
+            return -1;
+        }
+        int inicioLocat = localizarInicioBlocoLocatarios(preambulo.substring(mLoc.end()));
+        if (inicioLocat >= 0) {
+            return mLoc.end() + inicioLocat;
+        }
+        return mLoc.end();
     }
 
     /**
@@ -165,7 +256,10 @@ final class ContratoLocacaoPreambuloUtil {
         if (!mLat.find(startQualLocador)) {
             mLat = INICIO_LOCATARIO_FLEX.matcher(preambulo);
             if (!mLat.find(startQualLocador)) {
-                return preambulo;
+                mLat = INICIO_LOCATARIO_SEM_E.matcher(preambulo);
+                if (!mLat.find(startQualLocador)) {
+                    return preambulo;
+                }
             }
         }
 

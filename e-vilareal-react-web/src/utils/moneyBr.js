@@ -31,3 +31,28 @@ export function formatValorMoedaCampo(val) {
   if (n == null || !Number.isFinite(n)) return String(val ?? '').trim();
   return n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+
+/**
+ * Normaliza entrada monetária no formulário enquanto digita ou ao sair do campo.
+ * @param {string} texto
+ * @param {{ finalizar?: boolean }} [opts] — `finalizar: true` no blur (ex.: «17» → «17,00»).
+ */
+export function editarMoedaCampo(texto, { finalizar = false } = {}) {
+  const raw = String(texto ?? '');
+  if (!raw.trim()) return '';
+
+  const semEspacos = raw.replace(/\u00a0/g, ' ').trim();
+  if (!finalizar) {
+    if (semEspacos.endsWith(',')) return semEspacos;
+    if (/,\d?$/.test(semEspacos.replace(/\./g, '')) && semEspacos.includes(',')) {
+      return semEspacos;
+    }
+    const digitos = semEspacos.replace(/R\$/gi, '').replace(/\s/g, '').replace(/\D/g, '');
+    if (digitos.length > 0 && digitos.length <= 2 && !semEspacos.includes(',') && !semEspacos.includes('.')) {
+      return semEspacos;
+    }
+  }
+
+  const n = parseValorMonetarioBr(semEspacos);
+  return n != null ? formatValorMoedaCampo(n) : semEspacos;
+}

@@ -34,6 +34,7 @@ import {
   FORMA_PAGAMENTO_ALUGUEL_PADRAO,
   normalizarFormaPagamentoAluguel,
 } from '../data/locacaoFormaPagamentoAluguel.js';
+import { formatValorMoedaCampo } from '../utils/moneyBr.js';
 const inputClass = imoveisInputClass;
 const inputReadOnlyClass = imoveisInputReadOnlyClass;
 const btnPrimary = imoveisBtnPrimary;
@@ -57,8 +58,8 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   const [unidade, setUnidade] = useState('Unidade 1101 C');
   const [garagens, setGaragens] = useState('2');
   const [garantia, setGarantia] = useState('Fiador');
-  const [valorGarantia, setValorGarantia] = useState('0');
-  const [valorLocacao, setValorLocacao] = useState('1700');
+  const [valorGarantia, setValorGarantia] = useState('0,00');
+  const [valorLocacao, setValorLocacao] = useState('1.700,00');
   const [taxaAdministracaoPercent, setTaxaAdministracaoPercent] = useState('10');
   const [diaPagAluguel, setDiaPagAluguel] = useState('04');
   const [formaPagamentoAluguel, setFormaPagamentoAluguel] = useState(FORMA_PAGAMENTO_ALUGUEL_PADRAO);
@@ -137,6 +138,8 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   const cargaInicialFeitaRef = useRef(false);
   /** Invalida respostas de carga atrasadas após edição local (ex.: remover vínculo). */
   const cargaFormularioSeqRef = useRef(0);
+  /** PK interna do imóvel carregado — evita recarregar duplicata errada da planilha após salvar. */
+  const apiImovelIdRef = useRef(null);
   const unidadeAlvo =
     !modoModal && location.state && typeof location.state === 'object' ? location.state.unidade : null;
 
@@ -227,6 +230,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
       setContratoIntermediacaoArquivado('nao');
       setContratoIntermediacaoAssinadoProprietario('nao');
       setApiImovelId(null);
+      apiImovelIdRef.current = null;
       setApiContratoId(null);
       setApiClienteId(null);
       setApiProcessoId(null);
@@ -247,8 +251,12 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     if (unidadeAlvo != null) setUnidade(String(unidadeAlvo));
     setGaragens(String(data.garagens ?? ''));
     setGarantia(String(data.garantia ?? ''));
-    setValorGarantia(String(data.valorGarantia ?? ''));
-    setValorLocacao(String(data.valorLocacao ?? ''));
+    setValorGarantia(
+      String(data.valorGarantia ?? '').trim() ? formatValorMoedaCampo(data.valorGarantia) : '',
+    );
+    setValorLocacao(
+      String(data.valorLocacao ?? '').trim() ? formatValorMoedaCampo(data.valorLocacao) : '',
+    );
     setTaxaAdministracaoPercent(String(data.taxaAdministracaoPercent ?? '10'));
     setDiaPagAluguel(String(data.diaPagAluguel ?? ''));
     setFormaPagamentoAluguel(normalizarFormaPagamentoAluguel(data.formaPagamentoAluguel));
@@ -300,6 +308,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     setContratoIntermediacaoArquivado(String(data.contratoIntermediacaoArquivado ?? 'nao'));
     setContratoIntermediacaoAssinadoProprietario(String(data.contratoIntermediacaoAssinadoProprietario ?? 'nao'));
     setApiImovelId(data._apiImovelId ?? null);
+    apiImovelIdRef.current = data._apiImovelId ?? null;
     setApiContratoId(data._apiContratoId ?? null);
     setApiClienteId(data._apiClienteId ?? null);
     setApiProcessoId(data._apiProcessoId ?? null);
@@ -320,6 +329,9 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     let ativo = true;
     const numero = Math.max(1, Number(imovelId) || 1);
     const seqCarga = ++cargaFormularioSeqRef.current;
+    apiImovelIdRef.current = null;
+    setApiImovelId(null);
+    setApiContratoId(null);
     setApiError('');
     setApiSuccess('');
     setApiLoading(true);
@@ -328,7 +340,10 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
       void (async () => {
         try {
           if (featureFlags.useApiImoveis) {
-            const r = await carregarImovelCadastroParaPainel({ imovelId: numero });
+            const r = await carregarImovelCadastroParaPainel({
+              imovelId: numero,
+              imovelIdApi: apiImovelIdRef.current,
+            });
             if (!ativo || seqCarga !== cargaFormularioSeqRef.current) return;
             if (r.item) {
               popularFormulario(r.item);
@@ -681,6 +696,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   async function salvarCadastroAtual(overrides = {}) {
     setApiError('');
     setApiSuccess('');
+    cargaFormularioSeqRef.current += 1;
     setApiSaving(true);
     try {
       const r = await salvarImovelCadastro({
@@ -748,6 +764,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
         contratoIntermediacaoAssinadoProprietario,
         _apiImovelId,
         _apiContratoId,
+        _apiClienteId,
         _jsonExtrasOriginal: jsonExtrasOriginalRef.current,
         _contratoObservacoesOriginal: contratoObservacoesOriginalRef.current,
         _contratoSnapshotOriginal: contratoSnapshotOriginalRef.current,
@@ -766,6 +783,9 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
         }
         cargaFormularioSeqRef.current += 1;
         popularFormulario(itemForm);
+        if (itemForm._apiImovelId != null) {
+          apiImovelIdRef.current = itemForm._apiImovelId;
+        }
         setImovelId(Number(itemForm.imovelId || imovelId));
       }
       if (featureFlags.useApiImoveis) {

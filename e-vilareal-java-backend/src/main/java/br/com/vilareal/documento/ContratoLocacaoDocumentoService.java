@@ -82,8 +82,11 @@ public class ContratoLocacaoDocumentoService {
         if (locador == null || locador.getId() == null) {
             throw new BusinessRuleException("Cadastre o locador (proprietário) no imóvel antes de gerar o contrato.");
         }
-        List<Long> locatariosPessoaIds =
-                inquilinoResolver.resolverLocatariosPessoaIds(contrato, request.inquilinosPessoaIds());
+        final Long locadorId = locador.getId();
+        List<Long> locatariosPessoaIds = inquilinoResolver.resolverLocatariosPessoaIds(contrato, request.inquilinosPessoaIds())
+                .stream()
+                .filter(id -> id != null && !id.equals(locadorId))
+                .toList();
         if (locatariosPessoaIds.isEmpty()) {
             throw new BusinessRuleException("Cadastre o locatário (inquilino) no imóvel antes de gerar o contrato.");
         }
@@ -118,6 +121,7 @@ public class ContratoLocacaoDocumentoService {
         LocacaoTemplateLegadoSupport.aplicarFormaPagamentoAluguel(
                 parametros, resolverFormaPagamentoAluguel(request, contrato));
         parametros.put("quantidadeLocatarios", String.valueOf(locatariosPessoaIds.size()));
+        final String prazoLocacaoTexto = parametros.get("prazoLocacaoTexto");
         List<Long> fiadoresPessoaIds = ContratoLocacaoFiadorSupport.extrairPessoaIds(contrato.getFiadoresJson());
         List<PessoaEntity> fiadores = ContratoLocacaoFiadorSupport.carregarFiadores(contrato, pessoaRepository);
         boolean temFiadores = !fiadores.isEmpty();
@@ -129,6 +133,7 @@ public class ContratoLocacaoDocumentoService {
         int numeroClausula = 0;
         StringBuilder clausulaTextoAtual = null;
         Integer numeroClausulaAtual = null;
+        boolean clausulaVotacaoAssembleiaIncluida = false;
 
         for (TopicoEntity bloco : blocos) {
             String template = bloco.getConteudoTemplate();
@@ -149,7 +154,7 @@ public class ContratoLocacaoDocumentoService {
                                 template, locador.getId(), locatariosPessoaIds, fiadoresPessoaIds, parametros);
                 String textoPreambulo =
                         ContratoLocacaoBlocoUtil.limparMetadadosFormato(procPreambulo.texto());
-                textoPreambulo = LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao(textoPreambulo);
+                textoPreambulo = corrigirTextoLocacaoProcessado(textoPreambulo, prazoLocacaoTexto);
                 if (StringUtils.hasText(textoPreambulo)) {
                     preambuloPlain = textoPreambulo;
                 }
@@ -163,9 +168,15 @@ public class ContratoLocacaoDocumentoService {
                     topicoProcessadorService.processarTemplateLocacao(
                             template, locador.getId(), locatariosPessoaIds, fiadoresPessoaIds, parametros);
             String texto = ContratoLocacaoBlocoUtil.limparMetadadosFormato(proc.texto());
-            texto = LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao(texto);
+            texto = corrigirTextoLocacaoProcessado(texto, prazoLocacaoTexto);
             if (!StringUtils.hasText(texto)) {
                 continue;
+            }
+            if (ContratoLocacaoBlocoUtil.isClausulaVotacaoAssembleiaCondominial(texto)) {
+                if (clausulaVotacaoAssembleiaIncluida) {
+                    continue;
+                }
+                clausulaVotacaoAssembleiaIncluida = true;
             }
 
             if (ContratoLocacaoBlocoUtil.isParagrafoClausula(template, bloco)) {
@@ -200,8 +211,11 @@ public class ContratoLocacaoDocumentoService {
             throw new BusinessRuleException("O modelo selecionado não produziu texto após processar os dados do imóvel.");
         }
 
-        if (!StringUtils.hasText(preambuloPlain)) {
-            preambuloPlain = montarPreambuloProgramatico(locador, locatarios, pluralLocatarios);
+        if (pluralLocatarios) {
+            // Modelo legado repete Nome/Qualifica do Autor (locador) após os locatários — evitar artefato no PDF.
+            preambuloPlain = montarPreambuloProgramatico(locador, locatarios, true);
+        } else if (!StringUtils.hasText(preambuloPlain)) {
+            preambuloPlain = montarPreambuloProgramatico(locador, locatarios, false);
         }
         String nomeLocador = ContratoHonorariosClausulas.normalizarNomeAssinatura(
                 Utf8MojibakeUtil.corrigir(locador.getNome()));
@@ -210,9 +224,8 @@ public class ContratoLocacaoDocumentoService {
                 .filter(StringUtils::hasText)
                 .collect(Collectors.joining(" E "));
         preambuloPlain = LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao(preambuloPlain);
-        preambuloPlain = ContratoLocacaoPreambuloUtil.removerRequalificacaoLocadorDuplicada(preambuloPlain);
-        preambuloPlain = ContratoLocacaoPreambuloUtil.sincronizarQualificacaoLocatariosNoPreambulo(
-                preambuloPlain, locatarios, qualificacaoPessoaUtil);
+        preambuloPlain = ContratoLocacaoPreambuloUtil.aplicarPosProcessamentoPreambuloLocacao(
+                preambuloPlain, locatarios, locador, qualificacaoPessoaUtil);
         preambuloPlain = LocacaoConcordanciaReuUtil.aplicarConcordanciaLocatarioProcessado(
                 preambuloPlain, locatarios.size(), inferirFemininoLocatarios(locatarios));
         preambuloHtml = textoProcessadoParaHtml(preambuloPlain);
@@ -393,6 +406,11 @@ public class ContratoLocacaoDocumentoService {
         return QualificacaoPessoaUtil.determinarFeminino(locatarios.get(0).getNome(), null);
     }
 
+    private static String corrigirTextoLocacaoProcessado(String texto, String prazoLocacaoTexto) {
+        texto = LocacaoPrazoUtil.substituirPrazoLocacaoHardcoded(texto, prazoLocacaoTexto);
+        return LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao(texto);
+    }
+
     private static boolean parecePreambulo(String texto) {
         String t = texto.trim().toLowerCase(Locale.ROOT);
         return t.contains("pelo presente instrumento") || t.contains("têm por justo e contratado");
@@ -405,8 +423,31 @@ public class ContratoLocacaoDocumentoService {
         }
         int numero = numeroClausulaAtual != null ? numeroClausulaAtual : 0;
         String html = ContratoLocacaoBlocoUtil.prefixoClausulaHtml(numero)
-                + textoProcessadoParaHtml(clausulaTextoAtual.toString());
+                + montarCorpoClausulaHtml(clausulaTextoAtual.toString());
         clausulasHtml.add(html);
+    }
+
+    /**
+     * Caput na mesma linha de «Cláusula Nª.»; parágrafos (§) em blocos justificáveis abaixo.
+     */
+    static String montarCorpoClausulaHtml(String texto) {
+        if (!StringUtils.hasText(texto)) {
+            return "";
+        }
+        String normalizado = texto.trim().replaceAll("\\n{2,}", "\n");
+        int quebra = normalizado.indexOf('\n');
+        if (quebra < 0) {
+            return linkificarUrlsContrato(normalizado);
+        }
+        String caput = normalizado.substring(0, quebra).trim();
+        String paragrafos = normalizado.substring(quebra + 1).trim();
+        if (!StringUtils.hasText(caput)) {
+            return linkificarUrlsContrato(paragrafos);
+        }
+        if (!StringUtils.hasText(paragrafos)) {
+            return linkificarUrlsContrato(caput);
+        }
+        return linkificarUrlsContrato(caput, false) + linkificarUrlsContrato(paragrafos);
     }
 
     static String textoProcessadoParaHtml(String texto) {
@@ -418,6 +459,10 @@ public class ContratoLocacaoDocumentoService {
     }
 
     static String linkificarUrlsContrato(String texto) {
+        return linkificarUrlsContrato(texto, true);
+    }
+
+    static String linkificarUrlsContrato(String texto, boolean quebrarLinhas) {
         Matcher matcher = URL_HTTP.matcher(texto);
         StringBuilder sb = new StringBuilder();
         int ultimo = 0;
@@ -435,7 +480,8 @@ public class ContratoLocacaoDocumentoService {
             matcher.region(fimUrl, texto.length());
         }
         sb.append(escapeHtml(texto.substring(ultimo)));
-        return quebrarLinhasHtml(sb.toString());
+        String html = sb.toString();
+        return quebrarLinhas ? quebrarLinhasHtml(html) : html;
     }
 
     /** Quebras explícitas em blocos justificáveis (OpenHTMLToPDF não justifica bem {@code <br/>}). */

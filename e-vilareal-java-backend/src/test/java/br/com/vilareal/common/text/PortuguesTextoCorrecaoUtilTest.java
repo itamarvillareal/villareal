@@ -46,4 +46,11 @@ class PortuguesTextoCorrecaoUtilTest {
                 .contains("TRÂNSITO")
                 .contains("ANÁPOLIS");
     }
+
+    @Test
+    void normalizarPreservandoQuebras_mantemParagrafos() {
+        String raw = "Linha um\n\nLinha dois  com   espaco";
+        assertThat(PortuguesTextoCorrecaoUtil.normalizarPreservandoQuebras(raw))
+                .isEqualTo("Linha um\n\nLinha dois com espaco");
+    }
 }

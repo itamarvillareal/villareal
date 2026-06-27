@@ -111,6 +111,14 @@ final class ContratoLocacaoBlocoUtil {
         return t.trim();
     }
 
+    /** Cláusula sobre votação em assembleia condominial (modelo legado duplicado no bloco 48). */
+    static boolean isClausulaVotacaoAssembleiaCondominial(String texto) {
+        if (!StringUtils.hasText(texto)) {
+            return false;
+        }
+        return texto.toLowerCase(Locale.ROOT).contains("votação em assembleias condominiais");
+    }
+
     static boolean pareceClausulaFiador(String template, TopicoEntity bloco) {
         if (!StringUtils.hasText(template)) {
             return false;
