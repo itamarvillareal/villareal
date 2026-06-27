@@ -211,6 +211,8 @@ public class ContratoLocacaoDocumentoService {
                 .collect(Collectors.joining(" E "));
         preambuloPlain = LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao(preambuloPlain);
         preambuloPlain = ContratoLocacaoPreambuloUtil.removerRequalificacaoLocadorDuplicada(preambuloPlain);
+        preambuloPlain = ContratoLocacaoPreambuloUtil.sincronizarQualificacaoLocatariosNoPreambulo(
+                preambuloPlain, locatarios, qualificacaoPessoaUtil);
         preambuloPlain = LocacaoConcordanciaReuUtil.aplicarConcordanciaLocatarioProcessado(
                 preambuloPlain, locatarios.size(), inferirFemininoLocatarios(locatarios));
         preambuloHtml = textoProcessadoParaHtml(preambuloPlain);
@@ -377,20 +379,7 @@ public class ContratoLocacaoDocumentoService {
 
     /** Espelha o modelo legado: {@code Nome()} + {@code Qualifica_Sem_Nome()}. */
     private String montarQualificacaoPreambuloParte(PessoaEntity pessoa) {
-        if (pessoa == null || pessoa.getId() == null) {
-            return "";
-        }
-        String nome = ContratoHonorariosClausulas.normalizarNomeAssinatura(
-                Utf8MojibakeUtil.corrigir(pessoa.getNome()));
-        String qualSemNome =
-                qualificacaoPessoaUtil.gerarQualificacaoContratoLocacaoSemNomePorPessoaId(pessoa.getId());
-        if (!StringUtils.hasText(nome)) {
-            return qualSemNome;
-        }
-        if (!StringUtils.hasText(qualSemNome)) {
-            return nome;
-        }
-        return nome + ", " + QualificacaoPessoaUtil.semVirgulaFinal(qualSemNome);
+        return ContratoLocacaoPreambuloUtil.montarQualificacaoParteContrato(pessoa, qualificacaoPessoaUtil);
     }
 
     private static boolean inferirFemininoLocatarios(List<PessoaEntity> locatarios) {

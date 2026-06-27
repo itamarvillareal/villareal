@@ -89,4 +89,36 @@ class ContratoLocacaoPreambuloUtilTest {
         assertThat(out).contains(qualMarcus + ", têm por justo e contratado o seguinte:");
         assertThat(out).doesNotContain(", e Vrv Soluções Ltda");
     }
+
+    @Test
+    void sincronizarQualificacaoLocatariosNoPreambulo_incluiTodosOsLocatarios() {
+        PessoaEntity carlos = pessoa(6631L, "CARLOS RICARDO DE CARVALHO REIMER");
+        PessoaEntity marcus = pessoa(3113L, "MARCUS ANTONIO CARDOSO ANACLETO");
+        when(qualificacaoPessoaUtil.gerarQualificacaoContratoLocacaoSemNomePorPessoaId(6631L))
+                .thenReturn("brasileiro, solteiro, portador do CPF nº 250.200.008-26");
+        when(qualificacaoPessoaUtil.gerarQualificacaoContratoLocacaoSemNomePorPessoaId(3113L))
+                .thenReturn("brasileiro, solteiro, portador do CPF nº 111.111.111-11");
+
+        String preambulo =
+                "Pelo presente instrumento particular, como LOCADORA, VRV SOLUÇÕES LTDA, pessoa jurídica, "
+                        + "e, como LOCATÁRIO, MARCUS ANTONIO CARDOSO ANACLETO, brasileiro, solteiro, "
+                        + "têm por justo e contratado o seguinte:";
+
+        String out = ContratoLocacaoPreambuloUtil.sincronizarQualificacaoLocatariosNoPreambulo(
+                preambulo, List.of(carlos, marcus), qualificacaoPessoaUtil);
+
+        assertThat(out).contains("como LOCATÁRIOS");
+        assertThat(out).contains("CARLOS RICARDO DE CARVALHO REIMER");
+        assertThat(out).contains("250.200.008-26");
+        assertThat(out).contains("MARCUS ANTONIO CARDOSO ANACLETO");
+        assertThat(out).contains("111.111.111-11");
+        assertThat(out).doesNotContain("como LOCATÁRIO,");
+    }
+
+    private static PessoaEntity pessoa(Long id, String nome) {
+        PessoaEntity p = new PessoaEntity();
+        p.setId(id);
+        p.setNome(nome);
+        return p;
+    }
 }
