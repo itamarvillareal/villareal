@@ -99,6 +99,39 @@ public final class ProcessoPartesVinculoTextoResolver {
         return null;
     }
 
+    /** IDs de pessoa da parte oposta (locatários no contrato de locação). */
+    public static List<Long> listarPessoaIdsParteOposta(ProcessoEntity processo, List<ProcessoParteEntity> partes) {
+        List<Long> ids = new ArrayList<>();
+        if (partes == null || partes.isEmpty()) {
+            return ids;
+        }
+        List<Long> porQualificacaoOposta = new ArrayList<>();
+        boolean temParteClienteQual = false;
+        for (ProcessoParteEntity p : partes) {
+            String q = normalizarQualificacaoParte(p.getQualificacao());
+            if (q.contains("PARTE CLIENTE")) {
+                temParteClienteQual = true;
+            } else if (q.contains("PARTE OPOSTA")) {
+                adicionarPessoaId(p, porQualificacaoOposta);
+            }
+        }
+        if (temParteClienteQual) {
+            if (!porQualificacaoOposta.isEmpty()) {
+                return porQualificacaoOposta;
+            }
+            return coletarPessoaIdsPartesListagem(processo, partes, !poloJuridicoEscritorioEhAutor(processo, partes));
+        }
+        if (importPoloJuridicoInvertidoParteCliente(processo, partes)) {
+            for (ProcessoParteEntity p : partes) {
+                if (!temMarcadorParteClienteImport(p)) {
+                    adicionarPessoaId(p, ids);
+                }
+            }
+            return ids;
+        }
+        return coletarPessoaIdsPartesListagem(processo, partes, !poloJuridicoEscritorioEhAutor(processo, partes));
+    }
+
     /**
      * Nome da subpasta Drive após {@code Proc. NN}: primeiro nome da parte oposta;
      * se houver mais de um, sufixo {@code e outros} (evita nomes longos demais).
@@ -151,6 +184,30 @@ public final class ProcessoPartesVinculoTextoResolver {
             return nomesOposta;
         }
         return coletarNomesPartesListagem(processo, partes, !poloJuridicoEscritorioEhAutor(processo, partes));
+    }
+
+    private static List<Long> coletarPessoaIdsPartesListagem(
+            ProcessoEntity processo, List<ProcessoParteEntity> partes, boolean ladoCliente) {
+        if (partes == null || partes.isEmpty()) {
+            return List.of();
+        }
+        List<Long> ids = new ArrayList<>();
+        for (ProcessoParteEntity p : partes) {
+            String poloNorm = normalizarPoloParaComparacao(p.getPolo());
+            if (!poloEhLadoEscritorio(poloNorm, ladoCliente)) {
+                adicionarPessoaId(p, ids);
+            }
+        }
+        return ids;
+    }
+
+    private static void adicionarPessoaId(ProcessoParteEntity parte, List<Long> ids) {
+        if (parte != null && parte.getPessoa() != null && parte.getPessoa().getId() != null) {
+            Long id = parte.getPessoa().getId();
+            if (!ids.contains(id)) {
+                ids.add(id);
+            }
+        }
     }
 
     private static String montarTextoParteClienteListagemPorPapelJuridico(

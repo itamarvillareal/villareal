@@ -5,10 +5,13 @@ import br.com.vilareal.common.exception.ResourceNotFoundException;
 import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.documento.tema.DocumentoTemaResolver;
 import br.com.vilareal.documento.tema.TemaDocumento;
+import br.com.vilareal.imovel.application.ContratoLocacaoFiadorSupport;
+import br.com.vilareal.imovel.application.ContratoLocacaoInquilinoResolver;
 import br.com.vilareal.imovel.infrastructure.persistence.entity.ContratoLocacaoEntity;
 import br.com.vilareal.imovel.infrastructure.persistence.entity.ImovelEntity;
 import br.com.vilareal.imovel.infrastructure.persistence.repository.ContratoLocacaoRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
+import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.topicos.application.TopicoProcessadorService;
 import br.com.vilareal.topicos.infrastructure.persistence.entity.TopicoEntity;
@@ -25,6 +28,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
@@ -33,27 +38,34 @@ public class ContratoLocacaoDocumentoService {
     private static final String TEMPLATE_CONTRATO = "documentos/contrato-aluguel";
     private static final String CIDADE_ESTADO_PADRAO = "Anápolis, estado de Goiás";
     private static final String VARIANTE_PADRAO = "GERAL - Multa fixa";
+    private static final Pattern URL_HTTP = Pattern.compile("(https?://\\S+)");
 
     private final DocumentoPdfService pdfService;
     private final DocumentoTemaResolver temaResolver;
     private final ContratoLocacaoRepository contratoLocacaoRepository;
+    private final PessoaRepository pessoaRepository;
     private final TopicoRepository topicoRepository;
     private final TopicoProcessadorService topicoProcessadorService;
     private final QualificacaoPessoaUtil qualificacaoPessoaUtil;
+    private final ContratoLocacaoInquilinoResolver inquilinoResolver;
 
     public ContratoLocacaoDocumentoService(
             DocumentoPdfService pdfService,
             DocumentoTemaResolver temaResolver,
             ContratoLocacaoRepository contratoLocacaoRepository,
+            PessoaRepository pessoaRepository,
             TopicoRepository topicoRepository,
             TopicoProcessadorService topicoProcessadorService,
-            QualificacaoPessoaUtil qualificacaoPessoaUtil) {
+            QualificacaoPessoaUtil qualificacaoPessoaUtil,
+            ContratoLocacaoInquilinoResolver inquilinoResolver) {
         this.pdfService = pdfService;
         this.temaResolver = temaResolver;
         this.contratoLocacaoRepository = contratoLocacaoRepository;
+        this.pessoaRepository = pessoaRepository;
         this.topicoRepository = topicoRepository;
         this.topicoProcessadorService = topicoProcessadorService;
         this.qualificacaoPessoaUtil = qualificacaoPessoaUtil;
+        this.inquilinoResolver = inquilinoResolver;
     }
 
     @Transactional(readOnly = true)
@@ -67,13 +79,19 @@ public class ContratoLocacaoDocumentoService {
                         "Contrato de locação não encontrado: " + request.contratoLocacaoId()));
 
         PessoaEntity locador = contrato.getLocadorPessoa();
-        PessoaEntity inquilino = contrato.getInquilinoPessoa();
         if (locador == null || locador.getId() == null) {
             throw new BusinessRuleException("Cadastre o locador (proprietário) no imóvel antes de gerar o contrato.");
         }
-        if (inquilino == null || inquilino.getId() == null) {
+        List<Long> locatariosPessoaIds =
+                inquilinoResolver.resolverLocatariosPessoaIds(contrato, request.inquilinosPessoaIds());
+        if (locatariosPessoaIds.isEmpty()) {
             throw new BusinessRuleException("Cadastre o locatário (inquilino) no imóvel antes de gerar o contrato.");
         }
+        List<PessoaEntity> locatarios = carregarPessoasPorIds(locatariosPessoaIds);
+        if (locatarios.isEmpty()) {
+            throw new BusinessRuleException("Cadastre o locatário (inquilino) no imóvel antes de gerar o contrato.");
+        }
+        boolean pluralLocatarios = locatarios.size() > 1;
 
         String variante = StringUtils.hasText(request.variante()) ? request.variante().trim() : VARIANTE_PADRAO;
         String chave = TopicoChaveLocacaoUtil.resolverChaveExistente(topicoRepository, variante)
@@ -87,12 +105,17 @@ public class ContratoLocacaoDocumentoService {
 
         LocalDate data = request.data() != null ? request.data() : LocalDate.now();
         Map<String, String> parametros = montarParametros(contrato, data);
+        parametros.put("quantidadeLocatarios", String.valueOf(locatariosPessoaIds.size()));
+        List<Long> fiadoresPessoaIds = ContratoLocacaoFiadorSupport.extrairPessoaIds(contrato.getFiadoresJson());
+        List<PessoaEntity> fiadores = ContratoLocacaoFiadorSupport.carregarFiadores(contrato, pessoaRepository);
+        boolean temFiadores = !fiadores.isEmpty();
 
         String tituloContrato = ContratoLocacaoBlocoUtil.tituloPadrao();
         List<String> clausulasHtml = new ArrayList<>();
         String preambuloHtml = "";
         int numeroClausula = 0;
-        StringBuilder clausulaAtual = null;
+        StringBuilder clausulaTextoAtual = null;
+        Integer numeroClausulaAtual = null;
 
         for (TopicoEntity bloco : blocos) {
             String template = bloco.getConteudoTemplate();
@@ -104,80 +127,87 @@ public class ContratoLocacaoDocumentoService {
                 continue;
             }
             if (ContratoLocacaoBlocoUtil.isCabecalhoFecho(template)
-                    || ContratoLocacaoBlocoUtil.isCabecalhoMetadados(template)) {
+                    || ContratoLocacaoBlocoUtil.isCabecalhoMetadados(template)
+                    || ContratoLocacaoBlocoUtil.isBlocoPreambuloInstrumento(template)) {
+                continue;
+            }
+            if (!temFiadores && ContratoLocacaoBlocoUtil.pareceClausulaFiador(template, bloco)) {
                 continue;
             }
 
             TopicoProcessadorService.ResultadoProcessamento proc =
                     topicoProcessadorService.processarTemplateLocacao(
-                            template, locador.getId(), inquilino.getId(), parametros);
+                            template, locador.getId(), locatariosPessoaIds, fiadoresPessoaIds, parametros);
             String texto = ContratoLocacaoBlocoUtil.limparMetadadosFormato(proc.texto());
+            texto = LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao(texto);
             if (!StringUtils.hasText(texto)) {
                 continue;
             }
 
-            if (!StringUtils.hasText(preambuloHtml) && parecePreambulo(texto)) {
-                preambuloHtml = textoProcessadoParaHtml(texto);
-                continue;
-            }
-
-            String html = textoProcessadoParaHtml(texto);
             if (ContratoLocacaoBlocoUtil.isParagrafoClausula(template, bloco)) {
-                if (clausulaAtual != null) {
-                    clausulaAtual.append("<br/><br/>").append(html);
+                if (clausulaTextoAtual != null) {
+                    clausulaTextoAtual.append('\n').append(texto.trim());
                 } else {
                     numeroClausula++;
-                    clausulaAtual = new StringBuilder(ContratoLocacaoBlocoUtil.prefixoClausulaHtml(numeroClausula))
-                            .append(html);
+                    numeroClausulaAtual = numeroClausula;
+                    clausulaTextoAtual = new StringBuilder(texto.trim());
                 }
                 continue;
             }
 
             if (ContratoLocacaoBlocoUtil.isClausulaPrincipal(template, bloco)) {
-                if (clausulaAtual != null) {
-                    clausulasHtml.add(clausulaAtual.toString());
-                    clausulaAtual = null;
-                }
+                adicionarClausulaHtml(clausulasHtml, clausulaTextoAtual, numeroClausulaAtual);
+                clausulaTextoAtual = null;
+                numeroClausulaAtual = null;
                 numeroClausula++;
-                clausulaAtual = new StringBuilder(ContratoLocacaoBlocoUtil.prefixoClausulaHtml(numeroClausula))
-                        .append(html);
+                numeroClausulaAtual = numeroClausula;
+                clausulaTextoAtual = new StringBuilder(texto.trim());
                 continue;
             }
 
-            if (clausulaAtual != null) {
-                clausulaAtual.append("<br/><br/>").append(html);
+            if (clausulaTextoAtual != null) {
+                clausulaTextoAtual.append('\n').append(texto.trim());
             } else {
-                clausulasHtml.add(html);
+                clausulasHtml.add(textoProcessadoParaHtml(texto));
             }
         }
-        if (clausulaAtual != null) {
-            clausulasHtml.add(clausulaAtual.toString());
-        }
-        if (!StringUtils.hasText(preambuloHtml) && !clausulasHtml.isEmpty()) {
-            preambuloHtml = clausulasHtml.remove(0);
-        }
-        if (clausulasHtml.isEmpty() && !StringUtils.hasText(preambuloHtml)) {
+        adicionarClausulaHtml(clausulasHtml, clausulaTextoAtual, numeroClausulaAtual);
+        if (clausulasHtml.isEmpty()) {
             throw new BusinessRuleException("O modelo selecionado não produziu texto após processar os dados do imóvel.");
         }
 
         String qualificacaoLocador =
-                qualificacaoPessoaUtil.gerarQualificacaoContratoContratantePorPessoaId(locador.getId());
-        String qualificacaoLocatario =
-                qualificacaoPessoaUtil.gerarQualificacaoContratoContratantePorPessoaId(inquilino.getId());
-        if (!StringUtils.hasText(preambuloHtml)) {
-            preambuloHtml = QualificacaoPessoaUtil.montarPreambuloContratoAluguel(
-                    qualificacaoLocador, qualificacaoLocatario);
-        } else {
-            preambuloHtml = ContratoLocacaoNegritoUtil.aplicarNegritoNomesCompletos(
-                    preambuloHtml,
-                    Utf8MojibakeUtil.corrigir(locador.getNome()),
-                    Utf8MojibakeUtil.corrigir(inquilino.getNome()));
-        }
-
+                qualificacaoPessoaUtil.gerarQualificacaoContratoLocacaoPorPessoaId(locador.getId());
+        String qualificacaoLocatario = locatarios.stream()
+                .map(p -> qualificacaoPessoaUtil.gerarQualificacaoContratoLocacaoPorPessoaId(p.getId()))
+                .filter(StringUtils::hasText)
+                .collect(Collectors.joining(", e "));
         String nomeLocador = ContratoHonorariosClausulas.normalizarNomeAssinatura(
                 Utf8MojibakeUtil.corrigir(locador.getNome()));
-        String nomeLocatario = ContratoHonorariosClausulas.normalizarNomeAssinatura(
-                Utf8MojibakeUtil.corrigir(inquilino.getNome()));
+        String nomeLocatario = locatarios.stream()
+                .map(p -> ContratoHonorariosClausulas.normalizarNomeAssinatura(Utf8MojibakeUtil.corrigir(p.getNome())))
+                .filter(StringUtils::hasText)
+                .collect(Collectors.joining(" E "));
+        preambuloHtml = textoProcessadoParaHtml(QualificacaoPessoaUtil.montarPreambuloContratoAluguel(
+                qualificacaoLocador, qualificacaoLocatario, pluralLocatarios));
+        if (temFiadores) {
+            preambuloHtml = ContratoLocacaoPreambuloUtil.injetarFiadoresNoPreambuloHtml(
+                    preambuloHtml, fiadores, qualificacaoPessoaUtil);
+        }
+        List<String> nomesNegrito = new ArrayList<>();
+        nomesNegrito.add(nomeLocador);
+        for (PessoaEntity locatario : locatarios) {
+            if (locatario != null && StringUtils.hasText(locatario.getNome())) {
+                nomesNegrito.add(Utf8MojibakeUtil.corrigir(locatario.getNome()));
+            }
+        }
+        for (PessoaEntity fiador : fiadores) {
+            if (fiador != null && StringUtils.hasText(fiador.getNome())) {
+                nomesNegrito.add(Utf8MojibakeUtil.corrigir(fiador.getNome()));
+            }
+        }
+        preambuloHtml = ContratoLocacaoNegritoUtil.aplicarNegritoNomesCompletos(
+                preambuloHtml, nomesNegrito.toArray(String[]::new));
 
         String cidadeEstado = StringUtils.hasText(request.cidadeEstado())
                 ? request.cidadeEstado().trim()
@@ -196,8 +226,25 @@ public class ContratoLocacaoDocumentoService {
         variables.put("localData", localData);
         variables.put("nomeLocador", nomeLocador);
         variables.put("nomeLocatario", nomeLocatario);
+        variables.put("rotuloLocatario", pluralLocatarios ? "Locatários" : "Locatário");
+        variables.put("temFiadores", temFiadores);
+        variables.put("fiadorAssinaturas", ContratoLocacaoAssinaturaUtil.montarVariaveisAssinaturaFiadores(fiadores));
 
         return pdfService.gerarPdfDeTemplate(TEMPLATE_CONTRATO, variables, tema);
+    }
+
+    private List<PessoaEntity> carregarPessoasPorIds(List<Long> pessoaIds) {
+        List<PessoaEntity> out = new ArrayList<>();
+        if (pessoaIds == null) {
+            return out;
+        }
+        for (Long id : pessoaIds) {
+            if (id == null || id < 1) {
+                continue;
+            }
+            pessoaRepository.findById(id).ifPresent(out::add);
+        }
+        return out;
     }
 
     private TemaDocumento resolverTema(ImovelEntity imovel) {
@@ -268,16 +315,55 @@ public class ContratoLocacaoDocumentoService {
         return t.contains("pelo presente instrumento") || t.contains("têm por justo e contratado");
     }
 
+    private static void adicionarClausulaHtml(
+            List<String> clausulasHtml, StringBuilder clausulaTextoAtual, Integer numeroClausulaAtual) {
+        if (clausulaTextoAtual == null || !StringUtils.hasText(clausulaTextoAtual)) {
+            return;
+        }
+        int numero = numeroClausulaAtual != null ? numeroClausulaAtual : 0;
+        String html = ContratoLocacaoBlocoUtil.prefixoClausulaHtml(numero)
+                + textoProcessadoParaHtml(clausulaTextoAtual.toString());
+        clausulasHtml.add(html);
+    }
+
     static String textoProcessadoParaHtml(String texto) {
         if (!StringUtils.hasText(texto)) {
             return "";
         }
-        String[] paragrafos = texto.trim().split("\\n{2,}");
-        return java.util.Arrays.stream(paragrafos)
-                .map(String::trim)
-                .filter(StringUtils::hasText)
-                .map(p -> escapeHtml(p).replace("\n", "<br/>"))
-                .collect(Collectors.joining("<br/><br/>"));
+        String normalizado = texto.trim().replaceAll("\\n{2,}", "\n");
+        return linkificarUrlsContrato(normalizado);
+    }
+
+    static String linkificarUrlsContrato(String texto) {
+        Matcher matcher = URL_HTTP.matcher(texto);
+        StringBuilder sb = new StringBuilder();
+        int ultimo = 0;
+        while (matcher.find()) {
+            sb.append(escapeHtml(texto.substring(ultimo, matcher.start())));
+            String url = removerPontuacaoFinalUrl(matcher.group(1));
+            int fimUrl = matcher.start() + url.length();
+            String urlEsc = escapeHtml(url);
+            sb.append("<a href=\"")
+                    .append(urlEsc)
+                    .append("\" class=\"contrato-link\">")
+                    .append(urlEsc)
+                    .append("</a>");
+            ultimo = fimUrl;
+            matcher.region(fimUrl, texto.length());
+        }
+        sb.append(escapeHtml(texto.substring(ultimo)));
+        return sb.toString();
+    }
+
+    private static String removerPontuacaoFinalUrl(String url) {
+        if (!StringUtils.hasText(url)) {
+            return "";
+        }
+        String u = url;
+        while (!u.isEmpty() && ",.;:)".indexOf(u.charAt(u.length() - 1)) >= 0) {
+            u = u.substring(0, u.length() - 1);
+        }
+        return u;
     }
 
     static String escapeHtml(String texto) {

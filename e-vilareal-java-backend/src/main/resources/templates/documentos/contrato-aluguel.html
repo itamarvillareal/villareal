@@ -42,8 +42,21 @@
             <td>
                 <div class="linha"></div>
                 <p class="nome"><strong th:text="${nomeLocatario}">NOME DO LOCATÁRIO</strong></p>
-                <p class="rotulo">Locatário</p>
+                <p class="rotulo" th:text="${rotuloLocatario}">Locatário</p>
             </td>
+        </tr>
+        <tr th:each="fi : ${fiadorAssinaturas}" th:if="${temFiadores}">
+            <td>
+                <div class="linha"></div>
+                <p class="nome"><strong th:text="${fi.nomeEsquerda}">FIADOR</strong></p>
+                <p class="rotulo" th:text="${fi.rotuloEsquerda}">Fiador</p>
+            </td>
+            <td th:if="${fi.nomeDireita != null and !#strings.isEmpty(fi.nomeDireita)}">
+                <div class="linha"></div>
+                <p class="nome"><strong th:text="${fi.nomeDireita}">FIADOR</strong></p>
+                <p class="rotulo" th:text="${fi.rotuloDireita}">Fiador</p>
+            </td>
+            <td th:if="${fi.nomeDireita == null or #strings.isEmpty(fi.nomeDireita)}"></td>
         </tr>
         <tr>
             <td>

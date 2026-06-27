@@ -25,6 +25,8 @@ import {
   imoveisBtnSecondary,
   imoveisInputClass,
 } from './ImoveisAdminLayout.jsx';
+import { ListaFiadoresImovel } from './ListaFiadoresImovel.jsx';
+import { ListaInquilinosImovel } from './ListaInquilinosImovel.jsx';
 import { CampoNumeroComContador } from '../ui/CampoNumeroComContador.jsx';
 import { Field } from '../ui/Field.jsx';
 import { featureFlags, FEATURE_IPTU_NOVO } from '../../config/featureFlags.js';
@@ -166,8 +168,11 @@ export function ImoveisCadastroView(props) {
     onAbrirIptu,
     onSelecionarPessoaProprietario,
     onLimparPessoaProprietario,
-    onSelecionarPessoaInquilino,
-    onLimparPessoaInquilino,
+    fiadores,
+    setFiadores,
+    inquilinos,
+    setInquilinos,
+    onPersistirInquilinos,
   } = props;
 
   const unidadeResumo = unidadeResumoCabecalho(unidade, condominio);
@@ -681,7 +686,7 @@ export function ImoveisCadastroView(props) {
         <AccordionSection
           id="partes"
           title="Partes"
-          subtitle="Proprietário e inquilino"
+          subtitle="Proprietário, inquilino e fiadores"
           icon={Users}
           accent={IMOVEIS_SECTION_ACCENTS.partes}
           defaultOpen
@@ -701,19 +706,29 @@ export function ImoveisCadastroView(props) {
               removendo={apiSaving}
               salvando={apiSaving}
             />
-            <CardParte
-              tipo="inquilino"
-              titulo="Inquilino"
-              numeroPessoa={inquilinoNumeroPessoa}
-              nome={inquilino}
-              cpf={inquilinoCpf}
-              contato={inquilinoContato}
-              carregando={inquilinoCadastroCarregando}
-              erro={inquilinoCadastroErro}
-              onSelecionarPessoa={onSelecionarPessoaInquilino}
-              onLimparPessoa={onLimparPessoaInquilino}
-              removendo={apiSaving}
-              salvando={apiSaving}
+            <div className="rounded-xl border border-teal-200/60 dark:border-teal-500/20 bg-white/60 dark:bg-[#0d1018]/40 p-5">
+              <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1">Inquilinos</h3>
+              <p className="text-xs text-slate-600 dark:text-slate-400 mb-4">
+                Sincronizados com a parte oposta do processo vinculado ao imóvel. Use + para incluir mais locatários.
+              </p>
+              <ListaInquilinosImovel
+                inquilinos={inquilinos}
+                onChange={setInquilinos}
+                onPersistir={onPersistirInquilinos}
+                disabled={apiSaving}
+              />
+            </div>
+          </div>
+          <div className="mt-8 rounded-xl border border-violet-200/60 dark:border-violet-500/20 bg-white/60 dark:bg-[#0d1018]/40 p-5">
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1">Fiadores</h3>
+            <p className="text-xs text-slate-600 dark:text-slate-400 mb-4">
+              Obrigatórios para o preâmbulo, cláusulas 20 e 21 do contrato e linhas de assinatura no PDF. São gravados ao incluir (+) ou ao salvar o imóvel.
+            </p>
+            <ListaFiadoresImovel
+              fiadores={fiadores}
+              onChange={setFiadores}
+              onPersistir={(novaLista) => onSalvar?.({ fiadores: novaLista })}
+              disabled={apiSaving}
             />
           </div>
         </AccordionSection>

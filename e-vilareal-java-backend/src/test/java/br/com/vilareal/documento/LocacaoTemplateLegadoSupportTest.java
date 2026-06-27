@@ -121,4 +121,12 @@ class LocacaoTemplateLegadoSupportTest {
         assertThat(out).contains("333107");
         assertThat(out).doesNotContain("Saneago_Imovel");
     }
+
+    @Test
+    void corrigirArtefatosTextoLocacao_corrigeSublocarQuebrado() {
+        assertThat(LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao("d) S ublocar o imóvel"))
+                .isEqualTo("d) Sublocar o imóvel");
+        assertThat(LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao("Propercase(S) ublocar o imóvel"))
+                .isEqualTo("Sublocar o imóvel");
+    }
 }

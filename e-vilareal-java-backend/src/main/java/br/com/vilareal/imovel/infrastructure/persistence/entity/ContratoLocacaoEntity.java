@@ -62,6 +62,14 @@ public class ContratoLocacaoEntity {
     @Column(name = "dados_bancarios_repasse_json", columnDefinition = "TEXT")
     private String dadosBancariosRepasseJson;
 
+    /** JSON: [{"pessoaId":123}, ...] */
+    @Column(name = "fiadores_json", columnDefinition = "TEXT")
+    private String fiadoresJson;
+
+    /** JSON: [{"pessoaId":123}, ...] — locatários adicionais; FK inquilino_pessoa_id = primeiro da lista. */
+    @Column(name = "inquilinos_json", columnDefinition = "TEXT")
+    private String inquilinosJson;
+
     @Column(nullable = false, length = 40)
     private String status = "RASCUNHO";
 

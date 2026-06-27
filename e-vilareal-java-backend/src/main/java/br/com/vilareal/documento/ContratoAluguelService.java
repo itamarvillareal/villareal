@@ -42,7 +42,7 @@ public class ContratoAluguelService {
         String qualificacaoLocador = String.join(", e ", partes.qualificacoesLocador());
         String qualificacaoLocatario = String.join(", e ", partes.qualificacoesLocatario());
         String preambuloHtml = QualificacaoPessoaUtil.montarPreambuloContratoAluguel(
-                qualificacaoLocador, qualificacaoLocatario);
+                qualificacaoLocador, qualificacaoLocatario, partes.nomesLocatario().size() > 1);
 
         List<String> clausulas = ContratoAluguelClausulas.montarClausulas();
         String nomeLocador = partes.nomesLocador().stream().collect(Collectors.joining(" E "));

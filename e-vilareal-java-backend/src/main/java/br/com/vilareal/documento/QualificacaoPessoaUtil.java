@@ -10,6 +10,7 @@ import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.Locale;
@@ -94,6 +95,42 @@ public class QualificacaoPessoaUtil {
         return base + montarSufixoRepresentantePj(pessoaId, dados, false);
     }
 
+    /**
+     * Qualificação para contrato de locação (preâmbulo/cláusulas): texto puro, sem {@code <strong>}.
+     * O negrito dos nomes é aplicado depois por {@link ContratoLocacaoNegritoUtil}.
+     */
+    @Transactional(readOnly = true)
+    public String gerarQualificacaoContratoLocacaoPorPessoaId(Long pessoaId) {
+        DadosQualificacao dados = carregarDadosQualificacao(pessoaId);
+        String base = montarQualificacao(dados, false);
+        if (!ehPessoaJuridica(dados)) {
+            return appendTelefoneContrato(base, dados.telefone());
+        }
+        return base + montarSufixoRepresentantePj(pessoaId, dados, false);
+    }
+
+    /** Qualificação sem o nome (para modelos com {@code Nome()} + {@code Qualifica_Sem_Nome()}). */
+    @Transactional(readOnly = true)
+    public String gerarQualificacaoSemNomePorPessoaId(Long pessoaId) {
+        DadosQualificacao dados = carregarDadosQualificacao(pessoaId);
+        String base = removerPrefixoNomeDaQualificacao(montarQualificacao(dados, false), dados.nome());
+        if (!ehPessoaJuridica(dados)) {
+            return base;
+        }
+        return base + montarSufixoRepresentantePj(pessoaId, dados, false);
+    }
+
+    /** Qualificação de locação sem o nome (telefone incluído quando houver). */
+    @Transactional(readOnly = true)
+    public String gerarQualificacaoContratoLocacaoSemNomePorPessoaId(Long pessoaId) {
+        DadosQualificacao dados = carregarDadosQualificacao(pessoaId);
+        String base = removerPrefixoNomeDaQualificacao(montarQualificacao(dados, false), dados.nome());
+        if (!ehPessoaJuridica(dados)) {
+            return appendTelefoneContrato(base, dados.telefone());
+        }
+        return base + montarSufixoRepresentantePj(pessoaId, dados, false);
+    }
+
     /** Gênero gramatical do contratante (para concordância no contrato de honorários). */
     @Transactional(readOnly = true)
     public FlexaoUtil.Genero generoFlexaoPorPessoaId(Long pessoaId) {
@@ -130,11 +167,19 @@ public class QualificacaoPessoaUtil {
     }
 
     static String montarPreambuloContratoAluguel(String qualificacaoLocador, String qualificacaoLocatario) {
+        return montarPreambuloContratoAluguel(qualificacaoLocador, qualificacaoLocatario, false);
+    }
+
+    static String montarPreambuloContratoAluguel(
+            String qualificacaoLocador, String qualificacaoLocatario, boolean pluralLocatario) {
+        String rotuloLocatario = pluralLocatario ? "LOCATÁRIOS" : "LOCATÁRIO";
         return "Pelo presente instrumento particular, como LOCADOR, "
                 + qualificacaoLocador
-                + ", e, como LOCATÁRIO, "
+                + ", e, como "
+                + rotuloLocatario
+                + ", "
                 + qualificacaoLocatario
-                + ", nesta, têm por justo e contratado o seguinte:";
+                + ", têm por justo e contratado o seguinte:";
     }
 
     private static String appendTelefoneContrato(String qualificacao, String telefone) {
@@ -313,6 +358,36 @@ public class QualificacaoPessoaUtil {
                 dados.email(),
                 dados.telefone(),
                 nomeEmNegrito);
+    }
+
+    static String removerPrefixoNomeDaQualificacao(String qualificacao, String nomeOriginal) {
+        if (!StringUtils.hasText(qualificacao)) {
+            return "";
+        }
+        String qual = qualificacao.trim();
+        if (!StringUtils.hasText(nomeOriginal)) {
+            return qual;
+        }
+        String nomeNorm = normalizarNome(nomeOriginal);
+        String[] candidatos = {
+            nomeNorm,
+            nomeNorm.toUpperCase(Locale.ROOT),
+            nomeOriginal.trim(),
+            nomeOriginal.trim().toUpperCase(Locale.ROOT),
+        };
+        for (String prefixo : candidatos) {
+            if (!StringUtils.hasText(prefixo)) {
+                continue;
+            }
+            if (qual.regionMatches(true, 0, prefixo, 0, prefixo.length())) {
+                qual = qual.substring(prefixo.length()).trim();
+                if (qual.startsWith(",")) {
+                    qual = qual.substring(1).trim();
+                }
+                return qual;
+            }
+        }
+        return qual;
     }
 
     private record DadosQualificacao(

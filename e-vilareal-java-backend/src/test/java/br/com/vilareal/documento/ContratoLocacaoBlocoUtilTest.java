@@ -37,4 +37,13 @@ class ContratoLocacaoBlocoUtilTest {
     void prefixoClausulaHtml_incluiNumeroOrdinal() {
         assertThat(ContratoLocacaoBlocoUtil.prefixoClausulaHtml(3)).isEqualTo("<strong>Cláusula 3ª.</strong> ");
     }
+
+    @Test
+    void pareceClausulaFiador_detectaTemplateComAdequaFiador() {
+        String template =
+                "(\"CLAUSULA\")()Como Lcase(Adequa(\"@\",\"Fiador\",\"fiador\")) Qualifica(\"Fiador\",\"all\",Class_do_Processo)";
+        assertThat(ContratoLocacaoBlocoUtil.pareceClausulaFiador(template, null)).isTrue();
+        assertThat(ContratoLocacaoBlocoUtil.pareceClausulaFiador("(\"CLAUSULA\")()O Locador dá", null))
+                .isFalse();
+    }
 }

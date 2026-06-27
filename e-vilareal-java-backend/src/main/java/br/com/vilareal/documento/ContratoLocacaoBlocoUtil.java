@@ -50,6 +50,14 @@ final class ContratoLocacaoBlocoUtil {
                 && (template.contains("+++") || lower.contains("como locador") || lower.contains("nome(\"autor\""));
     }
 
+    /** Bloco do preâmbulo (partes) — montado programaticamente, não via template legado. */
+    static boolean isBlocoPreambuloInstrumento(String template) {
+        if (!StringUtils.hasText(template)) {
+            return false;
+        }
+        return template.toLowerCase(Locale.ROOT).contains("pelo presente instrumento");
+    }
+
     static boolean isParagrafoClausula(String template, TopicoEntity bloco) {
         if (StringUtils.hasText(bloco != null ? bloco.getTipoFormatacao() : null)
                 && "PARAG_CLAUSULA".equalsIgnoreCase(bloco.getTipoFormatacao().trim())) {
@@ -101,6 +109,27 @@ final class ContratoLocacaoBlocoUtil {
         t = BLOCO_FORMATO_COMO.matcher(t).replaceAll("");
         t = BLOCO_OPCIONAL_TEXTO.matcher(t).replaceAll("");
         return t.trim();
+    }
+
+    static boolean pareceClausulaFiador(String template, TopicoEntity bloco) {
+        if (!StringUtils.hasText(template)) {
+            return false;
+        }
+        String t = template.toLowerCase(Locale.ROOT);
+        if (t.contains("adequa(\"@\",\"fiador\"")
+                || t.contains("adequa(\"@\", \"fiador\"")
+                || t.contains("qualifica(\"fiador\"")
+                || t.contains("nome(\"fiador\"")
+                || t.contains("+++a fiadora")) {
+            return true;
+        }
+        if (bloco != null && StringUtils.hasText(bloco.getNome())) {
+            String nome = bloco.getNome().toLowerCase(Locale.ROOT);
+            if (nome.contains("fiador") || nome.contains("fiadora")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     static String prefixoClausulaHtml(int numero) {

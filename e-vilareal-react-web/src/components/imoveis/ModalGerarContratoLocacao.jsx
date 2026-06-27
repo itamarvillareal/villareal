@@ -30,6 +30,8 @@ function hojeIso() {
  *   numeroInterno?: string|number,
  *   locadorNome?: string,
  *   locatarioNome?: string,
+ *   inquilinosPessoaIds?: number[],
+ *   onAntesDeGerar?: () => void | Promise<void>,
  *   onErro?: (msg: string) => void,
  * }} props
  */
@@ -42,6 +44,8 @@ export function ModalGerarContratoLocacao({
   numeroInterno,
   locadorNome,
   locatarioNome,
+  inquilinosPessoaIds,
+  onAntesDeGerar,
   onErro,
 }) {
   const [variante, setVariante] = useState(VARIANTE_CONTRATO_LOCACAO_PADRAO);
@@ -65,6 +69,9 @@ export function ModalGerarContratoLocacao({
     }
     setLoading(true);
     try {
+      if (onAntesDeGerar) {
+        await onAntesDeGerar();
+      }
       const contratoIdResolvido = await resolverContratoLocacaoIdParaImovel(imovelIdApi, contratoLocacaoId);
       if (!contratoIdResolvido) {
         onErro?.('Salve o imóvel com locador, inquilino e dados do contrato antes de gerar o PDF.');
@@ -79,6 +86,7 @@ export function ModalGerarContratoLocacao({
         codigoCliente: codigoCliente != null ? String(codigoCliente).trim() : undefined,
         numeroInterno:
           numeroInterno != null && String(numeroInterno).trim() !== '' ? Number(numeroInterno) : undefined,
+        inquilinosPessoaIds: Array.isArray(inquilinosPessoaIds) ? inquilinosPessoaIds : undefined,
       });
       const base = locatarioNome || locadorNome || 'locacao';
       downloadPdfBlob(blob, nomeArquivoContratoPdf(base, 'locacao'));

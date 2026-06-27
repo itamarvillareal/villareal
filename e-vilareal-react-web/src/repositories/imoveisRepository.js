@@ -450,6 +450,95 @@ async function resolverNomePessoaPorId(idPessoa) {
 /**
  * Preenche inquilino/proprietário: FK (pessoa) tem prioridade; JSON legado só sem FK.
  */
+function mapFiadoresUi(contrato, extras) {
+  const ids = Array.isArray(contrato?.fiadoresPessoaIds)
+    ? contrato.fiadoresPessoaIds.filter((id) => id != null && Number(id) > 0)
+    : [];
+  if (ids.length) {
+    return ids.map((id) => ({ pessoaId: String(id), nome: '', cpf: '', contato: '' }));
+  }
+  const legado = Array.isArray(extras?.fiadores) ? extras.fiadores : [];
+  return legado
+    .map((f) => ({
+      pessoaId: String(f?.pessoaId ?? f?.id ?? '').trim(),
+      nome: String(f?.nome ?? '').trim(),
+      cpf: String(f?.cpf ?? '').trim(),
+      contato: String(f?.contato ?? '').trim(),
+    }))
+    .filter((f) => f.pessoaId);
+}
+
+function extrairFiadoresPessoaIds(ui) {
+  return (Array.isArray(ui?.fiadores) ? ui.fiadores : [])
+    .map((f) => parseIdPessoa(f?.pessoaId))
+    .filter((id) => id != null && id > 0);
+}
+
+function normalizarEntradaInquilinoUi(f) {
+  const pessoaId = String(f?.pessoaId ?? f?.id ?? '').trim();
+  if (!pessoaId) return null;
+  return {
+    pessoaId,
+    nome: String(f?.nome ?? '').trim(),
+    cpf: String(f?.cpf ?? '').trim(),
+    contato: String(f?.contato ?? '').trim(),
+  };
+}
+
+function mesclarInquilinosListaUi(contratoLista, extrasLista) {
+  const map = new Map();
+  for (const f of [...(contratoLista || []), ...(extrasLista || [])]) {
+    const row = normalizarEntradaInquilinoUi(f);
+    if (!row) continue;
+    const prev = map.get(row.pessoaId) ?? {};
+    map.set(row.pessoaId, {
+      pessoaId: row.pessoaId,
+      nome: String(row.nome || prev.nome || '').trim(),
+      cpf: String(row.cpf || prev.cpf || '').trim(),
+      contato: String(row.contato || prev.contato || '').trim(),
+    });
+  }
+  return [...map.values()];
+}
+
+function mapInquilinosUi(contrato, extras) {
+  const ids = Array.isArray(contrato?.inquilinosPessoaIds)
+    ? contrato.inquilinosPessoaIds.filter((id) => id != null && Number(id) > 0)
+    : [];
+  let fromContrato = [];
+  if (ids.length) {
+    fromContrato = ids.map((id) => ({ pessoaId: String(id), nome: '', cpf: '', contato: '' }));
+  } else {
+    const legadoId = parseIdPessoa(
+      contrato?.inquilinoPessoaId ?? extras?.inquilinoPessoaId ?? extras?.inquilinoNumeroPessoa,
+    );
+    if (legadoId) {
+      fromContrato = [
+        {
+          pessoaId: String(legadoId),
+          nome: String(extras?.inquilino ?? '').trim(),
+          cpf: String(extras?.inquilinoCpf ?? '').trim(),
+          contato: String(extras?.inquilinoContato ?? '').trim(),
+        },
+      ];
+    }
+  }
+  const fromExtras = Array.isArray(extras?.inquilinos)
+    ? extras.inquilinos.map(normalizarEntradaInquilinoUi).filter(Boolean)
+    : [];
+  return mesclarInquilinosListaUi(fromContrato, fromExtras);
+}
+
+function extrairInquilinosPessoaIds(ui) {
+  if (Array.isArray(ui?.inquilinos) && ui.inquilinos.length) {
+    return ui.inquilinos
+      .map((f) => parseIdPessoa(f?.pessoaId))
+      .filter((id) => id != null && id > 0);
+  }
+  const legado = parseIdPessoa(ui?.inquilinoNumeroPessoa);
+  return legado != null ? [legado] : [];
+}
+
 export async function enriquecerNomesPartesImovelUi(item) {
   if (!item) return item;
   const idInq = parseIdPessoa(item.inquilinoNumeroPessoa);
@@ -476,6 +565,36 @@ export async function enriquecerNomesPartesImovelUi(item) {
     if (p?.contato) inquilinoContato = p.contato;
   }
 
+  const fiadoresBase = Array.isArray(item.fiadores) ? item.fiadores : [];
+  const fiadores = await Promise.all(
+    fiadoresBase.map(async (f) => {
+      const id = parseIdPessoa(f?.pessoaId);
+      if (!id) return f;
+      const p = await resolverDadosPessoaPorId(id);
+      return {
+        pessoaId: String(id),
+        nome: String(p?.nome ?? f?.nome ?? '').trim(),
+        cpf: String(p?.cpf ?? f?.cpf ?? '').trim(),
+        contato: String(p?.contato ?? f?.contato ?? '').trim(),
+      };
+    }),
+  );
+
+  const inquilinosBase = Array.isArray(item.inquilinos) ? item.inquilinos : [];
+  const inquilinos = await Promise.all(
+    inquilinosBase.map(async (f) => {
+      const id = parseIdPessoa(f?.pessoaId);
+      if (!id) return f;
+      const p = await resolverDadosPessoaPorId(id);
+      return {
+        pessoaId: String(id),
+        nome: String(p?.nome ?? f?.nome ?? '').trim(),
+        cpf: String(p?.cpf ?? f?.cpf ?? '').trim(),
+        contato: String(p?.contato ?? f?.contato ?? '').trim(),
+      };
+    }),
+  );
+
   return {
     ...item,
     inquilino,
@@ -484,6 +603,8 @@ export async function enriquecerNomesPartesImovelUi(item) {
     proprietario,
     proprietarioCpf,
     proprietarioContato,
+    fiadores,
+    inquilinos,
   };
 }
 
@@ -495,6 +616,10 @@ export async function enriquecerNomesPartesImoveisLote(itens) {
     const idProp = parseIdPessoa(item.proprietarioNumeroPessoa);
     if (idInq) ids.add(idInq);
     if (idProp) ids.add(idProp);
+    for (const f of Array.isArray(item.fiadores) ? item.fiadores : []) {
+      const idF = parseIdPessoa(f?.pessoaId);
+      if (idF) ids.add(idF);
+    }
   }
   await Promise.all([...ids].map((id) => resolverDadosPessoaPorId(id)));
   return Promise.all(lista.map((item) => enriquecerNomesPartesImovelUi(item)));
@@ -591,6 +716,8 @@ function mapApiToUi(imovel, contrato) {
     inquilino: String(extras.inquilino ?? ''),
     inquilinoCpf: String(extras.inquilinoCpf ?? ''),
     inquilinoContato: String(extras.inquilinoContato ?? ''),
+    inquilinos: mapInquilinosUi(contrato, extras),
+    fiadores: mapFiadoresUi(contrato, extras),
     contratoAssinadoInquilino: String(extras.contratoAssinadoInquilino ?? 'nao'),
     contratoAssinadoProprietario: String(extras.contratoAssinadoProprietario ?? 'nao'),
     contratoAssinadoGarantidor: String(extras.contratoAssinadoGarantidor ?? 'nao'),
@@ -618,12 +745,16 @@ export async function resolverClienteIdPorCodigo(codigoCliente) {
   return null;
 }
 
-/** Antes de POST/PUT: usa o id canônico do par (cliente, nº planilha) quando existir. */
+/** Antes de POST/PUT: mantém o imóvel em edição; só resolve por (cliente, planilha) em cadastro novo. */
 async function resolverIdImovelParaPersistencia(clienteId, numeroPlanilha, apiImovelIdAtual) {
+  const atual = Number(apiImovelIdAtual);
+  if (Number.isFinite(atual) && atual > 0) {
+    return atual;
+  }
   const cli = Number(clienteId);
   const np = Number(numeroPlanilha);
   if (!Number.isFinite(cli) || cli < 1 || !Number.isFinite(np) || np < 1) {
-    return apiImovelIdAtual != null ? Number(apiImovelIdAtual) : null;
+    return null;
   }
   try {
     const im = await request(`/api/imoveis/por-numero-planilha/${Math.floor(np)}`, {
@@ -631,9 +762,9 @@ async function resolverIdImovelParaPersistencia(clienteId, numeroPlanilha, apiIm
     });
     if (im?.id != null) return Number(im.id);
   } catch {
-    // par inexistente — mantém id atual ou POST
+    // par inexistente — POST
   }
-  return apiImovelIdAtual != null ? Number(apiImovelIdAtual) : null;
+  return null;
 }
 
 export async function resolverProcessoIdPorChave(codigoCliente, procInterno) {
@@ -645,7 +776,11 @@ function montarPayloadImovelFromUi(ui, clienteId, processoId, espelhoCodProc = n
   const extrasOrig =
     ui._jsonExtrasOriginal && typeof ui._jsonExtrasOriginal === 'object' ? ui._jsonExtrasOriginal : {};
   const idProp = parseIdPessoa(ui.proprietarioNumeroPessoa);
-  const idInq = parseIdPessoa(ui.inquilinoNumeroPessoa);
+  const inquilinosUi = Array.isArray(ui.inquilinos)
+    ? ui.inquilinos.map(normalizarEntradaInquilinoUi).filter(Boolean)
+    : [];
+  const idInq =
+    parseIdPessoa(ui.inquilinoNumeroPessoa) ?? parseIdPessoa(inquilinosUi[0]?.pessoaId);
   const codEspelho = espelhoCodProc?.codigo ?? String(ui.codigo ?? '');
   const procEspelho = espelhoCodProc?.proc ?? String(ui.proc ?? '');
 
@@ -701,6 +836,15 @@ function montarPayloadImovelFromUi(ui, clienteId, processoId, espelhoCodProc = n
     extras.proprietarioContato = String(ui.proprietarioContato ?? '');
   }
 
+  const inquilinosExtras = Array.isArray(ui.inquilinos)
+    ? ui.inquilinos.map(normalizarEntradaInquilinoUi).filter(Boolean)
+    : [];
+  if (inquilinosExtras.length) {
+    extras.inquilinos = inquilinosExtras;
+  } else {
+    delete extras.inquilinos;
+  }
+
   if (idInq) {
     extras.inquilinoPessoaId = String(idInq);
     extras.inquilino = String(ui.inquilino ?? '').trim();
@@ -746,6 +890,8 @@ function contratoSnapshotFromApi(contrato) {
     garantiaTipo: contrato.garantiaTipo ?? null,
     valorGarantia: contrato.valorGarantia ?? null,
     dadosBancariosRepasseJson: contrato.dadosBancariosRepasseJson ?? null,
+    fiadoresPessoaIds: Array.isArray(contrato?.fiadoresPessoaIds) ? contrato.fiadoresPessoaIds : [],
+    inquilinosPessoaIds: Array.isArray(contrato?.inquilinosPessoaIds) ? contrato.inquilinosPessoaIds : [],
     status: contrato.status ?? 'VIGENTE',
   };
 }
@@ -818,10 +964,13 @@ function montarPayloadContratoFromUi(ui, imovelId) {
     ? JSON.stringify(dadosBancUi)
     : orig?.dadosBancariosRepasseJson ?? JSON.stringify(dadosBancUi);
 
+  const inquilinosIds = extrairInquilinosPessoaIds(ui);
+
   return {
     imovelId,
     locadorPessoaId: parseIdPessoa(ui.proprietarioNumeroPessoa),
-    inquilinoPessoaId: parseIdPessoa(ui.inquilinoNumeroPessoa),
+    inquilinoPessoaId: inquilinosIds[0] ?? parseIdPessoa(ui.inquilinoNumeroPessoa),
+    inquilinosPessoaIds: inquilinosIds,
     dataInicio,
     dataFim,
     valorAluguel,
@@ -841,6 +990,7 @@ function montarPayloadContratoFromUi(ui, imovelId) {
           : null,
     garantiaTipo: String(ui.garantia || '').trim() || orig?.garantiaTipo || null,
     valorGarantia: toNumberOrNull(ui.valorGarantia) ?? (orig?.valorGarantia != null ? Number(orig.valorGarantia) : null),
+    fiadoresPessoaIds: extrairFiadoresPessoaIds(ui),
     dadosBancariosRepasseJson,
     status: String(orig?.status ?? 'VIGENTE').trim() || 'VIGENTE',
     observacoes: obsContratoLegado || null,
@@ -1187,8 +1337,21 @@ function escolherMelhorImovelApiPorNumeroPlanilha(candidatos) {
     const sc = scoreImovelApiListItem(cur);
     if (sc > sb) return cur;
     if (sc < sb) return best;
-    return Number(cur.id) < Number(best.id) ? cur : best;
+    return Number(cur.id) > Number(best.id) ? cur : best;
   }, null);
+}
+
+async function aplicarInquilinosMescladosComProcesso(item) {
+  try {
+    const { carregarInquilinosMescladosComProcesso, derivarCamposLegadoInquilino } = await import(
+      './imovelInquilinoProcessoSync.js'
+    );
+    item.inquilinos = await carregarInquilinosMescladosComProcesso(item);
+    Object.assign(item, derivarCamposLegadoInquilino(item.inquilinos));
+  } catch {
+    /* mantém inquilinos do contrato */
+  }
+  return item;
 }
 
 async function montarItemCadastroFromApiImovel(apiImovel) {
@@ -1197,7 +1360,7 @@ async function montarItemCadastroFromApiImovel(apiImovel) {
   let item = mapApiToUi(apiImovel, contratoAtual);
   item = await enriquecerCodigoProcDoVinculo(item, apiImovel);
   item = await enriquecerNomesPartesImovelUi(item);
-  return item;
+  return aplicarInquilinosMescladosComProcesso(item);
 }
 
 /** Igual a {@link montarItemCadastroFromApiImovel}, mas cai no shape básico da listagem se contrato/vínculos falharem. */
@@ -1291,6 +1454,7 @@ export async function carregarImovelCadastro({ imovelId }) {
     let item = mapApiToUi(apiImovel, contratoAtual);
     item = await enriquecerCodigoProcDoVinculo(item, apiImovel);
     item = await enriquecerNomesPartesImovelUi(item);
+    item = await aplicarInquilinosMescladosComProcesso(item);
     return { fonte: 'api', item, encontrado: true };
   } catch {
     return { fonte: 'api', item: null, encontrado: false };
@@ -1456,18 +1620,50 @@ export async function salvarImovelCadastro(uiPayload) {
   }
 
   let contratoAtual = contratoSalvo;
+  if (!contratoAtual) {
+    try {
+      const contratos = await request('/api/locacoes/contratos', { query: { imovelId: imovelSalvo.id } });
+      contratoAtual = selecionarContratoVigente(Array.isArray(contratos) ? contratos : []);
+    } catch {
+      contratoAtual = null;
+    }
+  }
+
+  let item = await enriquecerNomesPartesImovelUi(mapApiToUi(imovelSalvo, contratoAtual));
+
+  const enviados = Array.isArray(uiPayload.inquilinos)
+    ? uiPayload.inquilinos.map(normalizarEntradaInquilinoUi).filter(Boolean)
+    : [];
+  if (enviados.length > 0) {
+    try {
+      const { derivarCamposLegadoInquilino, mesclarInquilinosUi } = await import(
+        './imovelInquilinoProcessoSync.js'
+      );
+      item.inquilinos = mesclarInquilinosUi(enviados, item.inquilinos);
+      Object.assign(item, derivarCamposLegadoInquilino(item.inquilinos));
+      if (item._contratoSnapshotOriginal && typeof item._contratoSnapshotOriginal === 'object') {
+        item._contratoSnapshotOriginal = {
+          ...item._contratoSnapshotOriginal,
+          inquilinosPessoaIds: extrairInquilinosPessoaIds(item),
+        };
+      }
+      item = await enriquecerNomesPartesImovelUi(item);
+    } catch {
+      item.inquilinos = enviados;
+    }
+  }
+
   try {
-    const contratos = await request('/api/locacoes/contratos', { query: { imovelId: imovelSalvo.id } });
-    contratoAtual =
-      selecionarContratoVigente(Array.isArray(contratos) ? contratos : []) ?? contratoSalvo;
+    const { sincronizarInquilinosImovelParaProcesso } = await import('./imovelInquilinoProcessoSync.js');
+    await sincronizarInquilinosImovelParaProcesso(item, item.inquilinos);
   } catch {
-    contratoAtual = contratoSalvo;
+    /* sync best-effort */
   }
 
   return {
     fonte: 'api',
     salvo: true,
-    item: await enriquecerNomesPartesImovelUi(mapApiToUi(imovelSalvo, contratoAtual)),
+    item,
   };
 }
 

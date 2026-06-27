@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotNull;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 public class ContratoLocacaoWriteRequest {
 
@@ -30,6 +31,8 @@ public class ContratoLocacaoWriteRequest {
     private String dadosBancariosRepasseJson;
     private String status;
     private String observacoes;
+    private List<Long> fiadoresPessoaIds;
+    private List<Long> inquilinosPessoaIds;
 
     public Long getImovelId() {
         return imovelId;
@@ -149,5 +152,21 @@ public class ContratoLocacaoWriteRequest {
 
     public void setObservacoes(String observacoes) {
         this.observacoes = observacoes;
+    }
+
+    public List<Long> getFiadoresPessoaIds() {
+        return fiadoresPessoaIds;
+    }
+
+    public void setFiadoresPessoaIds(List<Long> fiadoresPessoaIds) {
+        this.fiadoresPessoaIds = fiadoresPessoaIds;
+    }
+
+    public List<Long> getInquilinosPessoaIds() {
+        return inquilinosPessoaIds;
+    }
+
+    public void setInquilinosPessoaIds(List<Long> inquilinosPessoaIds) {
+        this.inquilinosPessoaIds = inquilinosPessoaIds;
     }
 }

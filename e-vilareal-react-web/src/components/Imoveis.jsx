@@ -21,6 +21,7 @@ import {
   listarImoveisApi,
   salvarImovelCadastro,
 } from '../repositories/imoveisRepository.js';
+import { derivarCamposLegadoInquilino } from '../repositories/imovelInquilinoProcessoSync.js';
 import { buscarCliente } from '../api/clientesService.js';
 import { featureFlags, FEATURE_IPTU_NOVO } from '../config/featureFlags.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
@@ -95,6 +96,8 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   const [inquilinoContato, setInquilinoContato] = useState('');
   const [inquilinoCadastroCarregando, setInquilinoCadastroCarregando] = useState(false);
   const [inquilinoCadastroErro, setInquilinoCadastroErro] = useState('');
+  const [inquilinos, setInquilinos] = useState([]);
+  const [fiadores, setFiadores] = useState([]);
   const [showModalIptu, setShowModalIptu] = useState(false);
   const [infoIptuTexto, setInfoIptuTexto] = useState('IPTU 2025 cinco parcelas em atraso + duas à vencer R$1.323,30');
   const [showModalVinculosProc, setShowModalVinculosProc] = useState(false);
@@ -204,6 +207,9 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
       setInquilino('');
       setInquilinoCpf('');
       setInquilinoContato('');
+      setInquilinoNumeroPessoa('');
+      setInquilinos([]);
+      setFiadores([]);
       setInfoIptuTexto('');
       setContratoAssinadoInquilino('nao');
       setContratoAssinadoProprietario('nao');
@@ -274,6 +280,8 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     setInquilino(String(data.inquilino ?? ''));
     setInquilinoCpf(String(data.inquilinoCpf ?? ''));
     setInquilinoContato(String(data.inquilinoContato ?? ''));
+    setInquilinos(Array.isArray(data.inquilinos) ? data.inquilinos : []);
+    setFiadores(Array.isArray(data.fiadores) ? data.fiadores : []);
     setInfoIptuTexto(String(data.infoIptuTexto ?? ''));
     setContratoAssinadoInquilino(String(data.contratoAssinadoInquilino ?? 'nao'));
     setContratoAssinadoProprietario(String(data.contratoAssinadoProprietario ?? 'nao'));
@@ -709,6 +717,8 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
         inquilino,
         inquilinoCpf,
         inquilinoContato,
+        inquilinos,
+        fiadores,
         infoIptuTexto,
         contratoAssinadoInquilino,
         contratoAssinadoProprietario,
@@ -727,9 +737,17 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
         ...overrides,
       });
       if (r?.item) {
+        let itemForm = r.item;
+        if (Array.isArray(overrides.inquilinos) && overrides.inquilinos.length > 0) {
+          itemForm = {
+            ...r.item,
+            inquilinos: overrides.inquilinos,
+            ...derivarCamposLegadoInquilino(overrides.inquilinos),
+          };
+        }
         cargaFormularioSeqRef.current += 1;
-        popularFormulario(r.item);
-        setImovelId(Number(r.item.imovelId || imovelId));
+        popularFormulario(itemForm);
+        setImovelId(Number(itemForm.imovelId || imovelId));
       }
       if (featureFlags.useApiImoveis) {
         const msgPartes =
@@ -741,9 +759,13 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
                 ? 'Vínculo do inquilino removido.'
                 : overrides.proprietarioNumeroPessoa
                   ? `Proprietário vinculado (#${overrides.proprietarioNumeroPessoa}).`
-                  : overrides.inquilinoNumeroPessoa
-                    ? `Inquilino vinculado (#${overrides.inquilinoNumeroPessoa}).`
-                    : 'Cadastro do imóvel salvo na API.';
+                : overrides.inquilinoNumeroPessoa
+                  ? `Inquilino vinculado (#${overrides.inquilinoNumeroPessoa}).`
+                  : Object.hasOwn(overrides, 'fiadores')
+                    ? 'Fiadores salvos no contrato de locação.'
+                    : Object.hasOwn(overrides, 'inquilinos')
+                      ? 'Inquilinos salvos e sincronizados com o processo.'
+                      : 'Cadastro do imóvel salvo na API.';
         setApiSuccess(msgPartes);
         recarregarListaImoveisPesquisa();
       } else {
@@ -755,6 +777,26 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     } finally {
       setApiSaving(false);
     }
+  }
+
+  async function persistirInquilinosNoCadastro(novaLista) {
+    const legado = derivarCamposLegadoInquilino(novaLista);
+    setInquilinos(novaLista);
+    setInquilinoNumeroPessoa(legado.inquilinoNumeroPessoa);
+    setInquilino(legado.inquilino);
+    setInquilinoCpf(legado.inquilinoCpf);
+    setInquilinoContato(legado.inquilinoContato);
+    const ex = { ...(jsonExtrasOriginalRef.current || {}) };
+    ex.inquilinos = novaLista
+      .map((i) => ({
+        pessoaId: String(i?.pessoaId ?? '').trim(),
+        nome: String(i?.nome ?? '').trim(),
+        cpf: String(i?.cpf ?? '').trim(),
+        contato: String(i?.contato ?? '').trim(),
+      }))
+      .filter((i) => i.pessoaId);
+    jsonExtrasOriginalRef.current = ex;
+    await salvarCadastroAtual({ inquilinos: novaLista, ...legado });
   }
 
   const mapsUrl = useMemo(() => {
@@ -989,6 +1031,11 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
             inquilinoContato={inquilinoContato}
             inquilinoCadastroCarregando={inquilinoCadastroCarregando}
             inquilinoCadastroErro={inquilinoCadastroErro}
+            fiadores={fiadores}
+            setFiadores={setFiadores}
+            inquilinos={inquilinos}
+            setInquilinos={setInquilinos}
+            onPersistirInquilinos={persistirInquilinosNoCadastro}
             observacoesInquilino={observacoesInquilino}
             setObservacoesInquilino={setObservacoesInquilino}
             linkVistoria={linkVistoria}
@@ -1023,8 +1070,6 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
             onAbrirIptu={() => setShowModalIptu(true)}
             onSelecionarPessoaProprietario={aplicarPessoaProprietario}
             onLimparPessoaProprietario={limparPessoaProprietario}
-            onSelecionarPessoaInquilino={aplicarPessoaInquilino}
-            onLimparPessoaInquilino={limparPessoaInquilino}
           />
         </div>
       </div>
@@ -1038,6 +1083,16 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
         numeroInterno={proc}
         locadorNome={proprietario}
         locatarioNome={inquilino}
+        inquilinosPessoaIds={(inquilinos || [])
+          .map((i) => Number(i?.pessoaId))
+          .filter((id) => Number.isFinite(id) && id > 0)}
+        onAntesDeGerar={() =>
+          salvarCadastroAtual({
+            fiadores,
+            inquilinos,
+            ...derivarCamposLegadoInquilino(inquilinos),
+          })
+        }
         onErro={(msg) => setApiError(msg)}
       />
 

@@ -16,4 +16,20 @@ class TopicoChaveLocacaoUtilTest {
         assertThat(ContratoLocacaoDocumentoService.textoProcessadoParaHtml("A & B <teste>"))
                 .isEqualTo("A &amp; B &lt;teste&gt;");
     }
+
+    @Test
+    void textoProcessadoParaHtml_preservaQuebraSimplesSemBr() {
+        assertThat(ContratoLocacaoDocumentoService.textoProcessadoParaHtml("a) item\nb) item"))
+                .isEqualTo("a) item\nb) item");
+        assertThat(ContratoLocacaoDocumentoService.textoProcessadoParaHtml("a) item\n\nb) item"))
+                .isEqualTo("a) item\nb) item");
+    }
+
+    @Test
+    void textoProcessadoParaHtml_linkVistoriaEmAzul() {
+        assertThat(ContratoLocacaoDocumentoService.textoProcessadoParaHtml(
+                        "Link: https://exemplo.com/vistoria/123"))
+                .isEqualTo(
+                        "Link: <a href=\"https://exemplo.com/vistoria/123\" class=\"contrato-link\">https://exemplo.com/vistoria/123</a>");
+    }
 }

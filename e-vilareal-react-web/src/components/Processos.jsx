@@ -2910,6 +2910,14 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
             advogadoPessoaIds: [],
           }]),
         ]);
+        try {
+          const { sincronizarParteOpostaProcessoParaInquilinosImovel } = await import(
+            '../repositories/imovelInquilinoProcessoSync.js'
+          );
+          await sincronizarParteOpostaProcessoParaInquilinosImovel(pid, linhasOp);
+        } catch {
+          /* sync imóvel best-effort */
+        }
       }
       if (pid && opts.syncAndamentos) {
         await sincronizarAndamentosIncremental(pid, snapshot.historico || []);

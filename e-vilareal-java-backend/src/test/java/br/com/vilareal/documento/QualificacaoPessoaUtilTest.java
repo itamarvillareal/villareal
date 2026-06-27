@@ -240,4 +240,25 @@ class QualificacaoPessoaUtilTest {
         assertThat(resultado).contains("Transportadora de Leite");
         assertThat(resultado).contains("Ltda");
     }
+
+    @Test
+    void removerPrefixoNomeDaQualificacao_retiraNomeInicial() {
+        String qualificacao =
+                "Carlos Ricardo de Carvalho Reimer, brasileiro, solteiro, empresário, portador da carteira";
+
+        String semNome = QualificacaoPessoaUtil.removerPrefixoNomeDaQualificacao(
+                qualificacao, "CARLOS RICARDO DE CARVALHO REIMER");
+
+        assertThat(semNome).isEqualTo("brasileiro, solteiro, empresário, portador da carteira");
+    }
+
+    @Test
+    void removerPrefixoNomeDaQualificacao_retiraNomePessoaJuridica() {
+        String qualificacao = "Vrv Soluções Ltda, pessoa jurídica de direito privado, inscrita no CNPJ";
+
+        String semNome = QualificacaoPessoaUtil.removerPrefixoNomeDaQualificacao(
+                qualificacao, "VRV SOLUÇÕES LTDA");
+
+        assertThat(semNome).isEqualTo("pessoa jurídica de direito privado, inscrita no CNPJ");
+    }
 }

@@ -1,6 +1,7 @@
 package br.com.vilareal.documento;
 
 import java.time.LocalDate;
+import java.util.List;
 
 public record ContratoLocacaoRequest(
         Long contratoLocacaoId,
@@ -11,4 +12,6 @@ public record ContratoLocacaoRequest(
         String cidadeEstado,
         LocalDate data,
         /** {@code duas_vias} (padrão) ou {@code via_digital}. */
-        String formaAssinatura) {}
+        String formaAssinatura,
+        /** Opcional: locatários da UI (mescla com contrato e processo vinculado). */
+        List<Long> inquilinosPessoaIds) {}

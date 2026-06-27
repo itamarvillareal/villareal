@@ -337,6 +337,7 @@ export async function gerarContratoLocacao(
     codigoCliente,
     numeroInterno,
     formaAssinatura,
+    inquilinosPessoaIds,
   },
   opts = {},
 ) {
@@ -347,6 +348,11 @@ export async function gerarContratoLocacao(
   if (codigoCliente) body.codigoCliente = String(codigoCliente);
   if (numeroInterno != null && numeroInterno !== '') body.numeroInterno = Number(numeroInterno);
   if (formaAssinatura) body.formaAssinatura = formaAssinatura;
+  if (Array.isArray(inquilinosPessoaIds) && inquilinosPessoaIds.length) {
+    body.inquilinosPessoaIds = inquilinosPessoaIds
+      .map((id) => Number(id))
+      .filter((id) => Number.isFinite(id) && id > 0);
+  }
   return postPdf('/api/documentos/contrato-locacao', body, opts);
 }
 

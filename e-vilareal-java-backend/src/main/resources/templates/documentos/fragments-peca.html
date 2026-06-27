@@ -335,6 +335,7 @@
         .contrato-clausula {
             display: block;
             margin-bottom: 0;
+            white-space: pre-line;
             /* Recuo francês só nas cláusulas: 1ª linha na margem; da 2ª em diante, leve recuo. */
             padding-left: 1.25cm;
             text-indent: -1.25cm;
@@ -342,6 +343,14 @@
 
         .contrato-clausula:last-of-type {
             margin-bottom: 0;
+        }
+
+        .contrato-link,
+        .contrato-clausula a.contrato-link,
+        .contrato-preambulo a.contrato-link,
+        .contrato-fecho a.contrato-link {
+            color: #0000ff;
+            text-decoration: underline;
         }
 
         .contrato-fecho {

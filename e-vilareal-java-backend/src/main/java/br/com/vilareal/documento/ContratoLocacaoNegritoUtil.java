@@ -19,40 +19,43 @@ final class ContratoLocacaoNegritoUtil {
         if (!StringUtils.hasText(html) || nomes == null) {
             return html != null ? html : "";
         }
-        List<String> variantes = new ArrayList<>();
+        List<String> nomesOrdenados = new ArrayList<>();
         for (String nome : nomes) {
-            if (!StringUtils.hasText(nome)) {
-                continue;
+            if (StringUtils.hasText(nome)) {
+                nomesOrdenados.add(nome.trim());
             }
-            String base = Utf8MojibakeUtil.corrigir(nome.trim());
-            variantes.add(base);
-            variantes.add(base.toUpperCase(Locale.ROOT));
-            variantes.add(properCasePalavras(base));
         }
-        variantes.sort(Comparator.comparingInt(String::length)
-                .reversed()
-                .thenComparing(v -> v.equals(v.toUpperCase(Locale.ROOT)) ? 0 : 1));
+        nomesOrdenados.sort(Comparator.comparingInt(String::length).reversed());
 
         String result = html;
         Set<String> vistos = new LinkedHashSet<>();
-        for (String variante : variantes) {
-            if (!StringUtils.hasText(variante) || !vistos.add(variante.trim())) {
+        for (String nome : nomesOrdenados) {
+            String base = Utf8MojibakeUtil.corrigir(nome);
+            String maiusculoEsc = ContratoLocacaoDocumentoService.escapeHtml(base.toUpperCase(Locale.ROOT));
+            String marcador = "<strong>" + maiusculoEsc + "</strong>";
+            if (result.contains(marcador)) {
                 continue;
             }
-            result = envolverComStrong(result, ContratoLocacaoDocumentoService.escapeHtml(variante));
+
+            List<String> variantes = new ArrayList<>();
+            variantes.add(base);
+            variantes.add(base.toUpperCase(Locale.ROOT));
+            variantes.add(properCasePalavras(base));
+            variantes.sort(Comparator.comparingInt(String::length).reversed());
+
+            for (String variante : variantes) {
+                if (!StringUtils.hasText(variante) || !vistos.add(variante.trim())) {
+                    continue;
+                }
+                String esc = ContratoLocacaoDocumentoService.escapeHtml(variante);
+                if (!result.contains(esc)) {
+                    continue;
+                }
+                result = result.replace(esc, marcador);
+                break;
+            }
         }
         return result;
-    }
-
-    private static String envolverComStrong(String html, String trechoEscapado) {
-        if (!StringUtils.hasText(trechoEscapado) || !html.contains(trechoEscapado)) {
-            return html;
-        }
-        String marcador = "<strong>" + trechoEscapado + "</strong>";
-        if (html.contains(marcador)) {
-            return html;
-        }
-        return html.replace(trechoEscapado, marcador);
     }
 
     private static String properCasePalavras(String texto) {

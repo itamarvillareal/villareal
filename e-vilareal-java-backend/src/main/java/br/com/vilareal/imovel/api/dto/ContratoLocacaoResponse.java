@@ -2,6 +2,7 @@ package br.com.vilareal.imovel.api.dto;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 public class ContratoLocacaoResponse {
 
@@ -21,6 +22,8 @@ public class ContratoLocacaoResponse {
     private String dadosBancariosRepasseJson;
     private String status;
     private String observacoes;
+    private List<Long> fiadoresPessoaIds;
+    private List<Long> inquilinosPessoaIds;
 
     public Long getId() {
         return id;
@@ -148,5 +151,21 @@ public class ContratoLocacaoResponse {
 
     public void setObservacoes(String observacoes) {
         this.observacoes = observacoes;
+    }
+
+    public List<Long> getFiadoresPessoaIds() {
+        return fiadoresPessoaIds;
+    }
+
+    public void setFiadoresPessoaIds(List<Long> fiadoresPessoaIds) {
+        this.fiadoresPessoaIds = fiadoresPessoaIds;
+    }
+
+    public List<Long> getInquilinosPessoaIds() {
+        return inquilinosPessoaIds;
+    }
+
+    public void setInquilinosPessoaIds(List<Long> inquilinosPessoaIds) {
+        this.inquilinosPessoaIds = inquilinosPessoaIds;
     }
 }

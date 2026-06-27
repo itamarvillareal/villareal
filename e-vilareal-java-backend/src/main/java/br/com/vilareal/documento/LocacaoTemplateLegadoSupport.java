@@ -147,6 +147,17 @@ public final class LocacaoTemplateLegadoSupport {
         return t;
     }
 
+    /** Corrige artefatos conhecidos do legado Access/VBA após flexão e caixa. */
+    public static String corrigirArtefatosTextoLocacao(String texto) {
+        if (!StringUtils.hasText(texto)) {
+            return texto != null ? texto : "";
+        }
+        return texto
+                .replaceAll(",\\s+,", ", ")
+                .replaceAll("(?i)Propercase\\(\\s*S\\s*\\)\\s*ublocar", "Sublocar")
+                .replaceAll("(?i)\\bS ublocar\\b", "Sublocar");
+    }
+
     /** Remove parênteses vazios, ramos opcionais legados e marcadores {@code +++}. */
     public static String limparArtefatosLegado(String texto) {
         if (!StringUtils.hasText(texto)) {

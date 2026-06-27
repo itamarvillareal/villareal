@@ -677,14 +677,37 @@ public class ImovelApplicationService {
         } else {
             c.setLocadorPessoa(null);
         }
-        if (req.getInquilinoPessoaId() != null) {
+        if (req.getInquilinosPessoaIds() != null) {
+            if (req.getInquilinosPessoaIds().isEmpty()) {
+                c.setInquilinosJson(null);
+                c.setInquilinoPessoa(null);
+            } else {
+                ContratoLocacaoFiadorSupport.resolverFiadoresParaGravacao(req.getInquilinosPessoaIds(), pessoaRepository);
+                c.setInquilinosJson(ContratoLocacaoFiadorSupport.serializarPessoaIds(req.getInquilinosPessoaIds()));
+                Long primeiroInquilino = req.getInquilinosPessoaIds().get(0);
+                PessoaEntity inq = pessoaRepository
+                        .findById(primeiroInquilino)
+                        .orElseThrow(() -> new ResourceNotFoundException("Inquilino não encontrado: " + primeiroInquilino));
+                c.setInquilinoPessoa(inq);
+            }
+        } else if (req.getInquilinoPessoaId() != null) {
             PessoaEntity inq = pessoaRepository
                     .findById(req.getInquilinoPessoaId())
                     .orElseThrow(
                             () -> new ResourceNotFoundException("Inquilino não encontrado: " + req.getInquilinoPessoaId()));
             c.setInquilinoPessoa(inq);
-        } else {
+            c.setInquilinosJson(
+                    ContratoLocacaoFiadorSupport.serializarPessoaIds(List.of(req.getInquilinoPessoaId())));
+        } else if (req.getInquilinosPessoaIds() == null) {
             c.setInquilinoPessoa(null);
+        }
+        if (req.getFiadoresPessoaIds() != null) {
+            if (req.getFiadoresPessoaIds().isEmpty()) {
+                c.setFiadoresJson(null);
+            } else {
+                ContratoLocacaoFiadorSupport.resolverFiadoresParaGravacao(req.getFiadoresPessoaIds(), pessoaRepository);
+                c.setFiadoresJson(ContratoLocacaoFiadorSupport.serializarPessoaIds(req.getFiadoresPessoaIds()));
+            }
         }
     }
 
@@ -759,6 +782,12 @@ public class ImovelApplicationService {
         r.setDadosBancariosRepasseJson(c.getDadosBancariosRepasseJson());
         r.setStatus(c.getStatus());
         r.setObservacoes(c.getObservacoes());
+        r.setFiadoresPessoaIds(ContratoLocacaoFiadorSupport.extrairPessoaIds(c.getFiadoresJson()));
+        r.setInquilinosPessoaIds(ContratoLocacaoFiadorSupport.extrairPessoaIds(c.getInquilinosJson()));
+        if ((r.getInquilinosPessoaIds() == null || r.getInquilinosPessoaIds().isEmpty())
+                && r.getInquilinoPessoaId() != null) {
+            r.setInquilinosPessoaIds(List.of(r.getInquilinoPessoaId()));
+        }
         return r;
     }
 

@@ -5,7 +5,6 @@ import br.com.vilareal.documento.FlexaoUtil;
 import br.com.vilareal.documento.LocacaoTemplateLegadoSupport;
 import br.com.vilareal.documento.QualificacaoPessoaUtil;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
-import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoParteEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoParteRepository;
@@ -37,8 +36,8 @@ public class TopicoProcessadorService {
             Pattern.compile("Nome\\(\"(Autor|Reu|Fiador)\",\"all\"\\)", Pattern.CASE_INSENSITIVE);
     private static final Pattern PLACEHOLDER_QUALIFICA = Pattern.compile(
             "Qualifica_Sem_Nome_?\\(\"(Autor|Reu|Fiador)\",\"all\"\\)", Pattern.CASE_INSENSITIVE);
-    private static final Pattern PLACEHOLDER_QUALIFICA_FIADOR =
-            Pattern.compile("Qualifica\\(\"Fiador\",\"all\",[^)]+\\)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern PLACEHOLDER_QUALIFICA_FIADOR = Pattern.compile(
+            "Qualifica\\(\"Fiador\",\"all\"(?:,[^)]*)?\\)", Pattern.CASE_INSENSITIVE);
     private static final Pattern PLACEHOLDER_ADEQUA =
             Pattern.compile("(?:Ucase|Lcase|Propercase)?\\(Adequa\\(\"@\",\"(Autor|Reu|Fiador)\",\"(.+?)\"\\)\\)", Pattern.CASE_INSENSITIVE);
     private static final Pattern PLACEHOLDER_ADEQUA_SIMPLES =
@@ -131,10 +130,36 @@ public class TopicoProcessadorService {
     @Transactional(readOnly = true)
     public ResultadoProcessamento processarTemplateLocacao(
             String template, Long locadorPessoaId, Long locatarioPessoaId, Map<String, String> parametros) {
+        List<Long> locatarios =
+                locatarioPessoaId != null && locatarioPessoaId > 0 ? List.of(locatarioPessoaId) : List.of();
+        return processarTemplateLocacao(template, locadorPessoaId, locatarios, List.of(), parametros);
+    }
+
+    /** Locador = Autor; locatário = Réu; fiadores = polo Fiador. */
+    @Transactional(readOnly = true)
+    public ResultadoProcessamento processarTemplateLocacao(
+            String template,
+            Long locadorPessoaId,
+            Long locatarioPessoaId,
+            List<Long> fiadoresPessoaIds,
+            Map<String, String> parametros) {
+        List<Long> locatarios =
+                locatarioPessoaId != null && locatarioPessoaId > 0 ? List.of(locatarioPessoaId) : List.of();
+        return processarTemplateLocacao(template, locadorPessoaId, locatarios, fiadoresPessoaIds, parametros);
+    }
+
+    /** Locador = Autor; locatários = Réus; fiadores = polo Fiador. */
+    @Transactional(readOnly = true)
+    public ResultadoProcessamento processarTemplateLocacao(
+            String template,
+            Long locadorPessoaId,
+            List<Long> locatariosPessoaIds,
+            List<Long> fiadoresPessoaIds,
+            Map<String, String> parametros) {
         Map<String, String> params = parametros != null ? parametros : Map.of();
         return processarTemplateComContexto(
                 template,
-                carregarPartesPorPessoasLocacao(locadorPessoaId, locatarioPessoaId),
+                carregarPartesLocacao(locadorPessoaId, locatariosPessoaIds, fiadoresPessoaIds),
                 params,
                 true);
     }
@@ -149,13 +174,14 @@ public class TopicoProcessadorService {
 
         Map<String, String> params = parametros != null ? parametros : Map.of();
 
+        // Antes do preprocess legado: Class_do_Processo vira "" e quebra o padrão Qualifica("Fiador","all",…).
+        texto = substituirPadrao(texto, PLACEHOLDER_QUALIFICA_FIADOR, m -> resolverQualificacao(ctx, "Fiador", locacao, false));
+
         if (locacao) {
             texto = LocacaoTemplateLegadoSupport.preprocessar(texto, params);
         }
-
-        texto = substituirPadrao(texto, PLACEHOLDER_QUALIFICA_FIADOR, m -> "");
-        texto = substituirPadrao(texto, PLACEHOLDER_NOME, m -> resolverNome(ctx, m.group(1)));
-        texto = substituirPadrao(texto, PLACEHOLDER_QUALIFICA, m -> resolverQualificacao(ctx, m.group(1)));
+        texto = substituirPadrao(texto, PLACEHOLDER_NOME, m -> resolverNome(ctx, m.group(1), locacao));
+        texto = substituirPadrao(texto, PLACEHOLDER_QUALIFICA, m -> resolverQualificacao(ctx, m.group(1), locacao, true));
         texto = substituirPadrao(texto, PLACEHOLDER_ADEQUA, m -> adequar(ctx, m.group(1), m.group(2), m.group(0)));
         texto = substituirPadrao(texto, PLACEHOLDER_ADEQUA_SIMPLES, m -> adequar(ctx, m.group(1), m.group(2), m.group(0)));
         texto = substituirPadrao(texto, PLACEHOLDER_EXTENSO, m -> valorPorExtenso(m.group(1), params));
@@ -163,7 +189,9 @@ public class TopicoProcessadorService {
         texto = aplicarCaixasLegado(texto);
 
         if (locacao) {
+            texto = substituirPadrao(texto, PLACEHOLDER_QUALIFICA_FIADOR, m -> resolverQualificacao(ctx, "Fiador", locacao, false));
             texto = LocacaoTemplateLegadoSupport.limparArtefatosLegado(texto);
+            texto = LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao(texto);
         }
 
         List<String> naoResolvidos = new ArrayList<>();
@@ -201,23 +229,40 @@ public class TopicoProcessadorService {
                 reus.add(p);
             }
         }
-        return new ContextoPartes(autores, reus);
+        return new ContextoPartes(autores, reus, List.of());
     }
 
-    private ContextoPartes carregarPartesPorPessoasLocacao(Long locadorPessoaId, Long locatarioPessoaId) {
+    private ContextoPartes carregarPartesLocacao(
+            Long locadorPessoaId, List<Long> locatariosPessoaIds, List<Long> fiadoresPessoaIds) {
         List<ProcessoParteEntity> autores = new ArrayList<>();
         List<ProcessoParteEntity> reus = new ArrayList<>();
+        List<ProcessoParteEntity> fiadores = new ArrayList<>();
         if (locadorPessoaId != null) {
             pessoaRepository
                     .findById(locadorPessoaId)
                     .ifPresent(p -> autores.add(parteComPessoa(p, "AUTOR")));
         }
-        if (locatarioPessoaId != null) {
-            pessoaRepository
-                    .findById(locatarioPessoaId)
-                    .ifPresent(p -> reus.add(parteComPessoa(p, "REU")));
+        if (locatariosPessoaIds != null) {
+            for (Long locatarioPessoaId : locatariosPessoaIds) {
+                if (locatarioPessoaId == null || locatarioPessoaId < 1) {
+                    continue;
+                }
+                pessoaRepository
+                        .findById(locatarioPessoaId)
+                        .ifPresent(p -> reus.add(parteComPessoa(p, "REU")));
+            }
         }
-        return new ContextoPartes(autores, reus);
+        if (fiadoresPessoaIds != null) {
+            for (Long fiadorId : fiadoresPessoaIds) {
+                if (fiadorId == null) {
+                    continue;
+                }
+                pessoaRepository
+                        .findById(fiadorId)
+                        .ifPresent(p -> fiadores.add(parteComPessoa(p, "FIADOR")));
+            }
+        }
+        return new ContextoPartes(autores, reus, fiadores);
     }
 
     private static ProcessoParteEntity parteComPessoa(PessoaEntity pessoa, String polo) {
@@ -227,9 +272,12 @@ public class TopicoProcessadorService {
         return parte;
     }
 
-    private String resolverNome(ContextoPartes ctx, String poloRef) {
+    private String resolverNome(ContextoPartes ctx, String poloRef, boolean locacao) {
         List<ProcessoParteEntity> partes = partesPorReferencia(ctx, poloRef);
         if (partes.isEmpty()) {
+            return "";
+        }
+        if (locacao && partes.size() > 1) {
             return "";
         }
         List<String> nomes = new ArrayList<>();
@@ -243,19 +291,37 @@ public class TopicoProcessadorService {
     }
 
     private String resolverQualificacao(ContextoPartes ctx, String poloRef) {
+        return resolverQualificacao(ctx, poloRef, false, true);
+    }
+
+    private String resolverQualificacao(ContextoPartes ctx, String poloRef, boolean locacao, boolean semNome) {
         List<ProcessoParteEntity> partes = partesPorReferencia(ctx, poloRef);
         if (partes.isEmpty()) {
             return "";
         }
+        boolean qualificacaoCompletaPorParte = locacao && semNome && partes.size() > 1;
         List<String> qualificacoes = new ArrayList<>();
         for (ProcessoParteEntity p : partes) {
             if (p.getPessoa() != null && p.getPessoa().getId() != null) {
-                qualificacoes.add(qualificacaoPessoaUtil.gerarQualificacaoPorPessoaId(p.getPessoa().getId(), false));
+                qualificacoes.add(
+                        resolverQualificacaoPorPessoaId(
+                                p.getPessoa().getId(), locacao, qualificacaoCompletaPorParte ? false : semNome));
             } else if (StringUtils.hasText(p.getQualificacao())) {
                 qualificacoes.add(p.getQualificacao().trim());
             }
         }
-        return String.join("; ", qualificacoes);
+        return locacao ? String.join(", e ", qualificacoes) : String.join("; ", qualificacoes);
+    }
+
+    private String resolverQualificacaoPorPessoaId(Long pessoaId, boolean locacao, boolean semNome) {
+        if (locacao) {
+            return semNome
+                    ? qualificacaoPessoaUtil.gerarQualificacaoContratoLocacaoSemNomePorPessoaId(pessoaId)
+                    : qualificacaoPessoaUtil.gerarQualificacaoContratoLocacaoPorPessoaId(pessoaId);
+        }
+        return semNome
+                ? qualificacaoPessoaUtil.gerarQualificacaoSemNomePorPessoaId(pessoaId)
+                : qualificacaoPessoaUtil.gerarQualificacaoPorPessoaId(pessoaId, false);
     }
 
     private String adequar(ContextoPartes ctx, String poloRef, String palavraBase, String expressaoOriginal) {
@@ -304,11 +370,11 @@ public class TopicoProcessadorService {
     }
 
     private static List<ProcessoParteEntity> partesPorReferencia(ContextoPartes ctx, String poloRef) {
+        if ("fiador".equalsIgnoreCase(poloRef)) {
+            return ctx.fiadores();
+        }
         if ("reu".equalsIgnoreCase(poloRef)) {
             return ctx.reus();
-        }
-        if ("fiador".equalsIgnoreCase(poloRef)) {
-            return List.of();
         }
         return ctx.autores();
     }
@@ -459,9 +525,10 @@ public class TopicoProcessadorService {
         return String.join(" e ", partes);
     }
 
-    private record ContextoPartes(List<ProcessoParteEntity> autores, List<ProcessoParteEntity> reus) {
+    private record ContextoPartes(
+            List<ProcessoParteEntity> autores, List<ProcessoParteEntity> reus, List<ProcessoParteEntity> fiadores) {
         static ContextoPartes vazio() {
-            return new ContextoPartes(List.of(), List.of());
+            return new ContextoPartes(List.of(), List.of(), List.of());
         }
     }
 
