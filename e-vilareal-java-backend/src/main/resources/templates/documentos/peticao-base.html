@@ -5,10 +5,11 @@
     <title>Petição</title>
     <th:block th:replace="~{documentos/fragments-peca :: estiloTimbrado}"/>
     <th:block th:replace="~{documentos/fragments-peca :: estiloCorpoPadrao}"/>
+    <th:block th:replace="~{documentos/fragments-peca :: estiloEspacoCabecalhoPeticao}"/>
     <style type="text/css">
         @page {
             size: A4;
-            margin: 28mm 15mm 15mm 15mm;
+            margin: 28.5mm 15mm 15mm 15mm;
             @top-center {
                 content: element(cabecalho-padrao);
                 vertical-align: top;
