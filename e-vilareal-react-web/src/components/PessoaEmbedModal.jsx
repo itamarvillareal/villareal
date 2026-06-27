@@ -1,4 +1,5 @@
 import { Suspense, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 import { X } from 'lucide-react';
 import { LazyCadastroPessoas } from '../app/lazyScreens.jsx';
@@ -32,7 +33,7 @@ export function PessoaEmbedModal({ embed, onFechar, titulo, onPessoaSalva, overl
         ? `Pessoa (cadastro) — nº ${embed.pessoaId}`
         : 'Pessoa (cadastro)');
 
-  return (
+  const modal = (
     <div
       className={`fixed inset-0 ${overlayClassName} flex items-center justify-center p-2 sm:p-4 bg-black/55`}
       role="dialog"
@@ -80,4 +81,10 @@ export function PessoaEmbedModal({ embed, onFechar, titulo, onPessoaSalva, overl
       </div>
     </div>
   );
+
+  if (typeof document !== 'undefined') {
+    return createPortal(modal, document.body);
+  }
+
+  return modal;
 }
