@@ -92,12 +92,18 @@ public class ProjudiPeticaoProtocoloLoteService {
     public record ResultadoItemLote(Long peticaoId, String numeroProcesso, String resultado, String mensagem) {}
 
     public List<ResultadoItemLote> protocolarLote(List<Long> peticaoIds) {
+        return protocolarLote(peticaoIds, false);
+    }
+
+    public List<ResultadoItemLote> protocolarLote(List<Long> peticaoIds, boolean emailResultadoAgendamento) {
         if (peticaoIds == null || peticaoIds.isEmpty()) {
             throw new IllegalArgumentException("peticaoIds é obrigatório (ao menos um id).");
         }
 
         Optional<List<ResultadoItemLote>> resultado = orquestradorGate.executarComRetornoAguardando(
-                "peticao/protocolar-lote", LOCK_PROTOCOLO_TIMEOUT, () -> executarLoteSequencial(peticaoIds));
+                "peticao/protocolar-lote",
+                LOCK_PROTOCOLO_TIMEOUT,
+                () -> executarLoteSequencial(peticaoIds, emailResultadoAgendamento));
         if (resultado.isEmpty()) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
@@ -120,12 +126,20 @@ public class ProjudiPeticaoProtocoloLoteService {
      * evitando que a requisição HTTP fique presa e estoure timeout de proxy (504).
      */
     public List<Long> protocolarLoteAssincrono(List<Long> peticaoIds) {
+        return protocolarLoteAssincrono(peticaoIds, false);
+    }
+
+    /**
+     * @param emailResultadoAgendamento quando {@code true}, envia e-mail de sucesso/erro ao terminar
+     *     (usado apenas pelo scheduler de protocolo agendado).
+     */
+    public List<Long> protocolarLoteAssincrono(List<Long> peticaoIds, boolean emailResultadoAgendamento) {
         if (peticaoIds == null || peticaoIds.isEmpty()) {
             throw new IllegalArgumentException("peticaoIds é obrigatório (ao menos um id).");
         }
         List<Long> ids = List.copyOf(peticaoIds);
         estadoService.limparEstadoFila(ids);
-        protocoloExecutor.submit(() -> executarLoteEmBackground(ids));
+        protocoloExecutor.submit(() -> executarLoteEmBackground(ids, emailResultadoAgendamento));
         return ids;
     }
 
@@ -136,25 +150,41 @@ public class ProjudiPeticaoProtocoloLoteService {
             return List.of();
         }
         estadoService.limparEstadoFila(ids);
-        protocoloExecutor.submit(() -> executarLoteEmBackground(ids));
+        protocoloExecutor.submit(() -> executarLoteEmBackground(ids, false));
         return ids;
     }
 
-    private void executarLoteEmBackground(List<Long> ids) {
+    private void executarLoteEmBackground(List<Long> ids, boolean emailResultadoAgendamento) {
         try {
-            List<ResultadoItemLote> resultado = protocolarLote(ids);
+            List<ResultadoItemLote> resultado = protocolarLote(ids, emailResultadoAgendamento);
             log.info("Protocolo em segundo plano concluído {}: {}", ids, resultado);
         } catch (ResponseStatusException e) {
-            // Robô ocupado além do timeout: petições seguem ASSINADA. Grava a mensagem na fila para
-            // a UI mostrar o motivo em vez de ficar "presa" sem feedback.
             String motivo = e.getReason() != null ? e.getReason() : "Robô PROJUDI ocupado.";
             log.warn("Protocolo em segundo plano não executado {} — {}", ids, motivo);
             estadoService.registrarMensagemFila(ids, motivo);
+            if (emailResultadoAgendamento) {
+                notificarResultadosPorEmail(criarResultadosErroLote(ids, motivo));
+            }
         } catch (Exception e) {
             String msg = ProjudiPeticaoProtocoloEstadoService.truncarMensagem(descreverErroParaDiagnostico(e));
             log.error("Falha no protocolo em segundo plano {}: {}", ids, msg, e);
             estadoService.registrarMensagemFila(ids, msg);
+            if (emailResultadoAgendamento) {
+                notificarResultadosPorEmail(criarResultadosErroLote(ids, msg));
+            }
         }
+    }
+
+    private List<ResultadoItemLote> criarResultadosErroLote(List<Long> ids, String mensagem) {
+        List<ResultadoItemLote> resultados = new ArrayList<>(ids.size());
+        for (Long id : ids) {
+            String numero = peticaoRepository
+                    .findById(id)
+                    .map(ProjudiPeticaoEntity::getNumeroProcesso)
+                    .orElse(null);
+            resultados.add(new ResultadoItemLote(id, numero, RESULTADO_ERRO, mensagem));
+        }
+        return resultados;
     }
 
     @PreDestroy
@@ -414,7 +444,7 @@ public class ProjudiPeticaoProtocoloLoteService {
         return arquivosP7s;
     }
 
-    private List<ResultadoItemLote> executarLoteSequencial(List<Long> peticaoIds) {
+    private List<ResultadoItemLote> executarLoteSequencial(List<Long> peticaoIds, boolean emailResultadoAgendamento) {
         List<List<Long>> grupos = agruparPorJuntada(peticaoIds);
         if (grupos.size() > 1) {
             log.info(
@@ -428,6 +458,9 @@ public class ProjudiPeticaoProtocoloLoteService {
         List<ResultadoItemLote> resultados = new ArrayList<>(peticaoIds.size());
         for (Long id : peticaoIds) {
             resultados.add(porId.get(id));
+        }
+        if (emailResultadoAgendamento) {
+            notificarResultadosPorEmail(resultados);
         }
         return resultados;
     }
@@ -514,9 +547,6 @@ public class ProjudiPeticaoProtocoloLoteService {
                 referencia.getNumeroProcesso(),
                 arquivosP7s.size());
 
-        protocoloEmailService.notificarInicioProtocolo(
-                referencia.getNumeroProcesso(), List.copyOf(claimadas), arquivosP7s.size());
-
         List<Long> idsGrupo = List.copyOf(claimadas);
         ResultadoProtocoloPeticao protocolo;
         try {
@@ -537,8 +567,6 @@ public class ProjudiPeticaoProtocoloLoteService {
                 resultados.put(
                         peticaoId, new ResultadoItemLote(peticaoId, referencia.getNumeroProcesso(), RESULTADO_ERRO, msg));
             }
-            protocoloEmailService.notificarFimProtocolo(
-                    referencia.getNumeroProcesso(), List.copyOf(claimadas), false, msg);
             return resultados;
         }
 
@@ -550,11 +578,6 @@ public class ProjudiPeticaoProtocoloLoteService {
                         new ResultadoItemLote(
                                 peticaoId, referencia.getNumeroProcesso(), RESULTADO_PROTOCOLADA, protocolo.mensagem()));
             }
-            protocoloEmailService.notificarFimProtocolo(
-                    referencia.getNumeroProcesso(),
-                    List.copyOf(claimadas),
-                    true,
-                    protocolo.mensagem());
             finalizarProcessoAposProtocolo(referencia.getNumeroProcesso());
             return resultados;
         }
@@ -567,9 +590,44 @@ public class ProjudiPeticaoProtocoloLoteService {
             resultados.put(
                     peticaoId, new ResultadoItemLote(peticaoId, referencia.getNumeroProcesso(), RESULTADO_ERRO, msg));
         }
-        protocoloEmailService.notificarFimProtocolo(
-                referencia.getNumeroProcesso(), List.copyOf(claimadas), false, msg);
         return resultados;
+    }
+
+    /**
+     * Envia um e-mail por processo: sucesso se todas as petições do grupo protocolaram; erro caso contrário.
+     */
+    void notificarResultadosPorEmail(List<ResultadoItemLote> resultados) {
+        if (resultados == null || resultados.isEmpty()) {
+            return;
+        }
+        LinkedHashMap<String, List<ResultadoItemLote>> porProcesso = new LinkedHashMap<>();
+        for (ResultadoItemLote item : resultados) {
+            if (item == null) {
+                continue;
+            }
+            String chave = StringUtils.hasText(item.numeroProcesso()) ? item.numeroProcesso().trim() : "?";
+            porProcesso.computeIfAbsent(chave, k -> new ArrayList<>()).add(item);
+        }
+        for (List<ResultadoItemLote> grupo : porProcesso.values()) {
+            List<Long> ids = grupo.stream().map(ResultadoItemLote::peticaoId).toList();
+            String processo = grupo.getFirst().numeroProcesso();
+            boolean sucesso = grupo.stream().allMatch(r -> RESULTADO_PROTOCOLADA.equals(r.resultado()));
+            if (sucesso) {
+                String mensagem = grupo.stream()
+                        .map(ResultadoItemLote::mensagem)
+                        .filter(StringUtils::hasText)
+                        .findFirst()
+                        .orElse("Protocolo concluído com sucesso.");
+                protocoloEmailService.notificarSucessoProtocolo(processo, ids, mensagem);
+            } else {
+                String mensagem = grupo.stream()
+                        .filter(r -> !RESULTADO_PROTOCOLADA.equals(r.resultado()))
+                        .map(r -> "#" + r.peticaoId() + " (" + r.resultado() + "): " + r.mensagem())
+                        .reduce((a, b) -> a + "\n" + b)
+                        .orElse("Falha no protocolo.");
+                protocoloEmailService.notificarErroProtocolo(processo, ids, mensagem);
+            }
+        }
     }
 
     /**

@@ -44,6 +44,6 @@ public class ProjudiProtocoloAgendadoScheduler {
             return;
         }
         log.info("Protocolo agendado: disparando {} petição(ões) vencida(s): {}", ids.size(), ids);
-        protocoloLoteService.protocolarLoteAssincrono(ids);
+        protocoloLoteService.protocolarLoteAssincrono(ids, true);
     }
 }
