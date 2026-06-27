@@ -481,6 +481,29 @@ export function PeticionamentoProjudi() {
     [peticoesFiltradas],
   );
 
+  const assinadasAgendadas = useMemo(
+    () => assinadas.filter((p) => podeCancelarAgendamentoProtocolo(p)),
+    [assinadas],
+  );
+
+  const assinadasProtocolar = useMemo(
+    () => assinadas.filter((p) => !podeCancelarAgendamentoProtocolo(p)),
+    [assinadas],
+  );
+
+  const idsSelecionadosProtocolar = useMemo(
+    () => [...selecionadas].filter((id) => assinadasProtocolar.some((p) => p.id === id)),
+    [selecionadas, assinadasProtocolar],
+  );
+
+  useEffect(() => {
+    setSelecionadas((prev) => {
+      const permitidos = new Set(assinadasProtocolar.map((p) => p.id));
+      const next = new Set([...prev].filter((id) => permitidos.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [assinadasProtocolar]);
+
   const historicoTemMais =
     historicoMeta.totalPages > 0 && historicoMeta.page + 1 < historicoMeta.totalPages;
 
@@ -530,10 +553,13 @@ export function PeticionamentoProjudi() {
     });
   };
 
-  const todasSelecionadas = assinadas.length > 0 && assinadas.every((p) => selecionadas.has(p.id));
+  const todasSelecionadas =
+    assinadasProtocolar.length > 0 && assinadasProtocolar.every((p) => selecionadas.has(p.id));
 
   const alternarSelecionarTodas = () => {
-    setSelecionadas(todasSelecionadas ? new Set() : new Set(assinadas.map((p) => p.id)));
+    setSelecionadas(
+      todasSelecionadas ? new Set() : new Set(assinadasProtocolar.map((p) => p.id)),
+    );
   };
 
   const resolverCnjPorCodigoProc = async () => {
@@ -601,7 +627,7 @@ export function PeticionamentoProjudi() {
   };
 
   const abrirModalProtocolo = async () => {
-    const ids = [...selecionadas];
+    const ids = idsSelecionadosProtocolar;
     if (!ids.length) return;
     setModalProtocolo(true);
     setPrevia(null);
@@ -618,7 +644,7 @@ export function PeticionamentoProjudi() {
   };
 
   const confirmarProtocolo = async () => {
-    const ids = [...selecionadas];
+    const ids = idsSelecionadosProtocolar;
     if (!ids.length) {
       setModalProtocolo(false);
       setPrevia(null);
@@ -1107,140 +1133,241 @@ export function PeticionamentoProjudi() {
                     Selecione as petições do <strong>mesmo processo</strong> para uma juntada. O robô envia todos os
                     arquivos e dá um único Concluir.
                   </p>
-                  <p className="text-xs text-violet-800">
-                    Protocolo automático: escolha data e hora em cada petição. O agendamento pode ser cancelado antes do
-                    protocolo iniciar.
-                  </p>
-                  <label className="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={todasSelecionadas}
-                      onChange={alternarSelecionarTodas}
-                      aria-label="Selecionar todas as petições"
-                    />
-                    {todasSelecionadas ? 'Limpar seleção' : `Selecionar todas (${assinadas.length})`}
-                  </label>
-                  <ul className="rounded-lg border border-slate-200 bg-white divide-y divide-slate-100">
-                    {assinadas.map((p) => (
-                      <li key={p.id} className="flex items-start gap-2 px-3 py-2 text-sm">
-                        <input
-                          type="checkbox"
-                          className="mt-1"
-                          checked={selecionadas.has(p.id)}
-                          onChange={() => toggleSelecionada(p.id)}
-                          aria-label={`Selecionar petição ${p.id}`}
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div className="font-medium">
-                            #{p.id} · <span className="font-mono text-xs">{p.numeroProcesso}</span>
-                          </div>
-                          {(() => {
-                            const dig = String(p.numeroProcesso || '').replace(/\D/g, '');
-                            const partes = partesPorProcesso[dig];
-                            if (!partes || (!partes.parteCliente && !partes.parteOposta)) return null;
-                            return (
-                              <div className="text-xs text-slate-500 truncate">
-                                <span className="font-medium text-slate-600">
-                                  {rotuloParteOposta(partes.papelCliente)}:
-                                </span>{' '}
-                                {partes.parteOposta || '—'}
-                                <span className="mx-1 text-slate-400">×</span>
-                                <span className="font-medium text-emerald-700">Cliente:</span>{' '}
-                                {partes.parteCliente || '—'}
+
+                  {assinadasAgendadas.length > 0 ? (
+                    <div className="space-y-2 rounded-lg border border-violet-300 bg-violet-50/80 p-3">
+                      <h3 className="text-xs font-semibold text-violet-900 flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5" aria-hidden />
+                        Protocolo agendado ({assinadasAgendadas.length})
+                      </h3>
+                      <p className="text-xs text-violet-800/90">
+                        Estas petições serão protocoladas automaticamente no horário definido. Para protocolar agora,
+                        cancele o agendamento antes.
+                      </p>
+                      <ul className="rounded-lg border border-violet-200 bg-white divide-y divide-violet-100">
+                        {assinadasAgendadas.map((p) => (
+                          <li key={p.id} className="flex items-start gap-2 px-3 py-2 text-sm">
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <div className="font-medium text-slate-900">
+                                #{p.id} · <span className="font-mono text-xs">{p.numeroProcesso}</span>
                               </div>
-                            );
-                          })()}
-                          {(p.arquivos || []).map((a) => (
-                            <div key={a.id ?? a.ordem} className="text-xs text-slate-600 truncate">
-                              {a.nomeOriginal} ({labelTipoArquivoPeticao(a.idArquivoTipo)})
+                              {(() => {
+                                const dig = String(p.numeroProcesso || '').replace(/\D/g, '');
+                                const partes = partesPorProcesso[dig];
+                                if (!partes || (!partes.parteCliente && !partes.parteOposta)) return null;
+                                return (
+                                  <div className="text-xs text-slate-500 truncate">
+                                    <span className="font-medium text-slate-600">
+                                      {rotuloParteOposta(partes.papelCliente)}:
+                                    </span>{' '}
+                                    {partes.parteOposta || '—'}
+                                    <span className="mx-1 text-slate-400">×</span>
+                                    <span className="font-medium text-emerald-700">Cliente:</span>{' '}
+                                    {partes.parteCliente || '—'}
+                                  </div>
+                                );
+                              })()}
+                              {(p.arquivos || []).map((a) => (
+                                <div key={a.id ?? a.ordem} className="text-xs text-slate-600 truncate">
+                                  {a.nomeOriginal} ({labelTipoArquivoPeticao(a.idArquivoTipo)})
+                                </div>
+                              ))}
+                              <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-violet-900">
+                                <Clock className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                                <span>Agendado: {formatarAgendamentoProtocolo(p.protocoloAgendadoPara)}</span>
+                                <button
+                                  type="button"
+                                  className="font-normal text-rose-700 hover:underline disabled:opacity-50"
+                                  disabled={operacao === `cancelar-ag-${p.id}`}
+                                  onClick={() => void onCancelarAgendamento(p.id)}
+                                >
+                                  Cancelar agendamento
+                                </button>
+                              </div>
+                              <div className="flex flex-wrap items-end gap-2 rounded border border-violet-200 bg-violet-50/60 p-2">
+                                <label className="flex flex-col gap-1 text-xs text-slate-700">
+                                  Alterar data e hora
+                                  <input
+                                    type="datetime-local"
+                                    className="rounded border border-slate-300 px-2 py-1 text-sm bg-white"
+                                    min={minDatetimeLocalAgendamento()}
+                                    value={
+                                      agendamentoInputPorPeticao[p.id] ??
+                                      isoParaDatetimeLocal(p.protocoloAgendadoPara) ??
+                                      ''
+                                    }
+                                    onChange={(e) =>
+                                      setAgendamentoInputPorPeticao((prev) => ({
+                                        ...prev,
+                                        [p.id]: e.target.value,
+                                      }))
+                                    }
+                                    disabled={operacao === `agendar-${p.id}`}
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  className={`${processosBtnPrimary} bg-violet-700 hover:bg-violet-800 text-xs py-1.5 px-2.5`}
+                                  disabled={
+                                    operacao === `agendar-${p.id}` ||
+                                    !(
+                                      agendamentoInputPorPeticao[p.id] ??
+                                      isoParaDatetimeLocal(p.protocoloAgendadoPara)
+                                    )
+                                  }
+                                  onClick={() => void onAgendarProtocoloPeticao(p.id)}
+                                >
+                                  {operacao === `agendar-${p.id}` ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin inline mr-1" aria-hidden />
+                                  ) : (
+                                    <Clock className="w-3.5 h-3.5 inline mr-1" aria-hidden />
+                                  )}
+                                  Reagendar
+                                </button>
+                              </div>
                             </div>
-                          ))}
-                          {podeCancelarAgendamentoProtocolo(p) ? (
-                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-violet-800">
-                              <Clock className="w-3.5 h-3.5 shrink-0" aria-hidden />
-                              <span>Agendado: {formatarAgendamentoProtocolo(p.protocoloAgendadoPara)}</span>
-                              <button
-                                type="button"
-                                className="text-rose-700 hover:underline disabled:opacity-50"
-                                disabled={operacao === `cancelar-ag-${p.id}`}
-                                onClick={() => void onCancelarAgendamento(p.id)}
-                              >
-                                Cancelar agendamento
-                              </button>
-                            </div>
-                          ) : null}
-                          <div className="mt-2 flex flex-wrap items-end gap-2 rounded border border-violet-200 bg-violet-50/60 p-2">
-                            <label className="flex flex-col gap-1 text-xs text-slate-700">
-                              Data e hora
-                              <input
-                                type="datetime-local"
-                                className="rounded border border-slate-300 px-2 py-1 text-sm bg-white"
-                                min={minDatetimeLocalAgendamento()}
-                                value={
-                                  agendamentoInputPorPeticao[p.id] ??
-                                  isoParaDatetimeLocal(p.protocoloAgendadoPara) ??
-                                  ''
-                                }
-                                onChange={(e) =>
-                                  setAgendamentoInputPorPeticao((prev) => ({
-                                    ...prev,
-                                    [p.id]: e.target.value,
-                                  }))
-                                }
-                                disabled={operacao === `agendar-${p.id}`}
-                              />
-                            </label>
                             <button
                               type="button"
-                              className={`${processosBtnPrimary} bg-violet-700 hover:bg-violet-800 text-xs py-1.5 px-2.5`}
-                              disabled={
-                                operacao === `agendar-${p.id}` ||
-                                !(
-                                  agendamentoInputPorPeticao[p.id] ??
-                                  isoParaDatetimeLocal(p.protocoloAgendadoPara)
-                                )
-                              }
-                              onClick={() => void onAgendarProtocoloPeticao(p.id)}
+                              className="shrink-0 p-1 text-rose-600 hover:text-rose-800 disabled:opacity-50"
+                              disabled={operacao === `excluir-${p.id}` || operacao === 'protocolo'}
+                              onClick={() => void onExcluirPeticao(p.id)}
+                              title="Excluir petição da fila"
+                              aria-label={`Excluir petição ${p.id}`}
                             >
-                              {operacao === `agendar-${p.id}` ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin inline mr-1" aria-hidden />
+                              {operacao === `excluir-${p.id}` ? (
+                                <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
                               ) : (
-                                <Clock className="w-3.5 h-3.5 inline mr-1" aria-hidden />
+                                <Trash2 className="w-4 h-4" aria-hidden />
                               )}
-                              Agendar protocolo
                             </button>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          className="shrink-0 p-1 text-rose-600 hover:text-rose-800 disabled:opacity-50"
-                          disabled={operacao === `excluir-${p.id}` || operacao === 'protocolo'}
-                          onClick={() => void onExcluirPeticao(p.id)}
-                          title="Excluir petição da fila"
-                          aria-label={`Excluir petição ${p.id}`}
-                        >
-                          {operacao === `excluir-${p.id}` ? (
-                            <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
-                          ) : (
-                            <Trash2 className="w-4 h-4" aria-hidden />
-                          )}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                  <button
-                    type="button"
-                    className={`${processosBtnPrimary} bg-amber-700 hover:bg-amber-800 w-full sm:w-auto`}
-                    disabled={selecionadas.size === 0 || operacao === 'protocolo'}
-                    onClick={() => void abrirModalProtocolo()}
-                  >
-                    {operacao === 'protocolo' ? (
-                      <Loader2 className="w-4 h-4 animate-spin inline mr-1" aria-hidden />
-                    ) : (
-                      <Send className="w-4 h-4 inline mr-1" aria-hidden />
-                    )}
-                    Protocolar selecionadas ({selecionadas.size})
-                  </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  {assinadasProtocolar.length > 0 ? (
+                    <div className="space-y-2">
+                      <h3 className="text-xs font-semibold text-slate-800">
+                        Prontas para protocolar ({assinadasProtocolar.length})
+                      </h3>
+                      <p className="text-xs text-violet-800">
+                        Protocolo automático: escolha data e hora em cada petição abaixo.
+                      </p>
+                      <label className="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={todasSelecionadas}
+                          onChange={alternarSelecionarTodas}
+                          aria-label="Selecionar todas as petições prontas"
+                        />
+                        {todasSelecionadas ? 'Limpar seleção' : `Selecionar todas (${assinadasProtocolar.length})`}
+                      </label>
+                      <ul className="rounded-lg border border-slate-200 bg-white divide-y divide-slate-100">
+                        {assinadasProtocolar.map((p) => (
+                          <li key={p.id} className="flex items-start gap-2 px-3 py-2 text-sm">
+                            <input
+                              type="checkbox"
+                              className="mt-1"
+                              checked={selecionadas.has(p.id)}
+                              onChange={() => toggleSelecionada(p.id)}
+                              aria-label={`Selecionar petição ${p.id}`}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="font-medium">
+                                #{p.id} · <span className="font-mono text-xs">{p.numeroProcesso}</span>
+                              </div>
+                              {(() => {
+                                const dig = String(p.numeroProcesso || '').replace(/\D/g, '');
+                                const partes = partesPorProcesso[dig];
+                                if (!partes || (!partes.parteCliente && !partes.parteOposta)) return null;
+                                return (
+                                  <div className="text-xs text-slate-500 truncate">
+                                    <span className="font-medium text-slate-600">
+                                      {rotuloParteOposta(partes.papelCliente)}:
+                                    </span>{' '}
+                                    {partes.parteOposta || '—'}
+                                    <span className="mx-1 text-slate-400">×</span>
+                                    <span className="font-medium text-emerald-700">Cliente:</span>{' '}
+                                    {partes.parteCliente || '—'}
+                                  </div>
+                                );
+                              })()}
+                              {(p.arquivos || []).map((a) => (
+                                <div key={a.id ?? a.ordem} className="text-xs text-slate-600 truncate">
+                                  {a.nomeOriginal} ({labelTipoArquivoPeticao(a.idArquivoTipo)})
+                                </div>
+                              ))}
+                              <div className="mt-2 flex flex-wrap items-end gap-2 rounded border border-violet-200 bg-violet-50/60 p-2">
+                                <label className="flex flex-col gap-1 text-xs text-slate-700">
+                                  Data e hora
+                                  <input
+                                    type="datetime-local"
+                                    className="rounded border border-slate-300 px-2 py-1 text-sm bg-white"
+                                    min={minDatetimeLocalAgendamento()}
+                                    value={agendamentoInputPorPeticao[p.id] ?? ''}
+                                    onChange={(e) =>
+                                      setAgendamentoInputPorPeticao((prev) => ({
+                                        ...prev,
+                                        [p.id]: e.target.value,
+                                      }))
+                                    }
+                                    disabled={operacao === `agendar-${p.id}`}
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  className={`${processosBtnPrimary} bg-violet-700 hover:bg-violet-800 text-xs py-1.5 px-2.5`}
+                                  disabled={
+                                    operacao === `agendar-${p.id}` || !agendamentoInputPorPeticao[p.id]
+                                  }
+                                  onClick={() => void onAgendarProtocoloPeticao(p.id)}
+                                >
+                                  {operacao === `agendar-${p.id}` ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin inline mr-1" aria-hidden />
+                                  ) : (
+                                    <Clock className="w-3.5 h-3.5 inline mr-1" aria-hidden />
+                                  )}
+                                  Agendar protocolo
+                                </button>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className="shrink-0 p-1 text-rose-600 hover:text-rose-800 disabled:opacity-50"
+                              disabled={operacao === `excluir-${p.id}` || operacao === 'protocolo'}
+                              onClick={() => void onExcluirPeticao(p.id)}
+                              title="Excluir petição da fila"
+                              aria-label={`Excluir petição ${p.id}`}
+                            >
+                              {operacao === `excluir-${p.id}` ? (
+                                <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+                              ) : (
+                                <Trash2 className="w-4 h-4" aria-hidden />
+                              )}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                      <button
+                        type="button"
+                        className={`${processosBtnPrimary} bg-amber-700 hover:bg-amber-800 w-full sm:w-auto`}
+                        disabled={idsSelecionadosProtocolar.length === 0 || operacao === 'protocolo'}
+                        onClick={() => void abrirModalProtocolo()}
+                      >
+                        {operacao === 'protocolo' ? (
+                          <Loader2 className="w-4 h-4 animate-spin inline mr-1" aria-hidden />
+                        ) : (
+                          <Send className="w-4 h-4 inline mr-1" aria-hidden />
+                        )}
+                        Protocolar selecionadas ({idsSelecionadosProtocolar.length})
+                      </button>
+                    </div>
+                  ) : assinadasAgendadas.length > 0 ? (
+                    <p className="text-xs text-slate-600">
+                      Nenhuma petição pronta para protocolo imediato — apenas agendamentos ativos acima.
+                    </p>
+                  ) : null}
                 </>
               )}
             </section>
