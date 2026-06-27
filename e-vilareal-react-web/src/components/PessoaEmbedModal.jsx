@@ -11,7 +11,6 @@ import { LazyCadastroPessoas } from '../app/lazyScreens.jsx';
  *   onFechar: () => void,
  *   titulo?: string,
  *   onPessoaSalva?: (pessoa: { id: number, nome?: string, cpf?: string }) => void,
- *   /** Classe de empilhamento (ex.: z-[210] sobre modal de imóvel z-[200]). */
  *   overlayClassName?: string,
  * }} props
  */

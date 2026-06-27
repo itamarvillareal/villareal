@@ -5,6 +5,7 @@
 #   ./scripts/deploy-vps.sh --backend-only --yes
 #   ./scripts/deploy-vps.sh --frontend-only --yes
 #   ./scripts/deploy-vps.sh --yes
+#   ./scripts/deploy-vps.sh --skip-preflight --yes   # pula npm/mvn local antes do SSH
 #
 # Pré-requisitos na VPS:
 #   - clone do repositório (VPS_REPO_DIR)
@@ -20,6 +21,7 @@ DRY_RUN=0
 YES=0
 BACKEND_ONLY=0
 FRONTEND_ONLY=0
+SKIP_PREFLIGHT=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -27,6 +29,7 @@ while [[ $# -gt 0 ]]; do
     --yes) YES=1 ;;
     --backend-only) BACKEND_ONLY=1 ;;
     --frontend-only) FRONTEND_ONLY=1 ;;
+    --skip-preflight) SKIP_PREFLIGHT=1 ;;
     -h|--help)
       sed -n '2,12p' "$0"
       exit 0
@@ -69,6 +72,22 @@ echo
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "[dry-run] Nada executado."
   exit 0
+fi
+
+if [[ "$SKIP_PREFLIGHT" -ne 1 ]]; then
+  if [[ "$SERVICES" == *frontend* ]]; then
+    echo "=== Preflight: build frontend (local) ==="
+    (cd "$ROOT/e-vilareal-react-web" && npm run build)
+    echo ""
+  fi
+  if [[ "$SERVICES" == *backend* ]]; then
+    echo "=== Preflight: package backend (local) ==="
+    (cd "$ROOT/e-vilareal-java-backend" && ./mvnw -q -DskipTests package)
+    echo ""
+  fi
+else
+  echo "[preflight] Ignorado (--skip-preflight)."
+  echo ""
 fi
 
 if [[ "$YES" -ne 1 ]]; then
