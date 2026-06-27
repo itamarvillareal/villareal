@@ -2,7 +2,9 @@ package br.com.vilareal.topicos.application;
 
 import br.com.vilareal.common.exception.ResourceNotFoundException;
 import br.com.vilareal.documento.FlexaoUtil;
+import br.com.vilareal.documento.LocacaoConcordanciaReuUtil;
 import br.com.vilareal.documento.LocacaoTemplateLegadoSupport;
+import br.com.vilareal.documento.MoedaBrParser;
 import br.com.vilareal.documento.QualificacaoPessoaUtil;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
@@ -24,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -65,6 +68,12 @@ public class TopicoProcessadorService {
             Map.entry("fiador", new String[] {"Fiador", "Fiadora", "Fiadores", "Fiadoras"}),
             Map.entry("credor", new String[] {"Credor", "Credora", "Credores", "Credoras"}),
             Map.entry("devedor", new String[] {"Devedor", "Devedora", "Devedores", "Devedoras"}));
+
+    /** Artigos/preposições: Ucase legado deve virar "Os", não "OS". */
+    private static final Set<String> ARTIGOS_UCASE_LEGADO = Set.of(
+            "o", "a", "os", "as", "um", "uma", "uns", "umas",
+            "do", "da", "dos", "das", "no", "na", "nos", "nas",
+            "ao", "aos");
 
     private final TopicoRepository topicoRepository;
     private final ProcessoParteRepository processoParteRepository;
@@ -179,6 +188,7 @@ public class TopicoProcessadorService {
 
         if (locacao) {
             texto = LocacaoTemplateLegadoSupport.preprocessar(texto, params);
+            texto = LocacaoConcordanciaReuUtil.injetarAdequaReuPalavrasSoltas(texto);
         }
         texto = substituirPadrao(texto, PLACEHOLDER_NOME, m -> resolverNome(ctx, m.group(1), locacao));
         texto = substituirPadrao(texto, PLACEHOLDER_QUALIFICA, m -> resolverQualificacao(ctx, m.group(1), locacao, true));
@@ -192,6 +202,8 @@ public class TopicoProcessadorService {
             texto = substituirPadrao(texto, PLACEHOLDER_QUALIFICA_FIADOR, m -> resolverQualificacao(ctx, "Fiador", locacao, false));
             texto = LocacaoTemplateLegadoSupport.limparArtefatosLegado(texto);
             texto = LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao(texto);
+            texto = LocacaoConcordanciaReuUtil.aplicarConcordanciaLocatarioProcessado(
+                    texto, ctx.reus().size(), inferirFeminino(ctx.reus()));
         }
 
         List<String> naoResolvidos = new ArrayList<>();
@@ -340,7 +352,7 @@ public class TopicoProcessadorService {
         }
         String expr = expressaoOriginal.toLowerCase(Locale.ROOT);
         if (expr.startsWith("ucase")) {
-            return resultado.toUpperCase(Locale.ROOT);
+            return aplicarUcaseLegado(resultado);
         }
         if (expr.startsWith("lcase")) {
             return resultado.toLowerCase(Locale.ROOT);
@@ -382,7 +394,7 @@ public class TopicoProcessadorService {
     private static String aplicarCaixasLegado(String texto) {
         String atual = texto;
         for (int i = 0; i < 6; i++) {
-            String proximo = substituirPadrao(atual, PLACEHOLDER_UCASE, m -> m.group(1).trim().toUpperCase(Locale.ROOT));
+            String proximo = substituirPadrao(atual, PLACEHOLDER_UCASE, m -> aplicarUcaseLegado(m.group(1).trim()));
             proximo = substituirPadrao(proximo, PLACEHOLDER_LCASE, m -> m.group(1).trim().toLowerCase(Locale.ROOT));
             proximo = substituirPadrao(proximo, PLACEHOLDER_PROPER, m -> properCase(m.group(1).trim()));
             if (proximo.equals(atual)) {
@@ -422,7 +434,7 @@ public class TopicoProcessadorService {
             return literal;
         }
         try {
-            BigDecimal valor = new BigDecimal(raw.replace(".", "").replace(",", "."));
+            BigDecimal valor = MoedaBrParser.parseValorMonetario(raw);
             return extensoReais(valor.setScale(2, RoundingMode.HALF_UP));
         } catch (Exception e) {
             return raw;
@@ -439,6 +451,17 @@ public class TopicoProcessadorService {
         }
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("pt-BR"));
         return data.format(fmt);
+    }
+
+    private static String aplicarUcaseLegado(String texto) {
+        if (!StringUtils.hasText(texto)) {
+            return texto != null ? texto : "";
+        }
+        String t = texto.trim();
+        if (ARTIGOS_UCASE_LEGADO.contains(t.toLowerCase(Locale.ROOT))) {
+            return properCase(t);
+        }
+        return t.toUpperCase(Locale.ROOT);
     }
 
     private static String properCase(String texto) {

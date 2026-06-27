@@ -2,6 +2,7 @@ package br.com.vilareal.imovel.application;
 
 import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
+import br.com.vilareal.documento.FormaPagamentoAluguelLocacao;
 import br.com.vilareal.imovel.api.dto.*;
 import br.com.vilareal.imovel.infrastructure.persistence.entity.*;
 import br.com.vilareal.imovel.application.event.ContratoLocacaoAlteradoEvent;
@@ -474,6 +475,7 @@ public class ImovelApplicationService {
         c.setImovel(im);
         aplicarContrato(c, req, true);
         c = contratoLocacaoRepository.save(c);
+        sincronizarPrazoVinculoProcessoComContrato(c);
         applicationEventPublisher.publishEvent(new ContratoLocacaoAlteradoEvent(c.getId()));
         return toContratoResponse(requireContrato(c.getId()));
     }
@@ -487,8 +489,17 @@ public class ImovelApplicationService {
         }
         aplicarContrato(c, req, false);
         contratoLocacaoRepository.save(c);
+        sincronizarPrazoVinculoProcessoComContrato(c);
         applicationEventPublisher.publishEvent(new ContratoLocacaoAlteradoEvent(id));
         return toContratoResponse(requireContrato(id));
+    }
+
+    private void sincronizarPrazoVinculoProcessoComContrato(ContratoLocacaoEntity contrato) {
+        if (contrato.getImovel() == null || contrato.getImovel().getId() == null) {
+            return;
+        }
+        imovelProcessoLinkService.sincronizarPrazoLocacaoComContrato(
+                contrato.getImovel().getId(), contrato.getDataInicio(), contrato.getDataFim());
     }
 
     // CRUD de repasse/despesa LEGADO (locacao_repasse/locacao_despesa) removido — C9/A8.
@@ -653,6 +664,10 @@ public class ImovelApplicationService {
         c.setDataFim(req.getDataFim());
         c.setValorRepassePactuado(req.getValorRepassePactuado());
         c.setDiaVencimentoAluguel(req.getDiaVencimentoAluguel());
+        c.setFormaPagamentoAluguel(
+                StringUtils.hasText(req.getFormaPagamentoAluguel())
+                        ? FormaPagamentoAluguelLocacao.normalizar(req.getFormaPagamentoAluguel())
+                        : null);
         c.setDiaRepasse(req.getDiaRepasse());
         if (req.getTaxaAdministracaoPercent() != null) {
             c.setTaxaAdministracaoPercent(req.getTaxaAdministracaoPercent());
@@ -775,6 +790,7 @@ public class ImovelApplicationService {
         r.setValorAluguel(c.getValorAluguel());
         r.setValorRepassePactuado(c.getValorRepassePactuado());
         r.setDiaVencimentoAluguel(c.getDiaVencimentoAluguel());
+        r.setFormaPagamentoAluguel(c.getFormaPagamentoAluguel());
         r.setDiaRepasse(c.getDiaRepasse());
         r.setTaxaAdministracaoPercent(c.getTaxaAdministracaoPercent());
         r.setGarantiaTipo(c.getGarantiaTipo());

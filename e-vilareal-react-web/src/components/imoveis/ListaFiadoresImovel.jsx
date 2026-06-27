@@ -1,26 +1,18 @@
 import { useCallback, useState } from 'react';
 import { Plus, Trash2, UserRound } from 'lucide-react';
 import { SeletorPessoaParteImovel } from './SeletorPessoaParteImovel.jsx';
-import { formatDocBrExibicao, imoveisBtnSecondary } from './ImoveisAdminLayout.jsx';
-
-function rotuloFiador(f) {
-  const n = String(f?.pessoaId ?? '').trim();
-  const nm = String(f?.nome ?? '').trim();
-  if (n && nm) return `#${n} · ${nm}`;
-  if (nm) return nm;
-  if (n) return `#${n}`;
-  return '—';
-}
+import { formatDocBrExibicao, imoveisBtnSecondary, rotuloNomeComNumero } from './ImoveisAdminLayout.jsx';
 
 /**
  * @param {{
  *   fiadores: Array<{ pessoaId?: string, nome?: string, cpf?: string, contato?: string }>,
  *   onChange: (fiadores: Array<{ pessoaId?: string, nome?: string, cpf?: string, contato?: string }>) => void,
  *   onPersistir?: (fiadores: Array<{ pessoaId?: string, nome?: string, cpf?: string, contato?: string }>) => void | Promise<void>,
+ *   onAbrirCadastroPessoa?: (pessoaId: number) => void,
  *   disabled?: boolean,
  * }} props
  */
-export function ListaFiadoresImovel({ fiadores, onChange, onPersistir, disabled = false }) {
+export function ListaFiadoresImovel({ fiadores, onChange, onPersistir, onAbrirCadastroPessoa, disabled = false }) {
   const lista = Array.isArray(fiadores) ? fiadores : [];
   const [pessoaPendente, setPessoaPendente] = useState(null);
   const [seletorKey, setSeletorKey] = useState(0);
@@ -95,7 +87,31 @@ export function ListaFiadoresImovel({ fiadores, onChange, onPersistir, disabled 
                 <UserRound className="w-5 h-5" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-slate-900 dark:text-slate-50 truncate">{rotuloFiador(f)}</p>
+                {(() => {
+                  const pessoaIdNum = Number(String(f?.pessoaId ?? '').trim());
+                  const podeAbrir =
+                    typeof onAbrirCadastroPessoa === 'function' &&
+                    Number.isFinite(pessoaIdNum) &&
+                    pessoaIdNum >= 1;
+                  return (
+                    <p
+                      className={`text-sm font-semibold text-slate-900 dark:text-slate-50 truncate ${
+                        podeAbrir ? 'cursor-pointer rounded px-0.5 -mx-0.5 hover:bg-violet-100/50 dark:hover:bg-violet-900/20' : ''
+                      }`}
+                      title={podeAbrir ? 'Duplo clique para abrir o cadastro da pessoa' : undefined}
+                      onDoubleClick={
+                        podeAbrir
+                          ? (e) => {
+                              e.stopPropagation();
+                              onAbrirCadastroPessoa(pessoaIdNum);
+                            }
+                          : undefined
+                      }
+                    >
+                      {rotuloNomeComNumero(f?.pessoaId, f?.nome)}
+                    </p>
+                  );
+                })()}
                 <p className="text-xs text-slate-600 dark:text-slate-400 font-mono tabular-nums mt-0.5">
                   {f.cpf?.trim() ? formatDocBrExibicao(String(f.cpf).replace(/\D/g, '')) : '—'}
                 </p>
@@ -132,7 +148,7 @@ export function ListaFiadoresImovel({ fiadores, onChange, onPersistir, disabled 
                     : 'text-violet-700 dark:text-violet-300'
                 }`}
               >
-                Selecionado: {rotuloFiador({ pessoaId: pessoaPendente.id, nome: pessoaPendente.nome })}
+                Selecionado: {rotuloNomeComNumero(pessoaPendente.id, pessoaPendente.nome)}
                 {jaCadastrado(pessoaPendente.id) ? ' · já cadastrado' : ' · clique + para incluir'}
               </p>
             ) : null}

@@ -39,12 +39,17 @@ class ValorExtensoUtilTest {
 
     @Test
     void reaisMil() {
-        assertThat(reais("1000.00")).isEqualTo("mil reais");
+        assertThat(reais("1000.00")).isEqualTo("um mil reais");
+    }
+
+    @Test
+    void reaisMilSeiscentosECinquenta() {
+        assertThat(reais("1650.00")).isEqualTo("um mil seiscentos e cinquenta reais");
     }
 
     @Test
     void reaisMilDuzentosTrintaEQuatro() {
-        assertThat(reais("1234.56")).isEqualTo("mil duzentos e trinta e quatro reais e cinquenta e seis centavos");
+        assertThat(reais("1234.56")).isEqualTo("um mil duzentos e trinta e quatro reais e cinquenta e seis centavos");
     }
 
     @Test

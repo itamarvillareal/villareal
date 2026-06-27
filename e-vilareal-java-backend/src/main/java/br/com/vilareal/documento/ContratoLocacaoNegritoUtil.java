@@ -51,11 +51,22 @@ final class ContratoLocacaoNegritoUtil {
                 if (!result.contains(esc)) {
                     continue;
                 }
-                result = result.replace(esc, marcador);
+                result = substituirPorNegrito(result, esc, marcador);
                 break;
             }
         }
         return result;
+    }
+
+    /** Mantém a vírgula colada ao nome para evitar espaço indevido no PDF. */
+    private static String substituirPorNegrito(String result, String esc, String marcador) {
+        if (result.contains(esc + " ,")) {
+            return result.replace(esc + " ,", marcador + ",");
+        }
+        if (result.contains(esc + ",")) {
+            return result.replace(esc + ",", marcador + ",");
+        }
+        return result.replace(esc, marcador);
     }
 
     private static String properCasePalavras(String texto) {

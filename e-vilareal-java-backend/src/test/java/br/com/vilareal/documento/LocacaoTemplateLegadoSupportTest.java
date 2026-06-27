@@ -129,4 +129,153 @@ class LocacaoTemplateLegadoSupportTest {
         assertThat(LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao("Propercase(S) ublocar o imóvel"))
                 .isEqualTo("Sublocar o imóvel");
     }
+
+    @Test
+    void corrigirArtefatosTextoLocacao_normalizaOsLocatarios() {
+        assertThat(LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao("§3º OS Locatários fica"))
+                .isEqualTo("§3º Os Locatários fica");
+    }
+
+    @Test
+    void corrigirArtefatosTextoLocacao_normalizaVirgulasDuplasEEspacoAntesDaVirgula() {
+        assertThat(LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao("CEP 75.110-580, , e, como LOCATÁRIOS"))
+                .isEqualTo("CEP 75.110-580, e, como LOCATÁRIOS");
+        assertThat(LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao("Marcus Anacleto , brasileiro"))
+                .isEqualTo("Marcus Anacleto, brasileiro");
+        assertThat(LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao("locação;; do mês"))
+                .isEqualTo("locação; do mês");
+    }
+
+    @Test
+    void preprocessar_valorAluguelIsoDecimalFormataMoedaBrEExtenso() {
+        Map<String, String> campos = new HashMap<>();
+        campos.put("Valor_Aluguel_Imovel", "1650.00");
+
+        String template =
+                "aluguel mensal de Formatar_Texto(Valor_Aluguel_Imovel(\"@\"),\"R$\") "
+                        + "(Extensoreais(Valor_Aluguel_Imovel(\"@\")))";
+
+        String out = LocacaoTemplateLegadoSupport.preprocessar(template, campos);
+
+        assertThat(out).contains("R$");
+        assertThat(out).contains("1.650,00");
+        assertThat(out).contains("um mil seiscentos e cinquenta reais");
+        assertThat(out).doesNotContain("165.000");
+        assertThat(out).doesNotContain("cento e sessenta e cinco mil");
+    }
+
+    @Test
+    void preprocessar_linkVistoriaNaClausula7() {
+        Map<String, String> campos = new HashMap<>();
+        campos.put(
+                "Link_Vistoria",
+                "https://www.dropbox.com/scl/fo/5xt59k5ijz3g9cnemfq5m/AMfdIOL4EmB3zbyj93GktRo?rlkey=humo7d3eo86031e6byd3xplmp&dl=0");
+
+        String template =
+                "Parágrafo único: faz parte integrante deste contrato termo de vistoria do imóvel locado "
+                        + "com as condições gerais do imóvel locado; e fotos disponíveis no link Link_Vistoria(\"@\");";
+
+        String out = LocacaoTemplateLegadoSupport.preprocessar(template, campos);
+
+        assertThat(out).contains("https://www.dropbox.com/scl/fo/5xt59k5ijz3g9cnemfq5m/");
+        assertThat(out).doesNotContain("Link_Vistoria");
+    }
+
+    @Test
+    void aplicarLinkVistoria_atualizaCamposLegados() {
+        Map<String, String> params = new HashMap<>();
+        LocacaoTemplateLegadoSupport.aplicarLinkVistoria(params, "https://exemplo/vistoria");
+
+        assertThat(params.get("Link_Vistoria")).isEqualTo("https://exemplo/vistoria");
+        assertThat(params.get("linkVistoria")).isEqualTo("https://exemplo/vistoria");
+    }
+
+    @Test
+    void aplicarValorLocacao_atualizaCamposLegados() {
+        Map<String, String> params = new HashMap<>();
+        LocacaoTemplateLegadoSupport.aplicarValorLocacao(params, new java.math.BigDecimal("1700"));
+
+        assertThat(params.get("Valor_Aluguel_Imovel")).isEqualTo("1700,00");
+        assertThat(params.get("valorAluguel")).isEqualTo("1700,00");
+        assertThat(params.get("valorCausa")).isEqualTo("1700,00");
+    }
+
+    @Test
+    void aplicarVigenciaLocacao_atualizaCamposLegadosDePrazo() {
+        Map<String, String> params = new HashMap<>();
+        params.put("Data_Inicio_Aluguel", "2025-01-01");
+        params.put("Data_Fim_Aluguel", "2025-12-31");
+
+        LocacaoTemplateLegadoSupport.aplicarVigenciaLocacao(
+                params, LocalDate.of(2026, 6, 29), LocalDate.of(2026, 12, 29));
+
+        assertThat(params.get("Data_Inicio_Aluguel")).isEqualTo("2026-06-29");
+        assertThat(params.get("Data_Fim_Aluguel")).isEqualTo("2026-12-29");
+        assertThat(params.get("dataInicio")).isEqualTo("2026-06-29");
+        assertThat(params.get("dataFim")).isEqualTo("2026-12-29");
+    }
+
+    @Test
+    void preprocessar_clausula3_depositoTed() {
+        Map<String, String> campos = new HashMap<>();
+        campos.put("Dia_Pagamento_Aluguel", "5");
+        campos.put("Valor_Aluguel_Imovel", "1700.00");
+        campos.put("formaPagamentoAluguel", FormaPagamentoAluguelLocacao.DEPOSITO_TED);
+
+        String template =
+                "O aluguel mensal convencionado é de Formatar_Texto(Valor_Aluguel_Imovel(\"@\"),\"R$\") "
+                        + "(Extensoreais(Valor_Aluguel_Imovel(\"@\"))) a ser pago até o dia "
+                        + "Formatar_Texto(Dia_Pagamento_Aluguel(\"@\"),\"00\") do mês vigente de locação, "
+                        + "mediante depósito, TED ou transferência na conta do Administrador do Locador no Banco Itaú, "
+                        + "agência 9664, conta 00747-4 ou Pix CPF 007.332.351-90, servindo o recibo de depósito "
+                        + "como comprovante de pagamento do aluguel e encargos decorrentes da locação;; "
+                        + "do mês vigente de locação, mediante boletos que já foram disponibilizados ao Locatário, "
+                        + "servindo este contrato como recibo dos boletos enviados, e o recibo do pagamento do próprio "
+                        + "boleto como comprovante de pagamento do aluguel;";
+
+        String out = LocacaoTemplateLegadoSupport.preprocessar(template, campos);
+
+        assertThat(out).contains("até o dia 05 do mês vigente de locação");
+        assertThat(out).contains("mediante depósito, TED ou transferência");
+        assertThat(out).contains("007.332.351-90");
+        assertThat(out).doesNotContain(";;");
+        assertThat(out).doesNotContain("mediante boletos");
+    }
+
+    @Test
+    void preprocessar_clausula3_boletos() {
+        Map<String, String> campos = new HashMap<>();
+        campos.put("Dia_Pagamento_Aluguel", "10");
+        campos.put("Valor_Aluguel_Imovel", "1650.00");
+        campos.put("formaPagamentoAluguel", FormaPagamentoAluguelLocacao.BOLETO);
+
+        String template =
+                "O aluguel mensal convencionado é de Formatar_Texto(Valor_Aluguel_Imovel(\"@\"),\"R$\") "
+                        + "(Extensoreais(Valor_Aluguel_Imovel(\"@\"))) a ser pago até o dia "
+                        + "Formatar_Texto(Dia_Pagamento_Aluguel(\"@\"),\"00\") do mês vigente de locação, "
+                        + "mediante depósito, TED ou transferência na conta do Administrador do Locador no Banco Itaú, "
+                        + "agência 9664, conta 00747-4 ou Pix CPF 007.332.351-90, servindo o recibo de depósito "
+                        + "como comprovante de pagamento do aluguel e encargos decorrentes da locação;; "
+                        + "do mês vigente de locação, mediante boletos que já foram disponibilizados ao Locatário, "
+                        + "servindo este contrato como recibo dos boletos enviados, e o recibo do pagamento do próprio "
+                        + "boleto como comprovante de pagamento do aluguel;";
+
+        String out = LocacaoTemplateLegadoSupport.preprocessar(template, campos);
+
+        assertThat(out).contains("até o dia 10 do mês vigente de locação");
+        assertThat(out).contains("mediante boletos que já foram disponibilizados");
+        assertThat(out).doesNotContain(";;");
+        assertThat(out).doesNotContain("mediante depósito");
+        assertThat(out).doesNotContain("007.332.351-90");
+    }
+
+    @Test
+    void aplicarDiaVencimento_eFormaPagamento_atualizamCamposLegados() {
+        Map<String, String> params = new HashMap<>();
+        LocacaoTemplateLegadoSupport.aplicarDiaVencimento(params, 15);
+        LocacaoTemplateLegadoSupport.aplicarFormaPagamentoAluguel(params, FormaPagamentoAluguelLocacao.BOLETO);
+
+        assertThat(params.get("Dia_Pagamento_Aluguel")).isEqualTo("15");
+        assertThat(params.get("Forma_Pagamento_Aluguel")).isEqualTo(FormaPagamentoAluguelLocacao.BOLETO);
+    }
 }

@@ -16,11 +16,11 @@
         Pelo presente instrumento particular...
     </p>
 
-    <div class="contrato-texto contrato-clausula"
-         th:each="clausula : ${clausulas}"
-         th:utext="${clausula}">
+    <p class="contrato-texto contrato-clausula"
+       th:each="clausula : ${clausulas}"
+       th:utext="${clausula}">
         Cláusula...
-    </div>
+    </p>
 
     <p class="contrato-texto contrato-fecho" th:utext="${fechoHtml}">
         Para firmar e como prova...

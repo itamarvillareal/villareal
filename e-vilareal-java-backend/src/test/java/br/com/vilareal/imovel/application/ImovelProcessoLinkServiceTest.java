@@ -79,4 +79,26 @@ class ImovelProcessoLinkServiceTest {
         assertThat(imovel.getProcesso()).isNull();
         verify(imovelRepository).save(imovel);
     }
+
+    @Test
+    void sincronizarPrazoLocacaoComContrato_atualizaVinculoAtivo() {
+        ImovelEntity imovel = new ImovelEntity();
+        imovel.setId(24L);
+        ImovelProcessoEntity row = new ImovelProcessoEntity();
+        row.setId(3L);
+        row.setImovel(imovel);
+        row.setAtivo(true);
+        row.setDataInicio(java.time.LocalDate.of(2025, 1, 1));
+        row.setDataFim(java.time.LocalDate.of(2025, 12, 31));
+
+        when(imovelProcessoRepository.findFirstByImovel_IdAndAtivoTrueOrderByIdDesc(24L))
+                .thenReturn(Optional.of(row));
+
+        service.sincronizarPrazoLocacaoComContrato(
+                24L, java.time.LocalDate.of(2026, 6, 29), java.time.LocalDate.of(2026, 12, 29));
+
+        assertThat(row.getDataInicio()).isEqualTo(java.time.LocalDate.of(2026, 6, 29));
+        assertThat(row.getDataFim()).isEqualTo(java.time.LocalDate.of(2026, 12, 29));
+        verify(imovelProcessoRepository).save(row);
+    }
 }

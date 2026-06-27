@@ -338,6 +338,12 @@ export async function gerarContratoLocacao(
     numeroInterno,
     formaAssinatura,
     inquilinosPessoaIds,
+    dataInicioContrato,
+    dataFimContrato,
+    valorAluguelContrato,
+    linkVistoria,
+    diaVencimentoAluguel,
+    formaPagamentoAluguel,
   },
   opts = {},
 ) {
@@ -348,6 +354,20 @@ export async function gerarContratoLocacao(
   if (codigoCliente) body.codigoCliente = String(codigoCliente);
   if (numeroInterno != null && numeroInterno !== '') body.numeroInterno = Number(numeroInterno);
   if (formaAssinatura) body.formaAssinatura = formaAssinatura;
+  if (dataInicioContrato) body.dataInicioContrato = String(dataInicioContrato).slice(0, 10);
+  if (dataFimContrato) body.dataFimContrato = String(dataFimContrato).slice(0, 10);
+  if (valorAluguelContrato != null && Number.isFinite(Number(valorAluguelContrato))) {
+    body.valorAluguelContrato = Number(valorAluguelContrato);
+  }
+  if (linkVistoria && String(linkVistoria).trim()) {
+    body.linkVistoria = String(linkVistoria).trim();
+  }
+  if (diaVencimentoAluguel != null && Number.isFinite(Number(diaVencimentoAluguel))) {
+    body.diaVencimentoAluguel = Number(diaVencimentoAluguel);
+  }
+  if (formaPagamentoAluguel && String(formaPagamentoAluguel).trim()) {
+    body.formaPagamentoAluguel = String(formaPagamentoAluguel).trim();
+  }
   if (Array.isArray(inquilinosPessoaIds) && inquilinosPessoaIds.length) {
     body.inquilinosPessoaIds = inquilinosPessoaIds
       .map((id) => Number(id))

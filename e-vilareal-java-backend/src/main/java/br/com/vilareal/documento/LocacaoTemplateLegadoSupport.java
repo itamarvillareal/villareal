@@ -63,15 +63,17 @@ public final class LocacaoTemplateLegadoSupport {
         registrar(campos, "data", dataDocumento != null ? dataDocumento.toString() : LocalDate.now().toString());
 
         if (contrato.getValorAluguel() != null) {
-            String raw = contrato.getValorAluguel()
-                    .setScale(2, RoundingMode.HALF_UP)
-                    .toPlainString();
-            registrar(campos, "Valor_Aluguel_Imovel", raw);
-            registrar(campos, "valorAluguel", raw);
+            String br = MoedaBrParser.formatDecimalBr(contrato.getValorAluguel());
+            registrar(campos, "Valor_Aluguel_Imovel", br);
+            registrar(campos, "valorAluguel", br);
         }
         if (contrato.getDiaVencimentoAluguel() != null) {
             registrar(campos, "Dia_Pagamento_Aluguel", String.valueOf(contrato.getDiaVencimentoAluguel()));
             registrar(campos, "diaVencimentoAluguel", String.valueOf(contrato.getDiaVencimentoAluguel()));
+        }
+        if (StringUtils.hasText(contrato.getFormaPagamentoAluguel())) {
+            registrar(campos, "Forma_Pagamento_Aluguel", FormaPagamentoAluguelLocacao.normalizar(contrato.getFormaPagamentoAluguel()));
+            registrar(campos, "formaPagamentoAluguel", FormaPagamentoAluguelLocacao.normalizar(contrato.getFormaPagamentoAluguel()));
         }
         if (contrato.getValorGarantia() != null) {
             registrar(campos, "valorGarantia", formatarMoedaBr(contrato.getValorGarantia()));
@@ -102,6 +104,7 @@ public final class LocacaoTemplateLegadoSupport {
             String linkVistoria = textoExtra(extras, "linkVistoria");
 
             registrar(campos, "Link_Vistoria", linkVistoria);
+            registrar(campos, "linkVistoria", linkVistoria);
             registrar(campos, "Saneago_Imovel", saneago);
             registrar(campos, "Energia_Imovel", energia);
             registrar(campos, "Gas_Imovel", gas);
@@ -119,6 +122,15 @@ public final class LocacaoTemplateLegadoSupport {
         return campos;
     }
 
+    /** Lê {@code linkVistoria} de {@code camposExtrasJson} do imóvel. */
+    public static String extrairLinkVistoriaImovel(ImovelEntity imovel) {
+        if (imovel == null) {
+            return "";
+        }
+        JsonNode extras = parseExtrasJson(imovel.getCamposExtrasJson());
+        return textoExtra(extras, "linkVistoria");
+    }
+
     public static void registrarAliasesLegado(Map<String, String> params, ContratoLocacaoEntity contrato, LocalDate data) {
         if (params == null) {
             return;
@@ -126,6 +138,103 @@ public final class LocacaoTemplateLegadoSupport {
         for (Map.Entry<String, String> e : montarCamposLegacy(contrato, data).entrySet()) {
             params.putIfAbsent(e.getKey(), e.getValue());
         }
+    }
+
+    /** Atualiza campos de vigência/prazo da locação nos parâmetros do template legado. */
+    public static void aplicarVigenciaLocacao(Map<String, String> params, LocalDate dataInicio, LocalDate dataFim) {
+        if (params == null) {
+            return;
+        }
+        if (dataInicio != null) {
+            String iso = dataInicio.toString();
+            registrar(params, "Data_Inicio_Aluguel", iso);
+            params.put("dataInicio", iso);
+        }
+        if (dataFim != null) {
+            String iso = dataFim.toString();
+            registrar(params, "Data_Fim_Aluguel", iso);
+            params.put("dataFim", iso);
+        } else {
+            registrar(params, "Data_Fim_Aluguel", "");
+            params.put("dataFim", "");
+        }
+    }
+
+    /** Atualiza campos de valor do aluguel nos parâmetros do template legado. */
+    public static void aplicarValorLocacao(Map<String, String> params, java.math.BigDecimal valorAluguel) {
+        if (params == null || valorAluguel == null) {
+            return;
+        }
+        String br = MoedaBrParser.formatDecimalBr(valorAluguel);
+        registrar(params, "Valor_Aluguel_Imovel", br);
+        params.put("valorAluguel", br);
+        params.put("valorCausa", br);
+    }
+
+    /** Atualiza o link da vistoria (Cláusula 7ª, § único). */
+    public static void aplicarLinkVistoria(Map<String, String> params, String linkVistoria) {
+        if (params == null || !StringUtils.hasText(linkVistoria)) {
+            return;
+        }
+        String link = linkVistoria.trim();
+        registrar(params, "Link_Vistoria", link);
+        params.put("linkVistoria", link);
+    }
+
+    /** Atualiza o dia de vencimento do aluguel (Cláusula 3ª). */
+    public static void aplicarDiaVencimento(Map<String, String> params, Integer diaVencimento) {
+        if (params == null || diaVencimento == null || diaVencimento < 1) {
+            return;
+        }
+        String dia = String.valueOf(diaVencimento);
+        registrar(params, "Dia_Pagamento_Aluguel", dia);
+        params.put("diaVencimentoAluguel", dia);
+    }
+
+    /** Atualiza a forma de pagamento do aluguel (Cláusula 3ª). */
+    public static void aplicarFormaPagamentoAluguel(Map<String, String> params, String formaPagamentoAluguel) {
+        if (params == null) {
+            return;
+        }
+        String forma = FormaPagamentoAluguelLocacao.normalizar(formaPagamentoAluguel);
+        registrar(params, "Forma_Pagamento_Aluguel", forma);
+        params.put("formaPagamentoAluguel", forma);
+    }
+
+    /**
+     * Escolhe o ramo da Cláusula 3ª entre depósito/TED e boletos.
+     * O template legado concatena as duas redações separadas por {@code ;;}.
+     */
+    public static String resolverRamoFormaPagamentoAluguel(String template, Map<String, String> campos) {
+        if (!StringUtils.hasText(template) || !template.contains(";;")) {
+            return template != null ? template : "";
+        }
+        String lower = template.toLowerCase(Locale.ROOT);
+        if (!lower.contains("mediante depósito") && !lower.contains("mediante boletos")) {
+            return template;
+        }
+        String[] parts = template.split(";;", 2);
+        if (parts.length < 2) {
+            return template;
+        }
+        String forma = FormaPagamentoAluguelLocacao.normalizar(resolverCampo("formaPagamentoAluguel", campos));
+        if (FormaPagamentoAluguelLocacao.isBoleto(forma)) {
+            String antes = parts[0].trim();
+            String depois = parts[1].trim();
+            int idx = indexOfIgnoreCase(antes, ", mediante depósito");
+            if (idx < 0) {
+                idx = indexOfIgnoreCase(antes, "mediante depósito");
+            }
+            String prefix = idx >= 0 ? antes.substring(0, idx).trim() : antes;
+            if (depois.regionMatches(true, 0, "do mês vigente de locação,", 0, 26)) {
+                depois = depois.substring(26).trim();
+            }
+            if (!depois.regionMatches(true, 0, "mediante", 0, 8)) {
+                depois = "mediante " + depois;
+            }
+            return prefix + ", " + depois;
+        }
+        return parts[0].trim();
     }
 
     /** Pré-processa template legado de locação antes das substituições de Nome/Adequa/etc. */
@@ -136,6 +245,7 @@ public final class LocacaoTemplateLegadoSupport {
         Map<String, String> mapa = campos != null ? campos : Map.of();
         String t = normalizarAspas(template);
 
+        t = resolverRamoFormaPagamentoAluguel(t, mapa);
         t = limparArtefatosLegado(t);
         t = substituirCamposAt(t, mapa);
 
@@ -153,7 +263,11 @@ public final class LocacaoTemplateLegadoSupport {
             return texto != null ? texto : "";
         }
         return texto
-                .replaceAll(",\\s+,", ", ")
+                .replaceAll(",\\s*,\\s*", ", ")
+                .replaceAll("\\s+,", ",")
+                .replaceAll(",\\s{2,}", ", ")
+                .replaceAll(";{2,}", ";")
+                .replaceAll("\\bOS (Locatários|Locatárias)\\b", "Os $1")
                 .replaceAll("(?i)Propercase\\(\\s*S\\s*\\)\\s*ublocar", "Sublocar")
                 .replaceAll("(?i)\\bS ublocar\\b", "Sublocar");
     }
@@ -318,19 +432,15 @@ public final class LocacaoTemplateLegadoSupport {
 
     private static String valorPorExtenso(String raw) {
         try {
-            BigDecimal valor = parseDecimal(raw);
-            return extensoReais(valor.setScale(2, RoundingMode.HALF_UP));
+            BigDecimal valor = MoedaBrParser.parseValorMonetario(raw);
+            return ValorExtensoUtil.reaisPorExtenso(valor.setScale(2, RoundingMode.HALF_UP));
         } catch (Exception e) {
             return raw;
         }
     }
 
-    private static BigDecimal parseDecimal(String raw) {
-        if (!StringUtils.hasText(raw)) {
-            return BigDecimal.ZERO;
-        }
-        String t = raw.trim().replace("R$", "").replace(" ", "").replace(".", "").replace(",", ".");
-        return new BigDecimal(t);
+    static BigDecimal parseDecimal(String raw) {
+        return MoedaBrParser.parseValorMonetario(raw);
     }
 
     private static int parseInteiro(String raw) {
@@ -424,6 +534,13 @@ public final class LocacaoTemplateLegadoSupport {
         return Normalizer.normalize(String.valueOf(s), Normalizer.Form.NFD)
                 .replaceAll("\\p{M}", "")
                 .toLowerCase(Locale.ROOT);
+    }
+
+    private static int indexOfIgnoreCase(String texto, String trecho) {
+        if (!StringUtils.hasText(texto) || !StringUtils.hasText(trecho)) {
+            return -1;
+        }
+        return texto.toLowerCase(Locale.ROOT).indexOf(trecho.toLowerCase(Locale.ROOT));
     }
 
     private static String nvl(String s) {

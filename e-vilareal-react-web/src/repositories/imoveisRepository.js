@@ -189,7 +189,12 @@ function toBrDateFlex(v) {
   const iso = toBrDate(v);
   if (iso) return iso;
   const s = String(v).trim();
-  return /^\d{2}\/\d{2}\/\d{4}$/.test(s) ? s : s;
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return s;
+  const digits = s.replace(/\D/g, '');
+  if (digits.length === 8) {
+    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4, 8)}`;
+  }
+  return '';
 }
 
 /**
@@ -668,6 +673,7 @@ function mapApiToUi(imovel, contrato) {
         ? String(contrato.taxaAdministracaoPercent).replace('.', ',')
         : '10',
     diaPagAluguel: contrato?.diaVencimentoAluguel != null ? String(contrato.diaVencimentoAluguel).padStart(2, '0') : '',
+    formaPagamentoAluguel: String(contrato?.formaPagamentoAluguel ?? ''),
     dataPag1TxCond: String(extras.dataPag1TxCond ?? ''),
     inscricaoImobiliaria: String(imovel?.inscricaoImobiliaria ?? extras.inscricaoMunicipal ?? ''),
     // IPTU: dedicated module (V38). Legacy JSON keys are only mapped when rollback flag is off.
@@ -691,8 +697,8 @@ function mapApiToUi(imovel, contrato) {
     dataConsGas: String(extras.dataConsGas ?? ''),
     existeDebGas: String(extras.existeDebGas ?? ''),
     diaVencGas: String(extras.diaVencGas ?? ''),
-    dataInicioContrato: toBrDate(contrato?.dataInicio),
-    dataFimContrato: toBrDate(contrato?.dataFim),
+    dataInicioContrato: toBrDateFlex(contrato?.dataInicio),
+    dataFimContrato: toBrDateFlex(contrato?.dataFim),
     dataConsDebitoCond: String(extras.dataConsDebitoCond ?? ''),
     existeDebitoCond: String(extras.existeDebitoCond ?? ''),
     diaRepasse: contrato?.diaRepasse != null ? String(contrato.diaRepasse).padStart(2, '0') : '',
@@ -934,14 +940,24 @@ function isoDataContratoSnapshot(val) {
   return toIsoDate(s);
 }
 
+/** Data do contrato a persistir: form tem prioridade; vazio no form grava null (não mantém snapshot). */
+function isoDataContratoFromForm(campoBr, origIso) {
+  const br = String(campoBr ?? '').trim();
+  if (br) {
+    const iso = toIsoDate(br);
+    return iso ?? isoDataContratoSnapshot(origIso);
+  }
+  return null;
+}
+
 function montarPayloadContratoFromUi(ui, imovelId) {
   const obsContratoLegado = String(ui._contratoObservacoesOriginal ?? '').trim();
   const orig =
     ui._contratoSnapshotOriginal && typeof ui._contratoSnapshotOriginal === 'object'
       ? ui._contratoSnapshotOriginal
       : null;
-  const dataInicio = toIsoDate(ui.dataInicioContrato) ?? isoDataContratoSnapshot(orig?.dataInicio);
-  const dataFim = toIsoDate(ui.dataFimContrato) ?? isoDataContratoSnapshot(orig?.dataFim);
+  const dataInicio = isoDataContratoFromForm(ui.dataInicioContrato, orig?.dataInicio);
+  const dataFim = isoDataContratoFromForm(ui.dataFimContrato, orig?.dataFim);
   const valorAluguel =
     toNumberOrNull(ui.valorLocacao) ??
     (orig?.valorAluguel != null ? Number(orig.valorAluguel) : null);
@@ -982,6 +998,7 @@ function montarPayloadContratoFromUi(ui, imovelId) {
         : orig?.diaVencimentoAluguel != null
           ? Number(orig.diaVencimentoAluguel)
           : null,
+    formaPagamentoAluguel: String(ui.formaPagamentoAluguel ?? '').trim() || orig?.formaPagamentoAluguel || null,
     diaRepasse:
       Number.isFinite(diaRepasseUi) && diaRepasseUi >= 1
         ? diaRepasseUi

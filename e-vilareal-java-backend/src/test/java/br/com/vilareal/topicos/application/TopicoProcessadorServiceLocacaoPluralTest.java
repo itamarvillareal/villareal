@@ -42,6 +42,40 @@ class TopicoProcessadorServiceLocacaoPluralTest {
     }
 
     @Test
+    void processarTemplateLocacao_pluralizaVerboEAdjetivoComDoisReus() {
+        when(pessoaRepository.findById(1L)).thenReturn(Optional.of(pessoa(1L, "Locador")));
+        when(pessoaRepository.findById(2L)).thenReturn(Optional.of(pessoa(2L, "Carlos")));
+        when(pessoaRepository.findById(3L)).thenReturn(Optional.of(pessoa(3L, "Maria")));
+
+        String template =
+                "§3º Ucase(Propercase(Adequa(\"@\",\"Reu\",\"os\"))) Adequa(\"@\",\"Reu\",\"locatário\") "
+                        + "fica responsável pelo pagamento do aluguel.";
+
+        TopicoProcessadorService.ResultadoProcessamento resultado = service.processarTemplateLocacao(
+                template, 1L, List.of(2L, 3L), List.of(), Map.of());
+
+        assertThat(resultado.texto()).isEqualTo(
+                "§3º Os Locatários ficam responsáveis pelo pagamento do aluguel.");
+    }
+
+    @Test
+    void processarTemplateLocacao_ucasePropercaseArtigoOs_ficaOsNaoOS() {
+        when(pessoaRepository.findById(1L)).thenReturn(Optional.of(pessoa(1L, "Locador")));
+        when(pessoaRepository.findById(2L)).thenReturn(Optional.of(pessoa(2L, "Carlos")));
+        when(pessoaRepository.findById(3L)).thenReturn(Optional.of(pessoa(3L, "Maria")));
+
+        String template =
+                "§3º Ucase(Propercase(Adequa(\"@\",\"Reu\",\"os\"))) Adequa(\"@\",\"Reu\",\"locatário\") fica responsável.";
+
+        TopicoProcessadorService.ResultadoProcessamento resultado = service.processarTemplateLocacao(
+                template, 1L, List.of(2L, 3L), List.of(), Map.of());
+
+        assertThat(resultado.texto()).isEqualTo("§3º Os Locatários ficam responsáveis.");
+        assertThat(resultado.texto()).doesNotContain("OS Locatários");
+        assertThat(resultado.texto()).doesNotContain(" fica ");
+    }
+
+    @Test
     void processarTemplateLocacao_pluralizaLocatarioComDoisReus() {
         when(pessoaRepository.findById(1L)).thenReturn(Optional.of(pessoa(1L, "Locador")));
         when(pessoaRepository.findById(2L)).thenReturn(Optional.of(pessoa(2L, "Carlos")));
@@ -52,7 +86,7 @@ class TopicoProcessadorServiceLocacaoPluralTest {
         TopicoProcessadorService.ResultadoProcessamento resultado = service.processarTemplateLocacao(
                 template, 1L, List.of(2L, 3L), List.of(), Map.of());
 
-        assertThat(resultado.texto()).isEqualTo("os Locatários deve pagar o aluguel.");
+        assertThat(resultado.texto()).isEqualTo("os Locatários devem pagar o aluguel.");
     }
 
     @Test

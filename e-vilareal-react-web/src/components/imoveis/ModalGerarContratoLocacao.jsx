@@ -14,10 +14,24 @@ import {
 import { resolverContratoLocacaoIdParaImovel } from '../../repositories/imoveisRepository.js';
 import { FORMAS_ASSINATURA_CONTRATO } from '../../pages/documentos/contratoModelos.js';
 import { mensagemErroAmigavel } from '../../utils/mensagemErroAmigavel.js';
+import { parseValorMonetarioBr } from '../../utils/parseValorMonetarioBr.js';
+import { normalizarFormaPagamentoAluguel } from '../../data/locacaoFormaPagamentoAluguel.js';
 import { imoveisBtnPrimary, imoveisBtnSecondary, imoveisInputClass } from './ImoveisAdminLayout.jsx';
+
+function parseDiaVencimentoAluguel(valor) {
+  const n = Number(String(valor ?? '').replace(/\D/g, ''));
+  return Number.isFinite(n) && n >= 1 && n <= 31 ? n : undefined;
+}
 
 function hojeIso() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function brDateToIsoOptional(br) {
+  const s = String(br ?? '').trim();
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s);
+  if (!m) return undefined;
+  return `${m[3]}-${m[2]}-${m[1]}`;
 }
 
 /**
@@ -31,6 +45,12 @@ function hojeIso() {
  *   locadorNome?: string,
  *   locatarioNome?: string,
  *   inquilinosPessoaIds?: number[],
+ *   dataInicioContrato?: string,
+ *   dataFimContrato?: string,
+ *   valorLocacao?: string|number,
+ *   linkVistoria?: string,
+ *   diaPagAluguel?: string,
+ *   formaPagamentoAluguel?: string,
  *   onAntesDeGerar?: () => void | Promise<void>,
  *   onErro?: (msg: string) => void,
  * }} props
@@ -45,6 +65,12 @@ export function ModalGerarContratoLocacao({
   locadorNome,
   locatarioNome,
   inquilinosPessoaIds,
+  dataInicioContrato,
+  dataFimContrato,
+  valorLocacao,
+  linkVistoria,
+  diaPagAluguel,
+  formaPagamentoAluguel,
   onAntesDeGerar,
   onErro,
 }) {
@@ -87,6 +113,12 @@ export function ModalGerarContratoLocacao({
         numeroInterno:
           numeroInterno != null && String(numeroInterno).trim() !== '' ? Number(numeroInterno) : undefined,
         inquilinosPessoaIds: Array.isArray(inquilinosPessoaIds) ? inquilinosPessoaIds : undefined,
+        dataInicioContrato: brDateToIsoOptional(dataInicioContrato),
+        dataFimContrato: brDateToIsoOptional(dataFimContrato),
+        valorAluguelContrato: parseValorMonetarioBr(valorLocacao) ?? undefined,
+        linkVistoria: String(linkVistoria ?? '').trim() || undefined,
+        diaVencimentoAluguel: parseDiaVencimentoAluguel(diaPagAluguel),
+        formaPagamentoAluguel: normalizarFormaPagamentoAluguel(formaPagamentoAluguel),
       });
       const base = locatarioNome || locadorNome || 'locacao';
       downloadPdfBlob(blob, nomeArquivoContratoPdf(base, 'locacao'));

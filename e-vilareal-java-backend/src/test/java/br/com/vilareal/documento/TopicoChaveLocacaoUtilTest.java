@@ -18,18 +18,24 @@ class TopicoChaveLocacaoUtilTest {
     }
 
     @Test
-    void textoProcessadoParaHtml_preservaQuebraSimplesSemBr() {
+    void textoProcessadoParaHtml_converteQuebrasParaBr() {
         assertThat(ContratoLocacaoDocumentoService.textoProcessadoParaHtml("a) item\nb) item"))
-                .isEqualTo("a) item\nb) item");
+                .isEqualTo("a) item<br/>b) item");
         assertThat(ContratoLocacaoDocumentoService.textoProcessadoParaHtml("a) item\n\nb) item"))
-                .isEqualTo("a) item\nb) item");
+                .isEqualTo("a) item<br/>b) item");
     }
 
     @Test
     void textoProcessadoParaHtml_linkVistoriaEmAzul() {
+        String url = "https://www.dropbox.com/scl/fo/abc/test?rlkey=xyz&dl=0";
+        String urlHtml = "https://www.dropbox.com/scl/fo/abc/test?rlkey=xyz&amp;dl=0";
         assertThat(ContratoLocacaoDocumentoService.textoProcessadoParaHtml(
-                        "Link: https://exemplo.com/vistoria/123"))
+                        "Parágrafo único: fotos disponíveis no link " + url))
                 .isEqualTo(
-                        "Link: <a href=\"https://exemplo.com/vistoria/123\" class=\"contrato-link\">https://exemplo.com/vistoria/123</a>");
+                        "Parágrafo único: fotos disponíveis no link <a href=\""
+                                + urlHtml
+                                + "\" class=\"contrato-link\">"
+                                + urlHtml
+                                + "</a>");
     }
 }

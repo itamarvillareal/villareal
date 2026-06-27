@@ -75,7 +75,7 @@ public final class ValorExtensoUtil {
             partes.add(milhoes == 1 ? "um milhão" : tresDigitos(milhoes) + " milhões");
         }
         if (milhares > 0) {
-            partes.add(milhares == 1 ? "mil" : tresDigitos(milhares) + " mil");
+            partes.add(milhares == 1 ? "um mil" : tresDigitos(milhares) + " mil");
         }
         if (centenas > 0) {
             partes.add(tresDigitos(centenas));

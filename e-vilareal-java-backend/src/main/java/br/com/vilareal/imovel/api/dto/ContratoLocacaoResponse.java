@@ -15,6 +15,7 @@ public class ContratoLocacaoResponse {
     private BigDecimal valorAluguel;
     private BigDecimal valorRepassePactuado;
     private Integer diaVencimentoAluguel;
+    private String formaPagamentoAluguel;
     private Integer diaRepasse;
     private BigDecimal taxaAdministracaoPercent;
     private String garantiaTipo;
@@ -95,6 +96,14 @@ public class ContratoLocacaoResponse {
 
     public void setDiaVencimentoAluguel(Integer diaVencimentoAluguel) {
         this.diaVencimentoAluguel = diaVencimentoAluguel;
+    }
+
+    public String getFormaPagamentoAluguel() {
+        return formaPagamentoAluguel;
+    }
+
+    public void setFormaPagamentoAluguel(String formaPagamentoAluguel) {
+        this.formaPagamentoAluguel = formaPagamentoAluguel;
     }
 
     public Integer getDiaRepasse() {

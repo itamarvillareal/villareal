@@ -174,12 +174,24 @@ public class QualificacaoPessoaUtil {
             String qualificacaoLocador, String qualificacaoLocatario, boolean pluralLocatario) {
         String rotuloLocatario = pluralLocatario ? "LOCATÁRIOS" : "LOCATÁRIO";
         return "Pelo presente instrumento particular, como LOCADOR, "
-                + qualificacaoLocador
+                + semVirgulaFinal(qualificacaoLocador)
                 + ", e, como "
                 + rotuloLocatario
                 + ", "
-                + qualificacaoLocatario
+                + semVirgulaFinal(qualificacaoLocatario)
                 + ", têm por justo e contratado o seguinte:";
+    }
+
+    /** Remove vírgulas (e espaços) finais antes de encadear qualificações no preâmbulo. */
+    static String semVirgulaFinal(String texto) {
+        if (!StringUtils.hasText(texto)) {
+            return "";
+        }
+        String t = texto.trim();
+        while (t.endsWith(",")) {
+            t = t.substring(0, t.length() - 1).trim();
+        }
+        return t;
     }
 
     private static String appendTelefoneContrato(String qualificacao, String telefone) {

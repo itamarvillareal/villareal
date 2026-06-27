@@ -104,7 +104,19 @@ public class ContratoLocacaoDocumentoService {
         }
 
         LocalDate data = request.data() != null ? request.data() : LocalDate.now();
-        Map<String, String> parametros = montarParametros(contrato, data);
+        java.math.BigDecimal valorAluguelEfetivo = request.valorAluguelContrato() != null
+                ? request.valorAluguelContrato()
+                : contrato.getValorAluguel();
+        Map<String, String> parametros = montarParametros(contrato, data, valorAluguelEfetivo);
+        LocalDate vigenciaInicio =
+                request.dataInicioContrato() != null ? request.dataInicioContrato() : contrato.getDataInicio();
+        LocalDate vigenciaFim = request.dataFimContrato() != null ? request.dataFimContrato() : contrato.getDataFim();
+        LocacaoTemplateLegadoSupport.aplicarVigenciaLocacao(parametros, vigenciaInicio, vigenciaFim);
+        LocacaoTemplateLegadoSupport.aplicarValorLocacao(parametros, valorAluguelEfetivo);
+        LocacaoTemplateLegadoSupport.aplicarLinkVistoria(parametros, resolverLinkVistoria(request, contrato));
+        LocacaoTemplateLegadoSupport.aplicarDiaVencimento(parametros, resolverDiaVencimento(request, contrato));
+        LocacaoTemplateLegadoSupport.aplicarFormaPagamentoAluguel(
+                parametros, resolverFormaPagamentoAluguel(request, contrato));
         parametros.put("quantidadeLocatarios", String.valueOf(locatariosPessoaIds.size()));
         List<Long> fiadoresPessoaIds = ContratoLocacaoFiadorSupport.extrairPessoaIds(contrato.getFiadoresJson());
         List<PessoaEntity> fiadores = ContratoLocacaoFiadorSupport.carregarFiadores(contrato, pessoaRepository);
@@ -181,6 +193,7 @@ public class ContratoLocacaoDocumentoService {
         String qualificacaoLocatario = locatarios.stream()
                 .map(p -> qualificacaoPessoaUtil.gerarQualificacaoContratoLocacaoPorPessoaId(p.getId()))
                 .filter(StringUtils::hasText)
+                .map(QualificacaoPessoaUtil::semVirgulaFinal)
                 .collect(Collectors.joining(", e "));
         String nomeLocador = ContratoHonorariosClausulas.normalizarNomeAssinatura(
                 Utf8MojibakeUtil.corrigir(locador.getNome()));
@@ -188,8 +201,12 @@ public class ContratoLocacaoDocumentoService {
                 .map(p -> ContratoHonorariosClausulas.normalizarNomeAssinatura(Utf8MojibakeUtil.corrigir(p.getNome())))
                 .filter(StringUtils::hasText)
                 .collect(Collectors.joining(" E "));
-        preambuloHtml = textoProcessadoParaHtml(QualificacaoPessoaUtil.montarPreambuloContratoAluguel(
-                qualificacaoLocador, qualificacaoLocatario, pluralLocatarios));
+        String preambuloPlain = QualificacaoPessoaUtil.montarPreambuloContratoAluguel(
+                qualificacaoLocador, qualificacaoLocatario, pluralLocatarios);
+        preambuloPlain = LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao(preambuloPlain);
+        preambuloPlain = LocacaoConcordanciaReuUtil.aplicarConcordanciaLocatarioProcessado(
+                preambuloPlain, locatarios.size(), inferirFemininoLocatarios(locatarios));
+        preambuloHtml = textoProcessadoParaHtml(preambuloPlain);
         if (temFiadores) {
             preambuloHtml = ContratoLocacaoPreambuloUtil.injetarFiadoresNoPreambuloHtml(
                     preambuloHtml, fiadores, qualificacaoPessoaUtil);
@@ -208,6 +225,7 @@ public class ContratoLocacaoDocumentoService {
         }
         preambuloHtml = ContratoLocacaoNegritoUtil.aplicarNegritoNomesCompletos(
                 preambuloHtml, nomesNegrito.toArray(String[]::new));
+        preambuloHtml = LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao(preambuloHtml);
 
         String cidadeEstado = StringUtils.hasText(request.cidadeEstado())
                 ? request.cidadeEstado().trim()
@@ -257,7 +275,8 @@ public class ContratoLocacaoDocumentoService {
         return temaResolver.resolverSemProcesso();
     }
 
-    private static Map<String, String> montarParametros(ContratoLocacaoEntity contrato, LocalDate data) {
+    private static Map<String, String> montarParametros(
+            ContratoLocacaoEntity contrato, LocalDate data, java.math.BigDecimal valorAluguel) {
         Map<String, String> params = new HashMap<>();
         params.put("data", data.toString());
         if (contrato.getDataInicio() != null) {
@@ -266,11 +285,9 @@ public class ContratoLocacaoDocumentoService {
         if (contrato.getDataFim() != null) {
             params.put("dataFim", contrato.getDataFim().toString());
         }
-        BigDecimal valor = contrato.getValorAluguel();
+        java.math.BigDecimal valor = valorAluguel != null ? valorAluguel : contrato.getValorAluguel();
         if (valor != null) {
-            String br = valor.setScale(2, java.math.RoundingMode.HALF_UP)
-                    .toPlainString()
-                    .replace('.', ',');
+            String br = MoedaBrParser.formatDecimalBr(valor);
             params.put("valorAluguel", br);
             params.put("valorCausa", br);
         }
@@ -308,6 +325,48 @@ public class ContratoLocacaoDocumentoService {
         }
         LocacaoTemplateLegadoSupport.registrarAliasesLegado(params, contrato, data);
         return params;
+    }
+
+    private static String resolverLinkVistoria(ContratoLocacaoRequest request, ContratoLocacaoEntity contrato) {
+        if (request != null && StringUtils.hasText(request.linkVistoria())) {
+            return request.linkVistoria().trim();
+        }
+        if (contrato == null || contrato.getImovel() == null) {
+            return "";
+        }
+        return LocacaoTemplateLegadoSupport.extrairLinkVistoriaImovel(contrato.getImovel());
+    }
+
+    private static Integer resolverDiaVencimento(ContratoLocacaoRequest request, ContratoLocacaoEntity contrato) {
+        if (request != null && request.diaVencimentoAluguel() != null && request.diaVencimentoAluguel() >= 1) {
+            return request.diaVencimentoAluguel();
+        }
+        if (contrato != null && contrato.getDiaVencimentoAluguel() != null) {
+            return contrato.getDiaVencimentoAluguel();
+        }
+        return null;
+    }
+
+    private static String resolverFormaPagamentoAluguel(
+            ContratoLocacaoRequest request, ContratoLocacaoEntity contrato) {
+        if (request != null && StringUtils.hasText(request.formaPagamentoAluguel())) {
+            return FormaPagamentoAluguelLocacao.normalizar(request.formaPagamentoAluguel());
+        }
+        if (contrato != null && StringUtils.hasText(contrato.getFormaPagamentoAluguel())) {
+            return FormaPagamentoAluguelLocacao.normalizar(contrato.getFormaPagamentoAluguel());
+        }
+        return FormaPagamentoAluguelLocacao.PADRAO;
+    }
+
+    private static boolean inferirFemininoLocatarios(List<PessoaEntity> locatarios) {
+        if (locatarios == null || locatarios.isEmpty()) {
+            return false;
+        }
+        if (locatarios.size() > 1) {
+            return locatarios.stream()
+                    .allMatch(p -> QualificacaoPessoaUtil.determinarFeminino(p.getNome(), null));
+        }
+        return QualificacaoPessoaUtil.determinarFeminino(locatarios.get(0).getNome(), null);
     }
 
     private static boolean parecePreambulo(String texto) {
@@ -352,7 +411,15 @@ public class ContratoLocacaoDocumentoService {
             matcher.region(fimUrl, texto.length());
         }
         sb.append(escapeHtml(texto.substring(ultimo)));
-        return sb.toString();
+        return quebrarLinhasHtml(sb.toString());
+    }
+
+    /** Quebras explícitas para o PDF justificar cada linha (evita {@code white-space: pre-line}). */
+    static String quebrarLinhasHtml(String html) {
+        if (!StringUtils.hasText(html)) {
+            return html != null ? html : "";
+        }
+        return html.replace("\n", "<br/>");
     }
 
     private static String removerPontuacaoFinalUrl(String url) {

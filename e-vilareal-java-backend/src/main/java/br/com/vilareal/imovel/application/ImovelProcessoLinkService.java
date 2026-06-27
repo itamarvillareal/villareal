@@ -62,10 +62,10 @@ public class ImovelProcessoLinkService {
                 return toResponse(row);
             }
             row.setAtivo(true);
-            row.setDataFim(null);
             if (req.getDataInicio() != null) {
                 row.setDataInicio(req.getDataInicio());
             }
+            row.setDataFim(req.getDataFim());
             if (StringUtils.hasText(req.getObservacao())) {
                 row.setObservacao(trimToNull(req.getObservacao()));
             }
@@ -125,6 +125,23 @@ public class ImovelProcessoLinkService {
      * Usado quando o imóvel é salvo sem processo: mantém escalar e N:N consistentes (fecha o bug
      * "escalar NULL + N:N ativo" que cegava a reconciliação). NO-OP se já não houver linha ativa.
      */
+    /**
+     * Alinha o prazo do vínculo N:N ativo ({@code imovel_processo}) com a vigência do contrato de locação.
+     */
+    @Transactional
+    public void sincronizarPrazoLocacaoComContrato(Long imovelId, LocalDate dataInicio, LocalDate dataFim) {
+        if (imovelId == null) {
+            return;
+        }
+        imovelProcessoRepository.findFirstByImovel_IdAndAtivoTrueOrderByIdDesc(imovelId).ifPresent(row -> {
+            if (dataInicio != null) {
+                row.setDataInicio(dataInicio);
+            }
+            row.setDataFim(dataFim);
+            imovelProcessoRepository.save(row);
+        });
+    }
+
     @Transactional
     public void desativarTodosVinculos(ImovelEntity imovel) {
         if (imovel.getId() == null) {

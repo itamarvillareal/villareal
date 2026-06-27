@@ -566,11 +566,12 @@ import { SeletorPessoaParteImovel } from './SeletorPessoaParteImovel.jsx';
  *   erro: string,
  *   onSelecionarPessoa: (pessoa: { id: number, nome?: string, cpf?: string, telefone?: string }) => void,
  *   onLimparPessoa: () => void,
+ *   onAbrirCadastroPessoa?: (pessoaId: number) => void,
  *   removendo?: boolean,
  *   salvando?: boolean,
  * }} props
  */
-function rotuloNomeComNumero(numeroPessoa, nome) {
+export function rotuloNomeComNumero(numeroPessoa, nome) {
   const n = String(numeroPessoa ?? '').trim();
   const nm = String(nome ?? '').trim();
   if (n && nm) return `#${n} · ${nm}`;
@@ -590,6 +591,7 @@ export function CardParte({
   erro,
   onSelecionarPessoa,
   onLimparPessoa,
+  onAbrirCadastroPessoa,
   removendo = false,
   salvando = false,
 }) {
@@ -609,6 +611,9 @@ export function CardParte({
   const avatarVinculado = tipo === 'proprietario' ? 'bg-blue-500 text-white' : 'bg-teal-500 text-white';
 
   const href = telHref(contato);
+  const pessoaIdNum = Number(String(numeroPessoa ?? '').trim());
+  const podeAbrirCadastro =
+    typeof onAbrirCadastroPessoa === 'function' && Number.isFinite(pessoaIdNum) && pessoaIdNum >= 1;
 
   return (
     <div
@@ -653,7 +658,20 @@ export function CardParte({
               />
             </div>
             <div>
-              <p className="text-base font-semibold text-slate-900 dark:text-slate-50 truncate">
+              <p
+                className={`text-base font-semibold text-slate-900 dark:text-slate-50 truncate ${
+                  podeAbrirCadastro ? 'cursor-pointer rounded px-0.5 -mx-0.5 hover:bg-white/60 dark:hover:bg-white/5' : ''
+                }`}
+                title={podeAbrirCadastro ? 'Duplo clique para abrir o cadastro da pessoa' : undefined}
+                onDoubleClick={
+                  podeAbrirCadastro
+                    ? (e) => {
+                        e.stopPropagation();
+                        onAbrirCadastroPessoa(pessoaIdNum);
+                      }
+                    : undefined
+                }
+              >
                 {rotuloNomeComNumero(numeroPessoa, nome)}
               </p>
               <p className="text-sm text-slate-600 dark:text-slate-400 mt-0.5 font-mono tabular-nums">

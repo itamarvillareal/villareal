@@ -10,9 +10,11 @@ import { LazyCadastroPessoas } from '../app/lazyScreens.jsx';
  *   onFechar: () => void,
  *   titulo?: string,
  *   onPessoaSalva?: (pessoa: { id: number, nome?: string, cpf?: string }) => void,
+ *   /** Classe de empilhamento (ex.: z-[210] sobre modal de imóvel z-[200]). */
+ *   overlayClassName?: string,
  * }} props
  */
-export function PessoaEmbedModal({ embed, onFechar, titulo, onPessoaSalva }) {
+export function PessoaEmbedModal({ embed, onFechar, titulo, onPessoaSalva, overlayClassName = 'z-[80]' }) {
   useCloseOnEscape(!!embed, onFechar);
 
   const embedIntent = useMemo(() => {
@@ -32,7 +34,7 @@ export function PessoaEmbedModal({ embed, onFechar, titulo, onPessoaSalva }) {
 
   return (
     <div
-      className="fixed inset-0 z-[80] flex items-center justify-center p-2 sm:p-4 bg-black/55"
+      className={`fixed inset-0 ${overlayClassName} flex items-center justify-center p-2 sm:p-4 bg-black/55`}
       role="dialog"
       aria-modal="true"
       aria-labelledby="pessoa-embed-modal-title"

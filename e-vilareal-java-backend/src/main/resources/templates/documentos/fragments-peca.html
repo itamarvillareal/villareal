@@ -335,10 +335,16 @@
         .contrato-clausula {
             display: block;
             margin-bottom: 0;
-            white-space: pre-line;
+            white-space: normal;
             /* Recuo francês só nas cláusulas: 1ª linha na margem; da 2ª em diante, leve recuo. */
             padding-left: 1.25cm;
             text-indent: -1.25cm;
+            text-align: justify;
+            text-align-last: justify;
+        }
+
+        .contrato-clausula strong {
+            font-weight: bold;
         }
 
         .contrato-clausula:last-of-type {
@@ -387,7 +393,7 @@
 
         .contrato-assinaturas .linha {
             border-bottom: 1pt solid #000;
-            height: 36pt;
+            height: 46.8pt;
             margin-bottom: 6pt;
         }
 

@@ -27,6 +27,12 @@ class FlexaoUtilTest {
     }
 
     @Test
+    void adequarArtigoOsPluralNaoViraOss() {
+        assertThat(adequar("os", MASCULINO, PLURAL)).isEqualTo("os");
+        assertThat(adequar("as", FEMININO, PLURAL)).isEqualTo("as");
+    }
+
+    @Test
     void adequarEle() {
         assertThat(adequar("ele", MASCULINO, SINGULAR)).isEqualTo("ele");
         assertThat(adequar("ele", FEMININO, SINGULAR)).isEqualTo("ela");
@@ -160,6 +166,19 @@ class FlexaoUtilTest {
         assertThat(adequar("é", FEMININO, SINGULAR)).isEqualTo("é");
         assertThat(adequar("é", MASCULINO, PLURAL)).isEqualTo("são");
         assertThat(adequar("é", FEMININO, PLURAL)).isEqualTo("são");
+    }
+
+    @Test
+    void adequarFica() {
+        assertThat(adequar("fica", MASCULINO, SINGULAR)).isEqualTo("fica");
+        assertThat(adequar("fica", MASCULINO, PLURAL)).isEqualTo("ficam");
+        assertThat(adequar("fica", FEMININO, PLURAL)).isEqualTo("ficam");
+    }
+
+    @Test
+    void adequarDeve() {
+        assertThat(adequar("deve", MASCULINO, SINGULAR)).isEqualTo("deve");
+        assertThat(adequar("deve", MASCULINO, PLURAL)).isEqualTo("devem");
     }
 
     @Test

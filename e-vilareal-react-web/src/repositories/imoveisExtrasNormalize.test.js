@@ -31,4 +31,9 @@ describe('normalizarExtrasImovelParaUi', () => {
     expect(n.aguaNumero).toBe('A1');
     expect(n.existeDebAgua).toBe('nao');
   });
+
+  it('normaliza dataPag1TxCond compacta ddmmyyyy para dd/mm/aaaa', () => {
+    const n = normalizarExtrasImovelParaUi({ dataPag1TxCond: '10072016' });
+    expect(n.dataPag1TxCond).toBe('10/07/2016');
+  });
 });

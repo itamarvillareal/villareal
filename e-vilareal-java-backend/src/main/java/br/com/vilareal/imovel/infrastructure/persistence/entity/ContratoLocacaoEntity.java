@@ -46,6 +46,10 @@ public class ContratoLocacaoEntity {
     @Column(name = "dia_vencimento_aluguel")
     private Integer diaVencimentoAluguel;
 
+    /** {@code DEPOSITO_TED} ou {@code BOLETO} — Cláusula 3ª do contrato. */
+    @Column(name = "forma_pagamento_aluguel", length = 40)
+    private String formaPagamentoAluguel;
+
     @Column(name = "dia_repasse")
     private Integer diaRepasse;
 

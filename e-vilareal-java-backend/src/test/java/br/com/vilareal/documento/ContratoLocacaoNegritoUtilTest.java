@@ -30,4 +30,17 @@ class ContratoLocacaoNegritoUtilTest {
         assertThat(out).contains("<strong>CARLOS RICARDO DE CARVALHO REIMER</strong>");
         assertThat(out).contains("<strong>GLOBO COMERCIO, CONSTRUÇÕES E SERVIÇOS EIRELI</strong>");
     }
+
+    @Test
+    void aplicarNegritoNomesCompletos_colapsaVirgulaAoNomeSemEspaco() {
+        String html = ContratoLocacaoDocumentoService.textoProcessadoParaHtml(
+                "como LOCATÁRIO, Marcus Antonio Cardoso Anacleto , brasileiro");
+
+        String out = ContratoLocacaoNegritoUtil.aplicarNegritoNomesCompletos(
+                html, "Marcus Antonio Cardoso Anacleto");
+
+        assertThat(out).contains("<strong>MARCUS ANTONIO CARDOSO ANACLETO</strong>, brasileiro");
+        assertThat(out).doesNotContain("ANACLETO</strong> ,");
+        assertThat(out).doesNotContain("ANACLETO ,");
+    }
 }

@@ -14,4 +14,15 @@ public record ContratoLocacaoRequest(
         /** {@code duas_vias} (padrão) ou {@code via_digital}. */
         String formaAssinatura,
         /** Opcional: locatários da UI (mescla com contrato e processo vinculado). */
-        List<Long> inquilinosPessoaIds) {}
+        List<Long> inquilinosPessoaIds,
+        /** Opcional: vigência do formulário (sobrescreve contrato gravado só na geração do PDF). */
+        LocalDate dataInicioContrato,
+        LocalDate dataFimContrato,
+        /** Opcional: valor mensal do formulário (sobrescreve contrato gravado só na geração do PDF). */
+        java.math.BigDecimal valorAluguelContrato,
+        /** Opcional: link da vistoria do formulário (sobrescreve imóvel gravado só na geração do PDF). */
+        String linkVistoria,
+        /** Opcional: dia de vencimento do formulário (sobrescreve contrato gravado só na geração do PDF). */
+        Integer diaVencimentoAluguel,
+        /** Opcional: {@code DEPOSITO_TED} ou {@code BOLETO} — Cláusula 3ª. */
+        String formaPagamentoAluguel) {}

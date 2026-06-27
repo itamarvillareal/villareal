@@ -56,6 +56,11 @@ public final class FlexaoUtil {
             Map.entry("mencionado", new String[] {"mencionado", "mencionada", "mencionados", "mencionadas"}),
             Map.entry("é", new String[] {"é", "é", "são", "são"}),
             Map.entry("está", new String[] {"está", "está", "estão", "estão"}),
+            Map.entry("fica", new String[] {"fica", "fica", "ficam", "ficam"}),
+            Map.entry("deve", new String[] {"deve", "deve", "devem", "devem"}),
+            Map.entry("deverá", new String[] {"deverá", "deverá", "deverão", "deverão"}),
+            Map.entry("obrigado", new String[] {"obrigado", "obrigada", "obrigados", "obrigadas"}),
+            Map.entry("pagador", new String[] {"pagador", "pagadora", "pagadores", "pagadoras"}),
             Map.entry("efetuar", new String[] {"efetuar", "efetuar", "efetuarem", "efetuarem"}),
             Map.entry("endereço", new String[] {"endereço", "endereço", "endereços", "endereços"}),
             Map.entry("réu", new String[] {"réu", "ré", "réus", "rés"}),
@@ -119,7 +124,13 @@ public final class FlexaoUtil {
     }
 
     private static String chaveLema(String palavra) {
-        return palavra.trim().toLowerCase(Locale.ROOT);
+        String lema = palavra.trim().toLowerCase(Locale.ROOT);
+        // Evita pluralizar "os"/"as" como palavra base (viraria "oss"/"ass").
+        return switch (lema) {
+            case "os" -> "o";
+            case "as" -> "a";
+            default -> lema;
+        };
     }
 
     /** Heurística masculino → feminino. */

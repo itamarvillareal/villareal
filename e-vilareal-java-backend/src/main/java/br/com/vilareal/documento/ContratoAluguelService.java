@@ -39,10 +39,15 @@ public class ContratoAluguelService {
         ContratoPartesProcessoResolver.PartesContratoAluguel partes =
                 partesProcessoResolver.resolverPartesAluguel(request.processoId());
 
-        String qualificacaoLocador = String.join(", e ", partes.qualificacoesLocador());
-        String qualificacaoLocatario = String.join(", e ", partes.qualificacoesLocatario());
-        String preambuloHtml = QualificacaoPessoaUtil.montarPreambuloContratoAluguel(
-                qualificacaoLocador, qualificacaoLocatario, partes.nomesLocatario().size() > 1);
+        String qualificacaoLocador = partes.qualificacoesLocador().stream()
+                .map(QualificacaoPessoaUtil::semVirgulaFinal)
+                .collect(Collectors.joining(", e "));
+        String qualificacaoLocatario = partes.qualificacoesLocatario().stream()
+                .map(QualificacaoPessoaUtil::semVirgulaFinal)
+                .collect(Collectors.joining(", e "));
+        String preambuloHtml = LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao(
+                QualificacaoPessoaUtil.montarPreambuloContratoAluguel(
+                        qualificacaoLocador, qualificacaoLocatario, partes.nomesLocatario().size() > 1));
 
         List<String> clausulas = ContratoAluguelClausulas.montarClausulas();
         String nomeLocador = partes.nomesLocador().stream().collect(Collectors.joining(" E "));

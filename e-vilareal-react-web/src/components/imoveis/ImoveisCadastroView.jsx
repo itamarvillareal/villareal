@@ -30,7 +30,12 @@ import { ListaInquilinosImovel } from './ListaInquilinosImovel.jsx';
 import { CampoNumeroComContador } from '../ui/CampoNumeroComContador.jsx';
 import { Field } from '../ui/Field.jsx';
 import { featureFlags, FEATURE_IPTU_NOVO } from '../../config/featureFlags.js';
-import { resolverAliasHojeEmTexto } from '../../services/hjDateAliasService.js';
+import {
+  formatarDataBrInput,
+  normalizarDataNascimentoBrAoBlur,
+  resolverAliasHojeEmTexto,
+} from '../../services/hjDateAliasService.js';
+import { FORMAS_PAGAMENTO_ALUGUEL } from '../../data/locacaoFormaPagamentoAluguel.js';
 
 /**
  * Conteúdo interno do cadastro de imóveis (dentro de `.imoveis-admin-sheet`).
@@ -81,6 +86,8 @@ export function ImoveisCadastroView(props) {
     setTaxaAdministracaoPercent,
     diaPagAluguel,
     setDiaPagAluguel,
+    formaPagamentoAluguel,
+    setFormaPagamentoAluguel,
     dataPag1TxCond,
     setDataPag1TxCond,
     inscricaoImobiliaria,
@@ -168,6 +175,7 @@ export function ImoveisCadastroView(props) {
     onAbrirIptu,
     onSelecionarPessoaProprietario,
     onLimparPessoaProprietario,
+    onAbrirCadastroPessoa,
     fiadores,
     setFiadores,
     inquilinos,
@@ -566,15 +574,48 @@ export function ImoveisCadastroView(props) {
               <input type="text" value={diaPagAluguel} onChange={(e) => setDiaPagAluguel(e.target.value)} className={imoveisInputClass} />
             </Field>
           </div>
+          <fieldset className="rounded-lg border border-slate-200/90 dark:border-white/[0.08] p-4">
+            <legend className="px-1 text-sm font-medium text-slate-800 dark:text-slate-100">
+              Forma de pagamento do aluguel (Cláusula 3ª)
+            </legend>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {FORMAS_PAGAMENTO_ALUGUEL.map((f) => (
+                <label
+                  key={f.id}
+                  className={`flex cursor-pointer gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors ${
+                    formaPagamentoAluguel === f.id
+                      ? 'border-teal-400 bg-teal-50 dark:border-teal-700 dark:bg-teal-950/40'
+                      : 'border-slate-200 hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-800/60'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="formaPagamentoAluguel"
+                    className="mt-0.5"
+                    checked={formaPagamentoAluguel === f.id}
+                    onChange={() => setFormaPagamentoAluguel(f.id)}
+                  />
+                  <span>
+                    <span className="block font-medium">{f.label}</span>
+                    <span className="text-slate-600 dark:text-slate-400">{f.descricao}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
           <div className="flex flex-wrap items-end gap-3 pt-1">
             <Field label="Data pag. 1ª Tx. Cond." className="w-full sm:w-44">
               <input
                 type="text"
+                inputMode="numeric"
+                autoComplete="off"
                 value={dataPag1TxCond}
                 onChange={(e) => {
                   const v = e.target.value;
-                  setDataPag1TxCond(resolverAliasHojeEmTexto(v, 'br') ?? v);
+                  const hj = resolverAliasHojeEmTexto(v, 'br');
+                  setDataPag1TxCond(hj ?? formatarDataBrInput(v));
                 }}
+                onBlur={(e) => setDataPag1TxCond(normalizarDataNascimentoBrAoBlur(e.target.value))}
                 placeholder="dd/mm/aaaa ou hj"
                 className={imoveisInputClass}
               />
@@ -624,16 +665,32 @@ export function ImoveisCadastroView(props) {
             <Field label="Data início" className="w-full sm:w-40">
               <input
                 type="text"
+                inputMode="numeric"
+                autoComplete="off"
                 value={dataInicioContrato}
-                onChange={(e) => setDataInicioContrato(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  const hj = resolverAliasHojeEmTexto(v, 'br');
+                  setDataInicioContrato(hj ?? formatarDataBrInput(v));
+                }}
+                onBlur={(e) => setDataInicioContrato(normalizarDataNascimentoBrAoBlur(e.target.value))}
+                placeholder="dd/mm/aaaa ou hj"
                 className={imoveisInputClass}
               />
             </Field>
             <Field label="Data fim" className="w-full sm:w-40">
               <input
                 type="text"
+                inputMode="numeric"
+                autoComplete="off"
                 value={dataFimContrato}
-                onChange={(e) => setDataFimContrato(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  const hj = resolverAliasHojeEmTexto(v, 'br');
+                  setDataFimContrato(hj ?? formatarDataBrInput(v));
+                }}
+                onBlur={(e) => setDataFimContrato(normalizarDataNascimentoBrAoBlur(e.target.value))}
+                placeholder="dd/mm/aaaa ou hj"
                 className={imoveisInputClass}
               />
             </Field>
@@ -703,6 +760,7 @@ export function ImoveisCadastroView(props) {
               erro={proprietarioCadastroErro}
               onSelecionarPessoa={onSelecionarPessoaProprietario}
               onLimparPessoa={onLimparPessoaProprietario}
+              onAbrirCadastroPessoa={onAbrirCadastroPessoa}
               removendo={apiSaving}
               salvando={apiSaving}
             />
@@ -715,6 +773,7 @@ export function ImoveisCadastroView(props) {
                 inquilinos={inquilinos}
                 onChange={setInquilinos}
                 onPersistir={onPersistirInquilinos}
+                onAbrirCadastroPessoa={onAbrirCadastroPessoa}
                 disabled={apiSaving}
               />
             </div>
@@ -728,6 +787,7 @@ export function ImoveisCadastroView(props) {
               fiadores={fiadores}
               onChange={setFiadores}
               onPersistir={(novaLista) => onSalvar?.({ fiadores: novaLista })}
+              onAbrirCadastroPessoa={onAbrirCadastroPessoa}
               disabled={apiSaving}
             />
           </div>

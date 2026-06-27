@@ -13,6 +13,7 @@ import {
 import { ImoveisCadastroView } from './imoveis/ImoveisCadastroView.jsx';
 import { ModalVinculosProcessoImovel } from './imoveis/ModalVinculosProcessoImovel.jsx';
 import { ModalGerarContratoLocacao } from './imoveis/ModalGerarContratoLocacao.jsx';
+import { PessoaEmbedModal } from './PessoaEmbedModal.jsx';
 import { padCliente } from '../data/processosDadosRelatorio.js';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import {
@@ -28,6 +29,10 @@ import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCl
 import { obterLinkPastaImovel } from '../repositories/driveRepository.js';
 import { Field } from './ui/Field.jsx';
 import { imovelCorrespondeBusca } from './imoveis/imovelBusca.js';
+import {
+  FORMA_PAGAMENTO_ALUGUEL_PADRAO,
+  normalizarFormaPagamentoAluguel,
+} from '../data/locacaoFormaPagamentoAluguel.js';
 const inputClass = imoveisInputClass;
 const inputReadOnlyClass = imoveisInputReadOnlyClass;
 const btnPrimary = imoveisBtnPrimary;
@@ -55,6 +60,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   const [valorLocacao, setValorLocacao] = useState('1700');
   const [taxaAdministracaoPercent, setTaxaAdministracaoPercent] = useState('10');
   const [diaPagAluguel, setDiaPagAluguel] = useState('04');
+  const [formaPagamentoAluguel, setFormaPagamentoAluguel] = useState(FORMA_PAGAMENTO_ALUGUEL_PADRAO);
   const [dataPag1TxCond, setDataPag1TxCond] = useState('');
   const [inscricaoImobiliaria, setInscricaoImobiliaria] = useState('101.406.0332.243');
   const [existeDebIptu, setExisteDebIptu] = useState('NÃO');
@@ -89,7 +95,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   const [proprietarioContato, setProprietarioContato] = useState('');
   const [proprietarioCadastroCarregando, setProprietarioCadastroCarregando] = useState(false);
   const [proprietarioCadastroErro, setProprietarioCadastroErro] = useState('');
-  const [linkVistoria, setLinkVistoria] = useState('https://www.drop');
+  const [linkVistoria, setLinkVistoria] = useState('');
   const [inquilinoNumeroPessoa, setInquilinoNumeroPessoa] = useState('');
   const [inquilino, setInquilino] = useState('');
   const [inquilinoCpf, setInquilinoCpf] = useState('');
@@ -102,6 +108,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   const [infoIptuTexto, setInfoIptuTexto] = useState('IPTU 2025 cinco parcelas em atraso + duas à vencer R$1.323,30');
   const [showModalVinculosProc, setShowModalVinculosProc] = useState(false);
   const [showModalContratoLocacao, setShowModalContratoLocacao] = useState(false);
+  const [pessoaEmbed, setPessoaEmbed] = useState(null);
   const [contratoAssinadoInquilino, setContratoAssinadoInquilino] = useState('nao');
   const [contratoAssinadoProprietario, setContratoAssinadoProprietario] = useState('nao');
   const [contratoAssinadoGarantidor, setContratoAssinadoGarantidor] = useState('nao');
@@ -243,6 +250,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     setValorLocacao(String(data.valorLocacao ?? ''));
     setTaxaAdministracaoPercent(String(data.taxaAdministracaoPercent ?? '10'));
     setDiaPagAluguel(String(data.diaPagAluguel ?? ''));
+    setFormaPagamentoAluguel(normalizarFormaPagamentoAluguel(data.formaPagamentoAluguel));
     setDataPag1TxCond(String(data.dataPag1TxCond ?? ''));
     setInscricaoImobiliaria(String(data.inscricaoImobiliaria ?? ''));
     setExisteDebIptu(String(data.existeDebIptu ?? ''));
@@ -538,6 +546,15 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     jsonExtrasOriginalRef.current = ex;
   }
 
+  function abrirCadastroPessoa(pessoaId) {
+    const id = Number(pessoaId);
+    if (!Number.isFinite(id) || id < 1) return;
+    setPessoaEmbed((prev) => ({
+      revision: (prev?.revision ?? 0) + 1,
+      pessoaId: id,
+    }));
+  }
+
   async function aplicarPessoaProprietario(p) {
     if (!p || p.id == null) return;
     cargaFormularioSeqRef.current += 1;
@@ -680,6 +697,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
         valorLocacao,
         taxaAdministracaoPercent,
         diaPagAluguel,
+        formaPagamentoAluguel,
         dataPag1TxCond,
         inscricaoImobiliaria,
         existeDebIptu,
@@ -961,6 +979,8 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
             setTaxaAdministracaoPercent={setTaxaAdministracaoPercent}
             diaPagAluguel={diaPagAluguel}
             setDiaPagAluguel={setDiaPagAluguel}
+            formaPagamentoAluguel={formaPagamentoAluguel}
+            setFormaPagamentoAluguel={setFormaPagamentoAluguel}
             dataPag1TxCond={dataPag1TxCond}
             setDataPag1TxCond={setDataPag1TxCond}
             inscricaoImobiliaria={inscricaoImobiliaria}
@@ -1070,6 +1090,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
             onAbrirIptu={() => setShowModalIptu(true)}
             onSelecionarPessoaProprietario={aplicarPessoaProprietario}
             onLimparPessoaProprietario={limparPessoaProprietario}
+            onAbrirCadastroPessoa={abrirCadastroPessoa}
           />
         </div>
       </div>
@@ -1086,6 +1107,12 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
         inquilinosPessoaIds={(inquilinos || [])
           .map((i) => Number(i?.pessoaId))
           .filter((id) => Number.isFinite(id) && id > 0)}
+        dataInicioContrato={dataInicioContrato}
+        dataFimContrato={dataFimContrato}
+        valorLocacao={valorLocacao}
+        linkVistoria={linkVistoria}
+        diaPagAluguel={diaPagAluguel}
+        formaPagamentoAluguel={formaPagamentoAluguel}
         onAntesDeGerar={() =>
           salvarCadastroAtual({
             fiadores,
@@ -1094,6 +1121,12 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
           })
         }
         onErro={(msg) => setApiError(msg)}
+      />
+
+      <PessoaEmbedModal
+        embed={pessoaEmbed}
+        onFechar={() => setPessoaEmbed(null)}
+        overlayClassName={modoModal ? 'z-[210]' : 'z-[80]'}
       />
 
       <ModalVinculosProcessoImovel
