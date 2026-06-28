@@ -20,7 +20,7 @@ public interface OrgaoJulgadorRepository extends JpaRepository<OrgaoJulgadorEnti
             WHERE o.ativo = TRUE
               AND (:tribunalId IS NULL OR t.id = :tribunalId)
               AND (:municipioId IS NULL OR m.id = :municipioId)
-              AND (:qNorm IS NULL OR :qNorm = '' OR UPPER(o.nome) LIKE CONCAT('%', :qNorm, '%'))
+              AND (:qNorm IS NULL OR :qNorm = '' OR o.nomeNormalizado LIKE CONCAT('%', :qNorm, '%'))
             ORDER BY o.usoCount DESC,
                      CASE WHEN m.id IN (5201108, 5208707) THEN 0 ELSE 1 END,
                      o.favorito DESC,

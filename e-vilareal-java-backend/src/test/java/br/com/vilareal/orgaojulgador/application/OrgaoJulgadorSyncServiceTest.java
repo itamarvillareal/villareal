@@ -9,9 +9,11 @@ import br.com.vilareal.orgaojulgador.domain.OrgaoJulgadorTipo;
 import br.com.vilareal.orgaojulgador.infrastructure.persistence.entity.OrgaoJulgadorEntity;
 import br.com.vilareal.orgaojulgador.infrastructure.persistence.entity.TribunalEntity;
 import br.com.vilareal.orgaojulgador.infrastructure.persistence.repository.OrgaoJulgadorRepository;
+import br.com.vilareal.orgaojulgador.infrastructure.persistence.repository.TribunalRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.io.ClassPathResource;
@@ -26,6 +28,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -42,6 +45,8 @@ class OrgaoJulgadorSyncServiceTest {
     @Mock
     private MunicipioRepository municipioRepository;
     @Mock
+    private TribunalRepository tribunalRepository;
+    @Mock
     private HttpResponse<byte[]> httpResponse;
 
     private OrgaoJulgadorSyncService service;
@@ -49,7 +54,11 @@ class OrgaoJulgadorSyncServiceTest {
     @BeforeEach
     void setUp() {
         service = new OrgaoJulgadorSyncService(
-                datajudProxyService, tribunalApplicationService, orgaoJulgadorRepository, municipioRepository);
+                datajudProxyService,
+                tribunalApplicationService,
+                orgaoJulgadorRepository,
+                municipioRepository,
+                tribunalRepository);
     }
 
     @Test
@@ -81,6 +90,20 @@ class OrgaoJulgadorSyncServiceTest {
         assertThat(primeira.getOrgaosRecebidos()).isEqualTo(4);
         assertThat(primeira.getOrgaosInseridos()).isEqualTo(4);
         assertThat(primeira.getOrgaosDesativados()).isZero();
+
+        // nome_normalizado e fonte preenchidos em todos os órgãos gravados (resposta DataJud)
+        ArgumentCaptor<OrgaoJulgadorEntity> captor = ArgumentCaptor.forClass(OrgaoJulgadorEntity.class);
+        verify(orgaoJulgadorRepository, atLeastOnce()).save(captor.capture());
+        OrgaoJulgadorEntity civel = captor.getAllValues().stream()
+                .filter(o -> Integer.valueOf(11447).equals(o.getCodigoCnj()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(civel.getNomeNormalizado()).contains("JUIZADO ESPECIAL CIVEL");
+        assertThat(civel.getFonte()).isEqualTo("DATAJUD");
+
+        // sync íntegra carimba ultima_sincronizacao no tribunal
+        assertThat(tribunal.getUltimaSincronizacao()).isNotNull();
+        verify(tribunalRepository, atLeastOnce()).save(tribunal);
 
         OrgaoJulgadorEntity existente = new OrgaoJulgadorEntity();
         existente.setId(10L);
@@ -116,6 +139,10 @@ class OrgaoJulgadorSyncServiceTest {
         assertThat(resp.isDesativacaoExecutada()).isFalse();
         assertThat(resp.getOrgaosDesativados()).isZero();
         verify(orgaoJulgadorRepository, times(0)).findByTribunal_IdAndAtivoTrue(9);
+
+        // sync abortada pela trava de sanidade não carimba ultima_sincronizacao
+        assertThat(tribunal.getUltimaSincronizacao()).isNull();
+        verify(tribunalRepository, never()).save(any());
     }
 
     private static TribunalEntity tribunalAtivo() {

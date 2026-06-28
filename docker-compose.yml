@@ -46,6 +46,9 @@ services:
       PJE_BROWSER_PROXY: ${PJE_BROWSER_PROXY:-}
       PJE_TRT18_LOGIN_PADRAO: ${PJE_TRT18_LOGIN_PADRAO:-00733235190}
       PJE_EMAIL_TRIGGER_ENABLED: ${PJE_EMAIL_TRIGGER_ENABLED:-false}
+      # DataJud / CNJ — chave real só em .env.docker na VPS (não commitar valor)
+      DATAJUD_API_KEY: ${DATAJUD_API_KEY:-}
+      DATAJUD_BASE_URL: ${DATAJUD_BASE_URL:-https://api-publica.datajud.cnj.jus.br}
     
     
     extra_hosts:

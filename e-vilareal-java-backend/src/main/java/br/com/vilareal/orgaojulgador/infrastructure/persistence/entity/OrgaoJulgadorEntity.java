@@ -28,6 +28,9 @@ public class OrgaoJulgadorEntity {
     @Column(nullable = false, length = 255)
     private String nome;
 
+    @Column(name = "nome_normalizado", length = 255)
+    private String nomeNormalizado;
+
     @Column(length = 8)
     private String grau;
 
@@ -48,6 +51,15 @@ public class OrgaoJulgadorEntity {
     @Column(nullable = false)
     private Boolean ativo = true;
 
+    @Column(length = 20)
+    private String fonte;
+
     @Column(name = "synced_at")
     private Instant syncedAt;
+
+    @Column(name = "criado_em", insertable = false, updatable = false)
+    private Instant criadoEm;
+
+    @Column(name = "atualizado_em", insertable = false, updatable = false)
+    private Instant atualizadoEm;
 }

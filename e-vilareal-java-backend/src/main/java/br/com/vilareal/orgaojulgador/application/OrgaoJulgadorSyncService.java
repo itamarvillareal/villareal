@@ -2,6 +2,7 @@ package br.com.vilareal.orgaojulgador.application;
 
 import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.datajud.DatajudProxyService;
+import br.com.vilareal.localidade.domain.MunicipioTextoUtil;
 import br.com.vilareal.localidade.infrastructure.persistence.entity.MunicipioEntity;
 import br.com.vilareal.localidade.infrastructure.persistence.repository.MunicipioRepository;
 import br.com.vilareal.orgaojulgador.api.dto.OrgaoJulgadorSyncResponse;
@@ -10,6 +11,7 @@ import br.com.vilareal.orgaojulgador.domain.OrgaoJulgadorTipoUtil;
 import br.com.vilareal.orgaojulgador.infrastructure.persistence.entity.OrgaoJulgadorEntity;
 import br.com.vilareal.orgaojulgador.infrastructure.persistence.entity.TribunalEntity;
 import br.com.vilareal.orgaojulgador.infrastructure.persistence.repository.OrgaoJulgadorRepository;
+import br.com.vilareal.orgaojulgador.infrastructure.persistence.repository.TribunalRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ClassPathResource;
@@ -32,21 +34,26 @@ public class OrgaoJulgadorSyncService {
     private static final Logger log = LoggerFactory.getLogger(OrgaoJulgadorSyncService.class);
     private static final double MINIMO_FRACAO_ORGAOS_ATIVOS = 0.90;
     private static final String FALLBACK_TJGO = "seeds/orgaos-julgadores-tjgo.json";
+    private static final String FONTE_DATAJUD = "DATAJUD";
+    private static final String FONTE_FALLBACK_JSON = "FALLBACK_JSON";
 
     private final DatajudProxyService datajudProxyService;
     private final TribunalApplicationService tribunalApplicationService;
     private final OrgaoJulgadorRepository orgaoJulgadorRepository;
     private final MunicipioRepository municipioRepository;
+    private final TribunalRepository tribunalRepository;
 
     public OrgaoJulgadorSyncService(
             DatajudProxyService datajudProxyService,
             TribunalApplicationService tribunalApplicationService,
             OrgaoJulgadorRepository orgaoJulgadorRepository,
-            MunicipioRepository municipioRepository) {
+            MunicipioRepository municipioRepository,
+            TribunalRepository tribunalRepository) {
         this.datajudProxyService = datajudProxyService;
         this.tribunalApplicationService = tribunalApplicationService;
         this.orgaoJulgadorRepository = orgaoJulgadorRepository;
         this.municipioRepository = municipioRepository;
+        this.tribunalRepository = tribunalRepository;
     }
 
     @Transactional
@@ -144,9 +151,11 @@ public class OrgaoJulgadorSyncService {
                 atualizados++;
             }
             ent.setNome(item.nome());
+            ent.setNomeNormalizado(MunicipioTextoUtil.normalizarNome(item.nome()));
             ent.setGrau(item.grau());
             ent.setTipo(OrgaoJulgadorTipoUtil.classificar(item.nome(), item.grau()));
             ent.setAtivo(true);
+            ent.setFonte(fallbackJson ? FONTE_FALLBACK_JSON : FONTE_DATAJUD);
             ent.setSyncedAt(agora);
 
             MunicipioEntity municipio = resolverMunicipio(item.codigoMunicipioIbge(), municipiosPorIbge);
@@ -167,6 +176,13 @@ public class OrgaoJulgadorSyncService {
                     desativados++;
                 }
             }
+        }
+
+        // Carimba a sincronização do tribunal apenas quando a resposta veio íntegra
+        // (não em sync abortada pela trava de sanidade).
+        if (podeDesativar) {
+            tribunal.setUltimaSincronizacao(agora);
+            tribunalRepository.save(tribunal);
         }
 
         resp.setOrgaosInseridos(inseridos);
