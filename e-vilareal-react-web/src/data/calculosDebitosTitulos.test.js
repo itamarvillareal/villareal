@@ -5,6 +5,7 @@ import {
   enriquecerTitulosAPartirDeDebitosNaRodada,
   mesclarTitulosGravadosComRecalculo,
   patchRodadaAoAceitarPagamento,
+  patchRodadaAoDesfazerAceitarPagamento,
   tituloFromCamposTaxa,
   titulosGradeTemValor,
 } from './calculosDebitosTitulos.js';
@@ -97,6 +98,74 @@ describe('calculosDebitosTitulos', () => {
     expect(patch.titulosGravadosAceito?.[0].juros).toBe('R$ 99,00');
     expect(patch.titulos?.[0].juros).toBe('R$ 99,00');
     expect(patch.dataCalculoRodada).toBe('23/06/2026');
+  });
+
+  it('patchRodadaAoDesfazerAceitarPagamento: preserva débitos e apaga só o plano de pagamento', () => {
+    const patch = patchRodadaAoDesfazerAceitarPagamento({
+      parcelamentoAceito: true,
+      titulos: [
+        { valorInicial: 'R$ 100,00', dataVencimento: '01/01/2020', juros: 'R$ 9,00' },
+        { valorInicial: 'R$ 200,00', dataVencimento: '01/02/2020', juros: 'R$ 8,00' },
+      ],
+      titulosGravadosAceito: [
+        { valorInicial: 'R$ 100,00', dataVencimento: '01/01/2020' },
+        { valorInicial: 'R$ 200,00', dataVencimento: '01/02/2020' },
+      ],
+      parcelas: [{ valorParcela: 'R$ 50,00', dataVencimento: '01/02/2026' }],
+      quantidadeParcelasInformada: '12',
+      taxaJurosParcelamento: '1,50',
+      paginaParcelamento: 3,
+      honorariosDataRecebimento: { 'titulo:0': '01/03/2026', 'parcela:0': '02/03/2026' },
+    });
+    // Destrava e remove o snapshot congelado, mas PRESERVA os débitos (vencimento/valor) em `titulos`.
+    expect(patch.parcelamentoAceito).toBe(false);
+    expect(patch.titulosGravadosAceito).toEqual([]);
+    expect(patch.titulos).toHaveLength(2);
+    expect(patch.titulos[0].dataVencimento).toBe('01/01/2020');
+    expect(patch.titulos[0].valorInicial).toBe('R$ 100,00');
+    expect(patch.titulos[1].valorInicial).toBe('R$ 200,00');
+    // Plano de pagamento apagado.
+    expect(patch.parcelas).toEqual([]);
+    expect(patch.quantidadeParcelasInformada).toBe('00');
+    expect(patch.taxaJurosParcelamento).toBe('0,00');
+    expect(patch.paginaParcelamento).toBe(1);
+    // Mantém recebimento de honorários de títulos; descarta o de parcelas.
+    expect(patch.honorariosDataRecebimento).toEqual({ 'titulo:0': '01/03/2026' });
+  });
+
+  it('patchRodadaAoDesfazerAceitarPagamento: promove o snapshot quando o estado não tem valores', () => {
+    const patch = patchRodadaAoDesfazerAceitarPagamento({
+      parcelamentoAceito: true,
+      titulos: [],
+      titulosGravadosAceito: [
+        { valorInicial: 'R$ 628,88', dataVencimento: '10/01/2026' },
+        { valorInicial: 'R$ 556,78', dataVencimento: '10/02/2026' },
+      ],
+      parcelas: [{ valorParcela: 'R$ 50,00' }],
+    });
+    // Débitos não somem: vêm do snapshot promovido para `titulos`.
+    expect(patch.titulos).toHaveLength(2);
+    expect(patch.titulos[0].valorInicial).toBe('R$ 628,88');
+    expect(patch.titulos[1].dataVencimento).toBe('10/02/2026');
+    expect(patch.titulosGravadosAceito).toEqual([]);
+    expect(patch.parcelas).toEqual([]);
+  });
+
+  it('patchRodadaAoDesfazerAceitarPagamento: materializa os débitos exibidos (ex.: vindos de parcelas)', () => {
+    // Estado e snapshot vazios; os débitos só existem no que está EXIBIDO na grade.
+    const exibidos = [
+      { valorInicial: 'R$ 628,88', dataVencimento: '10/01/2026' },
+      { valorInicial: 'R$ 556,78', dataVencimento: '10/02/2026' },
+    ];
+    const patch = patchRodadaAoDesfazerAceitarPagamento(
+      { parcelamentoAceito: true, titulos: [], titulosGravadosAceito: [], parcelas: exibidos },
+      exibidos,
+    );
+    expect(patch.titulos).toHaveLength(2);
+    expect(patch.titulos[0].valorInicial).toBe('R$ 628,88');
+    expect(patch.titulos[1].dataVencimento).toBe('10/02/2026');
+    // Plano de pagamento apagado mesmo tendo sido a origem dos débitos.
+    expect(patch.parcelas).toEqual([]);
   });
 
   it('mesclarTitulosGravadosComRecalculo: encargos do recálculo, vencimento/valor do txt', () => {

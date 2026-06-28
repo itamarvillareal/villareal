@@ -68,11 +68,27 @@ export function poloEhReuProcesso(polo) {
   return p.includes('REU') || p.includes('REQUERIDO');
 }
 
-export function inferirEnderecamento(competencia, cidade, uf) {
+/** Procedimento «JEC» (Juizado Especial Cível) — aceita variações com/sem acento. */
+export function ehProcedimentoJec(procedimento) {
+  const p = String(procedimento ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .trim();
+  if (!p) return false;
+  return /\bJEC\b/.test(p) || p.includes('JUIZADO ESPECIAL CIVEL');
+}
+
+export function inferirEnderecamento(competencia, cidade, uf, procedimento) {
   const cid = String(cidade || 'Anápolis').trim() || 'Anápolis';
   const cidUpper = cid.toUpperCase();
   const sigla = String(uf || 'GO').trim().toUpperCase() || 'GO';
   const competenciaUpper = String(competencia || '').trim().toUpperCase();
+
+  // Regra de negócio: procedimento JEC sempre endereça ao Juizado Especial Cível da comarca.
+  if (ehProcedimentoJec(procedimento)) {
+    return `MERITÍSSIMO JUÍZO DO JUIZADO ESPECIAL CÍVEL DA COMARCA DE ${cidUpper} - ${sigla}`;
+  }
 
   if (!competenciaUpper) {
     return `MERITÍSSIMO JUÍZO DA COMARCA DE ${cidUpper} - ${sigla}`;
@@ -242,6 +258,7 @@ export async function montarDadosParaDocumentoFromProcesso(ctx) {
   const cidade = String(ctx.cidade ?? 'Anápolis').trim() || 'Anápolis';
   const uf = String(ctx.estado ?? 'GO').trim().toUpperCase() || 'GO';
   const competencia = String(ctx.competencia ?? '').trim();
+  const procedimento = String(ctx.procedimento ?? ctx.tramitacao ?? '').trim();
   const naturezaAcao = String(ctx.naturezaAcao ?? '').trim();
   const numeroProcesso =
     String(ctx.numeroProcessoNovo ?? '').trim() ||
@@ -276,7 +293,7 @@ export async function montarDadosParaDocumentoFromProcesso(ctx) {
   const qualificacaoAutor = autor.qualificacao;
   const qualificacaoReu = reu.qualificacao;
 
-  const enderecamento = inferirEnderecamento(competencia, cidade, uf);
+  const enderecamento = inferirEnderecamento(competencia, cidade, uf, procedimento);
   const cidadeEstado = formatarLocalData(formatarCidadeEstado(cidade, uf));
 
   const pessoaIdOutorgante = primeiraPessoaIdParteCliente(partes, papelUi);

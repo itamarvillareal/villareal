@@ -66,7 +66,12 @@ export function ConfigModeloDocumento({ values, onChange, errors = {}, onProcess
       const proc = await buscarProcessoPorChaveNatural(codigoCliente, numeroInterno);
       if (!proc) return null;
       onProcessoCarregado?.(proc);
-      const end = inferirEnderecamento(proc.competencia, proc.cidade, proc.uf || proc.estado);
+      const end = inferirEnderecamento(
+        proc.competencia,
+        proc.cidade,
+        proc.uf || proc.estado,
+        proc.procedimento || proc.tramitacao,
+      );
       const matchEnd = ENDERECAMENTOS.find((e) => e === end);
       onChange({
         numeroProcesso: proc.numeroCnj || proc.numeroProcessoNovo || proc.numeroProcessoAntigo || '',

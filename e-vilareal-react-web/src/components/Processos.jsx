@@ -2,6 +2,7 @@ import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, laz
 import { flushSync } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { OrgaoJulgadorAutocomplete } from './ui/OrgaoJulgadorAutocomplete.jsx';
+import { MunicipioAutocomplete } from './ui/MunicipioAutocomplete.jsx';
 import {
   getLancamentosContaCorrente,
   getTransacoesContaCorrenteCompleto,
@@ -609,6 +610,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [cidade, setCidade] = useState('');
   const [municipioSelecionado, setMunicipioSelecionado] = useState(null);
   const [orgaoJulgadorSelecionado, setOrgaoJulgadorSelecionado] = useState(null);
+  /** "Vara a distribuir": cidade conhecida, órgão ainda não sorteado (orgaoJulgadorId nulo). */
+  const [varaADistribuir, setVaraADistribuir] = useState(false);
   const [dataProtocolo, setDataProtocolo] = useState('');
   /** Pasta do processo (API `pasta`); legado localStorage também em `pastaArquivo`. */
   const [pasta, setPasta] = useState('');
@@ -1313,6 +1316,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       } else {
         setOrgaoJulgadorSelecionado(null);
       }
+      // Default "a distribuir": processo sem número e sem vara abre com a checkbox marcada (sobrescrevível).
+      setVaraADistribuir(!oid && String(numeroNovoPersistido ?? '').trim() === '');
       setResponsavel(pickCampoStrSalvo(r, 'responsavel', ''));
       const fkSalvo = pickCampoStrSalvo(r, 'usuarioResponsavelId', '');
       setUsuarioResponsavelId(fkSalvo.trim() !== '' ? fkSalvo : '');
@@ -2277,6 +2282,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         numeroProcessoVelho,
         naturezaAcao,
         competencia,
+        procedimento,
         valorCausa,
         cidade,
         estado,
@@ -2304,6 +2310,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     numeroProcessoVelho,
     naturezaAcao,
     competencia,
+    procedimento,
     valorCausa,
     cidade,
     estado,
@@ -2581,8 +2588,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       estado,
       cidade,
       municipioId:
-        orgaoJulgadorSelecionado?.orgaoJulgador?.municipio?.id ?? municipioSelecionado?.municipioId ?? null,
-      orgaoJulgadorId: orgaoJulgadorSelecionado?.orgaoJulgadorId ?? null,
+        municipioSelecionado?.municipioId ?? orgaoJulgadorSelecionado?.orgaoJulgador?.municipio?.id ?? null,
+      orgaoJulgadorId: varaADistribuir ? null : (orgaoJulgadorSelecionado?.orgaoJulgadorId ?? null),
       dataProtocolo,
       pasta,
       pastaArquivo: String(pasta ?? ''),
@@ -2694,6 +2701,10 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     setDataProtocolo('');
     setEstado('');
     setCidade('');
+    setMunicipioSelecionado(null);
+    setOrgaoJulgadorSelecionado(null);
+    // Processo novo (sem número, sem vara) → "a distribuir" por padrão.
+    setVaraADistribuir(true);
     setConsultaAutomatica(false);
     setTramitacao('');
     setPjeTribunal('');
@@ -2826,6 +2837,28 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       setDataProtocolo(mapped.dataProtocolo ?? '');
       setEstado(mapped.estado ?? '');
       setCidade(mapped.cidade ?? '');
+      // Hidrata cidade/comarca e vara selecionadas; sem isso o auto-save zeraria municipio/orgao ao editar.
+      const midApi = mapped.municipioId ?? mapped.municipio?.id ?? null;
+      setMunicipioSelecionado(
+        midApi
+          ? {
+              municipioId: midApi,
+              municipio:
+                mapped.municipio || { id: midApi, nome: mapped.cidade || '', uf: mapped.estado || '' },
+            }
+          : null,
+      );
+      const oidApi = mapped.orgaoJulgadorId ?? mapped.orgaoJulgador?.id ?? null;
+      setOrgaoJulgadorSelecionado(
+        oidApi
+          ? {
+              orgaoJulgadorId: oidApi,
+              orgaoJulgador: mapped.orgaoJulgador || { id: oidApi, nome: mapped.orgaoJulgador?.nome },
+            }
+          : null,
+      );
+      // Default "a distribuir": sem número e sem vara → checkbox marcada (sobrescrevível); com vara → desmarcada.
+      setVaraADistribuir(!oidApi && String(mapped.numeroProcessoNovo ?? '').trim() === '');
       setConsultaAutomatica(mapped.consultaAutomatica);
       setTramitacao(mapped.tramitacao ?? '');
       setProcedimento(mapped.procedimento ?? mapped.tramitacao ?? '');
@@ -3079,6 +3112,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     orgaoJulgadorSelecionado?.orgaoJulgador?.municipio?.id,
     municipioSelecionado?.municipioId,
     orgaoJulgadorSelecionado?.orgaoJulgadorId,
+    varaADistribuir,
     dataProtocolo,
     pasta,
     valorCausa,
@@ -4387,20 +4421,88 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                   />
                   Consulta Automática
                 </label>
-                <Field label="Órgão julgador" className="min-w-0 col-span-2">
+                <Field label="Cidade/Comarca" className="min-w-0 col-span-2">
                   {camposBloqueados ? (
                     <input
                       type="text"
                       readOnly
-                      value={orgaoJulgadorSelecionado?.orgaoJulgador?.nome || ''}
+                      value={cidade && estado ? `${cidade} (${estado})` : cidade || estado || ''}
+                      className={`w-full min-w-0 ${clsCampo}`}
+                    />
+                  ) : (
+                    <>
+                      <MunicipioAutocomplete
+                        value={municipioSelecionado}
+                        uf={estado || 'GO'}
+                        onUfChange={(sigla) => setEstado(sigla)}
+                        onChange={(sel) => {
+                          // Trocar de cidade limpa a vara (evita inconsistência cidade × órgão).
+                          setOrgaoJulgadorSelecionado(null);
+                          setMunicipioSelecionado(sel);
+                          if (sel) {
+                            setEstado(sel.uf || sel.municipio?.uf || '');
+                            setCidade(sel.municipio?.nome || sel.nome || '');
+                          } else {
+                            setCidade('');
+                          }
+                        }}
+                        idPrefix="processo-municipio"
+                        className={`w-full min-w-0 ${inputClass}`}
+                      />
+                      {!Number(processoApiId) && !municipioSelecionado?.municipioId ? (
+                        <p className="text-xs text-rose-700 mt-1">Obrigatório para novos processos.</p>
+                      ) : null}
+                    </>
+                  )}
+                </Field>
+                <Field label="Órgão julgador" className="min-w-0 col-span-2">
+                  {!camposBloqueados ? (
+                    <label className="flex items-center gap-2 text-sm text-slate-600 mb-1 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={varaADistribuir}
+                        disabled={!municipioSelecionado?.municipioId}
+                        onChange={(e) => {
+                          const marcado = e.target.checked;
+                          setVaraADistribuir(marcado);
+                          if (marcado) setOrgaoJulgadorSelecionado(null);
+                        }}
+                        className="rounded border-slate-300 disabled:opacity-40"
+                      />
+                      Vara a distribuir (sorteio pendente)
+                    </label>
+                  ) : null}
+                  {camposBloqueados ? (
+                    <input
+                      type="text"
+                      readOnly
+                      value={
+                        orgaoJulgadorSelecionado?.orgaoJulgador?.nome ||
+                        (municipioSelecionado?.municipioId ? 'A distribuir' : '')
+                      }
+                      className={`w-full min-w-0 ${clsCampo}`}
+                    />
+                  ) : varaADistribuir ? (
+                    <input
+                      type="text"
+                      readOnly
+                      value="A distribuir (defina a vara após o sorteio)"
                       className={`w-full min-w-0 ${clsCampo}`}
                     />
                   ) : (
                     <OrgaoJulgadorAutocomplete
                       value={orgaoJulgadorSelecionado}
                       tribunal="TJGO"
+                      municipioId={municipioSelecionado?.municipioId}
+                      disabled={!municipioSelecionado?.municipioId}
+                      placeholder={
+                        municipioSelecionado?.municipioId
+                          ? 'Digite para buscar vara, juizado ou câmara…'
+                          : 'Escolha a cidade primeiro'
+                      }
                       onChange={(sel) => {
                         setOrgaoJulgadorSelecionado(sel);
+                        if (sel) setVaraADistribuir(false);
                         const mun = sel?.orgaoJulgador?.municipio;
                         if (mun) {
                           setEstado(mun.uf || '');
@@ -4417,7 +4519,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                   )}
                 </Field>
                 {(cidade || estado) ? (
-                  <Field label="Comarca (derivada)" className="min-w-0 col-span-2">
+                  <Field label="Comarca" className="min-w-0 col-span-2">
                     <input
                       type="text"
                       readOnly

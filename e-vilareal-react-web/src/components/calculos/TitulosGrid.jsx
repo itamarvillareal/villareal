@@ -37,6 +37,15 @@ const TitulosGrid = memo(function TitulosGrid({
   const resumoPag = resumoPagina ?? {};
   const resumoG = resumoGeral ?? {};
 
+  // Índice global da primeira linha sem valor na página — garante que o próximo débito
+  // seja sempre editável, mesmo que `rodadaTitulosLength` (estado bruto) esteja defasado.
+  let linhasComValorNoInicio = 0;
+  for (const r of linhas) {
+    if (String(r?.valorInicial ?? '').trim() !== '') linhasComValorNoInicio += 1;
+    else break;
+  }
+  const limiteEdicao = Math.max(rodadaTitulosLength, inicio + linhasComValorNoInicio);
+
   return (
     <>
       {showAvisoParcelasVazias && (
@@ -112,7 +121,7 @@ const TitulosGrid = memo(function TitulosGrid({
             {linhas.map((row, idx) => {
               const globalIdx = inicio + idx;
               const podeEditarLinha =
-                (!aceitarPagamento || modoAlteracao) && globalIdx <= rodadaTitulosLength;
+                (!aceitarPagamento || modoAlteracao) && globalIdx <= limiteEdicao;
               return (
                 <tr key={`titulo-${globalIdx}`} className={globalIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
                   <td

@@ -31,6 +31,32 @@ describe('montarTrechoAcaoPreambuloHtml', () => {
   });
 });
 
+describe('inferirEnderecamento (procedimento JEC)', () => {
+  it('procedimento JEC endereça ao Juizado Especial Cível mesmo sem competência', () => {
+    expect(inferirEnderecamento('', 'Anápolis', 'GO', 'JEC')).toBe(
+      'MERITÍSSIMO JUÍZO DO JUIZADO ESPECIAL CÍVEL DA COMARCA DE ANÁPOLIS - GO',
+    );
+  });
+
+  it('JEC tem precedência sobre competência divergente', () => {
+    expect(inferirEnderecamento('1ª VARA CÍVEL', 'Anápolis', 'GO', 'JEC')).toBe(
+      'MERITÍSSIMO JUÍZO DO JUIZADO ESPECIAL CÍVEL DA COMARCA DE ANÁPOLIS - GO',
+    );
+  });
+
+  it('aceita variação por extenso e cidade em maiúsculas do cadastro', () => {
+    expect(inferirEnderecamento('', 'GOIÂNIA', 'GO', 'Juizado Especial Cível')).toBe(
+      'MERITÍSSIMO JUÍZO DO JUIZADO ESPECIAL CÍVEL DA COMARCA DE GOIÂNIA - GO',
+    );
+  });
+
+  it('sem procedimento JEC mantém o fallback genérico da comarca', () => {
+    expect(inferirEnderecamento('', 'Anápolis', 'GO', 'Ordinário')).toBe(
+      'MERITÍSSIMO JUÍZO DA COMARCA DE ANÁPOLIS - GO',
+    );
+  });
+});
+
 describe('formatarLocalData', () => {
   it('monta cidade + data por extenso com ponto final', () => {
     expect(formatarLocalData('Anápolis, estado de Goiás', '2026-06-24')).toBe(

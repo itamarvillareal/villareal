@@ -18,6 +18,7 @@ export function OrgaoJulgadorAutocomplete({
   onChange,
   tribunal = 'TJGO',
   uf = 'GO',
+  municipioId,
   grau,
   tipo,
   disabled = false,
@@ -43,7 +44,7 @@ export function OrgaoJulgadorAutocomplete({
       seqRef.current += 1;
       const seq = seqRef.current;
       setCarregando(true);
-      buscarOrgaosJulgadores({ tribunalSigla: tribunal, q: termo, limit: 20 })
+      buscarOrgaosJulgadores({ tribunalSigla: tribunal, municipioId, q: termo, limit: 20 })
         .then((lista) => {
           if (seq !== seqRef.current) return;
           setSugestoes(Array.isArray(lista) ? lista : []);
@@ -57,7 +58,7 @@ export function OrgaoJulgadorAutocomplete({
           if (seq === seqRef.current) setCarregando(false);
         });
     },
-    [tribunal],
+    [tribunal, municipioId],
   );
 
   useEffect(() => {

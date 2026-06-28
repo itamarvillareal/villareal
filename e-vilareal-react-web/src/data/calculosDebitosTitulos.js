@@ -149,6 +149,52 @@ export function patchRodadaAoAceitarPagamento(rodada, dataCalculoAtual) {
 }
 
 /**
+ * Patch ao DESMARCAR "Aceitar Pagamento" (liberar/destravar a rodada):
+ * - PRESERVA os débitos já cadastrados (vencimento/valor) — materializando em `titulos`
+ *   exatamente o que está exibido (fonte pode ser o estado, o snapshot congelado ou as
+ *   parcelas, em rodadas legadas) — e remove o snapshot (`titulosGravadosAceito`), para que
+ *   voltem a ser editáveis, aceitem novos e o recálculo automático para "hoje" refaça os
+ *   encargos (vencimento/valor são mantidos);
+ * - apaga APENAS o plano de pagamento (parcelas e parâmetros de parcelamento).
+ * @param {Record<string, unknown>|null|undefined} rodada
+ * @param {unknown[]} [titulosExibidos] títulos atualmente exibidos na grade (fonte de verdade do display)
+ */
+export function patchRodadaAoDesfazerAceitarPagamento(rodada, titulosExibidos) {
+  const cur = rodada && typeof rodada === 'object' ? rodada : {};
+  const exibidos = Array.isArray(titulosExibidos) ? titulosExibidos : [];
+  const titulosEstado = Array.isArray(cur.titulos) ? cur.titulos : [];
+  const gravados = Array.isArray(cur.titulosGravadosAceito) ? cur.titulosGravadosAceito : [];
+  const temValor = (lista) => lista.some((t) => String(t?.valorInicial ?? '').trim() !== '');
+  // Prioriza o que está exibido (já considera snapshot e enriquecimento por parcelas);
+  // cai para o estado e, por fim, para o snapshot. Assim os débitos nunca somem ao apagar o plano.
+  const baseDebitos = temValor(exibidos)
+    ? exibidos
+    : temValor(titulosEstado)
+      ? titulosEstado
+      : gravados;
+  const titulos = baseDebitos.map((t) => ({ ...(t && typeof t === 'object' ? t : {}) }));
+
+  const recMap =
+    cur.honorariosDataRecebimento && typeof cur.honorariosDataRecebimento === 'object'
+      ? cur.honorariosDataRecebimento
+      : {};
+  // Mantém as datas de recebimento dos honorários de TÍTULOS; descarta as de PARCELAS (plano apagado).
+  const honorariosDataRecebimento = Object.fromEntries(
+    Object.entries(recMap).filter(([k]) => !String(k).startsWith('parcela:'))
+  );
+  return {
+    parcelamentoAceito: false,
+    titulos,
+    titulosGravadosAceito: [],
+    parcelas: [],
+    quantidadeParcelasInformada: '00',
+    taxaJurosParcelamento: '0,00',
+    paginaParcelamento: 1,
+    honorariosDataRecebimento,
+  };
+}
+
+/**
  * @param {unknown[]} gravados
  * @param {unknown[]} recalculados
  * @param {(lista: unknown[]) => unknown[]} mapTitulosAceitos

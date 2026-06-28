@@ -483,10 +483,18 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
       : '';
 
   const temClienteNaRota = Boolean(codClienteFromState) || (isEmbedded && navClientes?.hasCod);
-  const ini = temClienteNaRota
-    ? getInitialEstadoCliente(codClienteFromState || undefined)
-    : ESTADO_TELA_SEM_CLIENTE;
-  const [formularioClienteAberto, setFormularioClienteAberto] = useState(temClienteNaRota);
+  // Persistência da última escolha: ao reentrar na tela Clientes (rota sem cliente, fora de modo
+  // embutido), restaura o último cliente aberto em vez de cair na tela de busca vazia.
+  const ultimoCodClienteSalvo =
+    !temClienteNaRota && !isEmbedded && emTelaClientes ? loadUltimoCodigoCliente() : null;
+  const deveRestaurarUltimoCliente = Boolean(ultimoCodClienteSalvo);
+  const ini =
+    temClienteNaRota || deveRestaurarUltimoCliente
+      ? getInitialEstadoCliente(codClienteFromState || ultimoCodClienteSalvo || undefined)
+      : ESTADO_TELA_SEM_CLIENTE;
+  const [formularioClienteAberto, setFormularioClienteAberto] = useState(
+    temClienteNaRota || deveRestaurarUltimoCliente
+  );
   const [statusSalvamento, setStatusSalvamento] = useState('idle');
   const [codigo, setCodigo] = useState(ini.codigo);
   const [pessoa, setPessoa] = useState(ini.pessoa);
@@ -1012,6 +1020,23 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     }
     if (procFromState) setPesquisaProcesso(procFromState);
   }, [codClienteFromState, procFromState, intentRevisionForHydration]);
+
+  /**
+   * Restaura o último cliente escolhido ao montar a tela (rota não trouxe cliente).
+   * Reaproveita o mesmo caminho de hidratação da seleção manual (API + índice + persistência).
+   */
+  const restauracaoUltimoClienteFeitaRef = useRef(false);
+  useEffect(() => {
+    if (restauracaoUltimoClienteFeitaRef.current) return;
+    if (isEmbedded || !emTelaClientes) return;
+    if (codClienteFromState) return;
+    const salvo = loadUltimoCodigoCliente();
+    if (!salvo) return;
+    restauracaoUltimoClienteFeitaRef.current = true;
+    setFormularioClienteAberto(true);
+    aplicarDadosClienteRef.current(padCliente8(salvo));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!focoCobrancaFromState || !formularioClienteAberto || !cobrancaAutomaticaHabilitada) return undefined;

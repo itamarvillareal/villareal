@@ -46,6 +46,7 @@ import {
   calcularTotalTituloGrade,
   mesclarTitulosGravadosComRecalculo,
   patchRodadaAoAceitarPagamento,
+  patchRodadaAoDesfazerAceitarPagamento,
   titulosGradeTemValor,
 } from '../data/calculosDebitosTitulos.js';
 import TitulosGrid from './calculos/TitulosGrid.jsx';
@@ -513,7 +514,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     const isLock = Boolean(next);
     const msg = isLock
       ? 'Confirmar travar o cálculo? Ao travar, as atualizações automáticas param e você poderá ajustar manualmente (se “Modo de Alteração” estiver marcado).'
-      : 'Confirmar liberar e recalcular todos os valores? Ao liberar, os cálculos serão refeitos pelas regras do programa.';
+      : 'Confirmar liberar o cálculo? Os valores serão recalculados para hoje, os débitos voltam a ser editáveis (e você pode incluir novos) e o plano de pagamento (parcelamento) será apagado.';
     return window.confirm(msg);
   }
 
@@ -3187,15 +3188,17 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                   if (!ok) return;
                   setAceitarPagamento(next);
                   if (!next) {
+                    // Liberar: recálculo automático para hoje, débitos editáveis e plano de pagamento apagado.
                     setDataCalculo(hojeBR());
                     setIndicesRefreshToken((t) => t + 1);
+                    setPaginaParcelamento(1);
                   }
                   setRodadasState((prev) => {
                     const cur = prev[rodadaKey];
                     if (!cur) return prev;
                     const patch = next
                       ? patchRodadaAoAceitarPagamento(cur, dataCalculo)
-                      : { parcelamentoAceito: false };
+                      : patchRodadaAoDesfazerAceitarPagamento(cur, titulos);
                     isDirtyRodadaRef.current = true;
                     paginasRodadaCacheRef.current = new Map();
                     return { ...prev, [rodadaKey]: { ...cur, ...patch } };
