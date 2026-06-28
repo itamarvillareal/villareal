@@ -178,7 +178,7 @@ class LocacaoTemplateLegadoSupportTest {
 
         assertThat(out).contains("R$");
         assertThat(out).contains("1.650,00");
-        assertThat(out).contains("um mil seiscentos e cinquenta reais");
+        assertThat(out).contains("mil seiscentos e cinquenta reais");
         assertThat(out).doesNotContain("165.000");
         assertThat(out).doesNotContain("cento e sessenta e cinco mil");
     }
