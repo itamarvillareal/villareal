@@ -4518,8 +4518,10 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     />
                   )}
                 </Field>
-                {(cidade || estado) ? (
-                  <Field label="Comarca" className="min-w-0 col-span-2">
+                {!camposBloqueados && !municipioSelecionado?.municipioId && (cidade || estado) ? (
+                  // Legado sem municipio_id: o autocomplete "Cidade/Comarca" fica vazio na edição,
+                  // então preserva a exibição da comarca (evita processo legado sem cidade visível).
+                  <Field label="Comarca (legado)" className="min-w-0 col-span-2">
                     <input
                       type="text"
                       readOnly
