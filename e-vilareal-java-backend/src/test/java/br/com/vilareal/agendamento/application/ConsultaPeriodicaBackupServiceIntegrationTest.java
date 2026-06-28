@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
@@ -40,6 +41,9 @@ class ConsultaPeriodicaBackupServiceIntegrationTest extends AbstractIntegrationT
     @Autowired
     private NotificacaoDestinatarioRepository notificacaoDestinatarioRepository;
 
+    @Autowired
+    private TransactionTemplate transactionTemplate;
+
     private ProcessoEntity processo;
     private String cnjUnico;
     private String cnjOriginal;
@@ -54,10 +58,11 @@ class ConsultaPeriodicaBackupServiceIntegrationTest extends AbstractIntegrationT
 
         cnjOriginal = processo.getNumeroCnj();
         cnjUnico = "9" + UUID.randomUUID().toString().replace("-", "").substring(0, 19) + ".8.09.0001";
-        processo.setNumeroCnj(cnjUnico);
-        processoRepository.saveAndFlush(processo);
-
-        limparConfig(processo.getId());
+        transactionTemplate.executeWithoutResult(status -> {
+            processo.setNumeroCnj(cnjUnico);
+            processoRepository.saveAndFlush(processo);
+            limparConfig(processo.getId());
+        });
     }
 
     @AfterEach
@@ -65,12 +70,14 @@ class ConsultaPeriodicaBackupServiceIntegrationTest extends AbstractIntegrationT
         if (processo == null || cnjOriginal == null) {
             return;
         }
-        limparConfig(processo.getId());
-        ProcessoEntity p = processoRepository.findById(processo.getId()).orElse(null);
-        if (p != null) {
-            p.setNumeroCnj(cnjOriginal);
-            processoRepository.saveAndFlush(p);
-        }
+        transactionTemplate.executeWithoutResult(status -> {
+            limparConfig(processo.getId());
+            ProcessoEntity p = processoRepository.findById(processo.getId()).orElse(null);
+            if (p != null) {
+                p.setNumeroCnj(cnjOriginal);
+                processoRepository.saveAndFlush(p);
+            }
+        });
     }
 
     @Test
@@ -98,7 +105,7 @@ class ConsultaPeriodicaBackupServiceIntegrationTest extends AbstractIntegrationT
         byte[] csv = backupService.exportar().conteudo();
         assertThat(csv.length).isGreaterThan(100);
 
-        limparConfig(processo.getId());
+        transactionTemplate.executeWithoutResult(status -> limparConfig(processo.getId()));
         assertThat(agendamentoConsultaRepository.findByProcessoId(processo.getId())).isEmpty();
         assertThat(notificacaoDestinatarioRepository.findByProcessoIdOrderByCanalAscIdAsc(processo.getId()))
                 .isEmpty();
