@@ -150,7 +150,11 @@ public class TarefaOperacionalApplicationService {
             e.setStatus(req.getStatus() != null ? req.getStatus() : TarefaStatus.PENDENTE);
             e.setPrioridade(req.getPrioridade() != null ? req.getPrioridade() : TarefaPrioridade.NORMAL);
             e.setDataLimite(req.getDataLimite());
-            e.setClienteId(clienteResolverService.buscarPorId(req.getClienteId()).getId());
+            if (req.getClienteId() != null) {
+                e.setClienteId(clienteResolverService.buscarPorId(req.getClienteId()).getId());
+            } else {
+                e.setClienteId(null);
+            }
             e.setProcessoId(req.getProcessoId());
             e.setPublicacaoId(req.getPublicacaoId());
             e.setProcessoPrazoId(req.getProcessoPrazoId());
