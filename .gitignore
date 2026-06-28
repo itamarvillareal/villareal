@@ -28,3 +28,16 @@ docker-compose.override.yml
 e-vilareal-react-web/tmp/
 e-vilareal-react-web/relatorio-dedupe-*.json
 e-vilareal-java-backend/src/main/resources/credentials.json
+
+# === Faxina: dumps/backups de banco nunca no repo ===
+# Migrations Flyway PRECISAM ser versionadas — exceções logo abaixo do *.sql.
+*.sql
+!**/db/migration/*.sql
+!**/db/test-migration/*.sql
+backup_*.sql
+*-dump-*.sql.gz
+*.sql.gz
+
+# pids e temporários locais (raiz do monorepo)
+tmp/
+*.pid
