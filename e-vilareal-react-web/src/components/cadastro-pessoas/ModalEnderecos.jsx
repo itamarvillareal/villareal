@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, Search } from 'lucide-react';
-import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
+import { obterMunicipio } from '../../repositories/municipiosRepository.js';
+import { MunicipioAutocomplete } from '../ui/MunicipioAutocomplete.jsx';
 
 function formatarCepExibicao(valor) {
   const digitos = String(valor ?? '').replace(/\D/g, '').slice(0, 8);
@@ -31,8 +32,7 @@ export function ModalEnderecos({
   const [numeroLogradouro, setNumeroLogradouro] = useState('');
   const [complemento, setComplemento] = useState('');
   const [bairro, setBairro] = useState('');
-  const [estado, setEstado] = useState('');
-  const [cidade, setCidade] = useState('');
+  const [municipioSel, setMunicipioSel] = useState(null);
   const [cep, setCep] = useState('');
   const [buscandoCep, setBuscandoCep] = useState(false);
   const sessaoAbertaRef = useRef(false);
@@ -62,8 +62,14 @@ export function ModalEnderecos({
       setNumeroLogradouro(String(s.numero || '').trim());
       setComplemento(String(s.complemento || '').trim());
       setBairro(String(s.bairro || '').trim());
-      setEstado(String(s.estado || '').trim());
-      setCidade(String(s.cidade || '').trim());
+      if (s.municipioId) {
+        setMunicipioSel({
+          municipioId: s.municipioId,
+          municipio: s.municipio || { id: s.municipioId, nome: s.cidade, uf: s.estado },
+        });
+      } else {
+        setMunicipioSel(null);
+      }
       setCep(cepSugestaoParaExibicao(s));
     }
   }, [open, sugestaoEndereco, enderecos]);
@@ -72,9 +78,31 @@ export function ModalEnderecos({
 
   const lista = Array.isArray(enderecos) ? enderecos : [];
 
-  const estados = [
-    'AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'
-  ];
+  const resolverMunicipioViaCep = async (ibge, uf, localidade) => {
+    const cod = Number(ibge);
+    if (Number.isFinite(cod) && cod > 0) {
+      try {
+        const m = await obterMunicipio(cod);
+        if (m?.id) {
+          setMunicipioSel({
+            municipioId: m.id,
+            municipio: { id: m.id, nome: m.nome, uf: m.uf },
+          });
+          return;
+        }
+      } catch {
+        /* fallback abaixo */
+      }
+    }
+    if (uf && localidade) {
+      setMunicipioSel({
+        municipioId: null,
+        municipio: { id: null, nome: localidade, uf },
+        uf,
+        nome: localidade,
+      });
+    }
+  };
 
   const buscarCep = async () => {
     const apenasNumeros = cep.replace(/\D/g, '');
@@ -86,8 +114,7 @@ export function ModalEnderecos({
       if (!data.erro) {
         setRua(data.logradouro || '');
         setBairro(data.bairro || '');
-        setEstado(data.uf || '');
-        setCidade(data.localidade || '');
+        await resolverMunicipioViaCep(data.ibge, data.uf, data.localidade);
       }
     } catch {
       /* rede / CEP indisponível */
@@ -108,12 +135,15 @@ export function ModalEnderecos({
 
   const incluir = () => {
     if (!rua.trim()) return;
+    if (!municipioSel?.municipioId) return;
     const novo = {
       numero: numeroLista,
       rua: montarRuaCompleta(),
       bairro: bairro.trim(),
-      estado,
-      cidade: cidade.trim(),
+      municipioId: municipioSel.municipioId,
+      municipio: municipioSel.municipio,
+      estado: municipioSel.municipio?.uf || municipioSel.uf || '',
+      cidade: municipioSel.municipio?.nome || municipioSel.nome || '',
       cep: cep.replace(/\D/g, ''),
       autoPreenchido: false,
     };
@@ -122,8 +152,7 @@ export function ModalEnderecos({
     setNumeroLogradouro('');
     setComplemento('');
     setBairro('');
-    setEstado('');
-    setCidade('');
+    setMunicipioSel(null);
     setCep('');
     setNumeroLista(lista.length + 2);
   };
@@ -224,30 +253,15 @@ export function ModalEnderecos({
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
-                <select
-                  value={estado}
-                  onChange={(e) => setEstado(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="">Selecione</option>
-                  {estados.map((uf) => (
-                    <option key={uf} value={uf}>{uf}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Cidade</label>
-                <input
-                  type="text"
-                  value={cidade}
-                  onChange={(e) => setCidade(e.target.value)}
-                  placeholder="Cidade"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Município</label>
+              <MunicipioAutocomplete
+                value={municipioSel}
+                onChange={setMunicipioSel}
+                uf={municipioSel?.municipio?.uf || municipioSel?.uf || 'GO'}
+                idPrefix="endereco-pessoa"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
             </div>
             <div className="flex gap-2 items-end">
               <div className="flex-1">

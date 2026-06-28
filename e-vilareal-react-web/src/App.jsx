@@ -40,6 +40,7 @@ import {
   LazyModelosPeticao,
   LazyProcessoRecebiveis,
   LazyIntegracoesTribunalScraperLab,
+  LazyTribunaisCatalogoAdmin,
   LazyImoveis,
   LazyDemandas,
   LazyIptu,
@@ -56,6 +57,7 @@ import {
   LazyPublicacoesEmail,
   LazyManifestacoesProjudi,
   LazyPeticionamentoProjudi,
+  LazyDistribuicaoInicialProjudi,
   LazyRelatorio,
   LazyRelatorioResultadoProcessos,
   LazyQuadroRecebiveis,
@@ -437,6 +439,7 @@ function App() {
               />
               <Route path="/processos/recebiveis" element={<LazyProcessoRecebiveis />} />
               <Route path="/processos/peticionamento-projudi" element={<LazyPeticionamentoProjudi />} />
+              <Route path="/processos/distribuicao-inicial-projudi" element={<LazyDistribuicaoInicialProjudi />} />
               <Route path="/processos/monitoramento" element={<LazyMonitoringPeoplePage />} />
               <Route path="/imoveis" element={<LazyImoveis />} />
               <Route path="/imoveis/demandas" element={<LazyDemandas />} />
@@ -477,6 +480,7 @@ function App() {
                 <Route path="agendamentos" element={<LazyWhatsAppAgendamentos />} />
               </Route>
               <Route path="/integracoes/scraper-lab" element={<LazyIntegracoesTribunalScraperLab />} />
+              <Route path="/integracoes/tribunais" element={<LazyTribunaisCatalogoAdmin />} />
               <Route path="/documentos/gerar" element={<LazyGerarDocumento />} />
               <Route path="/documentos/recebiveis" element={<Navigate to="/recebiveis?tipo=HONORARIOS" replace />} />
               <Route path="/documentos/modelos" element={<LazyModelosPeticao />} />

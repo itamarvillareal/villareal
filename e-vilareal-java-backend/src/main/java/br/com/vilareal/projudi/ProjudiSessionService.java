@@ -59,6 +59,10 @@ public class ProjudiSessionService {
     private static final String BUSCA_PROCESSO_REFERER = "https://projudi.tjgo.jus.br/BuscaProcesso";
     /** Paths autorizados para POST de escrita (peticionamento). */
     public static final Set<String> PETICIONAMENTO_PATHS = Set.of("Peticionamento", "InsercaoArquivo");
+    /** Paths autorizados para POST de distribuição inicial (/ProcessoCivel). */
+    public static final Set<String> DISTRIBUICAO_PATHS = Set.of("ProcessoCivel");
+    private static final Set<String> ESCRITA_PATHS =
+            Set.of("Peticionamento", "InsercaoArquivo", "ProcessoCivel");
     private static final String INSERCAO_ARQUIVO_PATH = "InsercaoArquivo";
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(15);
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
@@ -314,26 +318,8 @@ public class ProjudiSessionService {
     public RespostaProjudi getAutenticadoAjax(Long credencialId, String caminhoRelativo) {
         ProjudiSession sessao = getSessao(credencialId);
         URI uri = resolver(caminhoRelativo);
-
-        RespostaProjudi resp = toResposta(getAjaxRaw(sessao.client(), uri));
-        if (pareceNaoLogado(resp.body())) {
-            log.info(
-                    "PROJUDI resposta de login — tentando novo login (credencialId={}, cpf={}).",
-                    credencialId,
-                    mascararCpf(sessao.cpf()));
-            invalidar(credencialId);
-            sessao = reautenticar(credencialId);
-            resp = toResposta(getAjaxRaw(sessao.client(), uri));
-            if (pareceNaoLogado(resp.body())) {
-                throw new IllegalStateException(
-                        "Acesso AJAX PROJUDI continuou na tela de login após reautenticação.");
-            }
-            registrarAtividadeSucesso(credencialId, sessao);
-        } else {
-            registrarAtividadeSucesso(credencialId, sessao);
-        }
-        log.info("GET AJAX autenticado PROJUDI ok (cpf={}, status={}, url={}).",
-                mascararCpf(sessao.cpf()), resp.statusCode(), uri);
+        RespostaProjudi resp = executarAjaxComRetentativa(credencialId, sessao, uri, null, false);
+        logRespostaAjax(obterSessaoAtual(credencialId, sessao), uri, resp);
         return resp;
     }
 
@@ -372,27 +358,83 @@ public class ProjudiSessionService {
     public RespostaProjudi getAutenticadoAjaxComReferer(Long credencialId, String caminhoRelativo, String referer) {
         ProjudiSession sessao = getSessao(credencialId);
         URI uri = resolver(caminhoRelativo);
+        RespostaProjudi resp = executarAjaxComRetentativa(credencialId, sessao, uri, referer, true);
+        logRespostaAjax(obterSessaoAtual(credencialId, sessao), uri, resp);
+        return resp;
+    }
 
-        RespostaProjudi resp = toResposta(getAjaxRawComReferer(sessao.client(), uri, referer));
-        if (pareceNaoLogado(resp.body())) {
+    /** HTTP ≠ 200 em AJAX (ex.: 555) costuma indicar sessão expirada ou bloqueio WAF do PROJUDI. */
+    static boolean ajaxDeveRetentar(RespostaProjudi resp) {
+        if (resp == null) {
+            return true;
+        }
+        return resp.statusCode() != 200 || pareceNaoLogado(resp.body());
+    }
+
+    static String mensagemFalhaHttpAjax(int statusCode) {
+        if (statusCode == 555) {
+            return "PROJUDI retornou HTTP 555 (sessão inválida ou bloqueio temporário). "
+                    + "Invalidar sessão e tentar novo login.";
+        }
+        if (statusCode != 200) {
+            return "PROJUDI retornou HTTP " + statusCode + " no catálogo AJAX (resposta indisponível).";
+        }
+        return null;
+    }
+
+    private RespostaProjudi executarAjaxComRetentativa(
+            Long credencialId, ProjudiSession sessao, URI uri, String referer, boolean comReferer) {
+        RespostaProjudi resp = executarAjaxOnce(sessao, uri, referer, comReferer);
+        if (ajaxDeveRetentar(resp)) {
             log.info(
-                    "PROJUDI resposta de login — tentando novo login (credencialId={}, cpf={}).",
+                    "PROJUDI AJAX inválido (status={}) — tentando novo login (credencialId={}, cpf={}, url={}).",
+                    resp != null ? resp.statusCode() : null,
                     credencialId,
-                    mascararCpf(sessao.cpf()));
+                    mascararCpf(sessao.cpf()),
+                    uri);
             invalidar(credencialId);
             sessao = reautenticar(credencialId);
-            resp = toResposta(getAjaxRawComReferer(sessao.client(), uri, referer));
+            resp = executarAjaxOnce(sessao, uri, referer, comReferer);
             if (pareceNaoLogado(resp.body())) {
                 throw new IllegalStateException(
-                        "Acesso AJAX PROJUDI continuou na tela de login após reautenticação.");
+                        "Acesso AJAX PROJUDI continuou na tela de login após reautenticação (status="
+                                + resp.statusCode()
+                                + ").");
             }
             registrarAtividadeSucesso(credencialId, sessao);
         } else {
             registrarAtividadeSucesso(credencialId, sessao);
         }
-        log.info("GET AJAX autenticado PROJUDI ok (cpf={}, status={}, url={}).",
-                mascararCpf(sessao.cpf()), resp.statusCode(), uri);
         return resp;
+    }
+
+    private RespostaProjudi executarAjaxOnce(
+            ProjudiSession sessao, URI uri, String referer, boolean comReferer) {
+        if (comReferer) {
+            return toResposta(getAjaxRawComReferer(sessao.client(), uri, referer));
+        }
+        return toResposta(getAjaxRaw(sessao.client(), uri));
+    }
+
+    private ProjudiSession obterSessaoAtual(Long credencialId, ProjudiSession fallback) {
+        ProjudiSession atual = cache.get(credencialId);
+        return atual != null ? atual : fallback;
+    }
+
+    private void logRespostaAjax(ProjudiSession sessao, URI uri, RespostaProjudi resp) {
+        if (resp.statusCode() != 200) {
+            log.warn(
+                    "GET AJAX PROJUDI resposta não-200 (cpf={}, status={}, url={}).",
+                    mascararCpf(sessao.cpf()),
+                    resp.statusCode(),
+                    uri);
+        } else {
+            log.info(
+                    "GET AJAX autenticado PROJUDI ok (cpf={}, status={}, url={}).",
+                    mascararCpf(sessao.cpf()),
+                    resp.statusCode(),
+                    uri);
+        }
     }
 
     /**
@@ -406,9 +448,10 @@ public class ProjudiSessionService {
             String corpoFormUrlEncoded,
             Charset charset,
             String referer) {
-        if (!PETICIONAMENTO_PATHS.contains(path)) {
+        if (!ESCRITA_PATHS.contains(path)) {
             throw new IllegalArgumentException(
-                    "POST de escrita PROJUDI permitido apenas para peticionamento. Path recusado: " + path);
+                    "POST de escrita PROJUDI permitido apenas para peticionamento/distribuição. Path recusado: "
+                            + path);
         }
         ProjudiSession sessao = getSessao(credencialId);
         String caminho = path;

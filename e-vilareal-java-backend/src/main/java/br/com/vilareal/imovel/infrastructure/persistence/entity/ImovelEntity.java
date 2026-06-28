@@ -1,6 +1,7 @@
 package br.com.vilareal.imovel.infrastructure.persistence.entity;
 
 import br.com.vilareal.imovel.domain.ResponsavelPagamentoCondominio;
+import br.com.vilareal.localidade.infrastructure.persistence.entity.MunicipioEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
@@ -46,6 +47,10 @@ public class ImovelEntity {
 
     @Column(name = "endereco_completo", columnDefinition = "TEXT")
     private String enderecoCompleto;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "municipio_id")
+    private MunicipioEntity municipio;
 
     @Column(length = 255)
     private String condominio;

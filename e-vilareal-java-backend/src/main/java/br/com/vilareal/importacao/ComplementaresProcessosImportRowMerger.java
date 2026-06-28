@@ -1,6 +1,9 @@
 package br.com.vilareal.importacao;
 
 import br.com.vilareal.common.text.Utf8MojibakeUtil;
+import br.com.vilareal.localidade.application.MunicipioDerivacaoService;
+import br.com.vilareal.localidade.application.MunicipioMatchingService;
+import br.com.vilareal.localidade.infrastructure.persistence.entity.MunicipioEntity;
 import br.com.vilareal.pessoa.application.ClienteResolverService;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
@@ -26,14 +29,20 @@ public class ComplementaresProcessosImportRowMerger {
     private final PessoaRepository pessoaRepository;
     private final ProcessoRepository processoRepository;
     private final ClienteResolverService clienteResolverService;
+    private final MunicipioMatchingService municipioMatchingService;
+    private final MunicipioDerivacaoService municipioDerivacaoService;
 
     public ComplementaresProcessosImportRowMerger(
             PessoaRepository pessoaRepository,
             ProcessoRepository processoRepository,
-            ClienteResolverService clienteResolverService) {
+            ClienteResolverService clienteResolverService,
+            MunicipioMatchingService municipioMatchingService,
+            MunicipioDerivacaoService municipioDerivacaoService) {
         this.pessoaRepository = pessoaRepository;
         this.processoRepository = processoRepository;
         this.clienteResolverService = clienteResolverService;
+        this.municipioMatchingService = municipioMatchingService;
+        this.municipioDerivacaoService = municipioDerivacaoService;
     }
 
     public record MergeResult(long processoId, boolean criado) {}
@@ -63,12 +72,26 @@ public class ComplementaresProcessosImportRowMerger {
             p.setObservacao(t);
             p.setDescricaoAcao(t);
         }
-        if (StringUtils.hasText(linha.cidade())) {
-            p.setCidade(Utf8MojibakeUtil.corrigir(linha.cidade().trim()));
-        }
-        if (StringUtils.hasText(linha.uf())) {
-            String u = linha.uf().trim().toUpperCase();
-            p.setUf(u.length() > 2 ? u.substring(0, 2) : u);
+        if (StringUtils.hasText(linha.cidade()) || StringUtils.hasText(linha.uf())) {
+            String cidadeTxt = StringUtils.hasText(linha.cidade()) ? linha.cidade().trim() : null;
+            String ufTxt = StringUtils.hasText(linha.uf()) ? linha.uf().trim() : null;
+            MunicipioMatchingService.MatchMunicipio match =
+                    municipioMatchingService.casarPorNomeEUf(cidadeTxt, ufTxt);
+            if (match.resultado() == MunicipioMatchingService.ResultadoMatch.EXATO) {
+                municipioDerivacaoService.aplicarEmProcesso(p, match.municipio());
+            } else if (StringUtils.hasText(cidadeTxt)) {
+                municipioDerivacaoService.aplicarEmProcessoLegado(p, Utf8MojibakeUtil.corrigir(cidadeTxt));
+                if (StringUtils.hasText(ufTxt)) {
+                    String u = ufTxt.toUpperCase();
+                    p.setUf(u.length() > 2 ? u.substring(0, 2) : u);
+                }
+                log.warn(
+                        "[import-complementares-processos] cidade pendente linha={} cidade={} uf={} motivo={}",
+                        linhaExcel,
+                        cidadeTxt,
+                        ufTxt,
+                        match.resultado());
+            }
         }
         if (StringUtils.hasText(linha.competencia())) {
             p.setCompetencia(Utf8MojibakeUtil.corrigir(linha.competencia().trim()));

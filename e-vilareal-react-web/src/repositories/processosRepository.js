@@ -1001,6 +1001,14 @@ export async function salvarCabecalhoProcesso(payload) {
     valorCausa: payload.valorCausaNumero ?? null,
     uf: payload.estado || null,
     cidade: payload.cidade || null,
+    municipioId:
+      payload.municipioId != null && Number.isFinite(Number(payload.municipioId))
+        ? Number(payload.municipioId)
+        : null,
+    orgaoJulgadorId:
+      payload.orgaoJulgadorId != null && Number.isFinite(Number(payload.orgaoJulgadorId))
+        ? Number(payload.orgaoJulgadorId)
+        : null,
     consultaAutomatica: payload.consultaAutomatica === true,
     ativo: payload.statusAtivo !== false,
     consultor: payload.responsavel || null,
@@ -1546,8 +1554,13 @@ export function mapApiProcessoToUiShape(p) {
     prazoFatal: toBrFromIsoDate(p.prazoFatal),
     proximaConsultaData: toBrFromIsoDate(p.proximaConsulta),
     observacao: corrigirMojibakeUtf8(String(p.observacao ?? '').trim()),
-    cidade: corrigirMojibakeUtf8(String(p.cidade ?? '').trim()),
-    estado: String(p.uf ?? '').trim(),
+    cidade: corrigirMojibakeUtf8(String(p.cidade ?? p.municipio?.nome ?? '').trim()),
+    estado: String(p.uf ?? p.municipio?.uf ?? '').trim(),
+    municipioId: p.municipioId ?? p.municipio?.id ?? null,
+    municipio: p.municipio ?? null,
+    orgaoJulgadorId: p.orgaoJulgadorId ?? p.orgaoJulgador?.id ?? null,
+    orgaoJulgador: p.orgaoJulgador ?? null,
+    cidadeLegado: p.cidadeLegado ?? null,
     consultaAutomatica: p.consultaAutomatica === true,
     tramitacao: corrigirMojibakeUtf8(String(p.tramitacao ?? '').trim()),
     /** Mesmo valor que `tramitacao` na API (campo «Procedimento» no formulário). */

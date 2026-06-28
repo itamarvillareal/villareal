@@ -1,5 +1,6 @@
 package br.com.vilareal.pessoa.api.dto;
 
+import br.com.vilareal.localidade.api.dto.MunicipioResumoResponse;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "Endereço persistido")
@@ -13,6 +14,9 @@ public class PessoaEnderecoItemResponse {
     private String cidade;
     private String cep;
     private Boolean autoPreenchido;
+    private Integer municipioId;
+    private MunicipioResumoResponse municipio;
+    private String cidadeLegado;
 
     public Long getId() {
         return id;
@@ -76,5 +80,29 @@ public class PessoaEnderecoItemResponse {
 
     public void setAutoPreenchido(Boolean autoPreenchido) {
         this.autoPreenchido = autoPreenchido;
+    }
+
+    public Integer getMunicipioId() {
+        return municipioId;
+    }
+
+    public void setMunicipioId(Integer municipioId) {
+        this.municipioId = municipioId;
+    }
+
+    public MunicipioResumoResponse getMunicipio() {
+        return municipio;
+    }
+
+    public void setMunicipio(MunicipioResumoResponse municipio) {
+        this.municipio = municipio;
+    }
+
+    public String getCidadeLegado() {
+        return cidadeLegado;
+    }
+
+    public void setCidadeLegado(String cidadeLegado) {
+        this.cidadeLegado = cidadeLegado;
     }
 }

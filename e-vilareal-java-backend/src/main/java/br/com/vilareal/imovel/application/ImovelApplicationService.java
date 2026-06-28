@@ -7,6 +7,10 @@ import br.com.vilareal.imovel.api.dto.*;
 import br.com.vilareal.imovel.infrastructure.persistence.entity.*;
 import br.com.vilareal.imovel.application.event.ContratoLocacaoAlteradoEvent;
 import br.com.vilareal.imovel.infrastructure.persistence.repository.*;
+import br.com.vilareal.localidade.application.MunicipioApplicationService;
+import br.com.vilareal.localidade.application.MunicipioDerivacaoService;
+import br.com.vilareal.localidade.application.MunicipioUsoService;
+import br.com.vilareal.localidade.infrastructure.persistence.entity.MunicipioEntity;
 import br.com.vilareal.pessoa.application.ClienteResolverService;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
@@ -46,6 +50,9 @@ public class ImovelApplicationService {
     private final ImovelProcessoRepository imovelProcessoRepository;
     private final ImovelVinculoProcessoPrincipalRepository imovelVinculoProcessoPrincipalRepository;
     private final ImovelVinculoLocatarioService imovelVinculoLocatarioService;
+    private final MunicipioUsoService municipioUsoService;
+    private final MunicipioDerivacaoService municipioDerivacaoService;
+    private final MunicipioApplicationService municipioApplicationService;
 
     public ImovelApplicationService(
             ImovelRepository imovelRepository,
@@ -59,7 +66,10 @@ public class ImovelApplicationService {
             ImovelProcessoLinkService imovelProcessoLinkService,
             ImovelProcessoRepository imovelProcessoRepository,
             ImovelVinculoProcessoPrincipalRepository imovelVinculoProcessoPrincipalRepository,
-            ImovelVinculoLocatarioService imovelVinculoLocatarioService) {
+            ImovelVinculoLocatarioService imovelVinculoLocatarioService,
+            MunicipioUsoService municipioUsoService,
+            MunicipioDerivacaoService municipioDerivacaoService,
+            MunicipioApplicationService municipioApplicationService) {
         this.imovelRepository = imovelRepository;
         this.contratoLocacaoRepository = contratoLocacaoRepository;
         this.pessoaRepository = pessoaRepository;
@@ -72,6 +82,9 @@ public class ImovelApplicationService {
         this.imovelProcessoRepository = imovelProcessoRepository;
         this.imovelVinculoProcessoPrincipalRepository = imovelVinculoProcessoPrincipalRepository;
         this.imovelVinculoLocatarioService = imovelVinculoLocatarioService;
+        this.municipioUsoService = municipioUsoService;
+        this.municipioDerivacaoService = municipioDerivacaoService;
+        this.municipioApplicationService = municipioApplicationService;
     }
 
     @Transactional(readOnly = true)
@@ -607,6 +620,11 @@ public class ImovelApplicationService {
         }
         e.setTitulo(trimToNull(req.getTitulo()));
         e.setEnderecoCompleto(trimToNull(req.getEnderecoCompleto()));
+        if (req.getMunicipioId() != null) {
+            MunicipioEntity municipio = municipioUsoService.carregarObrigatorio(req.getMunicipioId());
+            municipioDerivacaoService.aplicarEmImovel(e, municipio);
+            municipioUsoService.registrarUso(municipio.getId());
+        }
         e.setCondominio(trimToNull(req.getCondominio()));
         e.setUnidade(trimToNull(req.getUnidade()));
         e.setTipoImovel(trimToNull(req.getTipoImovel()));
@@ -796,6 +814,10 @@ public class ImovelApplicationService {
         }
         r.setTitulo(e.getTitulo());
         r.setEnderecoCompleto(e.getEnderecoCompleto());
+        if (e.getMunicipio() != null) {
+            r.setMunicipioId(e.getMunicipio().getId());
+            r.setMunicipio(municipioApplicationService.toResumo(e.getMunicipio()));
+        }
         r.setCondominio(e.getCondominio());
         r.setUnidade(e.getUnidade());
         r.setTipoImovel(e.getTipoImovel());

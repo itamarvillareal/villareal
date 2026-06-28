@@ -3,6 +3,10 @@ package br.com.vilareal.pessoa.application;
 import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
 import br.com.vilareal.common.text.Utf8MojibakeUtil;
+import br.com.vilareal.localidade.application.MunicipioApplicationService;
+import br.com.vilareal.localidade.application.MunicipioDerivacaoService;
+import br.com.vilareal.localidade.application.MunicipioUsoService;
+import br.com.vilareal.localidade.infrastructure.persistence.entity.MunicipioEntity;
 import br.com.vilareal.pessoa.api.dto.*;
 import br.com.vilareal.pessoa.infrastructure.persistence.PessoaSpecifications;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.*;
@@ -37,6 +41,9 @@ public class PessoaApplicationService {
     private final ProcessoRepository processoRepository;
     private final ProcessoExclusaoService processoExclusaoService;
     private final JdbcTemplate jdbcTemplate;
+    private final MunicipioUsoService municipioUsoService;
+    private final MunicipioDerivacaoService municipioDerivacaoService;
+    private final MunicipioApplicationService municipioApplicationService;
 
     public PessoaApplicationService(
             PessoaRepository pessoaRepository,
@@ -47,7 +54,10 @@ public class PessoaApplicationService {
             ClienteRepository clienteRepository,
             ProcessoRepository processoRepository,
             ProcessoExclusaoService processoExclusaoService,
-            JdbcTemplate jdbcTemplate) {
+            JdbcTemplate jdbcTemplate,
+            MunicipioUsoService municipioUsoService,
+            MunicipioDerivacaoService municipioDerivacaoService,
+            MunicipioApplicationService municipioApplicationService) {
         this.pessoaRepository = pessoaRepository;
         this.complementarRepository = complementarRepository;
         this.enderecoRepository = enderecoRepository;
@@ -57,6 +67,9 @@ public class PessoaApplicationService {
         this.processoRepository = processoRepository;
         this.processoExclusaoService = processoExclusaoService;
         this.jdbcTemplate = jdbcTemplate;
+        this.municipioUsoService = municipioUsoService;
+        this.municipioDerivacaoService = municipioDerivacaoService;
+        this.municipioApplicationService = municipioApplicationService;
     }
 
     @Transactional(readOnly = true)
@@ -240,8 +253,12 @@ public class PessoaApplicationService {
             e.setNumeroOrdem(r.getNumero());
             e.setRua(Utf8MojibakeUtil.corrigir(r.getRua()));
             e.setBairro(Utf8MojibakeUtil.corrigir(r.getBairro()));
-            e.setEstado(Utf8MojibakeUtil.corrigir(r.getEstado()));
-            e.setCidade(Utf8MojibakeUtil.corrigir(r.getCidade()));
+            if (r.getMunicipioId() == null) {
+                throw new BusinessRuleException("municipioId é obrigatório no endereço.");
+            }
+            MunicipioEntity municipio = municipioUsoService.carregarObrigatorio(r.getMunicipioId());
+            municipioDerivacaoService.aplicarEmEndereco(e, municipio);
+            municipioUsoService.registrarUso(municipio.getId());
             e.setCep(r.getCep() != null ? Utf8MojibakeUtil.corrigir(r.getCep().replaceAll("\\D", "")) : null);
             e.setAutoPreenchido(Boolean.TRUE.equals(r.getAutoPreenchido()));
             enderecoRepository.save(e);
@@ -377,8 +394,16 @@ public class PessoaApplicationService {
         r.setNumero(e.getNumeroOrdem());
         r.setRua(Utf8MojibakeUtil.corrigir(e.getRua()));
         r.setBairro(Utf8MojibakeUtil.corrigir(e.getBairro()));
-        r.setEstado(Utf8MojibakeUtil.corrigir(e.getEstado()));
-        r.setCidade(Utf8MojibakeUtil.corrigir(e.getCidade()));
+        if (e.getMunicipio() != null) {
+            r.setMunicipioId(e.getMunicipio().getId());
+            r.setMunicipio(municipioApplicationService.toResumo(e.getMunicipio()));
+            r.setEstado(e.getMunicipio().getEstado().getSigla());
+            r.setCidade(Utf8MojibakeUtil.corrigir(e.getMunicipio().getNome()));
+        } else {
+            r.setCidadeLegado(Utf8MojibakeUtil.corrigir(e.getCidadeLegado()));
+            r.setEstado(Utf8MojibakeUtil.corrigir(e.getEstado()));
+            r.setCidade(Utf8MojibakeUtil.corrigir(e.getCidade()));
+        }
         r.setCep(Utf8MojibakeUtil.corrigir(e.getCep()));
         r.setAutoPreenchido(e.getAutoPreenchido());
         return r;

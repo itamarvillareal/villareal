@@ -5,6 +5,14 @@ import br.com.vilareal.common.exception.ResourceNotFoundException;
 import br.com.vilareal.common.text.PortuguesTextoCorrecaoUtil;
 import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.documento.DocumentoDrivePastaService;
+import br.com.vilareal.localidade.application.MunicipioApplicationService;
+import br.com.vilareal.localidade.application.MunicipioDerivacaoService;
+import br.com.vilareal.localidade.application.MunicipioUsoService;
+import br.com.vilareal.localidade.infrastructure.persistence.entity.MunicipioEntity;
+import br.com.vilareal.orgaojulgador.application.OrgaoJulgadorApplicationService;
+import br.com.vilareal.orgaojulgador.application.OrgaoJulgadorDerivacaoService;
+import br.com.vilareal.orgaojulgador.application.OrgaoJulgadorUsoService;
+import br.com.vilareal.orgaojulgador.infrastructure.persistence.entity.OrgaoJulgadorEntity;
 import br.com.vilareal.importacao.PlanilhaPasta1MapeamentoUtil;
 import br.com.vilareal.importacao.infrastructure.persistence.entity.PlanilhaPasta1ClienteEntity;
 import br.com.vilareal.importacao.infrastructure.persistence.repository.PlanilhaPasta1ClienteRepository;
@@ -70,6 +78,12 @@ public class ProcessoApplicationService {
     private final ClienteRepository clienteRepository;
     private final ClienteResolverService clienteResolverService;
     private final DocumentoDrivePastaService documentoDrivePastaService;
+    private final MunicipioUsoService municipioUsoService;
+    private final MunicipioDerivacaoService municipioDerivacaoService;
+    private final MunicipioApplicationService municipioApplicationService;
+    private final OrgaoJulgadorUsoService orgaoJulgadorUsoService;
+    private final OrgaoJulgadorDerivacaoService orgaoJulgadorDerivacaoService;
+    private final OrgaoJulgadorApplicationService orgaoJulgadorApplicationService;
 
     public ProcessoApplicationService(
             ProcessoRepository processoRepository,
@@ -84,7 +98,13 @@ public class ProcessoApplicationService {
             ClienteCodigoPessoaResolver clienteCodigoPessoaResolver,
             ClienteRepository clienteRepository,
             ClienteResolverService clienteResolverService,
-            DocumentoDrivePastaService documentoDrivePastaService) {
+            DocumentoDrivePastaService documentoDrivePastaService,
+            MunicipioUsoService municipioUsoService,
+            MunicipioDerivacaoService municipioDerivacaoService,
+            MunicipioApplicationService municipioApplicationService,
+            OrgaoJulgadorUsoService orgaoJulgadorUsoService,
+            OrgaoJulgadorDerivacaoService orgaoJulgadorDerivacaoService,
+            OrgaoJulgadorApplicationService orgaoJulgadorApplicationService) {
         this.processoRepository = processoRepository;
         this.parteRepository = parteRepository;
         this.parteAdvogadoRepository = parteAdvogadoRepository;
@@ -98,6 +118,12 @@ public class ProcessoApplicationService {
         this.clienteRepository = clienteRepository;
         this.clienteResolverService = clienteResolverService;
         this.documentoDrivePastaService = documentoDrivePastaService;
+        this.municipioUsoService = municipioUsoService;
+        this.municipioDerivacaoService = municipioDerivacaoService;
+        this.municipioApplicationService = municipioApplicationService;
+        this.orgaoJulgadorUsoService = orgaoJulgadorUsoService;
+        this.orgaoJulgadorDerivacaoService = orgaoJulgadorDerivacaoService;
+        this.orgaoJulgadorApplicationService = orgaoJulgadorApplicationService;
     }
 
     /**
@@ -1101,7 +1127,7 @@ public class ProcessoApplicationService {
 
     private ProcessoEntity requireProcesso(Long id) {
         return processoRepository
-                .findById(id)
+                .findByIdDetalhado(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Processo não encontrado: " + id));
     }
 
@@ -1195,13 +1221,10 @@ public class ProcessoApplicationService {
         e.setProximaConsulta(req.getProximaConsulta());
         e.setObservacao(trimToNull(req.getObservacao()));
         e.setValorCausa(req.getValorCausa());
-        if (req.getUf() != null && StringUtils.hasText(req.getUf())) {
-            String u = req.getUf().trim().toUpperCase();
-            e.setUf(u.length() > 2 ? u.substring(0, 2) : u);
-        } else {
-            e.setUf(null);
+        aplicarOrgaoJulgadorProcesso(e, req);
+        if (req.getOrgaoJulgadorId() == null) {
+            aplicarMunicipioProcesso(e, req);
         }
-        e.setCidade(trimToNull(req.getCidade()));
         e.setUnidade(trimToNull(req.getUnidade()));
         e.setPasta(trimToNull(req.getPasta()));
         e.setPapelCliente(normalizarPapelCliente(req.getPapelCliente()));
@@ -1223,6 +1246,24 @@ public class ProcessoApplicationService {
         if (StringUtils.hasText(req.getImportacaoId())) {
             e.setImportacaoId(req.getImportacaoId().trim());
         }
+    }
+
+    private void aplicarOrgaoJulgadorProcesso(ProcessoEntity e, ProcessoWriteRequest req) {
+        if (req.getOrgaoJulgadorId() == null) {
+            return;
+        }
+        OrgaoJulgadorEntity orgao = orgaoJulgadorUsoService.carregarObrigatorio(req.getOrgaoJulgadorId());
+        orgaoJulgadorDerivacaoService.aplicarEmProcesso(e, orgao);
+        orgaoJulgadorUsoService.registrarUso(orgao.getId());
+    }
+
+    private void aplicarMunicipioProcesso(ProcessoEntity e, ProcessoWriteRequest req) {
+        if (req.getMunicipioId() == null) {
+            return;
+        }
+        MunicipioEntity municipio = municipioUsoService.carregarObrigatorio(req.getMunicipioId());
+        municipioDerivacaoService.aplicarEmProcesso(e, municipio);
+        municipioUsoService.registrarUso(municipio.getId());
     }
 
     private void aplicarPjeTribunalGrau(ProcessoEntity e, ProcessoWriteRequest req) {
@@ -1384,8 +1425,20 @@ public class ProcessoApplicationService {
         r.setProximaConsulta(e.getProximaConsulta());
         r.setObservacao(Utf8MojibakeUtil.corrigir(e.getObservacao()));
         r.setValorCausa(e.getValorCausa());
-        r.setUf(e.getUf());
-        r.setCidade(Utf8MojibakeUtil.corrigir(e.getCidade()));
+        if (e.getMunicipio() != null) {
+            r.setMunicipioId(e.getMunicipio().getId());
+            r.setMunicipio(municipioApplicationService.toResumo(e.getMunicipio()));
+            r.setUf(e.getMunicipio().getEstado().getSigla());
+            r.setCidade(Utf8MojibakeUtil.corrigir(e.getMunicipio().getNome()));
+        } else {
+            r.setCidadeLegado(Utf8MojibakeUtil.corrigir(e.getCidadeLegado()));
+            r.setUf(e.getUf());
+            r.setCidade(Utf8MojibakeUtil.corrigir(e.getCidade()));
+        }
+        if (e.getOrgaoJulgador() != null) {
+            r.setOrgaoJulgadorId(e.getOrgaoJulgador().getId());
+            r.setOrgaoJulgador(orgaoJulgadorApplicationService.toResumo(e.getOrgaoJulgador()));
+        }
         r.setUnidade(Utf8MojibakeUtil.corrigir(trimToNull(e.getUnidade())));
         r.setPasta(Utf8MojibakeUtil.corrigir(trimToNull(e.getPasta())));
         r.setPapelCliente(e.getPapelCliente());

@@ -13,6 +13,8 @@ public class ImovelWriteRequest {
     private Long responsavelPessoaId;
     private String titulo;
     private String enderecoCompleto;
+    @Schema(description = "Código IBGE do município (7 dígitos)")
+    private Integer municipioId;
     private String condominio;
     private String unidade;
     private String tipoImovel;
@@ -69,6 +71,14 @@ public class ImovelWriteRequest {
 
     public void setEnderecoCompleto(String enderecoCompleto) {
         this.enderecoCompleto = enderecoCompleto;
+    }
+
+    public Integer getMunicipioId() {
+        return municipioId;
+    }
+
+    public void setMunicipioId(Integer municipioId) {
+        this.municipioId = municipioId;
     }
 
     public String getCondominio() {

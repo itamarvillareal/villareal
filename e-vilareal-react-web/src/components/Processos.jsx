@@ -1,8 +1,8 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, lazy, Suspense } from 'react';
 import { flushSync } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { OrgaoJulgadorAutocomplete } from './ui/OrgaoJulgadorAutocomplete.jsx';
 import {
-  desvincularLancamentoClienteProcessoLocal,
   getLancamentosContaCorrente,
   getTransacoesContaCorrenteCompleto,
   mapLinhasFinanceiroParaContaCorrenteModal,
@@ -36,7 +36,6 @@ import {
 import { EVENT_FINANCEIRO_PERSISTENCIA_EXTERNA } from '../services/crossTabLocalStorageSync.js';
 import {
   UFS,
-  CIDADES_POR_UF,
   FASES,
   canonicalizarFaseParaOpcoesRadiosProcessos,
   classeShellFormularioProcessoPorFase,
@@ -157,6 +156,7 @@ import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 import { AutorUsuarioExibicao } from './ui/AutorUsuarioExibicao.jsx';
 import { buildContextFromProcesso, buildContextFromProcessoComPrazoFatal } from '../data/tarefasContextualPayload.js';
 import { montarDadosParaDocumentoFromProcesso } from '../helpers/documentoHelper.js';
+import { montarDadosDistribuicaoInicialFromProcesso } from '../helpers/distribuicaoInicialProjudiHelper.js';
 import {
   downloadPdfBlob,
   gerarProcuracao,
@@ -607,6 +607,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [consultaAutomatica, setConsultaAutomatica] = useState(false);
   const [estado, setEstado] = useState('');
   const [cidade, setCidade] = useState('');
+  const [municipioSelecionado, setMunicipioSelecionado] = useState(null);
+  const [orgaoJulgadorSelecionado, setOrgaoJulgadorSelecionado] = useState(null);
   const [dataProtocolo, setDataProtocolo] = useState('');
   /** Pasta do processo (API `pasta`); legado localStorage também em `pastaArquivo`. */
   const [pasta, setPasta] = useState('');
@@ -690,6 +692,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [apiSaving, setApiSaving] = useState(false);
   const [gerandoDocNav, setGerandoDocNav] = useState(false);
   const [gerandoProcuracao, setGerandoProcuracao] = useState(false);
+  const [gerandoDistribuicaoInicial, setGerandoDistribuicaoInicial] = useState(false);
   const [driveExplorerAberto, setDriveExplorerAberto] = useState(false);
   const [driveConfigurado, setDriveConfigurado] = useState(false);
   const [baixandoAutosIntegral, setBaixandoAutosIntegral] = useState(false);
@@ -1288,6 +1291,28 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       setObservacao(pickCampoStrSalvo(r, 'observacao', mock.observacao));
       setEstado(pickCampoStrSalvo(r, 'estado', mock.estado));
       setCidade(pickCampoStrSalvo(r, 'cidade', mock.cidade));
+      const mid = r?.municipioId ?? r?.municipio?.id;
+      if (mid) {
+        setMunicipioSelecionado({
+          municipioId: mid,
+          municipio: r.municipio || { id: mid, nome: pickCampoStrSalvo(r, 'cidade', mock.cidade), uf: pickCampoStrSalvo(r, 'estado', mock.estado) },
+        });
+      } else {
+        setMunicipioSelecionado(null);
+      }
+      const oid = r?.orgaoJulgadorId ?? r?.orgaoJulgador?.id;
+      if (oid) {
+        setOrgaoJulgadorSelecionado({
+          orgaoJulgadorId: oid,
+          orgaoJulgador: r.orgaoJulgador || { id: oid, nome: r.orgaoJulgador?.nome },
+        });
+        if (r.orgaoJulgador?.municipio) {
+          setEstado(r.orgaoJulgador.municipio.uf || '');
+          setCidade(r.orgaoJulgador.municipio.nome || '');
+        }
+      } else {
+        setOrgaoJulgadorSelecionado(null);
+      }
       setResponsavel(pickCampoStrSalvo(r, 'responsavel', ''));
       const fkSalvo = pickCampoStrSalvo(r, 'usuarioResponsavelId', '');
       setUsuarioResponsavelId(fkSalvo.trim() !== '' ? fkSalvo : '');
@@ -2292,6 +2317,57 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     navigate,
   ]);
 
+  const handleDistribuirInicialProjudi = useCallback(async () => {
+    if (!podeGerarDocumento || gerandoDistribuicaoInicial) return;
+    setGerandoDistribuicaoInicial(true);
+    setApiError('');
+    try {
+      const dadosDistribuicaoInicial = await montarDadosDistribuicaoInicialFromProcesso({
+        processoApiId,
+        codigoCliente,
+        processo,
+        valorCausa,
+        naturezaAcao,
+        papelParte,
+        textoParteCliente,
+        textoParteOposta,
+        parteCliente,
+        parteOposta,
+        parteClienteEntradas,
+        parteOpostaEntradas,
+        pessoasPorId,
+      });
+      if (!dadosDistribuicaoInicial.pessoaAutor?.id || !dadosDistribuicaoInicial.pessoaReu?.id) {
+        setApiError(
+          'Informe autor e réu com pessoa cadastrada (partes do processo) antes de distribuir a inicial.',
+        );
+        return;
+      }
+      navigate('/processos/distribuicao-inicial-projudi', { state: { dadosDistribuicaoInicial } });
+    } catch (e) {
+      setApiError(e?.message || 'Falha ao preparar distribuição inicial PROJUDI.');
+    } finally {
+      setGerandoDistribuicaoInicial(false);
+    }
+  }, [
+    podeGerarDocumento,
+    gerandoDistribuicaoInicial,
+    processoApiId,
+    codigoCliente,
+    processo,
+    valorCausa,
+    naturezaAcao,
+    papelParte,
+    textoParteCliente,
+    textoParteOposta,
+    parteCliente,
+    parteOposta,
+    parteClienteEntradas,
+    parteOpostaEntradas,
+    pessoasPorId,
+    navigate,
+  ]);
+
   const handleGerarProcuracao = useCallback(async () => {
     if (!podeGerarDocumento || gerandoProcuracao) return;
     const entrada = (parteClienteEntradas || []).find((e) => Number(e?.pessoaId) > 0);
@@ -2504,6 +2580,9 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       consultaAutomatica,
       estado,
       cidade,
+      municipioId:
+        orgaoJulgadorSelecionado?.orgaoJulgador?.municipio?.id ?? municipioSelecionado?.municipioId ?? null,
+      orgaoJulgadorId: orgaoJulgadorSelecionado?.orgaoJulgadorId ?? null,
       dataProtocolo,
       pasta,
       pastaArquivo: String(pasta ?? ''),
@@ -2997,6 +3076,9 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     consultaAutomatica,
     estado,
     cidade,
+    orgaoJulgadorSelecionado?.orgaoJulgador?.municipio?.id,
+    municipioSelecionado?.municipioId,
+    orgaoJulgadorSelecionado?.orgaoJulgadorId,
     dataProtocolo,
     pasta,
     valorCausa,
@@ -3412,7 +3494,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     }
   }
 
-  const cidades = CIDADES_POR_UF[estado] || [];
   const totalPaginasHistorico = Math.max(1, Math.ceil(historico.length / HISTORICO_POR_PAGINA));
   const historicoPaginado = historico.slice(
     (paginaHistorico - 1) * HISTORICO_POR_PAGINA,
@@ -3847,6 +3928,26 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     >
                       <Download className="w-3.5 h-3.5" aria-hidden />
                       {baixandoAutosIntegral ? 'Gerando PDF…' : 'Baixar processo integral'}
+                    </button>
+                    <button
+                      type="button"
+                      className={processosBtnToolbarPurple}
+                      disabled={
+                        !podeGerarDocumento ||
+                        gerandoDistribuicaoInicial ||
+                        apiSaving ||
+                        gerandoDocNav ||
+                        gerandoProcuracao
+                      }
+                      onClick={() => void handleDistribuirInicialProjudi()}
+                      title={
+                        podeGerarDocumento
+                          ? 'Montar petição inicial no PROJUDI até a revisão (autor, réu e valor da causa deste processo)'
+                          : 'Informe o CNJ ou salve o processo na API'
+                      }
+                    >
+                      <Scale className="w-3.5 h-3.5" aria-hidden />
+                      {gerandoDistribuicaoInicial ? 'Preparando…' : 'Distribuir Inicial PROJUDI'}
                     </button>
                     <button
                       type="button"
@@ -4286,49 +4387,45 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                   />
                   Consulta Automática
                 </label>
-                <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                  <Field label="Estado" className="min-w-0">
-                    <select
-                      value={estado ?? ''}
-                      onChange={(e) => {
-                        const uf = e.target.value;
-                        setEstado(uf);
-                        setCidade((CIDADES_POR_UF[uf] || [])[0] || '');
-                      }}
-                      disabled={camposBloqueados}
+                <Field label="Órgão julgador" className="min-w-0 col-span-2">
+                  {camposBloqueados ? (
+                    <input
+                      type="text"
+                      readOnly
+                      value={orgaoJulgadorSelecionado?.orgaoJulgador?.nome || ''}
                       className={`w-full min-w-0 ${clsCampo}`}
-                      title={ufAtual ? `${ufAtual.sigla} — ${ufAtual.nome}` : estado}
-                    >
-                      <option value="">— Selecione —</option>
-                      {!UFS.some((u) => u.sigla === estado) && estado ? (
-                        <option value={estado}>{estado}</option>
-                      ) : null}
-                      {UFS.map((u) => (
-                        <option key={u.sigla} value={u.sigla}>
-                          {u.sigla} — {u.nome}
-                        </option>
-                      ))}
-                    </select>
+                    />
+                  ) : (
+                    <OrgaoJulgadorAutocomplete
+                      value={orgaoJulgadorSelecionado}
+                      tribunal="TJGO"
+                      onChange={(sel) => {
+                        setOrgaoJulgadorSelecionado(sel);
+                        const mun = sel?.orgaoJulgador?.municipio;
+                        if (mun) {
+                          setEstado(mun.uf || '');
+                          setCidade(mun.nome || '');
+                          setMunicipioSelecionado({
+                            municipioId: mun.id,
+                            municipio: mun,
+                          });
+                        }
+                      }}
+                      idPrefix="processo-orgao"
+                      className={`w-full min-w-0 ${inputClass}`}
+                    />
+                  )}
+                </Field>
+                {(cidade || estado) ? (
+                  <Field label="Comarca (derivada)" className="min-w-0 col-span-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={cidade && estado ? `${cidade} (${estado})` : cidade || estado}
+                      className={`w-full min-w-0 ${clsCampo}`}
+                    />
                   </Field>
-                  <Field label="Cidade" className="min-w-0">
-                    {camposBloqueados ? (
-                      <input type="text" readOnly value={cidade} className={`w-full min-w-0 ${clsCampo}`} title={cidade} />
-                    ) : (
-                      <select
-                        value={cidade ?? ''}
-                        onChange={(e) => setCidade(e.target.value)}
-                        className={`w-full min-w-0 ${inputClass}`}
-                      >
-                        <option value="">— Selecione —</option>
-                        {cidades.map((c) => (
-                          <option key={c} value={c}>
-                            {c}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </Field>
-                </div>
+                ) : null}
               </div>
 
               {/* Coluna direita: Papel, Fase processual, Observação de Fase — primeiro no mobile */}

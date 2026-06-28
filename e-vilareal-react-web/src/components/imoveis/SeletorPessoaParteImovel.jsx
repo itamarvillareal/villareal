@@ -16,13 +16,15 @@ function pareceNumeroPessoa(termo) {
  * @param {{
  *   onChange: (pessoa: { id: number, nome?: string, cpf?: string, telefone?: string } | null) => void,
  *   disabled?: boolean,
+ *   pessoaSelecionada?: { id: number, nome?: string, cpf?: string, telefone?: string } | null,
  * }} props
  */
-export function SeletorPessoaParteImovel({ onChange, disabled = false }) {
+export function SeletorPessoaParteImovel({ onChange, disabled = false, pessoaSelecionada = null }) {
   const [termo, setTermo] = useState('');
   const [aberto, setAberto] = useState(false);
   const [resultados, setResultados] = useState([]);
   const [buscando, setBuscando] = useState(false);
+  const [modoTrocar, setModoTrocar] = useState(false);
   const rootRef = useRef(null);
 
   useEffect(() => {
@@ -81,9 +83,35 @@ export function SeletorPessoaParteImovel({ onChange, disabled = false }) {
     });
     setTermo('');
     setAberto(false);
+    setModoTrocar(false);
   }
 
   const mostrarLista = aberto && !disabled && termo.trim().length > 0;
+  const exibirSelecionada =
+    pessoaSelecionada?.id != null && Number(pessoaSelecionada.id) >= 1 && !modoTrocar;
+
+  if (exibirSelecionada) {
+    return (
+      <div className="rounded-lg border border-teal-200 bg-teal-50/60 px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="text-sm text-slate-800 min-w-0">
+          <span className="font-medium">{rotuloPessoaComDocumento(pessoaSelecionada)}</span>
+          <span className="text-slate-500 text-xs ml-1">#{pessoaSelecionada.id}</span>
+        </div>
+        {!disabled ? (
+          <button
+            type="button"
+            className="text-xs text-teal-800 hover:underline shrink-0"
+            onClick={() => {
+              setModoTrocar(true);
+              setTermo('');
+            }}
+          >
+            Trocar
+          </button>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div ref={rootRef} className="relative w-full">

@@ -1,5 +1,7 @@
 package br.com.vilareal.pessoa.importacao;
 
+import br.com.vilareal.localidade.application.MunicipioMatchingService;
+import br.com.vilareal.localidade.infrastructure.persistence.entity.MunicipioEntity;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.DataFormatter;
@@ -53,6 +55,7 @@ public class CadastroPessoasPlanilhaImporter {
     private static final int LONGEST_BASE_TABLE = "pessoa_complementar".length();
 
     private final JdbcTemplate jdbcTemplate;
+    private final MunicipioMatchingService municipioMatchingService;
 
     /** Sufixo opcional (ex.: {@code _nova}) concatenado aos nomes das 4 tabelas de destino. */
     private final String tableSuffix;
@@ -63,8 +66,10 @@ public class CadastroPessoasPlanilhaImporter {
 
     public CadastroPessoasPlanilhaImporter(
             JdbcTemplate jdbcTemplate,
+            MunicipioMatchingService municipioMatchingService,
             @Value("${vilareal.import.pessoas.table-suffix:}") String tableSuffix) {
         this.jdbcTemplate = jdbcTemplate;
+        this.municipioMatchingService = municipioMatchingService;
         this.tableSuffix = normalizeAndValidateTableSuffix(tableSuffix);
         this.tblPessoa = "pessoa" + this.tableSuffix;
         this.tblComplementar = "pessoa_complementar" + this.tableSuffix;
@@ -237,6 +242,11 @@ public class CadastroPessoasPlanilhaImporter {
 
                     List<TelefoneSlot> slots = readTelefoneSlots(row, fmt);
 
+                    EnderecoLocalidadePlanilha locEndereco = resolverLocalidadeEndereco(cidade, uf);
+                    if (locEndereco.avisoPendente() != null) {
+                        writeLine(rep, excelRow, String.valueOf(pessoaId), "WARN", locEndereco.avisoPendente());
+                    }
+
                     processed++;
 
                     if (props.isDryRun()) {
@@ -294,8 +304,7 @@ public class CadastroPessoasPlanilhaImporter {
                                         genero,
                                         rua,
                                         bairro,
-                                        uf,
-                                        cidade,
+                                        locEndereco,
                                         cep,
                                         slots,
                                         now);
@@ -340,8 +349,7 @@ public class CadastroPessoasPlanilhaImporter {
                                         genero,
                                         rua,
                                         bairro,
-                                        uf,
-                                        cidade,
+                                        locEndereco,
                                         cep,
                                         slots,
                                         now);
@@ -412,15 +420,17 @@ public class CadastroPessoasPlanilhaImporter {
                                     "INSERT INTO "
                                             + tblEndereco
                                             + """
-                                             (pessoa_id, numero_ordem, rua, bairro, estado, cidade, cep, auto_preenchido)
-                                            VALUES (?,?,?,?,?,?,?,FALSE)
+                                             (pessoa_id, numero_ordem, rua, bairro, estado, cidade, municipio_id, cidade_legado, cep, auto_preenchido)
+                                            VALUES (?,?,?,?,?,?,?,?,?,FALSE)
                                             """,
                                     pessoaId,
                                     1,
                                     rua,
                                     bairro.isBlank() ? null : bairro,
-                                    uf.isBlank() ? null : uf,
-                                    cidade.isBlank() ? null : cidade,
+                                    locEndereco.estado(),
+                                    locEndereco.cidade(),
+                                    locEndereco.municipioId(),
+                                    locEndereco.cidadeLegado(),
                                     cep.isBlank() ? null : cep);
                         }
 
@@ -500,8 +510,7 @@ public class CadastroPessoasPlanilhaImporter {
             String genero,
             String rua,
             String bairro,
-            String uf,
-            String cidade,
+            EnderecoLocalidadePlanilha locEndereco,
             String cep,
             List<TelefoneSlot> slots,
             Timestamp now) {
@@ -552,15 +561,17 @@ public class CadastroPessoasPlanilhaImporter {
                     "INSERT INTO "
                             + tblEndereco
                             + """
-                             (pessoa_id, numero_ordem, rua, bairro, estado, cidade, cep, auto_preenchido)
-                            VALUES (?,?,?,?,?,?,?,FALSE)
+                             (pessoa_id, numero_ordem, rua, bairro, estado, cidade, municipio_id, cidade_legado, cep, auto_preenchido)
+                            VALUES (?,?,?,?,?,?,?,?,?,FALSE)
                             """,
                     targetPessoaId,
                     1,
                     rua,
                     bairro.isBlank() ? null : bairro,
-                    uf.isBlank() ? null : uf,
-                    cidade.isBlank() ? null : cidade,
+                    locEndereco.estado(),
+                    locEndereco.cidade(),
+                    locEndereco.municipioId(),
+                    locEndereco.cidadeLegado(),
                     cep.isBlank() ? null : cep);
         }
 
@@ -613,6 +624,31 @@ public class CadastroPessoasPlanilhaImporter {
             return "";
         }
         return m.length() > 500 ? m.substring(0, 500) : m;
+    }
+
+    private record EnderecoLocalidadePlanilha(
+            Integer municipioId, String cidade, String estado, String cidadeLegado, String avisoPendente) {}
+
+    private EnderecoLocalidadePlanilha resolverLocalidadeEndereco(String cidadeRaw, String ufRaw) {
+        String cidade = cidadeRaw != null && !cidadeRaw.isBlank() ? cidadeRaw.trim() : null;
+        String uf = ufRaw != null && !ufRaw.isBlank() ? ufRaw.trim().toUpperCase(Locale.ROOT) : null;
+        if (uf != null && uf.length() > 2) {
+            uf = uf.substring(0, 2);
+        }
+        if (cidade == null && uf == null) {
+            return new EnderecoLocalidadePlanilha(null, null, null, null, null);
+        }
+        if (cidade == null) {
+            return new EnderecoLocalidadePlanilha(null, null, uf, null, null);
+        }
+        MunicipioMatchingService.MatchMunicipio match = municipioMatchingService.casarPorNomeEUf(cidade, uf);
+        if (match.resultado() == MunicipioMatchingService.ResultadoMatch.EXATO) {
+            MunicipioEntity m = match.municipio();
+            return new EnderecoLocalidadePlanilha(
+                    m.getId(), m.getNome(), m.getEstado().getSigla(), null, null);
+        }
+        String aviso = "cidade pendente: " + cidade + " uf=" + (uf != null ? uf : "") + " motivo=" + match.resultado();
+        return new EnderecoLocalidadePlanilha(null, cidade, uf, cidade, aviso);
     }
 
     private static void writeLine(BufferedWriter w, int excelRow, String planilhaId, String tipo, String msg)

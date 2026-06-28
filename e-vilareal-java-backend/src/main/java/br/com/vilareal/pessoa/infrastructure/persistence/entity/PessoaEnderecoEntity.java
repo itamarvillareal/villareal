@@ -1,5 +1,6 @@
 package br.com.vilareal.pessoa.infrastructure.persistence.entity;
 
+import br.com.vilareal.localidade.infrastructure.persistence.entity.MunicipioEntity;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -38,6 +39,13 @@ public class PessoaEnderecoEntity {
 
     @Column(length = 120)
     private String cidade;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "municipio_id")
+    private MunicipioEntity municipio;
+
+    @Column(name = "cidade_legado", length = 120)
+    private String cidadeLegado;
 
     @Column(length = 8)
     private String cep;

@@ -1,5 +1,6 @@
 package br.com.vilareal.imovel.api.dto;
 
+import br.com.vilareal.localidade.api.dto.MunicipioResumoResponse;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "Imóvel — paridade imoveisRepository.mapApiToUi")
@@ -19,6 +20,8 @@ public class ImovelResponse {
     private Long responsavelPessoaId;
     private String titulo;
     private String enderecoCompleto;
+    private Integer municipioId;
+    private MunicipioResumoResponse municipio;
     private String condominio;
     private String unidade;
     private String tipoImovel;
@@ -107,6 +110,22 @@ public class ImovelResponse {
 
     public void setEnderecoCompleto(String enderecoCompleto) {
         this.enderecoCompleto = enderecoCompleto;
+    }
+
+    public Integer getMunicipioId() {
+        return municipioId;
+    }
+
+    public void setMunicipioId(Integer municipioId) {
+        this.municipioId = municipioId;
+    }
+
+    public MunicipioResumoResponse getMunicipio() {
+        return municipio;
+    }
+
+    public void setMunicipio(MunicipioResumoResponse municipio) {
+        this.municipio = municipio;
     }
 
     public String getCondominio() {

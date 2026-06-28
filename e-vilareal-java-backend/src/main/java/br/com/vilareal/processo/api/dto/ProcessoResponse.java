@@ -1,5 +1,7 @@
 package br.com.vilareal.processo.api.dto;
 
+import br.com.vilareal.localidade.api.dto.MunicipioResumoResponse;
+import br.com.vilareal.orgaojulgador.api.dto.OrgaoJulgadorResumoResponse;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.math.BigDecimal;
@@ -31,6 +33,11 @@ public class ProcessoResponse {
     private BigDecimal valorCausa;
     private String uf;
     private String cidade;
+    private Integer municipioId;
+    private MunicipioResumoResponse municipio;
+    private Long orgaoJulgadorId;
+    private OrgaoJulgadorResumoResponse orgaoJulgador;
+    private String cidadeLegado;
     private String unidade;
     private String pasta;
     private String papelCliente;
@@ -222,6 +229,46 @@ public class ProcessoResponse {
 
     public void setCidade(String cidade) {
         this.cidade = cidade;
+    }
+
+    public Integer getMunicipioId() {
+        return municipioId;
+    }
+
+    public void setMunicipioId(Integer municipioId) {
+        this.municipioId = municipioId;
+    }
+
+    public MunicipioResumoResponse getMunicipio() {
+        return municipio;
+    }
+
+    public void setMunicipio(MunicipioResumoResponse municipio) {
+        this.municipio = municipio;
+    }
+
+    public Long getOrgaoJulgadorId() {
+        return orgaoJulgadorId;
+    }
+
+    public void setOrgaoJulgadorId(Long orgaoJulgadorId) {
+        this.orgaoJulgadorId = orgaoJulgadorId;
+    }
+
+    public OrgaoJulgadorResumoResponse getOrgaoJulgador() {
+        return orgaoJulgador;
+    }
+
+    public void setOrgaoJulgador(OrgaoJulgadorResumoResponse orgaoJulgador) {
+        this.orgaoJulgador = orgaoJulgador;
+    }
+
+    public String getCidadeLegado() {
+        return cidadeLegado;
+    }
+
+    public void setCidadeLegado(String cidadeLegado) {
+        this.cidadeLegado = cidadeLegado;
     }
 
     public String getUnidade() {

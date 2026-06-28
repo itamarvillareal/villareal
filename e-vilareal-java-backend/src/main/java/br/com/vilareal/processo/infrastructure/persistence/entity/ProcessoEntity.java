@@ -1,5 +1,7 @@
 package br.com.vilareal.processo.infrastructure.persistence.entity;
 
+import br.com.vilareal.localidade.infrastructure.persistence.entity.MunicipioEntity;
+import br.com.vilareal.orgaojulgador.infrastructure.persistence.entity.OrgaoJulgadorEntity;
 import br.com.vilareal.pje.domain.PjeGrau;
 import br.com.vilareal.pje.domain.PjeTribunal;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
@@ -114,6 +116,17 @@ public class ProcessoEntity {
 
     @Column(length = 120)
     private String cidade;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "municipio_id")
+    private MunicipioEntity municipio;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "orgao_julgador_id")
+    private OrgaoJulgadorEntity orgaoJulgador;
+
+    @Column(name = "cidade_legado", length = 120)
+    private String cidadeLegado;
 
     @Column(name = "consulta_automatica", nullable = false)
     private Boolean consultaAutomatica = false;

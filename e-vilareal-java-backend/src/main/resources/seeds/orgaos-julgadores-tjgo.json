@@ -1,0 +1,89 @@
+{
+  "aggregations": {
+    "orgaos": {
+      "sum_other_doc_count": 0,
+      "buckets": [
+        {
+          "key": 11447,
+          "doc_count": 100,
+          "amostra": {
+            "hits": {
+              "hits": [
+                {
+                  "_source": {
+                    "grau": "G1",
+                    "orgaoJulgador": {
+                      "codigo": 11447,
+                      "nome": "9º Juizado Especial Cível",
+                      "codigoMunicipioIBGE": 5208707
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "key": 13364,
+          "doc_count": 50,
+          "amostra": {
+            "hits": {
+              "hits": [
+                {
+                  "_source": {
+                    "grau": "G1",
+                    "orgaoJulgador": {
+                      "codigo": 13364,
+                      "nome": "1ª Vara Cível de Anápolis",
+                      "codigoMunicipioIBGE": 5201108
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "key": 99001,
+          "doc_count": 10,
+          "amostra": {
+            "hits": {
+              "hits": [
+                {
+                  "_source": {
+                    "grau": "G2",
+                    "orgaoJulgador": {
+                      "codigo": 99001,
+                      "nome": "Gabinete do Desembargador — 1ª Câmara Cível",
+                      "codigoMunicipioIBGE": 5208707
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "key": 99002,
+          "doc_count": 5,
+          "amostra": {
+            "hits": {
+              "hits": [
+                {
+                  "_source": {
+                    "grau": "TR",
+                    "orgaoJulgador": {
+                      "codigo": 99002,
+                      "nome": "1ª Turma Recursal dos Juizados Especiais",
+                      "codigoMunicipioIBGE": 5208707
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

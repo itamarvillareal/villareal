@@ -72,6 +72,20 @@ function soDigitosDiag(s) {
   return String(s ?? '').replace(/\D/g, '');
 }
 
+/** Normaliza item da lista «Aguardando Protocolo» (API usa codigoCliente/numeroInterno; embed usa codCliente/proc). */
+function chavesClienteProcAguardandoProtocolo(item) {
+  const codCliente = item?.codCliente ?? item?.codigoCliente;
+  const proc = item?.proc ?? item?.numeroInterno;
+  return { codCliente, proc };
+}
+
+function itemAguardandoProtocoloAbrivel(item) {
+  const { codCliente, proc } = chavesClienteProcAguardandoProtocolo(item);
+  if (codCliente == null || String(codCliente).trim() === '') return false;
+  if (proc == null || String(proc).trim() === '') return false;
+  return true;
+}
+
 function mapPessoaApiParaDiag(p) {
   return {
     id: Number(p.id),
@@ -1940,20 +1954,33 @@ export function Diagnosticos() {
                     Nenhum processo com essa fase no momento. Use «Inserir na Pasta Assinar», marque «Protocolo / Movimentação» em Processos ou aguarde a sincronização com a API.
                   </p>
                 ) : (
-                  resultadoAguardandoProtocolo.map((item, idx) => (
-                    <p
-                      key={`${item.codCliente}-${item.proc}-${idx}`}
-                      className="whitespace-pre-wrap break-words cursor-pointer hover:bg-slate-100 rounded px-1 -mx-1 select-none"
-                      onDoubleClick={() => abrirProcessoPorItem(item)}
-                      title="Duplo clique: abrir em Processos"
-                    >
-                      {String(idx + 1).padStart(3, '0')} - (Cod. {item.codCliente}, Proc. {String(item.proc).padStart(2, '0')}){' '}
-                      {item.parteCliente || item.cliente || 'CLIENTE'} x {item.parteOposta || 'PARTE OPOSTA'} (
-                      {item.numeroProcessoNovo || 'sem nº'})
-                      {' — '}
-                      Fase: {item.faseSelecionada}
-                    </p>
-                  ))
+                  <ul className="list-none m-0 p-0 space-y-0">
+                    {resultadoAguardandoProtocolo.map((item, idx) => {
+                      const { codCliente, proc } = chavesClienteProcAguardandoProtocolo(item);
+                      const abrivel = itemAguardandoProtocoloAbrivel(item);
+                      return (
+                        <li
+                          key={`${codCliente ?? 'x'}-${proc ?? 'y'}-${idx}`}
+                          className={`whitespace-pre-wrap break-words rounded px-1 -mx-1 select-none ${
+                            abrivel ? 'cursor-pointer hover:bg-slate-100' : ''
+                          }`}
+                          onDoubleClick={
+                            abrivel
+                              ? () => abrirProcessoPorItem({ codCliente, proc })
+                              : undefined
+                          }
+                          title={abrivel ? 'Duplo clique: abrir em Processos' : undefined}
+                        >
+                          {String(idx + 1).padStart(3, '0')} - (Cod. {codCliente}, Proc.{' '}
+                          {String(proc).padStart(2, '0')}){' '}
+                          {item.parteCliente || item.cliente || 'CLIENTE'} x{' '}
+                          {item.parteOposta || 'PARTE OPOSTA'} ({item.numeroProcessoNovo || 'sem nº'})
+                          {' — '}
+                          Fase: {item.faseSelecionada}
+                        </li>
+                      );
+                    })}
+                  </ul>
                 )}
               </div>
             </div>

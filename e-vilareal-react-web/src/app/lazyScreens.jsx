@@ -47,6 +47,10 @@ export const LazyPeticionamentoProjudi = fromNamed(
   () => import('../components/projudi/PeticionamentoProjudi.jsx'),
   'PeticionamentoProjudi'
 );
+export const LazyDistribuicaoInicialProjudi = fromNamed(
+  () => import('../components/projudi/DistribuicaoInicialProjudi.jsx'),
+  'DistribuicaoInicialProjudi'
+);
 export const LazyMonitoringPeoplePage = fromNamed(
   () => import('../components/monitoring/MonitoringPeoplePage.jsx'),
   'MonitoringPeoplePage'
@@ -161,6 +165,10 @@ export const LazyGerenteTopicos = fromNamed(() => import('../components/GerenteT
 export const LazyIntegracoesTribunalScraperLab = fromNamed(
   () => import('../components/integracoes/IntegracoesTribunalScraperLab.jsx'),
   'IntegracoesTribunalScraperLab'
+);
+export const LazyTribunaisCatalogoAdmin = fromNamed(
+  () => import('../components/integracoes/TribunaisCatalogoAdmin.jsx'),
+  'TribunaisCatalogoAdmin'
 );
 export const LazyGerarDocumento = fromNamed(
   () => import('../pages/documentos/GerarDocumento.jsx'),

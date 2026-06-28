@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+
+<html>
+	<head>
+		<meta content="text/html; charset=LATIN1" http-equiv="CONTENT-TYPE"/>
+		<script type="text/javascript" src="/ruxitagentjs_ICA7NVfqrux_10339260603164134.js" data-dtconfig="app=bc5a3be3c6a535b2|owasp=1|featureHash=ICA7NVfqrux|rdnt=1|uxrgce=1|cuc=nncenbbl|mel=100000|expw=1|dpvc=1|lastModification=1782497097539|postfix=nncenbbl|tp=500,50,0|srbbv=2|agentUri=/ruxitagentjs_ICA7NVfqrux_10339260603164134.js|reportUrl=/rb_bf56388ccc|rid=RID_-1388980438|rpid=-1388291643|domain=tjgo.jus.br"></script><link href="./css/Principal.css?v=20231017"  type="text/css"  rel="stylesheet" />
+		<link href="./css/Paginacao.css"  type="text/css"  rel="stylesheet" />
+		<link href="./css/balloon.css"  type="text/css"  rel="stylesheet" />
+		
+		
+		<script type='text/javascript' src='./js/Funcoes.js'></script>
+		<script type='text/javascript' src='./js/jquery.js'></script>
+      	<script type='text/javascript' src='./js/ui/jquery-ui.min.js'></script>  
+		<script type="text/javascript" src="./js/Digitacao/DigitarSoNumero.js" ></script>
+		<script type="text/javascript" src="./js/Digitacao/AutoTab.js"></script>
+	</head>
+
+	<body data-usuario-id="19650" data-usuario-nome="ITAMAR ALEXANDRE FELIX VILLA REAL JUNIOR">
+		<div id="divCorpo" class="divCorpo" >
+			<div class="area"><h2>&raquo; |Processo| Confirmação de Dados</h2> </div>
+		
+			<form action="ProcessoCivel" method="post" name="Formulario" id="Formulario">
+				
+				<input id="PaginaAtual" name="PaginaAtual" type="hidden" value="-1" />
+				<input id="PassoEditar" name="PassoEditar" type="hidden" value="6">
+				<input id="__Pedido__" name="__Pedido__" type="hidden" value="-2147483647">
+				
+				<!-- Variáveis para controlar Passos do Cadastro -->
+	<input id="Passo1" name="Passo1" type="hidden" value="Passo 1 OK">
+	<input id="Passo2" name="Passo2" type="hidden" value="Passo 2 OK">
+	<input id="Passo3" name="Passo3" type="hidden" value="Passo 3">
+
+	<input name="imgPasso1" type="submit" value="Passo 1 OK" onClick="AlterarValue('PaginaAtual', '-1');AlterarValue('PassoEditar','-1');">
+	<input name="imgPasso2" type="submit" value="Passo 2 OK" onClick="AlterarValue('PaginaAtual', '-1');AlterarValue('PassoEditar','0');">
+	<input name="imgPasso3" type="submit" value="Passo 3" onClick="AlterarValue('PaginaAtual', '-1');AlterarValue('PassoEditar','1');">
+	<div id="divEditar" class="divEditar">
+					<fieldset class="formEdicao">
+						<legend> Dados do Processo </legend>
+						
+						<!-- NÚMERO DO PROCESSO CASO SEJA PROCESSO FÍSICO -->
+						<!-- PROMOVENTES -->
+						<fieldset id="VisualizaDados" class="VisualizaDados">
+					   		<legend> Polo Ativo </legend>
+				   		<div> Nome </div> <span class="span1">Lm Solucoes Empresarias E Administrativas Ltda</span>
+					       	<div> CPF </div> <span class="span2">54.874.451/0001-87</span>
+					        <div><a href="javascript: MostrarOcultar('subLm Solucoes Empresarias E Administrativas Ltda')" title="Mostrar/Ocultar"> Endereço </a></div/><br />
+					 		
+					  		<div id="subLm Solucoes Empresarias E Administrativas Ltda"  class="DivInvisivel">
+	  							<fieldset class="fieldsetEndereco">
+						  			<legend> Endereço </legend>
+									AVENIDA SANTANA QUADRA39 A                LOTE  5<br />
+						    		BAIRRO DE LOURDES ANAPOLIS GO<br />
+						    		75095320 MARLLONBIZZINOTTO@GMAIL.COM (62) 9205-5296</fieldset>
+							</div>
+					   	</fieldset>
+				   		<!-- PROMOVIDOS -->
+						<fieldset id="VisualizaDados" class="VisualizaDados">
+					   		<legend> Polo Passivo </legend>
+					   	<div> Nome </div> <span class="span1">Wanessa Cesario De Jesus 72843519187</span>
+					       	<div> CPF </div> <span class="span2">19.495.157/0001-63</span>
+				   	        <div><a href="javascript: MostrarOcultar('subWanessa Cesario De Jesus 72843519187')" title="Mostrar/Ocultar"> Endereço </a></div/><br />
+					 		
+					  		<div id="subWanessa Cesario De Jesus 72843519187"  class="DivInvisivel">
+	  							<fieldset class="fieldsetEndereco">
+						  			<legend> Endereço </legend>
+									AV AMANDA BRAGA TIBURCIO QD. 25, LT. 02<br />
+						    		LOTEAMENTO SETOR SUL I ETAPA ANAPOLIS GO<br />
+							   		75106600  (62) 9124-5817</fieldset>
+							</div>
+					   	</fieldset>
+
+						<!-- OUTRAS PARTES -->
+						<fieldset id="VisualizaDados" class="VisualizaDados">
+				   			<legend> Advogado(s) / Promotor </legend>
+							<div style="margin-left:-30px"> Advogado </div>
+				       		 		<span>ITAMAR ALEXANDRE FELIX VILLA REAL JUNIOR</span>	
+					       		 	<div> OAB/Matrícula </div>
+					       				<span>33329-N GO</span/><br />	
+				       				</fieldset>
+						<fieldset id="VisualizaDados" class="VisualizaDados">
+				    		<legend> Outras Informações </legend>
+				    		<div> Área Distribuição </div>
+								<span style="width: 300px;">Anápolis - Juizados Especiais Cíveis</span>
+							<br />
+							
+					   		<div> Classe </div>
+				    	  	<span style="width: 300px;">PROCESSO CÍVEL E DO TRABALHO -> Processo de Conhecimento -> Procedimento de Conhecimento -> Procedimento do Juizado Especial Cível</span>
+				    	  	<br />
+				
+							<div> Assunto(s) </div>
+							<table width="80%" border="0" cellpadding="0" cellspacing="0" style="font-size: 10px !important;padding-left: 10px;">
+   								<tbody>
+								<tr>
+										<td><b>DIREITO CIVIL -> Obrigações -> Espécies de Títulos de Crédito -> Nota Promissória</b></td>
+									</tr>
+       							</tbody>
+       						</table>
+   							
+							<div> Valor da Causa</div>
+							<span>1.294,57</span>
+
+							<div> Segredo de Justi&ccedil;a</div>
+							<span>NÃO</span><br />
+							
+							<div> Prioridade</div>
+							<span>Normal</span>
+							
+							<div> Processo Principal</div>
+							<span></span><br />	
+						</fieldset>
+						
+						<fieldset id="VisualizaDados" class="VisualizaDados">
+							<legend> Arquivo(s)</legend>
+							<div> Tipo </div>
+										<span> Petição Inicial</span>
+							
+										<div> Nome </div>
+										<span style="width: 300px;"> peticao_inicial_restaurante_wv_20260618.pdf</span><br />
+						  	<div> Tipo </div>
+										<span> Outros</span>
+							
+										<div> Nome </div>
+										<span style="width: 300px;"> 02.procuracaolmsolucoesempresariaseadmini1.pdf</span><br />
+						  	<div> Tipo </div>
+										<span> Outros</span>
+							
+										<div> Nome </div>
+										<span style="width: 300px;"> 03.contratosociallmsolucoes.pdf</span><br />
+						  	<div> Tipo </div>
+										<span> Outros</span>
+							
+										<div> Nome </div>
+										<span style="width: 300px;"> 04.certidaosimplificadalm.pdf</span><br />
+						  	<div> Tipo </div>
+										<span> Outros</span>
+							
+										<div> Nome </div>
+										<span style="width: 300px;"> 05.lmcnpj.pdf</span><br />
+						  	<div> Tipo </div>
+										<span> Outros</span>
+							
+										<div> Nome </div>
+										<span style="width: 300px;"> 06.cnhe.pdf2.pdf</span><br />
+						  	<div> Tipo </div>
+										<span> Outros</span>
+							
+										<div> Nome </div>
+										<span style="width: 300px;"> cnpjwanessainapta.pdf</span><br />
+						  	<div> Tipo </div>
+										<span> Outros</span>
+							
+										<div> Nome </div>
+										<span style="width: 300px;"> listadedebitos.pdf</span><br />
+						  	<div> Tipo </div>
+										<span> Outros</span>
+							
+										<div> Nome </div>
+										<span style="width: 300px;"> restaurantewv.pdf</span><br />
+						  	<div> Tipo </div>
+										<span> Outros</span>
+							
+										<div> Nome </div>
+										<span style="width: 300px;"> tentivacobrancawhatsapp.pdf</span><br />
+						  	</fieldset>
+						
+						<fieldset id="VisualizaDados" class="VisualizaDados">
+							<legend> Opções</legend>
+							
+							<div><input class="formEdicaoInput" name="SegredoJustica" id="SegredoJustica" type="checkbox" value="true" /></div>
+				    		<span title="Marque essa opção se o processo envolve Segredo de Justiça">Segredo de Justiça</span>
+				    		
+				    		<br />
+						    <div><input class="formEdicaoInput" name="NaoMarcarAudiencia" id="NaoMarcarAudiencia" type="checkbox" value="false" /></div> 
+				    		<span title="Marque essa opção se não deseja que seja marcada uma Audiência automaticamente">Não Marcar Audiência</span>
+				    		
+				    		<br />
+				    		<div>
+ 								<input class="formEdicaoInput" type="checkbox" name="digital100" id="digital100"  value="true" />
+ 							</div> 
+ 							<span data-balloon-length="xlarge" aria-label="A opção pelo Juízo 100% Digital implica adesão às regras do Decreto Judiciário 837/2021, atualizado pelo Decreto Judiciário 2.895/2021, entre elas o dever de indicação do e-mail ou número de telefone com aplicativo de mensagem da parte contrária. A falta de indicação desses itens poderá gerar a exclusão, por ato do Juízo Competente, dos benefícios desta nova modalidade de tramitação processual." data-balloon-pos="down">Deseja aderir ao Juízo 100% Digital?</span>	 
+							
+				    		
+				    		
+				    		<br />
+						</fieldset>
+						
+						<div id="divBotoesCentralizados" class="divBotoesCentralizados">
+							<input name="imgInserir" id="imgInserir" type="submit" value="Confirmar" onclick="AlterarValue('PaginaAtual',5);"> 
+							<input name="imgCancelar" id="imgCancelar" type="submit" value="Cancelar" onclick="AlterarValue('PaginaAtual',4);">
+						</div>		
+					</fieldset>
+				</div>
+			</form>
+		</div>
+	</body>
+</html>

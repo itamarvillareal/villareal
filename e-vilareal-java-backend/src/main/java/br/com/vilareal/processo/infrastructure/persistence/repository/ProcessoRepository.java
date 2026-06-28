@@ -3,7 +3,6 @@ package br.com.vilareal.processo.infrastructure.persistence.repository;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -285,6 +284,19 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
             ORDER BY p.proximaConsulta ASC, p.id ASC
             """)
     List<ProcessoEntity> findParaConsultaAutomaticaProjudi(Pageable pageable);
+
+    @Query("""
+            SELECT p FROM ProcessoEntity p
+            LEFT JOIN FETCH p.cliente
+            LEFT JOIN FETCH p.pessoa
+            LEFT JOIN FETCH p.municipio m
+            LEFT JOIN FETCH m.estado
+            LEFT JOIN FETCH p.orgaoJulgador o
+            LEFT JOIN FETCH o.municipio om
+            LEFT JOIN FETCH om.estado
+            WHERE p.id = :id
+            """)
+    Optional<ProcessoEntity> findByIdDetalhado(@Param("id") Long id);
 
     @Query("""
             SELECT p FROM ProcessoEntity p

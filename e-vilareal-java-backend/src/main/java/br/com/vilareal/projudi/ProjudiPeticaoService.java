@@ -229,7 +229,7 @@ public class ProjudiPeticaoService {
                 if (pareceFalhaPost(p8a)) {
                     return falha("Passo 8a (InsercaoArquivo, arquivo " + i + ") falhou.", corpoP8a);
                 }
-                String erroInsercao = validarRespostaInsercaoArquivo(corpoP8a);
+                String erroInsercao = validarRespostaInsercaoArquivo(corpoP8a, objectMapper);
                 if (erroInsercao != null) {
                     return falha(erroInsercao, corpoP8a);
                 }
@@ -369,7 +369,7 @@ public class ProjudiPeticaoService {
         return NOMES_TIPO_ARQUIVO.getOrDefault(idArquivoTipo, idArquivoTipo == 16 ? "Petição" : "Outros");
     }
 
-    private static String montarCorpoInsercaoArquivo(String nomeP7s, ArquivoPeticao arquivo) {
+    public static String montarCorpoInsercaoArquivo(String nomeP7s, ArquivoPeticao arquivo) {
         String base64 = Base64.getEncoder().encodeToString(arquivo.bytesP7s());
         String dataUri = "data:application/pkcs7-signature;base64," + base64;
         String arquivoEncoded = encFormComponent(dataUri);
@@ -430,7 +430,7 @@ public class ProjudiPeticaoService {
                 + "&Id_Modelo=null&Modelo=&nomeArquivo=&TextoEditor=&arquivo=&imgConcluir=Avan%E7ar";
     }
 
-    private String validarRespostaInsercaoArquivo(String corpo) {
+    public static String validarRespostaInsercaoArquivo(String corpo, ObjectMapper objectMapper) {
         if (!StringUtils.hasText(corpo)) {
             // Fluxo=4 bem-sucedido costuma responder 200 com corpo vazio (captura real PROJUDI).
             return null;

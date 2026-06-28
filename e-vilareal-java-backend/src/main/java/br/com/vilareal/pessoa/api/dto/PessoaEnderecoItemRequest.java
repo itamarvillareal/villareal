@@ -1,5 +1,6 @@
 package br.com.vilareal.pessoa.api.dto;
 
+import br.com.vilareal.localidade.api.dto.MunicipioResumoResponse;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -26,6 +27,9 @@ public class PessoaEnderecoItemRequest {
 
     @Size(max = 8)
     private String cep;
+
+    @Schema(description = "Código IBGE do município (7 dígitos)")
+    private Integer municipioId;
 
     private Boolean autoPreenchido = false;
 
@@ -75,6 +79,14 @@ public class PessoaEnderecoItemRequest {
 
     public void setCep(String cep) {
         this.cep = cep;
+    }
+
+    public Integer getMunicipioId() {
+        return municipioId;
+    }
+
+    public void setMunicipioId(Integer municipioId) {
+        this.municipioId = municipioId;
     }
 
     public Boolean getAutoPreenchido() {

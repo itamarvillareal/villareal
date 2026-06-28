@@ -4,6 +4,12 @@ import br.com.vilareal.documento.DocumentoDrivePastaService;
 import br.com.vilareal.importacao.infrastructure.persistence.repository.PlanilhaPasta1ClienteRepository;
 import br.com.vilareal.pessoa.api.dto.ClienteCreateRequest;
 import br.com.vilareal.pessoa.api.dto.ClienteCreateResult;
+import br.com.vilareal.localidade.application.MunicipioApplicationService;
+import br.com.vilareal.localidade.application.MunicipioDerivacaoService;
+import br.com.vilareal.localidade.application.MunicipioUsoService;
+import br.com.vilareal.orgaojulgador.application.OrgaoJulgadorApplicationService;
+import br.com.vilareal.orgaojulgador.application.OrgaoJulgadorDerivacaoService;
+import br.com.vilareal.orgaojulgador.application.OrgaoJulgadorUsoService;
 import br.com.vilareal.pessoa.application.ClienteResolverService;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
@@ -59,6 +65,18 @@ class ClienteCadastroUpsertServiceTest {
     private ClienteResolverService clienteResolverService;
     @Mock
     private DocumentoDrivePastaService documentoDrivePastaService;
+    @Mock
+    private MunicipioUsoService municipioUsoService;
+    @Mock
+    private MunicipioDerivacaoService municipioDerivacaoService;
+    @Mock
+    private MunicipioApplicationService municipioApplicationService;
+    @Mock
+    private OrgaoJulgadorUsoService orgaoJulgadorUsoService;
+    @Mock
+    private OrgaoJulgadorDerivacaoService orgaoJulgadorDerivacaoService;
+    @Mock
+    private OrgaoJulgadorApplicationService orgaoJulgadorApplicationService;
 
     private ProcessoApplicationService service;
 
@@ -78,7 +96,13 @@ class ClienteCadastroUpsertServiceTest {
                         clienteCodigoPessoaResolver,
                         clienteRepository,
                         clienteResolverService,
-                        documentoDrivePastaService);
+                        documentoDrivePastaService,
+                        municipioUsoService,
+                        municipioDerivacaoService,
+                        municipioApplicationService,
+                        orgaoJulgadorUsoService,
+                        orgaoJulgadorDerivacaoService,
+                        orgaoJulgadorApplicationService);
     }
 
     @Test

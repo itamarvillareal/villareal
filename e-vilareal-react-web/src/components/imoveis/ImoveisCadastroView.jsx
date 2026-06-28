@@ -25,6 +25,7 @@ import {
   imoveisBtnSecondary,
   imoveisInputClass,
 } from './ImoveisAdminLayout.jsx';
+import { MunicipioAutocomplete } from '../ui/MunicipioAutocomplete.jsx';
 import { ListaFiadoresImovel } from './ListaFiadoresImovel.jsx';
 import { ListaInquilinosImovel } from './ListaInquilinosImovel.jsx';
 import { CampoDataBr } from '../ui/CampoDataBr.jsx';
@@ -65,6 +66,8 @@ export function ImoveisCadastroView(props) {
     onSelecionarImovelPesquisa,
     endereco,
     setEndereco,
+    municipioSelecionado,
+    setMunicipioSelecionado,
     condominio,
     setCondominio,
     unidade,
@@ -528,6 +531,15 @@ export function ImoveisCadastroView(props) {
               onChange={setEndereco}
               onCopy={onCopiarEndereco}
               mapsUrl={mapsUrl}
+            />
+          </Field>
+          <Field label="Município">
+            <MunicipioAutocomplete
+              value={municipioSelecionado}
+              onChange={setMunicipioSelecionado}
+              uf={municipioSelecionado?.municipio?.uf || 'GO'}
+              idPrefix="imovel-municipio"
+              className={imoveisInputClass}
             />
           </Field>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-4 sm:gap-5">

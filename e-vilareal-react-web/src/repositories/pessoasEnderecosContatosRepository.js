@@ -17,8 +17,11 @@ export function enderecosApiParaUi(arr) {
     numero: e.numero,
     rua: e.rua ?? '',
     bairro: e.bairro ?? '',
-    estado: e.estado ?? '',
-    cidade: e.cidade ?? '',
+    estado: e.estado ?? e.municipio?.uf ?? '',
+    cidade: e.cidade ?? e.municipio?.nome ?? '',
+    municipioId: e.municipioId ?? e.municipio?.id ?? null,
+    municipio: e.municipio ?? null,
+    cidadeLegado: e.cidadeLegado ?? null,
     cep: e.cep != null ? String(e.cep) : '',
     autoPreenchido: Boolean(e.autoPreenchido),
   }));
@@ -32,14 +35,14 @@ export function enderecosUiParaApi(items) {
       if (!rua) return null;
       const n = Number(e.numero);
       const numero = Number.isFinite(n) && n >= 1 ? Math.floor(n) : idx + 1;
-      const est = String(e.estado ?? '').trim().toUpperCase().slice(0, 2);
+      const municipioId = Number(e.municipioId);
+      if (!Number.isFinite(municipioId) || municipioId <= 0) return null;
       const cepDigits = String(e.cep ?? '').replace(/\D/g, '').slice(0, 8);
       return {
         numero,
         rua,
         bairro: String(e.bairro ?? '').trim() || null,
-        estado: est || null,
-        cidade: String(e.cidade ?? '').trim() || null,
+        municipioId: Math.floor(municipioId),
         cep: cepDigits || null,
         autoPreenchido: Boolean(e.autoPreenchido),
       };

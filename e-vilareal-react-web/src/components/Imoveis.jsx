@@ -55,6 +55,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   const [proc, setProc] = useState(42);
   const [observacoesInquilino, setObservacoesInquilino] = useState('');
   const [endereco, setEndereco] = useState('Rua L-17, Quadra 06, Lote 01, Apartamento 1101, Bloco C, Residencial Veredas');
+  const [municipioSelecionado, setMunicipioSelecionado] = useState(null);
   const [condominio, setCondominio] = useState('Veredas do Bosque');
   const [unidade, setUnidade] = useState('Unidade 1101 C');
   const [garagens, setGaragens] = useState('2');
@@ -259,6 +260,15 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     setProc(data.proc != null && data.proc !== '' ? String(data.proc) : '');
     setObservacoesInquilino(String(data.observacoesInquilino ?? ''));
     setEndereco(String(data.endereco ?? ''));
+    if (data.municipioId || data.municipio?.id) {
+      const mid = data.municipioId ?? data.municipio?.id;
+      setMunicipioSelecionado({
+        municipioId: mid,
+        municipio: data.municipio || { id: mid, nome: '', uf: 'GO' },
+      });
+    } else {
+      setMunicipioSelecionado(null);
+    }
     setCondominio(String(data.condominio ?? ''));
     setUnidade(String(data.unidade ?? ''));
     if (unidadeAlvo != null) setUnidade(String(unidadeAlvo));
@@ -756,6 +766,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
         proc,
         observacoesInquilino,
         endereco,
+        municipioId: municipioSelecionado?.municipioId ?? null,
         condominio,
         unidade,
         garagens,
@@ -1032,6 +1043,8 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
             onSelecionarImovelPesquisa={onSelecionarImovelPesquisa}
             endereco={endereco}
             setEndereco={setEndereco}
+            municipioSelecionado={municipioSelecionado}
+            setMunicipioSelecionado={setMunicipioSelecionado}
             condominio={condominio}
             setCondominio={setCondominio}
             unidade={unidade}

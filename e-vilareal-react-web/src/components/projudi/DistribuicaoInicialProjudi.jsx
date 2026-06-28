@@ -1,0 +1,940 @@
+import { useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Download,
+  Info,
+  Loader2,
+  Scale,
+  Trash2,
+  User,
+  XCircle,
+} from 'lucide-react';
+import {
+  distribuirInicial,
+  listarAssuntosProjudi,
+  prepararInicial,
+  sugerirAssuntoProjudi,
+  validarProntidaoInicial,
+} from '../../api/iniciaisProjudiApi.js';
+import { listarCredenciais } from '../../api/peticoesProjudiApi.js';
+import { isArquivoP7s } from '../../domain/peticaoArquivo.js';
+import { SeletorPessoaParteImovel } from '../imoveis/SeletorPessoaParteImovel.jsx';
+import { ProcessosToast, processosBtnPrimary } from '../processos/ProcessosAdminLayout.jsx';
+
+const inputClass =
+  'w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white text-slate-900';
+
+const TIPOS_ARQUIVO = [
+  { id: 16, label: 'Petição' },
+  { id: 1, label: 'Outros' },
+];
+
+function formatCpfExibicao(cpf) {
+  const d = String(cpf ?? '').replace(/\D/g, '');
+  if (d.length === 11) {
+    return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+  }
+  if (d.length === 14) {
+    return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+  }
+  return cpf || '—';
+}
+
+function labelCredencial(c) {
+  if (!c) return '';
+  const rotulo = c.rotulo ? ` · ${c.rotulo}` : '';
+  return `#${c.id} · ${formatCpfExibicao(c.cpfUsuario)}${rotulo}`;
+}
+
+/** @param {import('../../api/iniciaisProjudiApi.js').ResultadoPreparacaoInicial} resultado */
+function baixarLogJson(resultado) {
+  const blob = new Blob([JSON.stringify(resultado, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `projudi-inicial-${resultado.passoAlcancado || 'log'}-${Date.now()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function montarCsvAssuntos(idsSelecionados, outroId) {
+  const ids = [...idsSelecionados];
+  const extra = Number.parseInt(String(outroId).trim(), 10);
+  if (Number.isFinite(extra) && extra > 0 && !ids.includes(extra)) {
+    ids.push(extra);
+  }
+  return ids.join(',');
+}
+
+function montarFormDataInicial({
+  credencialId,
+  valorCausa,
+  idsAssuntosSelecionados,
+  outroIdAssunto,
+  pessoaAutor,
+  pessoaReu,
+  linhasP7s,
+  processoIdOrigem,
+  confirmar,
+}) {
+  const fd = new FormData();
+  fd.append('credencialId', String(credencialId).trim() || '1');
+  fd.append('valorCausa', valorCausa.trim());
+  fd.append('idAssuntos', montarCsvAssuntos(idsAssuntosSelecionados, outroIdAssunto));
+  fd.append('pessoaIdAutor', String(pessoaAutor.id));
+  fd.append('pessoaIdReu', String(pessoaReu.id));
+  for (const linha of linhasP7s) {
+    if (linha.file) {
+      fd.append('pdfs', linha.file);
+      fd.append('idArquivoTipos', String(linha.idArquivoTipo));
+    }
+  }
+  if (processoIdOrigem != null && Number(processoIdOrigem) > 0) {
+    fd.append('processoIdOrigem', String(processoIdOrigem));
+  }
+  if (confirmar != null) {
+    fd.append('confirmar', confirmar ? 'true' : 'false');
+  }
+  return fd;
+}
+
+function linhaP7sComArquivo(file) {
+  return { key: crypto.randomUUID(), file, idArquivoTipo: 16 };
+}
+
+function BadgeCampo({ nivel, label, motivo }) {
+  const resolvido = nivel === 'RESOLVIDO';
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${
+        resolvido
+          ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+          : 'border-amber-200 bg-amber-50 text-amber-800'
+      }`}
+      title={motivo || undefined}
+    >
+      {resolvido ? (
+        <CheckCircle2 className="w-3 h-3" aria-hidden />
+      ) : (
+        <AlertTriangle className="w-3 h-3" aria-hidden />
+      )}
+      {label}: {resolvido ? 'RESOLVIDO' : 'PENDENTE'}
+    </span>
+  );
+}
+
+function CartaoParteResolvida({ titulo, pessoa, resolvida, carregando, erro }) {
+  if (!pessoa) {
+    return (
+      <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/50 p-3 text-sm text-slate-500">
+        {titulo}: selecione uma pessoa acima.
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-3 space-y-2">
+      <div className="flex items-start justify-between gap-2">
+        <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
+          <User className="w-4 h-4 text-sky-700" aria-hidden />
+          {titulo}
+        </h3>
+        <span className="text-xs text-slate-500 shrink-0">#{pessoa.id}</span>
+      </div>
+      <p className="text-sm font-medium text-slate-900 break-words">{pessoa.nome || '—'}</p>
+
+      {carregando ? (
+        <div className="flex items-center gap-2 text-sm text-slate-600">
+          <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+          Resolvendo endereço no PROJUDI…
+        </div>
+      ) : null}
+
+      {erro ? (
+        <p className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-1">{erro}</p>
+      ) : null}
+
+      {resolvida ? (
+        <>
+          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-700">
+            <div>
+              <dt className="text-slate-500">{resolvida.tipoDoc || 'Doc'}</dt>
+              <dd className="font-mono">{formatCpfExibicao(resolvida.documento)}</dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">Telefone / E-mail</dt>
+              <dd>{resolvida.telefone || '—'} · {resolvida.email || '—'}</dd>
+            </div>
+            <div className="sm:col-span-2">
+              <dt className="text-slate-500">Endereço</dt>
+              <dd>
+                {[resolvida.logradouro, resolvida.numero, resolvida.complemento]
+                  .filter(Boolean)
+                  .join(', ') || '—'}
+                {resolvida.cep ? ` · CEP ${resolvida.cep}` : ''}
+              </dd>
+            </div>
+          </dl>
+
+          <div className="flex flex-wrap gap-1.5">
+            <BadgeCampo
+              label="Estado"
+              nivel={resolvida.estado?.nivel}
+              motivo={resolvida.estado?.motivo}
+            />
+            <BadgeCampo
+              label="Cidade"
+              nivel={resolvida.cidade?.nivel}
+              motivo={resolvida.cidade?.motivo}
+            />
+            <BadgeCampo
+              label="Bairro"
+              nivel={resolvida.bairro?.nivel}
+              motivo={resolvida.bairro?.motivo}
+            />
+            <span
+              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${
+                resolvida.prontaParaInserir
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  : 'border-rose-200 bg-rose-50 text-rose-800'
+              }`}
+            >
+              {resolvida.prontaParaInserir ? (
+                <CheckCircle2 className="w-3 h-3" aria-hidden />
+              ) : (
+                <AlertTriangle className="w-3 h-3" aria-hidden />
+              )}
+              {resolvida.prontaParaInserir ? 'Pronta para inserir' : 'Pendente'}
+            </span>
+          </div>
+
+          {resolvida.pendencias?.length > 0 ? (
+            <ul className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 list-disc pl-4 space-y-0.5 break-words">
+              {resolvida.pendencias.map((p) => (
+                <li key={p} className="break-words">
+                  {p}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+export function DistribuicaoInicialProjudi() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const dadosProcesso =
+    location.state?.dadosDistribuicaoInicial && typeof location.state.dadosDistribuicaoInicial === 'object'
+      ? location.state.dadosDistribuicaoInicial
+      : null;
+
+  const [credencialId, setCredencialId] = useState('1');
+  const [credenciais, setCredenciais] = useState([]);
+  const [valorCausa, setValorCausa] = useState('');
+  const [catalogoAssuntos, setCatalogoAssuntos] = useState([]);
+  const [idsAssuntosSelecionados, setIdsAssuntosSelecionados] = useState([]);
+  const [outroIdAssunto, setOutroIdAssunto] = useState('');
+  const [assuntoSugerido, setAssuntoSugerido] = useState(null);
+  const sugestaoAplicadaRef = useRef(false);
+  const [linhasP7s, setLinhasP7s] = useState([]);
+
+  const [pessoaAutor, setPessoaAutor] = useState(null);
+  const [pessoaReu, setPessoaReu] = useState(null);
+  const [parteAutor, setParteAutor] = useState(null);
+  const [parteReu, setParteReu] = useState(null);
+
+  const [apiError, setApiError] = useState('');
+  const [toast, setToast] = useState('');
+  const [operacao, setOperacao] = useState(null);
+  const [resultado, setResultado] = useState(null);
+  const [modalDistribuirAberto, setModalDistribuirAberto] = useState(false);
+  const [confirmacaoIrreversivel, setConfirmacaoIrreversivel] = useState(false);
+  /** @type {[import('../../api/iniciaisProjudiApi.js').ValidacaoProntidaoInicial|null, Function]} */
+  const [validacaoProntidao, setValidacaoProntidao] = useState(null);
+  const [validandoProntidao, setValidandoProntidao] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const rows = await listarCredenciais();
+        const lista = Array.isArray(rows) ? rows : [];
+        setCredenciais(lista);
+        setCredencialId((atual) => {
+          if (atual && atual !== '1') return atual;
+          const preferida = lista.find((c) => String(c.id) === '1') || lista[0];
+          return preferida ? String(preferida.id) : '1';
+        });
+      } catch {
+        setCredenciais([]);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const rows = await listarAssuntosProjudi();
+        setCatalogoAssuntos(Array.isArray(rows) ? rows : []);
+      } catch {
+        setCatalogoAssuntos([]);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!toast) return undefined;
+    const t = window.setTimeout(() => setToast(''), 5000);
+    return () => window.clearTimeout(t);
+  }, [toast]);
+
+  useEffect(() => {
+    if (!dadosProcesso) return;
+    if (dadosProcesso.valorCausa) setValorCausa(String(dadosProcesso.valorCausa));
+    if (dadosProcesso.pessoaAutor?.id) setPessoaAutor(dadosProcesso.pessoaAutor);
+    if (dadosProcesso.pessoaReu?.id) setPessoaReu(dadosProcesso.pessoaReu);
+  }, [dadosProcesso]);
+
+  useEffect(() => {
+    if (sugestaoAplicadaRef.current) return;
+    const natureza = dadosProcesso?.naturezaAcao;
+    if (!natureza) {
+      sugestaoAplicadaRef.current = true;
+      return;
+    }
+    void (async () => {
+      try {
+        const res = await sugerirAssuntoProjudi(natureza);
+        const idSugerido = res?.idAssuntoSugerido ?? null;
+        setAssuntoSugerido(idSugerido);
+        if (idSugerido != null) {
+          setIdsAssuntosSelecionados((prev) => (prev.length === 0 ? [idSugerido] : prev));
+        }
+      } catch {
+        // sugestão opcional
+      } finally {
+        sugestaoAplicadaRef.current = true;
+      }
+    })();
+  }, [dadosProcesso?.naturezaAcao]);
+
+  useEffect(() => {
+    let cancelado = false;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        setValidandoProntidao(true);
+        try {
+          const res = await validarProntidaoInicial({
+            credencialId,
+            valorCausa,
+            idAssuntos: montarCsvAssuntos(idsAssuntosSelecionados, outroIdAssunto),
+            pessoaIdAutor: pessoaAutor?.id,
+            pessoaIdReu: pessoaReu?.id,
+            quantidadeAnexos: linhasP7s.length,
+          });
+          if (!cancelado) {
+            setValidacaoProntidao(res);
+            setParteAutor(res.autor ?? null);
+            setParteReu(res.reu ?? null);
+          }
+        } catch {
+          if (!cancelado) {
+            setValidacaoProntidao({
+              pronta: false,
+              bloqueios: ['Falha ao consultar validação no servidor.'],
+              pendenciasPartes: [],
+              autor: null,
+              reu: null,
+            });
+            setParteAutor(null);
+            setParteReu(null);
+          }
+        } finally {
+          if (!cancelado) setValidandoProntidao(false);
+        }
+      })();
+    }, 400);
+    return () => {
+      cancelado = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    credencialId,
+    valorCausa,
+    idsAssuntosSelecionados,
+    outroIdAssunto,
+    pessoaAutor?.id,
+    pessoaReu?.id,
+    linhasP7s.length,
+  ]);
+
+  const partesPendentes =
+    (parteAutor && !parteAutor.prontaParaInserir) ||
+    (parteReu && !parteReu.prontaParaInserir) ||
+    validandoProntidao;
+
+  const podePreparar = validacaoProntidao?.pronta === true && !validandoProntidao;
+
+  const onPreparar = async (e) => {
+    e.preventDefault();
+    if (!podePreparar) return;
+    setOperacao('preparar');
+    setApiError('');
+    setResultado(null);
+    try {
+      const fd = montarFormDataInicial({
+        credencialId,
+        valorCausa,
+        idsAssuntosSelecionados,
+        outroIdAssunto,
+        pessoaAutor,
+        pessoaReu,
+        linhasP7s,
+      });
+      const res = await prepararInicial(fd);
+      setResultado(res);
+      if (res?.ok) {
+        setToast('Preparação concluída até a revisão no PROJUDI.');
+      } else {
+        setApiError(res?.passoAlcancado ? `Interrompido em ${res.passoAlcancado}.` : 'Preparação não concluída.');
+      }
+    } catch (err) {
+      setApiError(err?.message || 'Falha ao preparar inicial.');
+    } finally {
+      setOperacao(null);
+    }
+  };
+
+  const onConfirmarDistribuir = async () => {
+    if (!podePreparar || !confirmacaoIrreversivel) return;
+    setModalDistribuirAberto(false);
+    setConfirmacaoIrreversivel(false);
+    setOperacao('distribuir');
+    setApiError('');
+    setResultado(null);
+    try {
+      const fd = montarFormDataInicial({
+        credencialId,
+        valorCausa,
+        idsAssuntosSelecionados,
+        outroIdAssunto,
+        pessoaAutor,
+        pessoaReu,
+        linhasP7s,
+        processoIdOrigem: dadosProcesso?.processoApiId,
+        confirmar: true,
+      });
+      const res = await distribuirInicial(fd);
+      setResultado(res);
+      if (res?.ok && res?.numeroProcessoGerado) {
+        setToast(`Processo distribuído: ${res.numeroProcessoGerado}`);
+      } else if (res?.ok) {
+        setToast('Dry-run concluído até revisão.');
+      } else {
+        setApiError(res?.passoAlcancado ? `Interrompido em ${res.passoAlcancado}.` : 'Distribuição não concluída.');
+      }
+    } catch (err) {
+      setApiError(err?.message || 'Falha ao distribuir inicial.');
+    } finally {
+      setOperacao(null);
+    }
+  };
+
+  return (
+    <div className="w-full min-w-0 text-slate-900">
+      <div className="mx-auto w-full max-w-[1400px] space-y-5 px-4 py-6 pb-20 sm:px-6">
+        <header>
+          <h1 className="text-xl font-semibold text-slate-900 flex items-center gap-2">
+            <Scale className="w-5 h-5 text-sky-700" aria-hidden />
+            Distribuir Inicial PROJUDI
+          </h1>
+          {dadosProcesso?.chaveProcesso ? (
+            <p className="text-sm text-sky-800 mt-1">
+              Processo <span className="font-mono font-medium">{dadosProcesso.chaveProcesso}</span> — dados
+              pré-preenchidos a partir do cadastro.
+            </p>
+          ) : (
+            <p className="text-sm text-amber-800 mt-1">
+              Abra esta tela pelo botão <strong>Distribuir Inicial PROJUDI</strong> no formulário de Processos
+              para carregar autor, réu e valor da causa automaticamente.
+            </p>
+          )}
+          <p className="text-sm text-slate-600 mt-1">
+            Monta a inicial no PROJUDI até a tela de <strong>revisão</strong> (Passo 3).
+          </p>
+        </header>
+
+        {!dadosProcesso ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 flex gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden />
+            <div>
+              Nenhum processo vinculado.{' '}
+              <button
+                type="button"
+                className="underline font-medium"
+                onClick={() => navigate('/processos')}
+              >
+                Voltar ao cadastro de Processos
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        <div
+          className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900 flex gap-2"
+          role="note"
+        >
+          <Info className="w-4 h-4 shrink-0 mt-0.5" aria-hidden />
+          <div>
+            <strong>Isto NÃO distribui o processo.</strong> O sistema apenas preenche o fluxo no PROJUDI até a
+            revisão. Confira os dados no site do TJGO e conclua a distribuição manualmente.
+          </div>
+        </div>
+
+        {apiError ? (
+          <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800 flex gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden />
+            {apiError}
+          </div>
+        ) : null}
+
+        <form onSubmit={(e) => void onPreparar(e)} className="space-y-5">
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+            <h2 className="text-sm font-semibold text-slate-800">Dados da inicial</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="block sm:col-span-2">
+                <span className="text-xs text-slate-600">Credencial PROJUDI</span>
+                {credenciais.length > 0 ? (
+                  <select
+                    className={inputClass}
+                    value={credencialId}
+                    onChange={(ev) => setCredencialId(ev.target.value)}
+                  >
+                    {credenciais.map((c) => (
+                      <option key={c.id} value={String(c.id)}>
+                        {labelCredencial(c)}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    className={inputClass}
+                    value={credencialId}
+                    onChange={(ev) => setCredencialId(ev.target.value)}
+                  />
+                )}
+              </label>
+              <label className="block">
+                <span className="text-xs text-slate-600">Valor da causa</span>
+                <input
+                  className={inputClass}
+                  value={valorCausa}
+                  onChange={(ev) => setValorCausa(ev.target.value)}
+                  placeholder="Ex.: 1500,00"
+                />
+              </label>
+              <div className="block sm:col-span-2 space-y-2">
+                <span className="text-xs text-slate-600">Assuntos (PROJUDI)</span>
+                {dadosProcesso?.naturezaAcao ? (
+                  <p className="text-xs text-sky-800">
+                    Natureza da ação: <strong>{dadosProcesso.naturezaAcao}</strong>
+                    {assuntoSugerido != null ? ' — id sugerido pré-selecionado (pode alterar).' : ''}
+                  </p>
+                ) : null}
+                {catalogoAssuntos.length === 0 ? (
+                  <p className="text-xs text-slate-500">Carregando catálogo…</p>
+                ) : (
+                  <div className="max-h-44 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50/50 p-2 space-y-1.5">
+                    {catalogoAssuntos.map((item) => {
+                      const checked = idsAssuntosSelecionados.includes(item.idAssunto);
+                      return (
+                        <label
+                          key={item.idAssunto}
+                          className="flex items-start gap-2 text-xs cursor-pointer hover:bg-white/80 rounded px-1 py-0.5"
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-0.5 shrink-0"
+                            checked={checked}
+                            onChange={(ev) => {
+                              setIdsAssuntosSelecionados((prev) =>
+                                ev.target.checked
+                                  ? [...prev, item.idAssunto]
+                                  : prev.filter((id) => id !== item.idAssunto),
+                              );
+                            }}
+                          />
+                          <span className="text-slate-800">
+                            <span className="font-mono font-semibold text-sky-800">{item.idAssunto}</span>
+                            {' — '}
+                            {item.rotuloCompleto}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+                <label className="block max-w-xs">
+                  <span className="text-xs text-slate-500">Outro id (fora do catálogo)</span>
+                  <input
+                    className={inputClass}
+                    value={outroIdAssunto}
+                    onChange={(ev) => setOutroIdAssunto(ev.target.value.replace(/\D/g, ''))}
+                    placeholder="Ex.: 1234"
+                    inputMode="numeric"
+                  />
+                </label>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-4">
+            <h2 className="text-sm font-semibold text-slate-800">Partes</h2>
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-2 xl:gap-8">
+              <div className="space-y-2 min-w-0">
+                <span className="text-xs font-medium text-slate-600">Autor</span>
+                <SeletorPessoaParteImovel
+                  pessoaSelecionada={pessoaAutor}
+                  onChange={setPessoaAutor}
+                  disabled={!dadosProcesso}
+                />
+                <CartaoParteResolvida
+                  titulo="Autor"
+                  pessoa={pessoaAutor}
+                  resolvida={parteAutor}
+                  carregando={validandoProntidao && Boolean(pessoaAutor?.id)}
+                  erro=""
+                />
+              </div>
+              <div className="space-y-2 min-w-0">
+                <span className="text-xs font-medium text-slate-600">Réu</span>
+                <SeletorPessoaParteImovel
+                  pessoaSelecionada={pessoaReu}
+                  onChange={setPessoaReu}
+                  disabled={!dadosProcesso}
+                />
+                <CartaoParteResolvida
+                  titulo="Réu"
+                  pessoa={pessoaReu}
+                  resolvida={parteReu}
+                  carregando={validandoProntidao && Boolean(pessoaReu?.id)}
+                  erro=""
+                />
+              </div>
+            </div>
+            {partesPendentes && pessoaAutor && pessoaReu ? (
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                Corrija as pendências das partes antes de preparar.
+              </p>
+            ) : null}
+          </section>
+
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+            <h2 className="text-sm font-semibold text-slate-800">Anexos (.p7s)</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                id="inicial-p7s"
+                type="file"
+                accept=".p7s,.pdf.p7s,application/pkcs7-signature"
+                multiple
+                className="sr-only"
+                onChange={(ev) => {
+                  const files = Array.from(ev.target.files || []);
+                  ev.target.value = '';
+                  const invalidos = files.filter((f) => !isArquivoP7s(f));
+                  if (invalidos.length) {
+                    setApiError('Selecione apenas arquivos .p7s.');
+                    return;
+                  }
+                  setLinhasP7s((rows) => [...rows, ...files.map((f) => linhaP7sComArquivo(f))]);
+                }}
+              />
+              <label htmlFor="inicial-p7s" className={`${processosBtnPrimary} cursor-pointer text-sm`}>
+                Escolher .p7s…
+              </label>
+              {linhasP7s.length > 0 ? (
+                <span className="text-sm text-slate-600">{linhasP7s.length} arquivo(s)</span>
+              ) : null}
+            </div>
+            {linhasP7s.length > 0 ? (
+              <ul className="max-h-[min(24rem,50vh)] space-y-1 overflow-y-auto rounded-lg border border-slate-100 bg-slate-50/50 p-2">
+                {linhasP7s.map((linha, idx) => (
+                  <li key={linha.key} className="flex flex-wrap items-center gap-2 text-sm">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" aria-hidden />
+                    <span className="truncate flex-1 min-w-0 font-medium">{linha.file?.name}</span>
+                    <select
+                      className={`${inputClass} w-auto text-xs py-1`}
+                      value={linha.idArquivoTipo}
+                      onChange={(ev) => {
+                        const v = Number(ev.target.value);
+                        setLinhasP7s((rows) =>
+                          rows.map((r, i) => (i === idx ? { ...r, idArquivoTipo: v } : r)),
+                        );
+                      }}
+                    >
+                      {TIPOS_ARQUIVO.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="text-slate-400 hover:text-rose-600"
+                      onClick={() => setLinhasP7s((rows) => rows.filter((_, i) => i !== idx))}
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </section>
+
+          {validandoProntidao ? (
+            <p className="text-xs text-slate-500 flex items-center gap-1.5">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
+              Verificando requisitos no servidor…
+            </p>
+          ) : null}
+
+          {validacaoProntidao && !validacaoProntidao.pronta && validacaoProntidao.bloqueios?.length > 0 ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              <p className="font-medium flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden />
+                Ainda não é possível preparar ou distribuir:
+              </p>
+              <ul className="list-disc pl-5 mt-1.5 space-y-0.5">
+                {validacaoProntidao.bloqueios.map((bloqueio) => (
+                  <li key={bloqueio}>{bloqueio}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="submit"
+              className={`${processosBtnPrimary} w-full sm:w-auto`}
+              disabled={!podePreparar || operacao === 'preparar' || operacao === 'distribuir'}
+            >
+              {operacao === 'preparar' ? (
+                <Loader2 className="w-4 h-4 animate-spin inline mr-1" aria-hidden />
+              ) : null}
+              Preparar até revisão
+            </button>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-md border border-rose-300 bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!podePreparar || operacao === 'preparar' || operacao === 'distribuir'}
+              onClick={() => {
+                setConfirmacaoIrreversivel(false);
+                setModalDistribuirAberto(true);
+              }}
+            >
+              {operacao === 'distribuir' ? (
+                <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+              ) : (
+                <AlertTriangle className="w-4 h-4" aria-hidden />
+              )}
+              Distribuir no PROJUDI
+            </button>
+          </div>
+        </form>
+
+        {modalDistribuirAberto ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-distribuir-titulo"
+          >
+            <div className="w-full max-w-md rounded-xl border border-rose-200 bg-white p-5 shadow-xl space-y-4">
+              <h2 id="modal-distribuir-titulo" className="text-lg font-semibold text-rose-900 flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 shrink-0" aria-hidden />
+                Confirmar distribuição
+              </h2>
+              <p className="text-sm text-slate-700 leading-relaxed">
+                Esta ação é <strong>irreversível</strong>: envia o POST final ao PROJUDI e{' '}
+                <strong>cria o processo de verdade</strong> no tribunal. Não há como desfazer pelo sistema.
+              </p>
+              {dadosProcesso?.chaveProcesso ? (
+                <p className="text-xs text-slate-600">
+                  Processo interno: <span className="font-mono">{dadosProcesso.chaveProcesso}</span>
+                  {dadosProcesso.processoApiId ? ' — o número gerado será gravado em Nº Processo Novo.' : ''}
+                </p>
+              ) : null}
+              <label className="flex items-start gap-2 text-sm text-slate-800 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={confirmacaoIrreversivel}
+                  onChange={(ev) => setConfirmacaoIrreversivel(ev.target.checked)}
+                />
+                Entendo que isto distribui a inicial no PROJUDI e não pode ser revertido.
+              </label>
+              <div className="flex flex-wrap justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  className="px-3 py-1.5 text-sm rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50"
+                  onClick={() => {
+                    setModalDistribuirAberto(false);
+                    setConfirmacaoIrreversivel(false);
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-1.5 text-sm rounded-md bg-rose-600 text-white font-medium hover:bg-rose-700 disabled:opacity-50"
+                  disabled={!confirmacaoIrreversivel}
+                  onClick={() => void onConfirmarDistribuir()}
+                >
+                  Distribuir agora
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {resultado ? (
+          <section
+            className={`rounded-xl border p-4 shadow-sm space-y-2 ${
+              resultado.ok
+                ? 'border-emerald-200 bg-emerald-50/50'
+                : 'border-amber-200 bg-amber-50/50'
+            }`}
+          >
+            <h2 className="text-sm font-semibold text-slate-800">Resultado</h2>
+            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+              <div>
+                <dt className="text-slate-500 text-xs">Status</dt>
+                <dd className={resultado.ok ? 'text-emerald-800 font-medium' : 'text-amber-800 font-medium'}>
+                  {resultado.ok ? 'OK' : 'Não concluído'}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-slate-500 text-xs">Passo alcançado</dt>
+                <dd className="font-mono">{resultado.passoAlcancado || '—'}</dd>
+              </div>
+              {resultado.hashFluxo ? (
+                <div className="sm:col-span-2">
+                  <dt className="text-slate-500 text-xs">Hash do fluxo</dt>
+                  <dd className="font-mono text-xs break-all">{resultado.hashFluxo}</dd>
+                </div>
+              ) : null}
+              {resultado.numeroProcessoGerado ? (
+                <div className="sm:col-span-2">
+                  <dt className="text-slate-500 text-xs">Nº Processo Novo (PROJUDI)</dt>
+                  <dd className="font-mono text-base font-semibold text-emerald-900 break-all">
+                    {resultado.numeroProcessoGerado}
+                  </dd>
+                  {resultado.numeroGravadoCadastro ? (
+                    <p className="text-xs text-emerald-700 mt-1">Gravado no cadastro do processo.</p>
+                  ) : dadosProcesso?.processoApiId ? (
+                    <p className="text-xs text-amber-700 mt-1">
+                      Número retornado — confira o campo Nº Processo Novo no cadastro.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+            </dl>
+            {resultado.pendenciasPartes?.length > 0 ? (
+              <div className="text-sm">
+                <p className="font-medium text-amber-900 mb-1">Pendências de partes</p>
+                <ul className="list-disc pl-4 space-y-1 text-amber-900">
+                  {resultado.pendenciasPartes.map((p) => (
+                    <li key={`${p.papel}-${p.pessoaId}`}>
+                      {p.papel} (#{p.pessoaId}): {(p.pendencias || []).join('; ')}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {resultado.passos?.length > 0 ? (
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-medium text-slate-800">Trilha de execução</p>
+                  <button
+                    type="button"
+                    className={`${processosBtnPrimary} text-xs py-1.5 px-2.5 inline-flex items-center gap-1.5`}
+                    onClick={() => baixarLogJson(resultado)}
+                  >
+                    <Download className="w-3.5 h-3.5" aria-hidden />
+                    Baixar log (.json)
+                  </button>
+                </div>
+                <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                  <table className="min-w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50 text-left text-slate-600">
+                        <th className="px-2 py-1.5 font-medium w-8">#</th>
+                        <th className="px-2 py-1.5 font-medium">Passo</th>
+                        <th className="px-2 py-1.5 font-medium w-16">Status</th>
+                        <th className="px-2 py-1.5 font-medium w-12">OK</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {resultado.passos.map((p) => (
+                        <tr
+                          key={p.ordem}
+                          className={`border-b border-slate-100 last:border-0 ${
+                            p.ok ? '' : 'bg-rose-50/60'
+                          }`}
+                          title={p.detalhe || undefined}
+                        >
+                          <td className="px-2 py-1.5 text-slate-500 font-mono">{p.ordem}</td>
+                          <td className="px-2 py-1.5 text-slate-800">{p.passo}</td>
+                          <td className="px-2 py-1.5 font-mono text-slate-600">
+                            {p.httpStatus ?? '—'}
+                          </td>
+                          <td className="px-2 py-1.5">
+                            {p.ok ? (
+                              <CheckCircle2
+                                className="w-4 h-4 text-emerald-600"
+                                aria-label="OK"
+                              />
+                            ) : (
+                              <XCircle className="w-4 h-4 text-rose-600" aria-label="Falha" />
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
+            {resultado.respostaBruta ? (
+              <details className="text-xs">
+                <summary className="cursor-pointer text-slate-600">Resposta bruta (trecho)</summary>
+                <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded border border-slate-200 bg-white p-2 text-slate-700">
+                  {resultado.respostaBruta}
+                </pre>
+              </details>
+            ) : null}
+            {resultado.ok && resultado.passoAlcancado === 'REVISAO' && !resultado.numeroProcessoGerado ? (
+              <p className="text-xs text-emerald-800">
+                Revisão pronta no PROJUDI. Use &quot;Distribuir no PROJUDI&quot; para criar o processo ou conclua
+                manualmente no site do TJGO.
+              </p>
+            ) : null}
+            {resultado.ok && resultado.numeroProcessoGerado ? (
+              <p className="text-xs text-emerald-800">
+                Processo criado no PROJUDI. Confira movimentações e recibo no portal do tribunal.
+              </p>
+            ) : null}
+          </section>
+        ) : null}
+      </div>
+
+      <ProcessosToast message={toast} onClose={() => setToast('')} />
+    </div>
+  );
+}

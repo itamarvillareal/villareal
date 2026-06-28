@@ -57,6 +57,10 @@ public class ProcessoWriteRequest {
     private BigDecimal valorCausa;
     private String uf;
     private String cidade;
+    @Schema(description = "Código IBGE do município (fonte da verdade para localidade)")
+    private Integer municipioId;
+    @Schema(description = "FK do órgão julgador (vara/juizado/câmara); deriva município quando informado")
+    private Long orgaoJulgadorId;
     private Boolean consultaAutomatica;
     private Boolean ativo;
     private String consultor;
@@ -279,6 +283,22 @@ public class ProcessoWriteRequest {
 
     public void setCidade(String cidade) {
         this.cidade = cidade;
+    }
+
+    public Integer getMunicipioId() {
+        return municipioId;
+    }
+
+    public void setMunicipioId(Integer municipioId) {
+        this.municipioId = municipioId;
+    }
+
+    public Long getOrgaoJulgadorId() {
+        return orgaoJulgadorId;
+    }
+
+    public void setOrgaoJulgadorId(Long orgaoJulgadorId) {
+        this.orgaoJulgadorId = orgaoJulgadorId;
     }
 
     public Boolean getConsultaAutomatica() {

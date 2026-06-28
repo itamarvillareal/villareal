@@ -8,6 +8,9 @@ import br.com.vilareal.imovel.infrastructure.persistence.repository.ContratoLoca
 import br.com.vilareal.imovel.infrastructure.persistence.repository.ImovelProcessoRepository;
 import br.com.vilareal.imovel.infrastructure.persistence.repository.ImovelRepository;
 import br.com.vilareal.imovel.infrastructure.persistence.repository.ImovelVinculoProcessoPrincipalRepository;
+import br.com.vilareal.localidade.application.MunicipioApplicationService;
+import br.com.vilareal.localidade.application.MunicipioDerivacaoService;
+import br.com.vilareal.localidade.application.MunicipioUsoService;
 import br.com.vilareal.pessoa.application.ClienteResolverService;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
@@ -48,6 +51,9 @@ class ImovelApplicationServiceVinculoPrincipalTest {
     @Mock private ImovelProcessoRepository imovelProcessoRepository;
     @Mock private ImovelVinculoProcessoPrincipalRepository imovelVinculoProcessoPrincipalRepository;
     @Mock private ImovelVinculoLocatarioService imovelVinculoLocatarioService;
+    @Mock private MunicipioUsoService municipioUsoService;
+    @Mock private MunicipioDerivacaoService municipioDerivacaoService;
+    @Mock private MunicipioApplicationService municipioApplicationService;
 
     private ImovelApplicationService service;
 
@@ -65,7 +71,10 @@ class ImovelApplicationServiceVinculoPrincipalTest {
                 imovelProcessoLinkService,
                 imovelProcessoRepository,
                 imovelVinculoProcessoPrincipalRepository,
-                imovelVinculoLocatarioService);
+                imovelVinculoLocatarioService,
+                municipioUsoService,
+                municipioDerivacaoService,
+                municipioApplicationService);
     }
 
     @Test

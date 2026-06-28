@@ -667,6 +667,8 @@ function mapApiToUi(imovel, contrato) {
     _vinculoProcOriginal: proc,
     observacoesInquilino: resolverObservacoesImovelParaUi(imovel, contrato, extras),
     endereco: String(imovel?.enderecoCompleto ?? ''),
+    municipioId: imovel?.municipioId ?? imovel?.municipio?.id ?? null,
+    municipio: imovel?.municipio ?? null,
     condominio: String(imovel?.condominio ?? ''),
     unidade: String(imovel?.unidade ?? ''),
     garagens: String(imovel?.garagens ?? ''),
@@ -886,6 +888,8 @@ function montarPayloadImovelFromUi(ui, clienteId, processoId, espelhoCodProc = n
     numeroPlanilha: numeroPlanilhaBody,
     titulo: String(ui.unidade || ui.condominio || '').trim() || null,
     enderecoCompleto: String(ui.endereco || '').trim() || null,
+    municipioId:
+      ui.municipioId != null && Number.isFinite(Number(ui.municipioId)) ? Number(ui.municipioId) : null,
     condominio: String(ui.condominio || '').trim() || null,
     unidade: String(ui.unidade || '').trim() || null,
     tipoImovel: null,
