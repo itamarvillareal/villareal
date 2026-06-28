@@ -41,3 +41,28 @@ backup_*.sql
 # pids e temporários locais (raiz do monorepo)
 tmp/
 *.pid
+
+# === Etapa A (segurança/LGPD): dados pessoais e exports nunca versionar ===
+# (cadastro real vive na tabela `pessoa` do banco; estes são resquício de importação)
+banco/*.csv
+e-vilareal-java-backend/drive-pdf-texto-*.json
+e-vilareal-java-backend/import-pessoas-*.csv
+**/import-pessoas-last-*.json
+processos-*.csv
+prazos-fatais-*.csv
+relatorio-movimentacoes-*.csv
+scripts/*.csv
+
+# Capturas reais do Projudi (processo de cliente) — ignorar tudo,
+# EXCETO as fixtures lidas pelos testes JUnit (anonimização fica p/ Etapa B).
+e-vilareal-react-web/projudi-*.zip
+e-vilareal-react-web/projudi-inicial-capture/**
+e-vilareal-react-web/projudi-peticao-capture/**
+e-vilareal-react-web/projudi-peticao-capture 2/**
+!e-vilareal-react-web/projudi-inicial-capture/bodies/
+!e-vilareal-react-web/projudi-inicial-capture/bodies/0269_projudi_tjgo_jus_br_ProcessoCivel.html
+!e-vilareal-react-web/projudi-inicial-capture/bodies/0294_projudi_tjgo_jus_br_ProcessoCivel.html
+!e-vilareal-react-web/projudi-inicial-capture/bodies/0427_projudi_tjgo_jus_br_ProcessoCivel.html
+!e-vilareal-react-web/projudi-peticao-capture/bodies/
+!e-vilareal-react-web/projudi-peticao-capture/bodies/0222_projudi_tjgo_jus_br_BuscaProcesso_Id_Processo_613081756229290873912418764_PassoB.html
+!e-vilareal-react-web/projudi-peticao-capture/bodies/0234_projudi_tjgo_jus_br_BuscaProcesso_Id_Processo_613083419170100873964789780_PassoB.html
