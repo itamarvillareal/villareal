@@ -38,6 +38,10 @@ class V116ContaBancariaSeedBackfillIntegrationTest extends AbstractIntegrationTe
                 UNION
                 SELECT DISTINCT numero_banco FROM financeiro_saldo_inicial WHERE numero_banco IS NOT NULL
             ) nb
+            ON DUPLICATE KEY UPDATE
+                tipo = VALUES(tipo),
+                tem_extrato = VALUES(tem_extrato),
+                ativo = VALUES(ativo)
             """;
 
     private static final String SEED_NOME =
@@ -106,17 +110,19 @@ class V116ContaBancariaSeedBackfillIntegrationTest extends AbstractIntegrationTe
     @Test
     @Transactional
     void seed_bancoNomeCanonicoEhOMaisFrequenteNaoNulo() {
-        // numero_banco 1: 'Banco Real Um' aparece 2x, 'Outro Nome' 1x e um NULL -> canônico = 'Banco Real Um'
-        inserirLancamento(1, "Banco Real Um", "L-1a");
-        inserirLancamento(1, "Banco Real Um", "L-1b");
-        inserirLancamento(1, "Outro Nome", "L-1c");
-        inserirLancamento(1, null, "L-1d");
+        // numero_banco exclusivo deste teste (4242): a suíte compartilha o container e SEED_NOME agrega
+        // por numero_banco em toda a tabela; um número só nosso evita poluição de lançamentos vazados.
+        // 'Banco Real Um' aparece 2x, 'Outro Nome' 1x e um NULL -> canônico = 'Banco Real Um'.
+        inserirLancamento(4242, "Banco Real Um", "L-4242a");
+        inserirLancamento(4242, "Banco Real Um", "L-4242b");
+        inserirLancamento(4242, "Outro Nome", "L-4242c");
+        inserirLancamento(4242, null, "L-4242d");
 
         jdbcTemplate.update(SEED_INSERT);
         jdbcTemplate.update(SEED_NOME);
 
         String nome = jdbcTemplate.queryForObject(
-                "SELECT banco_nome FROM conta_bancaria WHERE numero_banco = 1", String.class);
+                "SELECT banco_nome FROM conta_bancaria WHERE numero_banco = 4242", String.class);
         assertThat(nome).isEqualTo("Banco Real Um");
     }
 
@@ -132,9 +138,12 @@ class V116ContaBancariaSeedBackfillIntegrationTest extends AbstractIntegrationTe
         jdbcTemplate.update(SEED_NOME);
         jdbcTemplate.update(BACKFILL);
 
-        // todo lançamento com numero_banco não-nulo tem conta_bancaria_id preenchido
+        // todo lançamento (deste teste) com numero_banco não-nulo tem conta_bancaria_id preenchido.
+        // Escopo restrito aos numero_lancamento criados aqui: o container é compartilhado e lançamentos
+        // vazados por testes não-transacionais poluiriam uma contagem global.
         Integer pendentes = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM financeiro_lancamento WHERE numero_banco IS NOT NULL AND conta_bancaria_id IS NULL",
+                "SELECT COUNT(*) FROM financeiro_lancamento "
+                        + "WHERE numero_lancamento IN ('B-900', 'B-9', 'B-1') AND conta_bancaria_id IS NULL",
                 Integer.class);
         assertThat(pendentes).isZero();
 

@@ -41,8 +41,9 @@ class V118ImovelProcessoBackfillIntegrationTest extends AbstractIntegrationTest 
     @Transactional
     void v118_backfillFechaDivergenteSemDuplicarOExistente() {
         long pessoaId = inserirPessoa();
-        long procA = inserirProcesso(pessoaId, 1001);
-        long procB = inserirProcesso(pessoaId, 1002);
+        long clienteId = inserirCliente(pessoaId);
+        long procA = inserirProcesso(pessoaId, clienteId, 1001);
+        long procB = inserirProcesso(pessoaId, clienteId, 1002);
 
         // imóvel A: escalar aponta p/ procA, SEM linha imovel_processo (divergente)
         long imovelA = inserirImovel(pessoaId, procA);
@@ -66,13 +67,13 @@ class V118ImovelProcessoBackfillIntegrationTest extends AbstractIntegrationTest 
         assertThat(contarLinhas(imovelB)).isEqualTo(1);
 
         // divergência fechada: nenhum imóvel com escalar não-nulo sem linha p/ o par
-        assertThat(escalarSemPar()).isZero();
+        assertThat(escalarSemPar(imovelA, imovelB)).isZero();
 
         // idempotente: re-rodar não cria nada
         jdbcTemplate.update(BACKFILL);
         assertThat(contarLinhas(imovelA)).isEqualTo(1);
         assertThat(contarLinhas(imovelB)).isEqualTo(1);
-        assertThat(escalarSemPar()).isZero();
+        assertThat(escalarSemPar(imovelA, imovelB)).isZero();
     }
 
     private Integer contarLinhas(long imovelId) {
@@ -85,9 +86,18 @@ class V118ImovelProcessoBackfillIntegrationTest extends AbstractIntegrationTest 
                 "SELECT COUNT(*) FROM imovel_processo WHERE imovel_id = ? AND ativo = TRUE", Integer.class, imovelId);
     }
 
-    private Integer escalarSemPar() {
+    /**
+     * Conta divergências (escalar sem par) apenas nos imóveis deste teste. A suíte compartilha um único
+     * container e testes não-transacionais podem deixar imóveis commitados que poluiriam uma contagem
+     * global — por isso restringimos aos ids criados aqui.
+     */
+    private Integer escalarSemPar(long... imovelIds) {
+        String inClause = java.util.Arrays.stream(imovelIds)
+                .mapToObj(Long::toString)
+                .collect(java.util.stream.Collectors.joining(","));
         return jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM imovel i WHERE i.processo_id IS NOT NULL AND NOT EXISTS ("
+                "SELECT COUNT(*) FROM imovel i WHERE i.id IN (" + inClause + ") "
+                        + "AND i.processo_id IS NOT NULL AND NOT EXISTS ("
                         + "SELECT 1 FROM imovel_processo ip WHERE ip.imovel_id = i.id AND ip.processo_id = i.processo_id)",
                 Integer.class);
     }
@@ -99,9 +109,18 @@ class V118ImovelProcessoBackfillIntegrationTest extends AbstractIntegrationTest 
         return jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
 
-    private long inserirProcesso(long pessoaId, int numeroInterno) {
+    private long inserirCliente(long pessoaId) {
+        int n = SEQ.getAndIncrement();
         jdbcTemplate.update(
-                "INSERT INTO processo (pessoa_id, numero_interno) VALUES (?, ?)", pessoaId, numeroInterno);
+                "INSERT INTO cliente (codigo_cliente, pessoa_id) VALUES (?, ?)",
+                String.format("V118%04d", n), pessoaId);
+        return jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+    }
+
+    private long inserirProcesso(long pessoaId, long clienteId, int numeroInterno) {
+        jdbcTemplate.update(
+                "INSERT INTO processo (pessoa_id, cliente_id, numero_interno) VALUES (?, ?, ?)",
+                pessoaId, clienteId, numeroInterno);
         return jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
     }
 

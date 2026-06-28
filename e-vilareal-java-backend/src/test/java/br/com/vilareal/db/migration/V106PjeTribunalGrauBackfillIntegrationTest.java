@@ -7,6 +7,8 @@ import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepos
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -37,6 +39,9 @@ class V106PjeTribunalGrauBackfillIntegrationTest extends AbstractIntegrationTest
     @Autowired
     private ClienteRepository clienteRepository;
 
+    @PersistenceContext
+    private EntityManager entityManager;
+
     @Test
     @Transactional
     void backfill_pjeLegado_preencheTribunalEGrau() {
@@ -54,9 +59,15 @@ class V106PjeTribunalGrauBackfillIntegrationTest extends AbstractIntegrationTest
         processo.setCliente(cliente);
         processo.setNumeroInterno(99);
         processo.setTramitacao("PJe");
-        processo = processoRepository.save(processo);
+        // saveAndFlush garante que a linha exista no banco ANTES do UPDATE cru (save sozinho poderia
+        // deixar o INSERT pendente na unidade de trabalho, e o UPDATE via jdbcTemplate não veria a linha).
+        processo = processoRepository.saveAndFlush(processo);
 
         jdbcTemplate.update(V106_BACKFILL);
+
+        // limpa o cache de 1º nível: sem isso, findById devolveria a entidade em cache (sem refletir o
+        // UPDATE feito por fora do Hibernate).
+        entityManager.clear();
 
         ProcessoEntity atualizado = processoRepository.findById(processo.getId()).orElseThrow();
         assertThat(atualizado.getPjeTribunal()).hasToString("PJE_TRT18");
