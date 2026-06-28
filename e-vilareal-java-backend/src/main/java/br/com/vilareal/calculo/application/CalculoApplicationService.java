@@ -375,11 +375,12 @@ public class CalculoApplicationService {
             rodadaRepository.save(entity);
         }
         java.util.HashSet<String> keys = new java.util.HashSet<>(incoming.keySet());
-        for (CalculoRodadaEntity row : rodadaRepository.findAll()) {
-            String k = new RodadaCalculoChave(row.getCodigoCliente(), row.getNumeroProcesso(), row.getDimensao())
+        for (CalculoRodadaResumoProjection row : rodadaRepository.findAllResumo()) {
+            String k = new RodadaCalculoChave(row.codigoCliente(), row.numeroProcesso(), row.dimensao())
                     .toMapKey();
             if (!keys.contains(k)) {
-                rodadaRepository.delete(row);
+                rodadaRepository.deleteByCodigoClienteAndNumeroProcessoAndDimensao(
+                        row.codigoCliente(), row.numeroProcesso(), row.dimensao());
             }
         }
     }

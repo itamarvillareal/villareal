@@ -45,4 +45,8 @@ public interface CalculoRodadaRepository extends JpaRepository<CalculoRodadaEnti
     long countByImportacaoId(String importacaoId);
 
     long deleteByImportacaoId(String importacaoId);
+
+    /** Remove rodada pela chave composta sem carregar {@code payload_json}. */
+    void deleteByCodigoClienteAndNumeroProcessoAndDimensao(
+            String codigoCliente, Integer numeroProcesso, Integer dimensao);
 }
