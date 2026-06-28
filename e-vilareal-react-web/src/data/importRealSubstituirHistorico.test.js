@@ -7,8 +7,13 @@ describe('import-real substituir historico', () => {
     expect(o.substituirHistorico).toBe(false);
   });
 
-  it('--aplicar substitui historico por defeito', () => {
+  it('--aplicar mantém "apenas novos" por defeito (não substitui)', () => {
     const o = parseArgs(['--aplicar', '--cliente=938']);
+    expect(o.substituirHistorico).toBe(false);
+  });
+
+  it('--substituir-historico liga a substituição explicitamente', () => {
+    const o = parseArgs(['--aplicar', '--substituir-historico', '--cliente=938']);
     expect(o.substituirHistorico).toBe(true);
   });
 
