@@ -1,9 +1,9 @@
 package br.com.vilareal.projudi.application;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -19,7 +19,16 @@ class ProjudiPeticaoProtocoloLoteServiceNotificacaoTest {
 
     @Mock private ProjudiPeticaoProtocoloEmailService protocoloEmailService;
 
-    @InjectMocks private ProjudiPeticaoProtocoloLoteService loteService;
+    private ProjudiPeticaoProtocoloLoteService loteService;
+
+    @BeforeEach
+    void setUp() {
+        // notificarResultadosPorEmail só depende de protocoloEmailService; as demais dependências não
+        // são exercitadas por estes casos. O construtor faz Path.of(storeDirConfig.trim()), então o
+        // store-dir precisa ser não-nulo (@InjectMocks injetava null e quebrava a construção).
+        loteService = new ProjudiPeticaoProtocoloLoteService(
+                null, null, null, null, null, null, null, protocoloEmailService, "build/test-projudi-peticoes");
+    }
 
     @Test
     void notificarResultadosPorEmail_enviaSucessoQuandoTodasProtocoladas() {
