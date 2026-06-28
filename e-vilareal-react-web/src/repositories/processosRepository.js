@@ -991,7 +991,7 @@ export async function salvarCabecalhoProcesso(payload) {
     competencia: payload.competencia || null,
     fase: payload.faseSelecionada || null,
     observacaoFase: payload.faseCampo || null,
-    tramitacao: (payload.procedimento || payload.tramitacao || '').trim() || null,
+    tramitacao: String(payload.tramitacao ?? '').trim() || null,
     pjeTribunal: String(payload.pjeTribunal ?? '').trim() || null,
     pjeGrau: String(payload.pjeGrau ?? '').trim() || null,
     dataProtocolo: toIsoFromBrDate(payload.dataProtocolo),
@@ -1563,8 +1563,6 @@ export function mapApiProcessoToUiShape(p) {
     cidadeLegado: p.cidadeLegado ?? null,
     consultaAutomatica: p.consultaAutomatica === true,
     tramitacao: corrigirMojibakeUtf8(String(p.tramitacao ?? '').trim()),
-    /** Mesmo valor que `tramitacao` na API (campo «Procedimento» no formulário). */
-    procedimento: corrigirMojibakeUtf8(String(p.tramitacao ?? '').trim()),
     pjeTribunal: String(p.pjeTribunal ?? p.pje_tribunal ?? '').trim(),
     pjeGrau: String(p.pjeGrau ?? p.pje_grau ?? '').trim(),
     dataProtocolo: toBrFromIsoDate(p.dataProtocolo),

@@ -69,8 +69,8 @@ export function poloEhReuProcesso(polo) {
 }
 
 /** Procedimento «JEC» (Juizado Especial Cível) — aceita variações com/sem acento. */
-export function ehProcedimentoJec(procedimento) {
-  const p = String(procedimento ?? '')
+export function ehProcedimentoJec(valor) {
+  const p = String(valor ?? '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toUpperCase()
@@ -79,26 +79,52 @@ export function ehProcedimentoJec(procedimento) {
   return /\bJEC\b/.test(p) || p.includes('JUIZADO ESPECIAL CIVEL');
 }
 
-export function inferirEnderecamento(competencia, cidade, uf, procedimento) {
-  const cid = String(cidade || 'Anápolis').trim() || 'Anápolis';
-  const cidUpper = cid.toUpperCase();
-  const sigla = String(uf || 'GO').trim().toUpperCase() || 'GO';
+/**
+ * Órgão julgador é Juizado Especial? Decide pelo catálogo (campo `tipo`) e, como reforço,
+ * pelo nome (cobre órgãos legados/sem tipo). `orgaoJulgador` = { tipo, nome } ou null.
+ */
+export function ehJuizadoEspecial(orgaoJulgador) {
+  if (!orgaoJulgador) return false;
+  const tipo = String(orgaoJulgador.tipo ?? '')
+    .toUpperCase()
+    .trim();
+  if (tipo === 'JUIZADO') return true;
+  return ehProcedimentoJec(orgaoJulgador.nome);
+}
+
+function montarEnderecamentoPorCompetencia(competencia, cidUpper, sigla) {
   const competenciaUpper = String(competencia || '').trim().toUpperCase();
-
-  // Regra de negócio: procedimento JEC sempre endereça ao Juizado Especial Cível da comarca.
-  if (ehProcedimentoJec(procedimento)) {
-    return `MERITÍSSIMO JUÍZO DO JUIZADO ESPECIAL CÍVEL DA COMARCA DE ${cidUpper} - ${sigla}`;
-  }
-
   if (!competenciaUpper) {
     return `MERITÍSSIMO JUÍZO DA COMARCA DE ${cidUpper} - ${sigla}`;
   }
-
   const ehJuizado = competenciaUpper.includes('JUIZADO');
   const ehTrabalho = competenciaUpper.includes('TRABALHO');
   const artigo = ehJuizado ? 'DO' : 'DA';
   const local = ehTrabalho ? `DE ${cidUpper}` : `DA COMARCA DE ${cidUpper}`;
   return `MERITÍSSIMO JUÍZO ${artigo} ${competenciaUpper} ${local} - ${sigla}`;
+}
+
+/**
+ * Endereçamento da petição.
+ * Primário: órgão julgador vinculado (catálogo) — se for Juizado Especial, endereça ao JEC da comarca.
+ * Fallback: competência (texto), comportamento anterior, quando não houver órgão Juizado.
+ * @param {string} competencia
+ * @param {string} cidade
+ * @param {string} uf
+ * @param {{tipo?: string, nome?: string}|null} [orgaoJulgador]
+ */
+export function inferirEnderecamento(competencia, cidade, uf, orgaoJulgador) {
+  const cid = String(cidade || 'Anápolis').trim() || 'Anápolis';
+  const cidUpper = cid.toUpperCase();
+  const sigla = String(uf || 'GO').trim().toUpperCase() || 'GO';
+
+  // Primário: órgão julgador do catálogo — Juizado Especial endereça ao JEC da comarca.
+  if (ehJuizadoEspecial(orgaoJulgador)) {
+    return `MERITÍSSIMO JUÍZO DO JUIZADO ESPECIAL CÍVEL DA COMARCA DE ${cidUpper} - ${sigla}`;
+  }
+
+  // Fallback: competência (texto).
+  return montarEnderecamentoPorCompetencia(competencia, cidUpper, sigla);
 }
 
 export function formatarCidadeEstado(cidade, uf) {
@@ -258,7 +284,7 @@ export async function montarDadosParaDocumentoFromProcesso(ctx) {
   const cidade = String(ctx.cidade ?? 'Anápolis').trim() || 'Anápolis';
   const uf = String(ctx.estado ?? 'GO').trim().toUpperCase() || 'GO';
   const competencia = String(ctx.competencia ?? '').trim();
-  const procedimento = String(ctx.procedimento ?? ctx.tramitacao ?? '').trim();
+  const orgaoJulgador = ctx.orgaoJulgador ?? null;
   const naturezaAcao = String(ctx.naturezaAcao ?? '').trim();
   const numeroProcesso =
     String(ctx.numeroProcessoNovo ?? '').trim() ||
@@ -293,7 +319,7 @@ export async function montarDadosParaDocumentoFromProcesso(ctx) {
   const qualificacaoAutor = autor.qualificacao;
   const qualificacaoReu = reu.qualificacao;
 
-  const enderecamento = inferirEnderecamento(competencia, cidade, uf, procedimento);
+  const enderecamento = inferirEnderecamento(competencia, cidade, uf, orgaoJulgador);
   const cidadeEstado = formatarLocalData(formatarCidadeEstado(cidade, uf));
 
   const pessoaIdOutorgante = primeiraPessoaIdParteCliente(partes, papelUi);

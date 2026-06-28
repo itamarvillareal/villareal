@@ -70,7 +70,7 @@ export function ConfigModeloDocumento({ values, onChange, errors = {}, onProcess
         proc.competencia,
         proc.cidade,
         proc.uf || proc.estado,
-        proc.procedimento || proc.tramitacao,
+        proc.orgaoJulgador,
       );
       const matchEnd = ENDERECAMENTOS.find((e) => e === end);
       onChange({

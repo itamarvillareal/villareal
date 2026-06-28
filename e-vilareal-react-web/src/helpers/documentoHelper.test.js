@@ -31,28 +31,34 @@ describe('montarTrechoAcaoPreambuloHtml', () => {
   });
 });
 
-describe('inferirEnderecamento (procedimento JEC)', () => {
-  it('procedimento JEC endereça ao Juizado Especial Cível mesmo sem competência', () => {
-    expect(inferirEnderecamento('', 'Anápolis', 'GO', 'JEC')).toBe(
+describe('inferirEnderecamento (órgão julgador → JEC, fallback competência)', () => {
+  it('órgão Juizado (tipo do catálogo) endereça ao JEC mesmo sem competência', () => {
+    expect(
+      inferirEnderecamento('', 'Anápolis', 'GO', { tipo: 'JUIZADO', nome: '3º Juizado Especial Cível' }),
+    ).toBe('MERITÍSSIMO JUÍZO DO JUIZADO ESPECIAL CÍVEL DA COMARCA DE ANÁPOLIS - GO');
+  });
+
+  it('órgão Juizado tem precedência sobre competência divergente', () => {
+    expect(inferirEnderecamento('1ª VARA CÍVEL', 'Anápolis', 'GO', { tipo: 'JUIZADO' })).toBe(
       'MERITÍSSIMO JUÍZO DO JUIZADO ESPECIAL CÍVEL DA COMARCA DE ANÁPOLIS - GO',
     );
   });
 
-  it('JEC tem precedência sobre competência divergente', () => {
-    expect(inferirEnderecamento('1ª VARA CÍVEL', 'Anápolis', 'GO', 'JEC')).toBe(
-      'MERITÍSSIMO JUÍZO DO JUIZADO ESPECIAL CÍVEL DA COMARCA DE ANÁPOLIS - GO',
-    );
+  it('detecta Juizado pelo nome quando o tipo está ausente', () => {
+    expect(
+      inferirEnderecamento('', 'GOIÂNIA', 'GO', { nome: 'Juizado Especial Cível' }),
+    ).toBe('MERITÍSSIMO JUÍZO DO JUIZADO ESPECIAL CÍVEL DA COMARCA DE GOIÂNIA - GO');
   });
 
-  it('aceita variação por extenso e cidade em maiúsculas do cadastro', () => {
-    expect(inferirEnderecamento('', 'GOIÂNIA', 'GO', 'Juizado Especial Cível')).toBe(
-      'MERITÍSSIMO JUÍZO DO JUIZADO ESPECIAL CÍVEL DA COMARCA DE GOIÂNIA - GO',
-    );
+  it('órgão não-Juizado sem competência cai no fallback genérico da comarca', () => {
+    expect(
+      inferirEnderecamento('', 'Anápolis', 'GO', { tipo: 'VARA', nome: '1ª Vara Cível' }),
+    ).toBe('MERITÍSSIMO JUÍZO DA COMARCA DE ANÁPOLIS - GO');
   });
 
-  it('sem procedimento JEC mantém o fallback genérico da comarca', () => {
-    expect(inferirEnderecamento('', 'Anápolis', 'GO', 'Ordinário')).toBe(
-      'MERITÍSSIMO JUÍZO DA COMARCA DE ANÁPOLIS - GO',
+  it('sem órgão vinculado usa a competência (texto), como antes', () => {
+    expect(inferirEnderecamento('1ª VARA CÍVEL', 'Anápolis', 'GO')).toBe(
+      'MERITÍSSIMO JUÍZO DA 1ª VARA CÍVEL DA COMARCA DE ANÁPOLIS - GO',
     );
   });
 });

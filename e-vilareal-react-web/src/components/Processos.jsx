@@ -617,7 +617,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [pasta, setPasta] = useState('');
   const [naturezaAcao, setNaturezaAcao] = useState('');
   const [valorCausa, setValorCausa] = useState('');
-  const [procedimento, setProcedimento] = useState('');
   const [responsavel, setResponsavel] = useState('');
   const [usuarioResponsavelId, setUsuarioResponsavelId] = useState('');
   const [colaboradoresResponsavel, setColaboradoresResponsavel] = useState([]);
@@ -1326,7 +1325,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       setPeriodicidadeConsulta(registroPersistido?.periodicidadeConsulta ?? '');
     }
     setPasta(pickCampoStrSalvo(r, 'pasta', pickCampoStrSalvo(r, 'pastaArquivo', '')));
-    setProcedimento(pickCampoStrSalvo(r, 'procedimento', ''));
     setFaseCampo(pickCampoStrSalvo(r, 'faseCampo', ''));
     setAudienciaData(pickCampoStrSalvo(r, 'audienciaData', ''));
     setAudienciaHora(pickCampoStrSalvo(r, 'audienciaHora', ''));
@@ -1787,7 +1785,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     const tribunalSalvar = valor === 'PJe' ? String(pjeTribunalDraft ?? '').trim() || null : null;
     const grauSalvar = valor === 'PJe' ? String(pjeGrauDraft ?? '').trim() || 'PRIMEIRO_GRAU' : null;
     setTramitacao(valor);
-    setProcedimento(valor);
     setPjeTribunal(tribunalSalvar || '');
     setPjeGrau(grauSalvar || '');
     setModalTramitacaoAberto(false);
@@ -1795,7 +1792,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
     const overridesPje = {
       tramitacao: valor,
-      procedimento: valor,
       pjeTribunal: tribunalSalvar,
       pjeGrau: grauSalvar,
     };
@@ -2282,7 +2278,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         numeroProcessoVelho,
         naturezaAcao,
         competencia,
-        procedimento,
+        orgaoJulgador: orgaoJulgadorSelecionado?.orgaoJulgador ?? null,
         valorCausa,
         cidade,
         estado,
@@ -2310,7 +2306,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     numeroProcessoVelho,
     naturezaAcao,
     competencia,
-    procedimento,
+    orgaoJulgadorSelecionado,
     valorCausa,
     cidade,
     estado,
@@ -2594,7 +2590,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       pasta,
       pastaArquivo: String(pasta ?? ''),
       valorCausa,
-      procedimento,
       responsavel,
       usuarioResponsavelId:
         usuarioResponsavelId != null && String(usuarioResponsavelId).trim() !== ''
@@ -2715,7 +2710,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     setHistorico([]);
     setPeriodicidadeConsulta('');
     setPasta('');
-    setProcedimento('');
     setFaseCampo('');
     setAudienciaData('');
     setAudienciaHora('');
@@ -2861,7 +2855,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       setVaraADistribuir(!oidApi && String(mapped.numeroProcessoNovo ?? '').trim() === '');
       setConsultaAutomatica(mapped.consultaAutomatica);
       setTramitacao(mapped.tramitacao ?? '');
-      setProcedimento(mapped.procedimento ?? mapped.tramitacao ?? '');
       setPjeTribunal(mapped.pjeTribunal ?? '');
       setPjeGrau(mapped.pjeGrau ?? '');
       setFaseCampo(mapped.observacaoFase ?? '');
@@ -3116,7 +3109,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     dataProtocolo,
     pasta,
     valorCausa,
-    procedimento,
     responsavel,
     usuarioResponsavelId,
     competencia,
@@ -3162,7 +3154,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     tramitacao,
     pjeTribunal,
     pjeGrau,
-    procedimento,
   ]);
 
   useEffect(() => {
@@ -4651,15 +4642,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                       value={naturezaAcao}
                       readOnly={camposBloqueados}
                       onChange={(e) => setNaturezaAcao(e.target.value)}
-                      className={clsCampoDenso}
-                    />
-                  </Field>
-                  <Field label="Procedimento" dense className="col-span-2 md:col-span-3 min-w-0">
-                    <input
-                      type="text"
-                      value={procedimento}
-                      readOnly={camposBloqueados}
-                      onChange={(e) => setProcedimento(e.target.value)}
                       className={clsCampoDenso}
                     />
                   </Field>
