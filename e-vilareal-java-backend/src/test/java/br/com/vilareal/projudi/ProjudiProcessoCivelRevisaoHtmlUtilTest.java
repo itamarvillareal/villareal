@@ -67,7 +67,7 @@ class ProjudiProcessoCivelRevisaoHtmlUtilTest {
         var ext = ProjudiProcessoCivelRevisaoHtmlUtil.extrairNumeroProcessoGerado(
                 html, "BuscaProcesso?Id_Processo=613514431950939873912188056");
         assertTrue(ext.isPresent());
-        assertEquals("5589351-81.2026.8.09.0007", ext.get().numero());
+        assertEquals("0000002-00.2026.8.09.0000", ext.get().numero());
         assertTrue(ext.get().detalhe().contains("numeroProcesso"));
     }
 
@@ -82,7 +82,7 @@ class ProjudiProcessoCivelRevisaoHtmlUtilTest {
         String html = Files.readString(htmlPath);
         var ext = ProjudiProcessoCivelRevisaoHtmlUtil.extrairNumeroProcessoGerado(html, location);
         assertTrue(ext.isPresent());
-        assertEquals("5544779-53.2020.8.09.0006", ext.get().numero());
+        assertEquals("0000001-00.2020.8.09.0000", ext.get().numero());
     }
 
     @Test
