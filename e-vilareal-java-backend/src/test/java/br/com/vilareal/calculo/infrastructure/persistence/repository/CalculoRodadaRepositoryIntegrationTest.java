@@ -4,6 +4,8 @@ import br.com.vilareal.AbstractIntegrationTest;
 import br.com.vilareal.calculo.infrastructure.persistence.entity.CalculoRodadaEntity;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.hibernate.cfg.AvailableSettings;
 import org.hibernate.resource.jdbc.spi.StatementInspector;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,6 +32,9 @@ class CalculoRodadaRepositoryIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @BeforeEach
     void limparRodadasESql() {
@@ -93,6 +98,7 @@ class CalculoRodadaRepositoryIntegrationTest extends AbstractIntegrationTest {
         Long id = calculoRodadaRepository.save(inserted).getId();
         calculoRodadaRepository.flush();
         HibernateSqlCapture.clear();
+        entityManager.clear();
 
         CalculoRodadaEntity loaded = calculoRodadaRepository.findById(id).orElseThrow();
         JsonNode payload = loaded.getPayloadJson();

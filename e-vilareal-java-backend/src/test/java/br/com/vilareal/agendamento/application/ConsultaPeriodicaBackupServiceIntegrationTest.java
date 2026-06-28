@@ -10,6 +10,7 @@ import br.com.vilareal.notificacao.infrastructure.persistence.entity.Notificacao
 import br.com.vilareal.notificacao.infrastructure.persistence.repository.NotificacaoDestinatarioRepository;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,6 +42,7 @@ class ConsultaPeriodicaBackupServiceIntegrationTest extends AbstractIntegrationT
 
     private ProcessoEntity processo;
     private String cnjUnico;
+    private String cnjOriginal;
 
     @BeforeEach
     void preparar() {
@@ -50,6 +52,7 @@ class ConsultaPeriodicaBackupServiceIntegrationTest extends AbstractIntegrationT
                 .orElse(null);
         Assumptions.assumeTrue(processo != null, "banco de teste sem processo com CNJ");
 
+        cnjOriginal = processo.getNumeroCnj();
         cnjUnico = "9" + UUID.randomUUID().toString().replace("-", "").substring(0, 19) + ".8.09.0001";
         processo.setNumeroCnj(cnjUnico);
         processoRepository.saveAndFlush(processo);
@@ -57,8 +60,20 @@ class ConsultaPeriodicaBackupServiceIntegrationTest extends AbstractIntegrationT
         limparConfig(processo.getId());
     }
 
+    @AfterEach
+    void restaurarProcesso() {
+        if (processo == null || cnjOriginal == null) {
+            return;
+        }
+        limparConfig(processo.getId());
+        ProcessoEntity p = processoRepository.findById(processo.getId()).orElse(null);
+        if (p != null) {
+            p.setNumeroCnj(cnjOriginal);
+            processoRepository.saveAndFlush(p);
+        }
+    }
+
     @Test
-    @Transactional
     void roundTrip_exportarLimparImportar_recriaConfig() {
         processo.setConsultaPeriodicaHabilitada(true);
         processoRepository.saveAndFlush(processo);

@@ -72,6 +72,8 @@ class AgendamentoConsultaApplicationServiceTest {
             e.setId(10L);
             return e;
         });
+        LocalDateTime ref = LocalDateTime.of(2026, 6, 5, 11, 24);
+        when(clock.instant()).thenReturn(ref.atZone(ZONA_BR).toInstant());
 
         AgendamentoRequest req = new AgendamentoRequest();
         req.setTipoCadencia(TipoCadencia.INTERVALO);
@@ -82,8 +84,7 @@ class AgendamentoConsultaApplicationServiceTest {
         ArgumentCaptor<AgendamentoConsultaEntity> cap = ArgumentCaptor.forClass(AgendamentoConsultaEntity.class);
         verify(agendamentoConsultaRepository).save(cap.capture());
         LocalDateTime proxima = cap.getValue().getProximaExecucao();
-        assertThat(proxima).isAfter(LocalDateTime.now().plusMinutes(119));
-        assertThat(proxima).isBefore(LocalDateTime.now().plusMinutes(121));
+        assertThat(proxima).isEqualTo(ref.plusMinutes(120));
         assertThat(resp.getIntervaloMinutos()).isEqualTo(120);
         assertThat(resp.isAtivo()).isTrue();
     }

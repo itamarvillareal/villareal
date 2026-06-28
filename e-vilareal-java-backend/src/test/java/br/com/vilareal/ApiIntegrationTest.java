@@ -608,10 +608,11 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
         Map<String, Object> clienteFin = clientes.getBody().get(0);
         Long clientePk = clientePkDaLista(clienteFin);
         Long pessoaId = pessoaIdDaLista(clienteFin);
+        int numeroInternoUnico = Math.abs(UUID.randomUUID().hashCode() % 900_000) + 100_000;
 
         var processoBody = Map.of(
                 "clienteId", clientePk,
-                "numeroInterno", 88,
+                "numeroInterno", numeroInternoUnico,
                 "naturezaAcao", "Cível",
                 "ativo", true,
                 "consultaAutomatica", false);
@@ -655,7 +656,7 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
         assertThat(((Number) postL.getBody().get("pessoaRefId")).longValue()).isEqualTo(pessoaId);
         assertThat(((Number) postL.getBody().get("processoId")).longValue()).isEqualTo(procId);
         assertThat(postL.getBody().get("codigoCliente")).isEqualTo(clienteFin.get("codigoCliente"));
-        assertThat(((Number) postL.getBody().get("numeroInternoProcesso")).intValue()).isEqualTo(88);
+        assertThat(((Number) postL.getBody().get("numeroInternoProcesso")).intValue()).isEqualTo(numeroInternoUnico);
         assertThat(postL.getBody().get("dataCompetencia")).isEqualTo("2026-03-15");
 
         ResponseEntity<Map<String, Object>> resumo = rest.exchange(

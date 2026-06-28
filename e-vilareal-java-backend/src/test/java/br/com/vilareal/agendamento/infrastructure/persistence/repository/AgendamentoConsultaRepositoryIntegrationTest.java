@@ -8,6 +8,8 @@ import br.com.vilareal.agendamento.infrastructure.persistence.entity.Agendamento
 import br.com.vilareal.agendamento.infrastructure.persistence.entity.ConsultaProcessoExecucaoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,6 +32,9 @@ class AgendamentoConsultaRepositoryIntegrationTest extends AbstractIntegrationTe
 
     @Autowired
     private ProcessoRepository processoRepository;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @BeforeEach
     void limpar() {
@@ -62,6 +67,7 @@ class AgendamentoConsultaRepositoryIntegrationTest extends AbstractIntegrationTe
         execucao.setTeoresNovos(0);
         execucao.setTeoresJaExistentes(2);
         execucao = consultaProcessoExecucaoRepository.saveAndFlush(execucao);
+        entityManager.refresh(agendamento);
 
         assertThat(agendamento.getId()).isNotNull();
         assertThat(agendamento.getCriadoEm()).isNotNull();
