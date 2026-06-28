@@ -75,7 +75,8 @@ public final class ValorExtensoUtil {
             partes.add(milhoes == 1 ? "um milhão" : tresDigitos(milhoes) + " milhões");
         }
         if (milhares > 0) {
-            partes.add(milhares == 1 ? "um mil" : tresDigitos(milhares) + " mil");
+            // PT-BR: 1000 = "mil" (não "um mil"); 2000 = "dois mil", 21000 = "vinte e um mil".
+            partes.add(milhares == 1 ? "mil" : tresDigitos(milhares) + " mil");
         }
         if (centenas > 0) {
             partes.add(tresDigitos(centenas));

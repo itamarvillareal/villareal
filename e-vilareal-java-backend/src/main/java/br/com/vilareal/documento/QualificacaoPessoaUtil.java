@@ -1056,7 +1056,21 @@ public class QualificacaoPessoaUtil {
         if (palavra == null || palavra.isEmpty()) {
             return "";
         }
-        return palavra.substring(0, 1).toUpperCase(Locale.ROOT) + palavra.substring(1);
+        // Maiúscula no início da palavra e também logo após "&" (siglas como "M&A", "P&G").
+        char[] chars = palavra.toCharArray();
+        boolean inicioSegmento = true;
+        for (int i = 0; i < chars.length; i++) {
+            char c = chars[i];
+            if (c == '&') {
+                inicioSegmento = true;
+                continue;
+            }
+            if (inicioSegmento && Character.isLetter(c)) {
+                chars[i] = Character.toUpperCase(c);
+            }
+            inicioSegmento = false;
+        }
+        return new String(chars);
     }
 
     private static String apenasDigitos(String valor) {

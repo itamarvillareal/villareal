@@ -99,7 +99,9 @@ public final class LocacaoTextoCorrecaoUtil {
                         "(?i)E\\s+por\\s+estarem\\s+justos\\s+e\\s+contratados\\s+as\\s+partes",
                         "E por estarem justas e contratadas, as partes")
                 .replaceAll("(?i)\\bt[eêë]?m\\s+por\\s+justo", "têm por justo")
-                .replaceAll("(?i)\\bOS (Locatários|Locatárias|Locatarios|Locatarias)\\b", "Os $1")
+                // Só rebaixa o artefato em CAIXA-ALTA "OS Locatários" → "Os Locatários".
+                // Sem (?i): preserva o artigo minúsculo legítimo "os Locatários" (Adequa sem Ucase/Propercase).
+                .replaceAll("\\bOS (Locatários|Locatárias|Locatarios|Locatarias)\\b", "Os $1")
                 .replaceAll("(?i)Propercase\\(\\s*S\\s*\\)\\s*ublocar", "Sublocar")
                 .replaceAll("(?i)\\bS\\s+ublocar\\b", "Sublocar")
                 .replaceAll(
