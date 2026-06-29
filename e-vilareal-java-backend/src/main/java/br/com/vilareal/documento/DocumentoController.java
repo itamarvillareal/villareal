@@ -375,7 +375,7 @@ public class DocumentoController {
     @PostMapping("/gerar-pdf-teste")
     @Profile("dev")
     public ResponseEntity<byte[]> gerarPdfTeste() {
-        return gerarPdf(criarExemplo());
+        return gerarPdf(criarExemplo(), true);
     }
 
     @PostMapping("/gerar-pdf-ia-teste")
