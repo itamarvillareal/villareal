@@ -75,7 +75,7 @@ export const CAMPOS_OPCOES_ULTIMO_ANDAMENTO = [
   { label: 'Unidade (imóvel)', fieldKey: 'unidadeImovel' },
   { label: 'Endereço (imóvel)', fieldKey: 'enderecoImovel' },
   { label: 'Condomínio (imóvel)', fieldKey: 'condominioImovel' },
-  { label: 'Unidade (resumo)', fieldKey: 'unidade' },
+  { label: 'Unidade', fieldKey: 'unidade' },
   // — Pessoas (exibição cadastro) —
   { label: 'Título Pessoa 1 Réu', fieldKey: 'tituloPessoa1Reu' },
   { label: 'N Pessoa 1 Réu', fieldKey: 'nPessoa1Reu' },
@@ -97,6 +97,7 @@ export const FIELD_KEYS_COLUNAS_RELATORIO_PROCESSOS = [
   'cliente',
   'numeroProcesso',
   'proc',
+  'unidade',
   'ultimoAndamento',
   'dataConsulta',
   'proximaConsulta',
@@ -117,7 +118,6 @@ export const FIELD_KEYS_COLUNAS_RELATORIO_PROCESSOS = [
   'naturezaAcaoProcesso',
   'statusAtivoTexto',
   'valorCausaProcesso',
-  'unidade',
   'enderecoImovel',
 ];
 
@@ -246,6 +246,9 @@ export function enriquecerCamposRelatorioProcessos(row, idx) {
   const fallbackApi = row.processoCadastroAtivo !== false;
   const extras = getCamposExtrasRelatorioPorProcesso(padCliente(cod), proc, fallbackApi);
   const merged = { ...row, ...extras };
+  const uBase = String(row.unidade ?? '').trim();
+  const uExtra = String(extras.unidade ?? '').trim();
+  if (!uExtra && uBase) merged.unidade = uBase;
   const infoUlt = String(extras.ultimoHistoricoInfo ?? '').trim();
   const dataUlt = String(extras.ultimoHistoricoData ?? '').trim();
   const usuarioUlt = String(extras.ultimoHistoricoUsuario ?? '').trim();

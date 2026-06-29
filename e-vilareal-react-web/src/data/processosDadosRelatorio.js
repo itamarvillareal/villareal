@@ -473,6 +473,7 @@ async function preaquecerUmProcessoRelatorio({ codCliente: codRaw, proc: procRaw
     ...statusCampos,
     prazoFatalCadastroProcesso: cabecalho?.prazoFatal || '',
     observacaoCadastroProcesso: cabecalho?.observacao || '',
+    unidade: String(cabecalho?.unidade ?? '').trim(),
     parteCliente,
     parteOposta,
     ultimoHistoricoInfo: ultimo.info,

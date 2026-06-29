@@ -18,7 +18,21 @@ import { featureFlags } from '../config/featureFlags.js';
 import { EVENT_RELATORIO_PERSISTENCIA_EXTERNA } from '../services/crossTabLocalStorageSync.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
 import { removerRegistroProcessoDoHistorico } from '../data/processosHistoricoData.js';
-import { excluirProcessoCompleto } from '../repositories/processosRepository.js';
+import { excluirProcessoCompleto, atualizarCampoProcessoRelatorio } from '../repositories/processosRepository.js';
+import {
+  chavesLinhaBaseRelatorio,
+  tipoPersistenciaCampoRelatorio,
+} from '../data/relatorioProcessoCampoPersistencia.js';
+import { ChaveEdicaoOnOff } from './cadastro-pessoas/ChaveEdicaoOnOff.jsx';
+import {
+  carregarSessaoRelatorioProcessos,
+  salvarSessaoRelatorioProcessos,
+} from '../data/relatorioProcessosSessaoPersistencia.js';
+import {
+  MODOS_FILTRO_COLUNA,
+  OPCOES_MODO_FILTRO_COLUNA,
+  linhaPassaFiltroColunaRelatorio,
+} from '../data/relatorioFiltroColuna.js';
 
 const STORAGE_COLUNAS_RELATORIO = 'vilareal.relatorioProcessos.colunasVisiveis.v1';
 const STORAGE_LARGURA_UNIFORME = 'vilareal.relatorioProcessos.larguraUniforme.v1';
@@ -188,10 +202,80 @@ function carregarModoAlteracaoSalvo() {
   }
 }
 
+function filtrosColunaPadrao() {
+  return COLUNAS.reduce((acc, col) => ({ ...acc, [col.id]: '' }), {});
+}
+
+function modosFiltroColunaPadrao() {
+  return COLUNAS.reduce((acc, col) => ({ ...acc, [col.id]: MODOS_FILTRO_COLUNA.contem }), {});
+}
+
+/** Restaura grade/filtros da sessão ao reentrar na rota (ex.: voltar de Processos). */
+function restaurarEstadoRelatorioDaSessao() {
+  const sessao = carregarSessaoRelatorioProcessos();
+  const ui = sessao.ui ?? {};
+  const filtrosPorColuna = { ...filtrosColunaPadrao(), ...(ui.filtrosPorColuna ?? {}) };
+  const modoFiltroPorColuna = { ...modosFiltroColunaPadrao(), ...(ui.modoFiltroPorColuna ?? {}) };
+
+  if (!sessao.emitido) {
+    return {
+      relatorioEmitido: false,
+      dados: [],
+      baseRaw: [],
+      filtrosPorColuna,
+      modoFiltroPorColuna,
+      ordenarPor: ui.ordenarPor ?? null,
+      ordemAsc: ui.ordemAsc !== false,
+      precisaRecarregar: false,
+    };
+  }
+
+  const baseRaw = sessao.baseRaw ?? [];
+
+  if (Array.isArray(sessao.dados) && sessao.dados.length > 0) {
+    return {
+      relatorioEmitido: true,
+      dados: sessao.dados,
+      baseRaw,
+      filtrosPorColuna,
+      modoFiltroPorColuna,
+      ordenarPor: ui.ordenarPor ?? null,
+      ordemAsc: ui.ordemAsc !== false,
+      precisaRecarregar: false,
+    };
+  }
+
+  if (baseRaw.length > 0) {
+    const enriched = montarLinhasRelatorioBaseDeCruas(baseRaw);
+    return {
+      relatorioEmitido: true,
+      dados: mesclarLinhasRelatorioComPersistido(false, enriched),
+      baseRaw,
+      filtrosPorColuna,
+      modoFiltroPorColuna,
+      ordenarPor: ui.ordenarPor ?? null,
+      ordemAsc: ui.ordemAsc !== false,
+      precisaRecarregar: false,
+    };
+  }
+
+  return {
+    relatorioEmitido: true,
+    dados: [],
+    baseRaw: [],
+    filtrosPorColuna,
+    modoFiltroPorColuna,
+    ordenarPor: ui.ordenarPor ?? null,
+    ordemAsc: ui.ordemAsc !== false,
+    precisaRecarregar: true,
+  };
+}
+
 export function Relatorio() {
   const navigate = useNavigate();
-  const [ordenarPor, setOrdenarPor] = useState(null);
-  const [ordemAsc, setOrdemAsc] = useState(true);
+  const [estadoSessao] = useState(() => restaurarEstadoRelatorioDaSessao());
+  const [ordenarPor, setOrdenarPor] = useState(() => estadoSessao.ordenarPor);
+  const [ordemAsc, setOrdemAsc] = useState(() => estadoSessao.ordemAsc);
   const [painelColunasAberto, setPainelColunasAberto] = useState(false);
   const painelColunasRef = useRef(null);
   const [colunasVisiveis, setColunasVisiveis] = useState(() => {
@@ -204,6 +288,8 @@ export function Relatorio() {
   const [campoPorColuna, setCampoPorColuna] = useState(() => carregarCampoPorColunaSalvo(COLUNA_IDS_RELATORIO));
   const [filtroProcessoAtivo, setFiltroProcessoAtivo] = useState(() => carregarFiltroProcessoAtivoSalvo());
   const [modoAlteracao, setModoAlteracao] = useState(() => carregarModoAlteracaoSalvo());
+  const [filtrosPorColuna, setFiltrosPorColuna] = useState(() => estadoSessao.filtrosPorColuna);
+  const [modoFiltroPorColuna, setModoFiltroPorColuna] = useState(() => estadoSessao.modoFiltroPorColuna);
 
   useEffect(() => {
     salvarCampoPorColuna(campoPorColuna, COLUNA_IDS_RELATORIO);
@@ -240,6 +326,16 @@ export function Relatorio() {
       /* ignore */
     }
   }, [modoAlteracao]);
+
+  useEffect(() => {
+    return () => {
+      try {
+        window.localStorage.setItem(STORAGE_MODO_ALTERACAO, '0');
+      } catch {
+        /* ignore */
+      }
+    };
+  }, []);
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -281,9 +377,9 @@ export function Relatorio() {
     });
   };
 
-  const [dados, setDados] = useState(() => []);
+  const [dados, setDados] = useState(() => estadoSessao.dados);
   /** Só após o usuário clicar em «Emitir relatório» — evita montar milhares de linhas ao abrir a página. */
-  const [relatorioEmitido, setRelatorioEmitido] = useState(false);
+  const [relatorioEmitido, setRelatorioEmitido] = useState(() => estadoSessao.relatorioEmitido);
   const [emitindoRelatorio, setEmitindoRelatorio] = useState(false);
   const [enriquecendoDetalhes, setEnriquecendoDetalhes] = useState(false);
   const [erroEmissao, setErroEmissao] = useState('');
@@ -291,9 +387,28 @@ export function Relatorio() {
   const [excluindoEmLote, setExcluindoEmLote] = useState(false);
   const [selecionados, setSelecionados] = useState(() => new Set());
   const [erroExclusao, setErroExclusao] = useState('');
+  const [erroPersistencia, setErroPersistencia] = useState('');
+  const [salvandoCelula, setSalvandoCelula] = useState(null);
   const selectAllRef = useRef(null);
   const emitindoRelatorioRef = useRef(false);
-  const baseRawEmissaoRef = useRef([]);
+  const baseRawEmissaoRef = useRef(estadoSessao.baseRaw);
+  const precisaRecarregarSessaoRef = useRef(estadoSessao.precisaRecarregar);
+  const recarregouSessaoRef = useRef(false);
+  const uiSessaoRef = useRef({
+    filtrosPorColuna: estadoSessao.filtrosPorColuna,
+    modoFiltroPorColuna: estadoSessao.modoFiltroPorColuna,
+    ordenarPor: estadoSessao.ordenarPor,
+    ordemAsc: estadoSessao.ordemAsc,
+  });
+
+  useEffect(() => {
+    uiSessaoRef.current = {
+      filtrosPorColuna,
+      modoFiltroPorColuna,
+      ordenarPor,
+      ordemAsc,
+    };
+  }, [filtrosPorColuna, modoFiltroPorColuna, ordenarPor, ordemAsc]);
 
   const emitirOuAtualizarRelatorio = useCallback(() => {
     if (emitindoRelatorioRef.current) return;
@@ -325,6 +440,12 @@ export function Relatorio() {
       emitindoRelatorioRef.current = false;
       setEmitindoRelatorio(false);
 
+      salvarSessaoRelatorioProcessos({
+        baseRaw,
+        dados: next,
+        ui: uiSessaoRef.current,
+      });
+
       if (!featureFlags.useApiProcessos || baseRaw.length === 0) return;
 
       const entradasPreaquecer = baseRaw.map((r) => ({
@@ -336,7 +457,13 @@ export function Relatorio() {
       try {
         await preaquecerCamposRelatorioApiFirst(entradasPreaquecer, { concurrency: 12 });
         const atualizado = montarLinhasRelatorioBaseDeCruas(baseRawEmissaoRef.current);
-        setDados(mesclarLinhasRelatorioComPersistido(true, atualizado));
+        const dadosAtualizados = mesclarLinhasRelatorioComPersistido(true, atualizado);
+        setDados(dadosAtualizados);
+        salvarSessaoRelatorioProcessos({
+          baseRaw: baseRawEmissaoRef.current,
+          dados: dadosAtualizados,
+          ui: uiSessaoRef.current,
+        });
       } catch {
         /* grade já exibida com dados da listagem */
       } finally {
@@ -344,6 +471,25 @@ export function Relatorio() {
       }
     })();
   }, [relatorioEmitido]);
+
+  useEffect(() => {
+    if (recarregouSessaoRef.current) return;
+    if (!relatorioEmitido || !precisaRecarregarSessaoRef.current) return;
+    recarregouSessaoRef.current = true;
+    emitirOuAtualizarRelatorio();
+  }, [relatorioEmitido, emitirOuAtualizarRelatorio]);
+
+  useEffect(() => {
+    if (!relatorioEmitido) return undefined;
+    const id = window.setTimeout(() => {
+      salvarSessaoRelatorioProcessos({
+        baseRaw: baseRawEmissaoRef.current,
+        dados,
+        ui: uiSessaoRef.current,
+      });
+    }, 350);
+    return () => window.clearTimeout(id);
+  }, [relatorioEmitido, dados, filtrosPorColuna, modoFiltroPorColuna, ordenarPor, ordemAsc]);
 
   useEffect(() => {
     if (!relatorioEmitido) return;
@@ -371,6 +517,57 @@ export function Relatorio() {
       return next;
     });
   };
+
+  const persistirCelulaRelatorio = useCallback(async (row, chaveCampo, valor) => {
+    if (!modoAlteracao) return;
+    const cod = String(row.codCliente ?? '').trim();
+    const proc = String(row.proc ?? '').trim();
+    if (!cod || !proc) return;
+
+    const chaveSalvando = `${cod}:${proc}:${chaveCampo}`;
+    setErroPersistencia('');
+
+    if (featureFlags.useApiProcessos) {
+      if (!tipoPersistenciaCampoRelatorio(chaveCampo)) {
+        setErroPersistencia(`O campo «${chaveCampo}» não é gravado na API.`);
+        return;
+      }
+      setSalvandoCelula(chaveSalvando);
+      try {
+        const res = await atualizarCampoProcessoRelatorio({
+          processoId: row.processoApiId,
+          codigoCliente: cod,
+          numeroInterno: proc,
+          fieldKey: chaveCampo,
+          valor,
+        });
+        if (chaveCampo === 'statusAtivoTexto' && res?.statusAtivo != null) {
+          const ativo = res.statusAtivo !== false;
+          atualizarCelulaRelatorio(row.__relatorioIdx, 'processoCadastroAtivo', ativo);
+          atualizarCelulaRelatorio(row.__relatorioIdx, 'statusAtivoTexto', ativo ? 'Ativo' : 'Inativo');
+        }
+        const chavesBase = chavesLinhaBaseRelatorio(chaveCampo);
+        baseRawEmissaoRef.current = (baseRawEmissaoRef.current || []).map((r) => {
+          if (String(r.codCliente) !== cod || String(r.proc) !== proc) return r;
+          const patch = {};
+          for (const k of chavesBase) {
+            if (k === 'processoCadastroAtivo' && res?.statusAtivo != null) {
+              patch.processoCadastroAtivo = res.statusAtivo !== false;
+              patch.statusAtivoTexto = res.statusAtivo !== false ? 'Ativo' : 'Inativo';
+            } else {
+              patch[k] = valor;
+            }
+          }
+          return { ...r, ...patch };
+        });
+      } catch (e) {
+        setErroPersistencia(e?.message || 'Não foi possível gravar a alteração na API.');
+      } finally {
+        setSalvandoCelula(null);
+      }
+      return;
+    }
+  }, [modoAlteracao]);
 
   const executarExclusaoProcesso = useCallback(async (row) => {
     const cod = String(row.codCliente ?? '').trim();
@@ -456,22 +653,19 @@ export function Relatorio() {
       setExcluindoEmLote(false);
     }
   }, [dados, selecionados, executarExclusaoProcesso]);
-  const [filtrosPorColuna, setFiltrosPorColuna] = useState(() =>
-    COLUNAS.reduce((acc, col) => ({ ...acc, [col.id]: '' }), {})
-  );
 
   const dadosFiltrados = useMemo(() => {
     return dados.filter((row) => {
       if (!linhaPassaFiltroAtivo(row, filtroProcessoAtivo)) return false;
       return COLUNAS.every((col) => {
-        const filtro = String(filtrosPorColuna[col.id] ?? '').trim().toLowerCase();
-        if (!filtro) return true;
         const chave = campoPorColuna[col.id] ?? col.id;
-        const valor = String(row[chave] ?? '').toLowerCase();
-        return valor.includes(filtro);
+        const valor = row[chave];
+        const modo = modoFiltroPorColuna[col.id] ?? MODOS_FILTRO_COLUNA.contem;
+        const filtro = filtrosPorColuna[col.id] ?? '';
+        return linhaPassaFiltroColunaRelatorio(valor, filtro, modo);
       });
     });
-  }, [dados, filtrosPorColuna, campoPorColuna, filtroProcessoAtivo]);
+  }, [dados, filtrosPorColuna, modoFiltroPorColuna, campoPorColuna, filtroProcessoAtivo]);
 
   const dadosOrdenados = useMemo(() => {
     if (!ordenarPor) return dadosFiltrados;
@@ -593,6 +787,14 @@ export function Relatorio() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+          {relatorioEmitido ? (
+            <ChaveEdicaoOnOff
+              edicaoHabilitada={modoAlteracao}
+              onChange={setModoAlteracao}
+              disabled={emitindoRelatorio || exclusaoEmAndamento}
+              className="scale-90 origin-right"
+            />
+          ) : null}
           <button
             type="button"
             onClick={emitirOuAtualizarRelatorio}
@@ -741,6 +943,9 @@ export function Relatorio() {
             {erroExclusao ? (
               <p className="px-4 py-3 text-sm text-red-700 bg-red-50 border-b border-red-100">{erroExclusao}</p>
             ) : null}
+            {erroPersistencia ? (
+              <p className="px-4 py-3 text-sm text-red-700 bg-red-50 border-b border-red-100">{erroPersistencia}</p>
+            ) : null}
             <table
               className={`w-full text-sm border-collapse ${larguraUniforme ? 'table-fixed' : ''}`}
               style={{ minWidth: larguraUniforme ? '100%' : 'max-content' }}
@@ -793,30 +998,61 @@ export function Relatorio() {
                 </tr>
                 <tr className="bg-slate-100">
                   <th className="px-1.5 py-1 border-b border-r border-slate-300 sticky left-0 z-20 bg-slate-100 w-10" aria-hidden />
-                  {colunasAtivas.map((col) => (
+                  {colunasAtivas.map((col) => {
+                    const modoFiltro = modoFiltroPorColuna[col.id] ?? MODOS_FILTRO_COLUNA.contem;
+                    const filtroPorTexto = modoFiltro === MODOS_FILTRO_COLUNA.contem;
+                    return (
                     <th
                       key={`${col.id}-filtro`}
                       className="px-1.5 py-1 border-b border-r border-slate-300 last:border-r-0"
                       style={larguraUniforme ? { width: `${100 / colunasAtivas.length}%`, minWidth: 0 } : { minWidth: col.minW }}
                     >
-                      <input
-                        type="text"
-                        value={filtrosPorColuna[col.id] ?? ''}
-                        onChange={(e) =>
-                          setFiltrosPorColuna((prev) => ({
-                            ...prev,
-                            [col.id]: e.target.value,
-                          }))
-                        }
-                        placeholder="Filtrar..."
-                        className={`w-full px-2 py-1 border rounded text-xs bg-white ${
-                          modoAlteracao
-                            ? 'border-red-200 text-red-700 placeholder:text-red-300'
-                            : 'border-slate-300 text-slate-700'
-                        }`}
-                      />
+                      <div className="flex min-w-0 gap-1">
+                        <select
+                          value={modoFiltro}
+                          onChange={(e) =>
+                            setModoFiltroPorColuna((prev) => ({
+                              ...prev,
+                              [col.id]: e.target.value,
+                            }))
+                          }
+                          className={`shrink-0 max-w-[5.5rem] px-1 py-1 border rounded text-[11px] bg-white ${
+                            modoFiltro !== MODOS_FILTRO_COLUNA.contem
+                              ? 'border-indigo-300 text-indigo-800 font-medium'
+                              : modoAlteracao
+                                ? 'border-red-200 text-red-700'
+                                : 'border-slate-300 text-slate-600'
+                          }`}
+                          title="Tipo de filtro da coluna"
+                          aria-label={`Tipo de filtro — ${col.label}`}
+                        >
+                          {OPCOES_MODO_FILTRO_COLUNA.map((op) => (
+                            <option key={op.value} value={op.value}>
+                              {op.label}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          value={filtrosPorColuna[col.id] ?? ''}
+                          disabled={!filtroPorTexto}
+                          onChange={(e) =>
+                            setFiltrosPorColuna((prev) => ({
+                              ...prev,
+                              [col.id]: e.target.value,
+                            }))
+                          }
+                          placeholder={filtroPorTexto ? 'Filtrar...' : '—'}
+                          className={`min-w-0 flex-1 px-2 py-1 border rounded text-xs bg-white disabled:bg-slate-50 disabled:text-slate-400 ${
+                            modoAlteracao
+                              ? 'border-red-200 text-red-700 placeholder:text-red-300'
+                              : 'border-slate-300 text-slate-700'
+                          }`}
+                        />
+                      </div>
                     </th>
-                  ))}
+                    );
+                  })}
                   <th className="px-1.5 py-1 border-b border-slate-300 bg-slate-100 sticky right-0 w-12" aria-hidden />
                 </tr>
               </thead>
@@ -841,7 +1077,7 @@ export function Relatorio() {
                       } ${selecionado ? 'ring-1 ring-inset ring-indigo-200' : ''}`}
                       title={
                         modoAlteracao
-                          ? 'Modo alteração: edite as células (texto em vermelho). Cod. Cliente e Proc. são fixos.'
+                          ? 'Modo alteração: edite as células (texto em vermelho). Saia do campo para gravar na API. Cod. Cliente e Proc. são fixos.'
                           : 'Duplo clique: abrir processo'
                       }
                       onDoubleClick={() => {
@@ -868,9 +1104,16 @@ export function Relatorio() {
                         const chaveValor = campoPorColuna[col.id] ?? col.id;
                         const textoCelula = row[chaveValor] ?? '';
                         const valorStr = String(textoCelula);
-                        const soLeitura = COLUNAS_RELATORIO_SO_LEITURA.has(col.id) || !modoAlteracao;
+                        const persistivelApi =
+                          !featureFlags.useApiProcessos || !!tipoPersistenciaCampoRelatorio(chaveValor);
+                        const soLeitura =
+                          COLUNAS_RELATORIO_SO_LEITURA.has(col.id) ||
+                          !modoAlteracao ||
+                          (modoAlteracao && featureFlags.useApiProcessos && !persistivelApi);
                         const labelAcessivel =
                           CAMPOS_OPCOES_ULTIMO_ANDAMENTO.find((o) => o.fieldKey === chaveValor)?.label ?? col.label;
+                        const chaveSalvandoCelula = `${row.codCliente}:${row.proc}:${chaveValor}`;
+                        const salvandoEstaCelula = salvandoCelula === chaveSalvandoCelula;
 
                         if (!modoAlteracao) {
                           return (
@@ -891,11 +1134,19 @@ export function Relatorio() {
                           return (
                             <td
                               key={col.id}
-                              className={`px-2 py-1.5 border-r border-slate-200 last:border-r-0 text-red-600 font-semibold tabular-nums ${
-                                col.id === 'codCliente' ? '' : ''
-                              } ${larguraUniforme ? 'truncate max-w-0' : ''}`}
+                              className={`px-2 py-1.5 border-r border-slate-200 last:border-r-0 ${
+                                modoAlteracao ? 'text-red-600 font-semibold' : 'text-slate-800'
+                              } ${col.id === 'codCliente' ? 'tabular-nums' : ''} ${
+                                larguraUniforme ? 'truncate max-w-0' : ''
+                              }`}
                               style={larguraUniforme ? { width: `${100 / colunasAtivas.length}%`, minWidth: 0 } : { minWidth: col.minW }}
-                              title={larguraUniforme ? valorStr : undefined}
+                              title={
+                                larguraUniforme
+                                  ? valorStr
+                                  : modoAlteracao && featureFlags.useApiProcessos && !persistivelApi
+                                    ? 'Campo somente leitura (não gravado na API)'
+                                    : undefined
+                              }
                             >
                               {valorStr}
                             </td>
@@ -905,7 +1156,9 @@ export function Relatorio() {
                         return (
                           <td
                             key={col.id}
-                            className={`p-0 border-r border-slate-200 last:border-r-0 align-stretch ${larguraUniforme ? 'max-w-0' : ''}`}
+                            className={`p-0 border-r border-slate-200 last:border-r-0 align-stretch ${larguraUniforme ? 'max-w-0' : ''} ${
+                              salvandoEstaCelula ? 'bg-amber-50/80' : ''
+                            }`}
                             style={larguraUniforme ? { width: `${100 / colunasAtivas.length}%`, minWidth: 0 } : { minWidth: col.minW }}
                           >
                             <input
@@ -914,7 +1167,9 @@ export function Relatorio() {
                               onChange={(e) =>
                                 atualizarCelulaRelatorio(row.__relatorioIdx, chaveValor, e.target.value)
                               }
-                              className="w-full min-w-0 bg-transparent px-2 py-1.5 text-sm text-red-600 outline-none border-0 focus:ring-2 focus:ring-inset focus:ring-red-200"
+                              onBlur={(e) => void persistirCelulaRelatorio(row, chaveValor, e.target.value)}
+                              disabled={salvandoEstaCelula}
+                              className="w-full min-w-0 bg-transparent px-2 py-1.5 text-sm text-red-600 outline-none border-0 focus:ring-2 focus:ring-inset focus:ring-red-200 disabled:opacity-60"
                               aria-label={`${labelAcessivel} — linha ${(row.__relatorioIdx ?? idx) + 1}`}
                             />
                           </td>

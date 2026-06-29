@@ -179,6 +179,8 @@ class CobrancaRelatorioXlsParserTest {
     @Test
     void normalizarCodigoUnidade_variacoes() {
         assertThat(CobrancaRelatorioXlsParser.normalizarCodigoUnidade("A0402")).isEqualTo("A-0402");
+        assertThat(CobrancaRelatorioXlsParser.normalizarCodigoUnidade("000-A")).isEqualTo("A-0000");
+        assertThat(CobrancaRelatorioXlsParser.normalizarCodigoUnidade("1201-R")).isEqualTo("R-1201");
         assertThat(CobrancaRelatorioXlsParser.normalizarCodigoUnidade("ADM")).isEqualTo("ADM");
         assertThat(CobrancaRelatorioXlsParser.extrairCodigoBruto("A0501* \nProprietário: X (1)"))
                 .isEqualTo("A0501");

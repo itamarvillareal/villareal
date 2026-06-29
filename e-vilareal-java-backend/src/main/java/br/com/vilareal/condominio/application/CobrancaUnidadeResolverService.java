@@ -71,10 +71,11 @@ public class CobrancaUnidadeResolverService {
     public ResolucaoUnidade resolverUnidade(ResolverUnidadeInput in) {
         validarEntrada(in);
         String cod8 = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(in.codigoCliente8());
-        String unidade = in.unidadeNormalizada().trim().toUpperCase(Locale.ROOT);
+        String codigoUnidade = in.unidadeNormalizada().trim().toUpperCase(Locale.ROOT);
+        String unidadeProcesso = CobrancaUnidadeFormatUtil.codigoParaUnidadeProcesso(codigoUnidade);
 
         PessoaResolvida pessoa = resolverPessoa(in);
-        ProcessoResolvido processo = resolverProcesso(in, cod8, unidade, pessoa.pessoaId());
+        ProcessoResolvido processo = resolverProcesso(in, cod8, codigoUnidade, unidadeProcesso, pessoa.pessoaId());
 
         return new ResolucaoUnidade(
                 pessoa.pessoaId(),
@@ -133,19 +134,23 @@ public class CobrancaUnidadeResolverService {
     }
 
     private ProcessoResolvido resolverProcesso(
-            ResolverUnidadeInput in, String cod8, String unidade, long pessoaIdDevedor) {
-        Optional<ProcessoEntity> procOpt =
-                processoRepository.findByCliente_IdAndUnidade(in.clienteId(), unidade);
+            ResolverUnidadeInput in,
+            String cod8,
+            String codigoUnidade,
+            String unidadeProcesso,
+            long pessoaIdDevedor) {
+        Optional<ProcessoEntity> procOpt = buscarProcessoPorCodigoUnidade(in.clienteId(), codigoUnidade);
 
         if (procOpt.isPresent()) {
-            return resolverProcessoExistente(in, procOpt.get(), pessoaIdDevedor);
+            return resolverProcessoExistente(in, procOpt.get(), pessoaIdDevedor, unidadeProcesso);
         }
 
-        AlocacaoProcesso aloc = alocarProcVazioOuNovo(in, unidade);
+        AlocacaoProcesso aloc = alocarProcVazioOuNovo(in, unidadeProcesso);
         boolean reuVinculado = vincularReuSeNecessario(aloc.processo().getId(), pessoaIdDevedor, in.importacaoId());
+        int ni = exigirNumeroInternoValido(aloc.processo());
         return new ProcessoResolvido(
                 aloc.processo().getId(),
-                aloc.processo().getNumeroInterno(),
+                ni,
                 aloc.criado(),
                 reuVinculado,
                 false,
@@ -153,7 +158,9 @@ public class CobrancaUnidadeResolverService {
     }
 
     private ProcessoResolvido resolverProcessoExistente(
-            ResolverUnidadeInput in, ProcessoEntity proc, long pessoaIdDevedor) {
+            ResolverUnidadeInput in, ProcessoEntity proc, long pessoaIdDevedor, String unidadeProcesso) {
+        garantirUnidadeProcesso(proc, unidadeProcesso);
+        garantirNumeroInternoValido(proc, in.clienteId());
         List<Long> reuIds = listarReuPessoaIds(proc.getId());
 
         if (reuIds.isEmpty() || reuIds.contains(pessoaIdDevedor)) {
@@ -163,7 +170,7 @@ public class CobrancaUnidadeResolverService {
             }
             return new ProcessoResolvido(
                     proc.getId(),
-                    proc.getNumeroInterno(),
+                    exigirNumeroInternoValido(proc),
                     false,
                     reuVinculado,
                     false,
@@ -171,15 +178,45 @@ public class CobrancaUnidadeResolverService {
         }
 
         Long reuAnterior = reuIds.getFirst();
-        AlocacaoProcesso aloc = alocarProcVazioOuNovo(in, proc.getUnidade());
+        String unidadeNova =
+                StringUtils.hasText(proc.getUnidade()) ? proc.getUnidade().trim() : unidadeProcesso;
+        AlocacaoProcesso aloc = alocarProcVazioOuNovo(in, unidadeNova);
         boolean reuVinculado = vincularReuSeNecessario(aloc.processo().getId(), pessoaIdDevedor, in.importacaoId());
         return new ProcessoResolvido(
                 aloc.processo().getId(),
-                aloc.processo().getNumeroInterno(),
+                exigirNumeroInternoValido(aloc.processo()),
                 aloc.criado(),
                 reuVinculado,
                 true,
                 reuAnterior);
+    }
+
+    private Optional<ProcessoEntity> buscarProcessoPorCodigoUnidade(long clienteId, String codigoUnidade) {
+        for (String chave : CobrancaUnidadeFormatUtil.chavesBuscaProcessoPorCodigo(codigoUnidade)) {
+            Optional<ProcessoEntity> found = processoRepository.findByCliente_IdAndUnidade(clienteId, chave);
+            if (found.isPresent()) {
+                ProcessoEntity proc = found.get();
+                garantirNumeroInternoValido(proc, clienteId);
+                return Optional.of(proc);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private void garantirUnidadeProcesso(ProcessoEntity proc, String unidadeProcesso) {
+        if (!StringUtils.hasText(unidadeProcesso)) {
+            return;
+        }
+        String alvo = unidadeProcesso.trim();
+        String atual = proc.getUnidade();
+        if (!StringUtils.hasText(atual)
+                || CobrancaUnidadeFormatUtil.ehFormatoCodigoUnidade(atual)
+                || !CobrancaUnidadeFormatUtil.ehFormatoUnidadeLegivel(atual)) {
+            if (!alvo.equalsIgnoreCase(StringUtils.hasText(atual) ? atual.trim() : "")) {
+                proc.setUnidade(alvo);
+                processoRepository.save(proc);
+            }
+        }
     }
 
     private AlocacaoProcesso alocarProcVazioOuNovo(ResolverUnidadeInput in, String unidade) {
@@ -191,6 +228,7 @@ public class CobrancaUnidadeResolverService {
 
         if (!vazios.isEmpty()) {
             ProcessoEntity p = vazios.getFirst();
+            garantirNumeroInternoValido(p, in.clienteId());
             p.setUnidade(unidade);
             if (StringUtils.hasText(in.importacaoId())) {
                 p.setImportacaoId(in.importacaoId().trim());
@@ -212,7 +250,28 @@ public class CobrancaUnidadeResolverService {
         ProcessoEntity proc = processoRepository
                 .findById(criado.getId())
                 .orElseThrow(() -> new BusinessRuleException("Processo recém-criado não encontrado."));
+        garantirNumeroInternoValido(proc, in.clienteId());
         return new AlocacaoProcesso(proc, true);
+    }
+
+    private static boolean numeroInternoValido(ProcessoEntity proc) {
+        return proc != null && proc.getNumeroInterno() != null && proc.getNumeroInterno() >= 1;
+    }
+
+    private static int exigirNumeroInternoValido(ProcessoEntity proc) {
+        Integer ni = proc.getNumeroInterno();
+        if (ni == null || ni < 1) {
+            throw new BusinessRuleException("Número interno do processo inválido.");
+        }
+        return ni;
+    }
+
+    private void garantirNumeroInternoValido(ProcessoEntity proc, long clienteId) {
+        if (numeroInternoValido(proc)) {
+            return;
+        }
+        proc.setNumeroInterno(proximoNumeroInternoDisponivel(clienteId));
+        processoRepository.save(proc);
     }
 
     private int proximoNumeroInternoDisponivel(long clienteId) {

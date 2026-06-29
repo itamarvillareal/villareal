@@ -12,6 +12,11 @@ import {
 } from '../data/relatorioCalculosData.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
+import {
+  MODOS_FILTRO_COLUNA,
+  OPCOES_MODO_FILTRO_COLUNA,
+  linhaPassaFiltroColunaRelatorio,
+} from '../data/relatorioFiltroColuna.js';
 
 const CalculosLazy = lazy(() =>
   import('./Calculos.jsx').then((module) => ({ default: module.Calculos }))
@@ -52,6 +57,10 @@ function estadoFiltrosVazio() {
   return Object.fromEntries(COLUNAS.map((c) => [c.id, '']));
 }
 
+function estadoModoFiltroVazio() {
+  return Object.fromEntries(COLUNAS.map((c) => [c.id, MODOS_FILTRO_COLUNA.contem]));
+}
+
 const CRITERIOS_EMITIR_INICIAL = {
   escopoCliente: 'todos',
   textoCodigosCliente: '',
@@ -66,6 +75,7 @@ export function RelatorioCalculos() {
   const [emitindoRelatorio, setEmitindoRelatorio] = useState(false);
   const emitindoRelatorioRef = useRef(false);
   const [filtrosPorColuna, setFiltrosPorColuna] = useState(estadoFiltrosVazio);
+  const [modoFiltroPorColuna, setModoFiltroPorColuna] = useState(estadoModoFiltroVazio);
   const [ordenarPor, setOrdenarPor] = useState(null);
   const [ordemAsc, setOrdemAsc] = useState(true);
   const [cargaRodadasProgresso, setCargaRodadasProgresso] = useState(null);
@@ -149,6 +159,7 @@ export function RelatorioCalculos() {
 
   const limparFiltros = () => {
     setFiltrosPorColuna(estadoFiltrosVazio());
+    setModoFiltroPorColuna(estadoModoFiltroVazio());
     setOrdenarPor(null);
     setOrdemAsc(true);
   };
@@ -160,13 +171,13 @@ export function RelatorioCalculos() {
   const dadosFiltrados = useMemo(() => {
     return linhas.filter((row) =>
       COLUNAS.every((col) => {
-        const filtro = String(filtrosPorColuna[col.id] ?? '').trim().toLowerCase();
-        if (!filtro) return true;
-        const exibicao = textoCelulaRelatorio(col, row).toLowerCase();
-        return exibicao.includes(filtro);
+        const modo = modoFiltroPorColuna[col.id] ?? MODOS_FILTRO_COLUNA.contem;
+        const filtro = filtrosPorColuna[col.id] ?? '';
+        const exibicao = textoCelulaRelatorio(col, row);
+        return linhaPassaFiltroColunaRelatorio(exibicao, filtro, modo);
       })
     );
-  }, [linhas, filtrosPorColuna]);
+  }, [linhas, filtrosPorColuna, modoFiltroPorColuna]);
 
   const dadosOrdenados = useMemo(() => {
     if (!ordenarPor) return dadosFiltrados;
@@ -477,22 +488,48 @@ export function RelatorioCalculos() {
                     ))}
                   </tr>
                   <tr className="bg-slate-200">
-                    {COLUNAS.map((col) => (
+                    {COLUNAS.map((col) => {
+                      const modoFiltro = modoFiltroPorColuna[col.id] ?? MODOS_FILTRO_COLUNA.contem;
+                      const filtroPorTexto = modoFiltro === MODOS_FILTRO_COLUNA.contem;
+                      return (
                       <th
                         key={`${col.id}-f`}
                         className={`px-1.5 py-1 border-b border-r border-slate-300 last:border-r-0 ${alignClass(col.align)}`}
                       >
-                        <input
-                          type="text"
-                          value={filtrosPorColuna[col.id] ?? ''}
-                          onChange={(e) =>
-                            setFiltrosPorColuna((prev) => ({ ...prev, [col.id]: e.target.value }))
-                          }
-                          placeholder="Filtrar..."
-                          className="w-full px-2 py-1 border border-slate-400 rounded text-xs bg-white text-slate-800 shadow-sm"
-                        />
+                        <div className="flex min-w-0 gap-1">
+                          <select
+                            value={modoFiltro}
+                            onChange={(e) =>
+                              setModoFiltroPorColuna((prev) => ({ ...prev, [col.id]: e.target.value }))
+                            }
+                            className={`shrink-0 max-w-[5.5rem] px-1 py-1 border rounded text-[11px] bg-white ${
+                              modoFiltro !== MODOS_FILTRO_COLUNA.contem
+                                ? 'border-indigo-400 text-indigo-900 font-medium'
+                                : 'border-slate-400 text-slate-700'
+                            }`}
+                            title="Tipo de filtro da coluna"
+                            aria-label={`Tipo de filtro — ${col.label}`}
+                          >
+                            {OPCOES_MODO_FILTRO_COLUNA.map((op) => (
+                              <option key={op.value} value={op.value}>
+                                {op.label}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            type="text"
+                            value={filtrosPorColuna[col.id] ?? ''}
+                            disabled={!filtroPorTexto}
+                            onChange={(e) =>
+                              setFiltrosPorColuna((prev) => ({ ...prev, [col.id]: e.target.value }))
+                            }
+                            placeholder={filtroPorTexto ? 'Filtrar...' : '—'}
+                            className="min-w-0 flex-1 px-2 py-1 border border-slate-400 rounded text-xs bg-white text-slate-800 shadow-sm disabled:bg-slate-100 disabled:text-slate-400"
+                          />
+                        </div>
                       </th>
-                    ))}
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>

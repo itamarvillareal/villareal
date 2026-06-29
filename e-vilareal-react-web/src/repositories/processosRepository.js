@@ -17,6 +17,12 @@ import { normalizarTipoAudienciaCanonico } from '../data/processosDadosRelatorio
 import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
 import { salvarResponseComoArquivo } from '../utils/streamFileDownload.js';
 import { parseValorMonetarioBr } from '../utils/parseValorMonetarioBr.js';
+import {
+  montarPatchCabecalhoCampoRelatorio,
+  parseConsultaAutomaticaRelatorio,
+  parseStatusAtivoRelatorio,
+  tipoPersistenciaCampoRelatorio,
+} from '../data/relatorioProcessoCampoPersistencia.js';
 
 function flagAssistenteIaUsuarioHistorico(u) {
   if (!u) return false;
@@ -1106,6 +1112,123 @@ export async function atualizarValorCausaProcesso({
     audienciaTipo: mapped.audienciaTipo,
     avisoAudiencia: mapped.avisoAudiencia,
   });
+}
+
+function montarPayloadSalvarCabecalhoFromMapped(mapped, patch = {}) {
+  const titularRaw = mapped.pessoaTitularId ?? mapped.pessoaId;
+  return {
+    processoId: mapped.processoId,
+    clienteId: mapped.clienteId,
+    pessoaTitularId:
+      titularRaw != null && Number.isFinite(Number(titularRaw)) && Number(titularRaw) > 0
+        ? Number(titularRaw)
+        : null,
+    numeroInterno: mapped.numeroInterno,
+    numeroProcessoNovo: patch.numeroProcessoNovo ?? mapped.numeroProcessoNovo,
+    numeroProcessoVelho: patch.numeroProcessoVelho ?? mapped.numeroProcessoVelho,
+    naturezaAcao: patch.naturezaAcao ?? mapped.naturezaAcao,
+    descricaoAcao: patch.descricaoAcao ?? mapped.descricaoAcao ?? patch.naturezaAcao ?? mapped.naturezaAcao,
+    competencia: patch.competencia ?? mapped.competencia,
+    faseSelecionada: patch.faseSelecionada ?? mapped.faseSelecionada,
+    faseCampo: patch.faseCampo ?? mapped.observacaoFase ?? '',
+    tramitacao: patch.tramitacao ?? mapped.tramitacao,
+    pjeTribunal: mapped.pjeTribunal,
+    pjeGrau: mapped.pjeGrau,
+    dataProtocolo: patch.dataProtocolo ?? mapped.dataProtocolo,
+    prazoFatal: patch.prazoFatal ?? mapped.prazoFatal,
+    proximaConsultaData: patch.proximaConsultaData ?? mapped.proximaConsultaData,
+    observacao: patch.observacao ?? mapped.observacao,
+    valorCausaNumero:
+      patch.valorCausaNumero !== undefined
+        ? patch.valorCausaNumero
+        : parseValorMonetarioBr(mapped.valorCausa),
+    estado: patch.estado ?? mapped.estado,
+    cidade: patch.cidade ?? mapped.cidade,
+    municipioId: mapped.municipioId,
+    orgaoJulgadorId: mapped.orgaoJulgadorId,
+    consultaAutomatica:
+      patch.consultaAutomatica !== undefined ? patch.consultaAutomatica : mapped.consultaAutomatica,
+    statusAtivo: patch.statusAtivo !== undefined ? patch.statusAtivo : mapped.statusAtivo,
+    responsavel: patch.responsavel ?? mapped.responsavel,
+    usuarioResponsavelId: mapped.usuarioResponsavelId,
+    unidade: patch.unidade ?? mapped.unidade,
+    pasta: patch.pasta ?? mapped.pasta,
+    papelParte: mapped.papelParte,
+    audienciaData: patch.audienciaData ?? mapped.audienciaData,
+    audienciaHora: patch.audienciaHora ?? mapped.audienciaHora,
+    audienciaTipo: patch.audienciaTipo ?? mapped.audienciaTipo,
+    avisoAudiencia: mapped.avisoAudiencia,
+  };
+}
+
+/**
+ * Grava um campo editado na grade do Relatório de Processos (GET + PUT parcial do cabeçalho).
+ */
+export async function atualizarCampoProcessoRelatorio({
+  processoId,
+  codigoCliente,
+  numeroInterno,
+  fieldKey,
+  valor,
+}) {
+  if (!featureFlags.useApiProcessos) {
+    throw new Error('API de processos desativada.');
+  }
+
+  const tipo = tipoPersistenciaCampoRelatorio(fieldKey);
+  if (!tipo) {
+    throw new Error('Este campo não pode ser gravado na API.');
+  }
+
+  const mapped = await obterCamposProcessoApiFirst({ processoId, codigoCliente, numeroInterno });
+  if (!mapped) {
+    throw new Error('Processo não encontrado na API.');
+  }
+
+  const pid = mapped.processoId ?? processoId;
+  if (!pid) {
+    throw new Error('Processo sem identificador na API.');
+  }
+
+  if (tipo === 'ativo') {
+    const ativo = parseStatusAtivoRelatorio(valor);
+    if (ativo == null) {
+      throw new Error('Status inválido. Use «Ativo» ou «Inativo».');
+    }
+    await alterarAtivoProcesso(pid, ativo);
+    return { processoId: pid, fieldKey, valor, statusAtivo: ativo };
+  }
+
+  const patchParcial = montarPatchCabecalhoCampoRelatorio(fieldKey, valor) ?? {};
+  if (tipo === 'consultaAutomatica') {
+    const consultaAutomatica = parseConsultaAutomaticaRelatorio(valor);
+    if (consultaAutomatica == null) {
+      throw new Error('Valor inválido. Use «Sim» ou «Não».');
+    }
+    patchParcial.consultaAutomatica = consultaAutomatica;
+  }
+
+  const clienteApi = await buscarClientePorCodigo(codigoCliente ?? mapped.codigoCliente);
+  const clientePk =
+    clienteApi?.clienteId != null
+      ? Number(clienteApi.clienteId)
+      : clienteApi?.id != null
+        ? Number(clienteApi.id)
+        : mapped.clienteId != null
+          ? Number(mapped.clienteId)
+          : null;
+  if (!Number.isFinite(clientePk) || clientePk < 1) {
+    throw new Error('Cliente não encontrado na API.');
+  }
+
+  const payload = montarPayloadSalvarCabecalhoFromMapped(mapped, patchParcial);
+  await salvarCabecalhoProcesso({
+    ...payload,
+    processoId: pid,
+    clienteId: clientePk,
+  });
+
+  return { processoId: pid, fieldKey, valor };
 }
 
 export async function alterarAtivoProcesso(processoId, ativo) {

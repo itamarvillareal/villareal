@@ -133,6 +133,7 @@ class CobrancaUnidadeResolverServiceTest {
         when(pessoaRepository.findByCpf("12345678901")).thenReturn(Optional.of(existente));
         ProcessoEntity proc = processo(300L, 5, UNIDADE);
         when(processoRepository.findByCliente_IdAndUnidade(CLIENTE_ID, UNIDADE)).thenReturn(Optional.of(proc));
+        when(processoRepository.save(proc)).thenAnswer(inv -> inv.getArgument(0));
         ProcessoParteEntity parte = parteReu(777L);
         when(processoParteRepository.findByProcesso_IdAndPoloReuOrderByOrdemAscIdAsc(300L)).thenReturn(List.of(parte));
 
@@ -151,6 +152,7 @@ class CobrancaUnidadeResolverServiceTest {
         when(pessoaRepository.findByCpf("12345678901")).thenReturn(Optional.of(pessoa(888L)));
         ProcessoEntity proc = processo(400L, 3, UNIDADE);
         when(processoRepository.findByCliente_IdAndUnidade(CLIENTE_ID, UNIDADE)).thenReturn(Optional.of(proc));
+        when(processoRepository.save(proc)).thenAnswer(inv -> inv.getArgument(0));
         when(processoParteRepository.findByProcesso_IdAndPoloReuOrderByOrdemAscIdAsc(400L))
                 .thenReturn(List.of(parteReu(888L)));
 
@@ -167,6 +169,7 @@ class CobrancaUnidadeResolverServiceTest {
         when(pessoaRepository.findByCpf("12345678901")).thenReturn(Optional.of(pessoa(888L)));
         ProcessoEntity proc = processo(401L, 4, UNIDADE);
         when(processoRepository.findByCliente_IdAndUnidade(CLIENTE_ID, UNIDADE)).thenReturn(Optional.of(proc));
+        when(processoRepository.save(proc)).thenAnswer(inv -> inv.getArgument(0));
         when(processoParteRepository.findByProcesso_IdAndPoloReuOrderByOrdemAscIdAsc(401L)).thenReturn(List.of());
         when(processoParteRepository.findFirstByProcesso_IdAndPoloIgnoreCaseAndPessoa_Id(401L, "REU", 888L))
                 .thenReturn(Optional.empty());
@@ -183,6 +186,7 @@ class CobrancaUnidadeResolverServiceTest {
         when(pessoaRepository.findByCpf("12345678901")).thenReturn(Optional.of(pessoa(888L)));
         ProcessoEntity procAntigo = processo(500L, 6, UNIDADE);
         when(processoRepository.findByCliente_IdAndUnidade(CLIENTE_ID, UNIDADE)).thenReturn(Optional.of(procAntigo));
+        when(processoRepository.save(procAntigo)).thenAnswer(inv -> inv.getArgument(0));
         when(processoParteRepository.findByProcesso_IdAndPoloReuOrderByOrdemAscIdAsc(500L))
                 .thenReturn(List.of(parteReu(999L)));
 
@@ -205,7 +209,7 @@ class CobrancaUnidadeResolverServiceTest {
         assertThat(r.pessoaIdReuAnterior()).isEqualTo(999L);
         assertThat(r.processoId()).isEqualTo(501L);
         assertThat(r.processoCriado()).isTrue();
-        verify(processoRepository, never()).save(procAntigo);
+        verify(processoRepository).save(procAntigo);
         verify(processoApplicationService, never()).criarParte(eq(500L), any());
     }
 
@@ -225,7 +229,7 @@ class CobrancaUnidadeResolverServiceTest {
 
         assertThat(r.processoId()).isEqualTo(600L);
         assertThat(r.processoCriado()).isFalse();
-        assertThat(vazio.getUnidade()).isEqualTo(UNIDADE);
+        assertThat(vazio.getUnidade()).isEqualTo("Unidade 103 A");
         verify(processoApplicationService, never()).criar(any());
         verify(processoRepository).save(vazio);
     }
@@ -252,6 +256,83 @@ class CobrancaUnidadeResolverServiceTest {
         assertThat(r.processoCriado()).isTrue();
         assertThat(r.numeroInterno()).isEqualTo(10);
         verify(processoApplicationService).criar(any());
+    }
+
+    @Test
+    void resolverUnidade_encontraProcessoPorUnidadeLegivel() {
+        when(pessoaRepository.findByCpf("12345678901")).thenReturn(Optional.of(pessoa(888L)));
+        ProcessoEntity proc = processo(550L, 12, "Unidade 103 A");
+        when(processoRepository.findByCliente_IdAndUnidade(CLIENTE_ID, "A-0103")).thenReturn(Optional.empty());
+        when(processoRepository.findByCliente_IdAndUnidade(CLIENTE_ID, "Unidade 103 A")).thenReturn(Optional.of(proc));
+        when(processoParteRepository.findByProcesso_IdAndPoloReuOrderByOrdemAscIdAsc(550L)).thenReturn(List.of());
+        when(processoParteRepository.findFirstByProcesso_IdAndPoloIgnoreCaseAndPessoa_Id(550L, "REU", 888L))
+                .thenReturn(Optional.empty());
+        when(processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(550L)).thenReturn(List.of());
+
+        ResolucaoUnidade r = service.resolverUnidade(input("João", "12345678901"));
+
+        assertThat(r.processoId()).isEqualTo(550L);
+        assertThat(r.processoCriado()).isFalse();
+        verify(processoRepository, never()).save(proc);
+    }
+
+    @Test
+    void resolverUnidade_processoExistenteSemUnidade_preencheUnidadeLegivel() {
+        when(pessoaRepository.findByCpf("12345678901")).thenReturn(Optional.of(pessoa(888L)));
+        ProcessoEntity proc = processo(551L, 13, null);
+        when(processoRepository.findByCliente_IdAndUnidade(CLIENTE_ID, "A-0103")).thenReturn(Optional.of(proc));
+        when(processoRepository.save(proc)).thenAnswer(inv -> inv.getArgument(0));
+        when(processoParteRepository.findByProcesso_IdAndPoloReuOrderByOrdemAscIdAsc(551L)).thenReturn(List.of());
+        when(processoParteRepository.findFirstByProcesso_IdAndPoloIgnoreCaseAndPessoa_Id(551L, "REU", 888L))
+                .thenReturn(Optional.empty());
+        when(processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(551L)).thenReturn(List.of());
+
+        service.resolverUnidade(input("João", "12345678901"));
+
+        assertThat(proc.getUnidade()).isEqualTo("Unidade 103 A");
+        verify(processoRepository).save(proc);
+    }
+
+    @Test
+    void resolverUnidade_processoExistenteComNumeroInternoZero_corrigeAntesDoMerge() {
+        when(pessoaRepository.findByCpf("12345678901")).thenReturn(Optional.of(pessoa(888L)));
+        ProcessoEntity proc = processo(552L, 0, "Unidade 103 A");
+        when(processoRepository.findByCliente_IdAndUnidade(CLIENTE_ID, "A-0103")).thenReturn(Optional.of(proc));
+        when(processoRepository.findByCliente_IdOrderByNumeroInternoAscIdAsc(CLIENTE_ID))
+                .thenReturn(List.of(proc));
+        when(processoRepository.save(proc)).thenAnswer(inv -> inv.getArgument(0));
+        when(processoParteRepository.findByProcesso_IdAndPoloReuOrderByOrdemAscIdAsc(552L)).thenReturn(List.of());
+        when(processoParteRepository.findFirstByProcesso_IdAndPoloIgnoreCaseAndPessoa_Id(552L, "REU", 888L))
+                .thenReturn(Optional.empty());
+        when(processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(552L)).thenReturn(List.of());
+
+        ResolucaoUnidade r = service.resolverUnidade(input("João", "12345678901"));
+
+        assertThat(proc.getNumeroInterno()).isEqualTo(1);
+        assertThat(r.numeroInterno()).isEqualTo(1);
+        verify(processoRepository).save(proc);
+    }
+
+    @Test
+    void resolverUnidade_reaproveitaVazioComNumeroInternoZero_atribuiNumeroValido() {
+        when(pessoaRepository.findByCpf("12345678901")).thenReturn(Optional.of(pessoa(888L)));
+        when(processoRepository.findByCliente_IdAndUnidade(CLIENTE_ID, "A-0103")).thenReturn(Optional.empty());
+        ProcessoEntity vazio = processo(601L, 0, null);
+        ProcessoEntity ocupado = processo(602L, 40, "Unidade 999 V");
+        when(processoRepository.findProcessosVaziosPorCliente(eq(CLIENTE_ID), eq(COD8), any(Pageable.class)))
+                .thenReturn(List.of(vazio));
+        when(processoRepository.findByCliente_IdOrderByNumeroInternoAscIdAsc(CLIENTE_ID))
+                .thenReturn(List.of(ocupado, vazio));
+        when(processoRepository.save(vazio)).thenAnswer(inv -> inv.getArgument(0));
+        when(processoParteRepository.findFirstByProcesso_IdAndPoloIgnoreCaseAndPessoa_Id(601L, "REU", 888L))
+                .thenReturn(Optional.empty());
+        when(processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(601L)).thenReturn(List.of());
+
+        ResolucaoUnidade r = service.resolverUnidade(input("João", "12345678901"));
+
+        assertThat(vazio.getNumeroInterno()).isEqualTo(1);
+        assertThat(r.numeroInterno()).isEqualTo(1);
+        assertThat(vazio.getUnidade()).isEqualTo("Unidade 103 A");
     }
 
     private static ResolverUnidadeInput input(String nome, String doc) {

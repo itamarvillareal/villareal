@@ -36,10 +36,9 @@ public class CobrancaRelatorioXlsParser {
             Pattern.compile("^.+:\\s*\\d+\\s+cobrança", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern PAT_DATA_REFERENCIA =
             Pattern.compile("Data de referência:\\s*(.+)", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
-    private static final Pattern PAT_CODIGO_LETRA_4DIG = Pattern.compile("^[A-Z]\\d{4}$");
-    /** Col0 isolado: {@code A0402}, {@code A0501*} ou {@code ADM} (export sem bloco Proprietário). */
-    private static final Pattern PAT_CODIGO_UNIDADE_COL0 =
-            Pattern.compile("^(?:ADM|[A-Z]\\d{4}\\*?)$", Pattern.CASE_INSENSITIVE);
+    /** Col0 isolado: {@code A0402}, {@code 000-A}, {@code 1201R*} ou {@code ADM}. */
+    private static final Pattern PAT_CODIGO_UNIDADE_COL0 = Pattern.compile(
+            "^(?:ADM|[ABRV]\\d{3,4}\\*?|\\d{3,4}-[ABRV]\\*?|\\d{3,4}[ABRV]\\*?)$", Pattern.CASE_INSENSITIVE);
 
     private static final String HDR_TIPO = "tipo";
     private static final String HDR_DOC = "doc";
@@ -188,14 +187,7 @@ public class CobrancaRelatorioXlsParser {
     }
 
     static String normalizarCodigoUnidade(String codigoBruto) {
-        if (!StringUtils.hasText(codigoBruto)) {
-            return "";
-        }
-        String u = codigoBruto.trim().toUpperCase(Locale.ROOT);
-        if (PAT_CODIGO_LETRA_4DIG.matcher(u).matches()) {
-            return u.charAt(0) + "-" + u.substring(1);
-        }
-        return u;
+        return CobrancaUnidadeFormatUtil.normalizarCodigoUnidade(codigoBruto);
     }
 
     private static boolean isLinhaSubtotal(String col0) {

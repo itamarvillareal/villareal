@@ -121,7 +121,7 @@ export function RelatorioPresetsPanel({
           <p className="text-xs text-slate-600 mb-2">
             Guarde <strong>colunas visíveis</strong>, <strong>largura uniforme</strong>,{' '}
             <strong>título/conteúdo de cada coluna</strong>, <strong>filtro ativo/inativo</strong> e{' '}
-            <strong>modo de alteração</strong>. Aplique quando precisar, sem refazer tudo manualmente.
+              <strong>modo de alteração</strong> (chave ON/OFF no topo). Aplique quando precisar, sem refazer tudo manualmente.
           </p>
 
           <label className="flex items-start gap-2 mb-3 cursor-pointer rounded border border-red-200 bg-red-50/80 px-2 py-2">

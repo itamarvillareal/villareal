@@ -140,6 +140,8 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
             """
             SELECT p FROM ProcessoEntity p
             WHERE p.cliente.id = :clienteId
+              AND p.numeroInterno IS NOT NULL
+              AND p.numeroInterno >= 1
               AND (p.unidade IS NULL OR TRIM(p.unidade) = '')
               AND NOT EXISTS (
                   SELECT 1 FROM ProcessoParteEntity pp

@@ -276,10 +276,10 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
                             } else if (ch.id === 'financeiro') {
                               ativo = path === '/financeiro' || path.startsWith('/financeiro/');
                             }
-                            return `flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium transition-all duration-200 ${
+                            return `flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium transition-all duration-200 border-l-2 ${
                               ativo
-                                ? 'bg-blue-100 dark:bg-cyan-500/15 text-blue-800 dark:text-cyan-100 border-l-2 border-blue-500 dark:border-cyan-400'
-                                : 'text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/[0.04] border-l-2 border-transparent'
+                                ? 'bg-blue-100 dark:bg-cyan-500/15 text-blue-800 dark:text-cyan-100 border-blue-500 dark:border-cyan-400'
+                                : 'bg-gray-300/55 dark:bg-white/[0.07] text-gray-700 dark:text-slate-300 hover:bg-gray-300/80 dark:hover:bg-white/[0.1] border-transparent'
                             }`;
                           }}
                         >
