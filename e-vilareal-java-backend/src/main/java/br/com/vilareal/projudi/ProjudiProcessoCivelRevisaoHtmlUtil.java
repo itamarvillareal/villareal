@@ -48,13 +48,17 @@ final class ProjudiProcessoCivelRevisaoHtmlUtil {
 
     static final int DIAGNOSTICO_DESTINO_MAX = 800;
 
+    /** Regra do escritório: Juízo 100% Digital sempre desmarcado — nunca enviar no POST final. */
+    private static final String CAMPO_DIGITAL100 = "digital100";
+
     private ProjudiProcessoCivelRevisaoHtmlUtil() {}
 
     record FormularioRevisao(String action, Map<String, String> campos, String botaoNome, String botaoValor) {
 
         String montarCorpoPostIso8859() {
+            Map<String, String> camposFiltrados = filtrarCamposPasso3Final(campos);
             List<String> partes = new ArrayList<>();
-            for (Map.Entry<String, String> e : campos.entrySet()) {
+            for (Map.Entry<String, String> e : camposFiltrados.entrySet()) {
                 partes.add(encIso(e.getKey()) + "=" + encIso(e.getValue()));
             }
             partes.add(encIso(botaoNome) + "=" + encIso(botaoValor));
@@ -63,8 +67,9 @@ final class ProjudiProcessoCivelRevisaoHtmlUtil {
 
         /** Todos os campos do POST final (name=value), para trilha de diagnóstico. */
         String descreverCorpoPostLegivel() {
+            Map<String, String> camposFiltrados = filtrarCamposPasso3Final(campos);
             List<String> partes = new ArrayList<>();
-            for (Map.Entry<String, String> e : campos.entrySet()) {
+            for (Map.Entry<String, String> e : camposFiltrados.entrySet()) {
                 partes.add(e.getKey() + "=" + e.getValue());
             }
             partes.add(botaoNome + "=" + botaoValor);
@@ -301,14 +306,14 @@ final class ProjudiProcessoCivelRevisaoHtmlUtil {
         Map<String, String> campos = new LinkedHashMap<>();
         for (Element input : form.select("input[type=hidden]")) {
             String name = input.attr("name");
-            if (!StringUtils.hasText(name)) {
+            if (!StringUtils.hasText(name) || ehCampoProibidoPasso3(name)) {
                 continue;
             }
             campos.put(name, valorInput(input));
         }
         for (Element input : form.select("input[type=checkbox]")) {
             String name = input.attr("name");
-            if (!StringUtils.hasText(name)) {
+            if (!StringUtils.hasText(name) || ehCampoProibidoPasso3(name)) {
                 continue;
             }
             if (input.hasAttr("checked")) {
@@ -316,12 +321,35 @@ final class ProjudiProcessoCivelRevisaoHtmlUtil {
             }
         }
         aplicarOverridePaginaAtual(botao, campos);
+        campos.keySet().removeIf(ProjudiProcessoCivelRevisaoHtmlUtil::ehCampoProibidoPasso3);
         String action = form.attr("action");
         if (!StringUtils.hasText(action)) {
             action = "ProcessoCivel";
         }
         return Optional.of(new FormularioRevisao(
                 action.trim(), campos, botao.attr("name"), botao.attr("value")));
+    }
+
+    private static boolean ehCampoProibidoPasso3(String name) {
+        return CAMPO_DIGITAL100.equalsIgnoreCase(name.trim());
+    }
+
+    /**
+     * Remove campos que não devem ir no POST final do Passo 3.
+     * {@code digital100} nunca é enviado (regra do escritório); demais opcionais já foram filtrados na extração.
+     */
+    static Map<String, String> filtrarCamposPasso3Final(Map<String, String> campos) {
+        Map<String, String> filtrados = new LinkedHashMap<>();
+        if (campos == null) {
+            return filtrados;
+        }
+        for (Map.Entry<String, String> e : campos.entrySet()) {
+            if (ehCampoProibidoPasso3(e.getKey())) {
+                continue;
+            }
+            filtrados.put(e.getKey(), e.getValue());
+        }
+        return filtrados;
     }
 
     private static Element localizarBotaoDistribuir(Element form) {

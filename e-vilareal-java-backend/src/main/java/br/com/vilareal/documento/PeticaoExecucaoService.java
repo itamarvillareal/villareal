@@ -255,7 +255,9 @@ public class PeticaoExecucaoService {
         sb.append("<p class=\"paragrafo\">").append(nz(cap.cabecalhoHtml())).append("</p>");
         for (String item : cap.itensHtml()) {
             // Cada item de débito é uma alínea a)–e) (counter próprio "alinead", independente dos pedidos).
-            sb.append("<p class=\"alinea-debito\">").append(item).append("</p>");
+            sb.append("<div class=\"item-debito-bloco\"><p class=\"alinea-debito\">")
+                    .append(item)
+                    .append("</p></div>");
         }
         return sb.toString();
     }
@@ -305,7 +307,7 @@ public class PeticaoExecucaoService {
         }
         String paragrafo = esc(TEXTO_CAPITULO_VALOR_CAUSA_PREFIXO)
                 + "<span class=\"valor-monetario\"><strong><span class=\"valor-monetario-num\">"
-                + esc(formatado) + "</span> (" + esc(extenso) + ")</strong></span>.";
+                + esc(formatado) + "</span> (" + esc(extenso) + ").</strong></span>";
         return "<p class=\"titulo\">" + TITULO_CAPITULO_VALOR_CAUSA + "</p>"
                 + "<p class=\"paragrafo\">" + paragrafo + "</p>";
     }

@@ -1,8 +1,10 @@
 package br.com.vilareal.projudi.api;
 
 import br.com.vilareal.projudi.ProjudiAssuntoCatalogoService;
+import br.com.vilareal.projudi.ProjudiClasseProcessoInicial;
 import br.com.vilareal.projudi.ProjudiAssuntoCatalogoService.AssuntoItem;
-import br.com.vilareal.projudi.ProjudiAssuntoCatalogoService.AssuntoSugeridoResponse;
+import br.com.vilareal.projudi.ProjudiAssuntoCatalogoService.ClasseItem;
+import br.com.vilareal.projudi.ProjudiAssuntoCatalogoService.ModalidadeSugeridaResponse;
 import br.com.vilareal.projudi.ProjudiDistribuicaoService;
 import br.com.vilareal.projudi.ProjudiDistribuicaoService.InicialRequest;
 import br.com.vilareal.projudi.ProjudiDistribuicaoService.ResultadoDistribuicaoInicial;
@@ -56,6 +58,12 @@ public class ProjudiInicialController {
         return parteResolverService.resolver(pessoaId, credencialId);
     }
 
+    @GetMapping("/classes")
+    @Operation(summary = "Catálogo de classes processuais PROJUDI conhecidas")
+    public List<ClasseItem> listarClasses() {
+        return assuntoCatalogoService.listarClasses();
+    }
+
     @GetMapping("/assuntos")
     @Operation(summary = "Catálogo de assuntos PROJUDI conhecidos")
     public List<AssuntoItem> listarAssuntos() {
@@ -63,9 +71,15 @@ public class ProjudiInicialController {
     }
 
     @GetMapping("/assunto-sugerido")
-    @Operation(summary = "Sugere idAssunto com base na natureza da ação do processo")
-    public AssuntoSugeridoResponse assuntoSugerido(@RequestParam(required = false) String naturezaAcao) {
-        return assuntoCatalogoService.sugerir(naturezaAcao);
+    @Operation(summary = "Sugere assunto e classe com base na natureza da ação do processo")
+    public ModalidadeSugeridaResponse assuntoSugerido(@RequestParam(required = false) String naturezaAcao) {
+        return assuntoCatalogoService.sugerirModalidade(naturezaAcao);
+    }
+
+    @GetMapping("/modalidade-sugerida")
+    @Operation(summary = "Alias de /assunto-sugerido — retorna modalidade (classe + assunto) sugerida")
+    public ModalidadeSugeridaResponse modalidadeSugerida(@RequestParam(required = false) String naturezaAcao) {
+        return assuntoCatalogoService.sugerirModalidade(naturezaAcao);
     }
 
     @GetMapping("/validar-prontidao")
@@ -103,10 +117,19 @@ public class ProjudiInicialController {
             @RequestParam Long pessoaIdAutor,
             @RequestParam Long pessoaIdReu,
             @RequestParam("pdfs") List<MultipartFile> pdfs,
-            @RequestParam(value = "idArquivoTipos", required = false) List<Integer> idArquivoTipos)
+            @RequestParam(value = "idArquivoTipos", required = false) List<Integer> idArquivoTipos,
+            @RequestParam(required = false) Integer idProcessoTipo,
+            @RequestParam(required = false) Integer processoTipoCodigo)
             throws IOException {
-        InicialRequest request =
-                montarInicialRequest(valorCausa, idAssuntos, pessoaIdAutor, pessoaIdReu, pdfs, idArquivoTipos);
+        InicialRequest request = montarInicialRequest(
+                valorCausa,
+                idAssuntos,
+                pessoaIdAutor,
+                pessoaIdReu,
+                pdfs,
+                idArquivoTipos,
+                idProcessoTipo,
+                processoTipoCodigo);
         log.info(
                 "preparar-inicial credencialId={} assuntos={} autor={} reu={} arquivos={}",
                 credencialId,
@@ -134,9 +157,19 @@ public class ProjudiInicialController {
             @RequestParam("pdfs") List<MultipartFile> pdfs,
             @RequestParam(value = "idArquivoTipos", required = false) List<Integer> idArquivoTipos,
             @RequestParam(defaultValue = "false") boolean confirmar,
-            @RequestParam(required = false) Long processoIdOrigem)
+            @RequestParam(required = false) Long processoIdOrigem,
+            @RequestParam(required = false) Integer idProcessoTipo,
+            @RequestParam(required = false) Integer processoTipoCodigo)
             throws IOException {
-        InicialRequest request = montarInicialRequest(valorCausa, idAssuntos, pessoaIdAutor, pessoaIdReu, pdfs, idArquivoTipos);
+        InicialRequest request = montarInicialRequest(
+                valorCausa,
+                idAssuntos,
+                pessoaIdAutor,
+                pessoaIdReu,
+                pdfs,
+                idArquivoTipos,
+                idProcessoTipo,
+                processoTipoCodigo);
         log.info(
                 "distribuir-inicial credencialId={} confirmar={} processoIdOrigem={} assuntos={} arquivos={}",
                 credencialId,
@@ -147,13 +180,15 @@ public class ProjudiInicialController {
         return distribuicaoService.distribuirInicial(credencialId, request, confirmar, processoIdOrigem);
     }
 
-    private static InicialRequest montarInicialRequest(
+    private InicialRequest montarInicialRequest(
             String valorCausa,
             String idAssuntos,
             Long pessoaIdAutor,
             Long pessoaIdReu,
             List<MultipartFile> pdfs,
-            List<Integer> idArquivoTipos)
+            List<Integer> idArquivoTipos,
+            Integer idProcessoTipo,
+            Integer processoTipoCodigo)
             throws IOException {
         if (pdfs == null || pdfs.isEmpty()) {
             throw new IllegalArgumentException("pdfs é obrigatório (ao menos um arquivo .p7s).");
@@ -172,7 +207,8 @@ public class ProjudiInicialController {
             arquivos.add(new ArquivoPeticao(
                     pdfs.get(i).getBytes(), idTipo, pdfs.get(i).getOriginalFilename()));
         }
-        return new InicialRequest(valorCausa, assuntos, pessoaIdAutor, pessoaIdReu, arquivos);
+        ProjudiClasseProcessoInicial classe = assuntoCatalogoService.resolverClasse(idProcessoTipo, processoTipoCodigo);
+        return new InicialRequest(valorCausa, assuntos, pessoaIdAutor, pessoaIdReu, arquivos, classe);
     }
 
     private static List<Integer> parseIdAssuntosCsv(String csv) {

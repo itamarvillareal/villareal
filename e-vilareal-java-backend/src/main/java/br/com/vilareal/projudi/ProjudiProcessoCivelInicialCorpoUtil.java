@@ -9,10 +9,6 @@ import java.util.List;
 /** Montagem de corpos {@code application/x-www-form-urlencoded} do fluxo inicial {@code /ProcessoCivel}. */
 final class ProjudiProcessoCivelInicialCorpoUtil {
 
-    private static final String PROCESSO_TIPO =
-            "PROCESSO CÍVEL E DO TRABALHO -> Processo de Conhecimento -> Procedimento de Conhecimento"
-                    + " -> Procedimento do Juizado Especial Cível";
-
     private static final String DEPENDENCIA_PROCESSO = "2";
 
     private ProjudiProcessoCivelInicialCorpoUtil() {}
@@ -32,19 +28,24 @@ final class ProjudiProcessoCivelInicialCorpoUtil {
 
     /** POST custas + sem dependência de outro processo ({@code custaTipo=3}, {@code dependenciaProcesso=2}). */
     static String montarCorpoCustasSemDependencia() {
-        return montarCorpoEstado("", "-1", "-1", "-1", "0", false);
+        return montarCorpoEstado("", "-1", "-1", "-1", "0", false, ProjudiClasseProcessoInicial.JEC);
     }
 
-    static String montarCorpoPasso1Area(String valorCausa, String paginaAtual, String paginaAnterior) {
-        return montarCorpoEstado(valorCausa, paginaAtual, paginaAnterior, "-1", "0", true) + "&imaLocalizarAssunto=&posicaoLista=";
+    static String montarCorpoPasso1Area(
+            String valorCausa, String paginaAtual, String paginaAnterior, ProjudiClasseProcessoInicial classe) {
+        return montarCorpoEstado(valorCausa, paginaAtual, paginaAnterior, "-1", "0", true, classeOuPadrao(classe))
+                + "&imaLocalizarAssunto=&posicaoLista=";
     }
 
-    static String montarCorpoAvancarAnexos(String valorCausa) {
-        return montarCorpoEstado(valorCausa, "-1", "-1", "5", "0", true) + "&imgInserir=Avan%E7ar";
+    static String montarCorpoAvancarAnexos(String valorCausa, ProjudiClasseProcessoInicial classe) {
+        return montarCorpoEstado(valorCausa, "-1", "-1", "5", "0", true, classeOuPadrao(classe))
+                + "&imgInserir=Avan%E7ar";
     }
 
-    static String montarCorpoAbrirBuscaParte(String valorCausa, int parteTipo, String botaoLocalizar) {
-        return montarCorpoEstado(valorCausa, "-1", "-1", "7", String.valueOf(parteTipo), true) + botaoLocalizar;
+    static String montarCorpoAbrirBuscaParte(
+            String valorCausa, int parteTipo, String botaoLocalizar, ProjudiClasseProcessoInicial classe) {
+        return montarCorpoEstado(valorCausa, "-1", "-1", "7", String.valueOf(parteTipo), true, classeOuPadrao(classe))
+                + botaoLocalizar;
     }
 
     /**
@@ -77,7 +78,9 @@ final class ProjudiProcessoCivelInicialCorpoUtil {
             String paginaAnterior,
             String passoEditar,
             String parteTipo,
-            boolean comarcaPreenchida) {
+            boolean comarcaPreenchida,
+            ProjudiClasseProcessoInicial classe) {
+        ProjudiClasseProcessoInicial classeEfetiva = classeOuPadrao(classe);
         StringBuilder sb = new StringBuilder();
         sb.append("PaginaAtual=").append(encIso(paginaAtual));
         sb.append("&PaginaAnterior=").append(encIso(paginaAnterior));
@@ -92,8 +95,12 @@ final class ProjudiProcessoCivelInicialCorpoUtil {
             sb.append("&Id_Comarca=2");
             sb.append("&AreaDistribuicao=").append(encIso("Anápolis - Juizados Especiais Cíveis"));
             sb.append("&ForumCodigo=7&Id_AreaDistribuicao=19");
-            sb.append("&ProcessoTipo=").append(encIso(PROCESSO_TIPO));
-            sb.append("&Id_ProcessoTipo=162&ProcessoTipoCodigo=1436&posicaoLista=");
+            sb.append("&ProcessoTipo=").append(encIso(classeEfetiva.processoTipoLabel()));
+            sb.append("&Id_ProcessoTipo=")
+                    .append(classeEfetiva.idProcessoTipo())
+                    .append("&ProcessoTipoCodigo=")
+                    .append(classeEfetiva.processoTipoCodigo())
+                    .append("&posicaoLista=");
             sb.append("&ProcessoPrioridade=Normal&Id_ProcessoPrioridade=1");
             sb.append("&Valor=").append(encIso(valorCausa));
             sb.append("&TcoNumero=&Rai=&posicaoLista=");
@@ -104,6 +111,10 @@ final class ProjudiProcessoCivelInicialCorpoUtil {
             sb.append("&Valor=&TcoNumero=&Rai=&posicaoLista=");
         }
         return sb.toString();
+    }
+
+    private static ProjudiClasseProcessoInicial classeOuPadrao(ProjudiClasseProcessoInicial classe) {
+        return classe != null ? classe : ProjudiClasseProcessoInicial.JEC;
     }
 
     static String encIso(String valor) {

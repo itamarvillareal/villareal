@@ -183,7 +183,7 @@ public class DocumentoPdfService {
     private byte[] converterHtmlParaPdf(String htmlRenderizado) {
         try (ByteArrayOutputStream os = new ByteArrayOutputStream()) {
             PdfRendererBuilder builder = new PdfRendererBuilder();
-            builder.useFastMode();
+            // Fast mode pode cortar texto justificado com blocos longos (alíneas de débito).
             registrarFonteLucidaCalligraphy(builder);
             builder.withHtmlContent(htmlRenderizado, "/");
             builder.toStream(os);

@@ -1,5 +1,6 @@
 package br.com.vilareal.projudi;
 
+import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.projudi.ProjudiParteResolverService.CampoResolvido;
 import br.com.vilareal.projudi.ProjudiParteResolverService.NivelResolucao;
@@ -15,6 +16,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -75,6 +77,19 @@ class ProjudiDistribuicaoServiceValidacaoTest {
         assertTrue(res.pronta());
         assertTrue(res.bloqueios().isEmpty());
         assertTrue(res.pendenciasPartes().isEmpty());
+    }
+
+    @Test
+    void validarProntidao_converteExcecaoDoResolverEmBloqueio() {
+        when(parteResolverService.resolver(eq(10L), eq(1L)))
+                .thenThrow(new BusinessRuleException("credencial PROJUDI inválida"));
+        when(parteResolverService.resolver(eq(20L), eq(1L))).thenReturn(partePronta());
+
+        var res = service.validarProntidao(1L, "1500,00", List.of(451), 10L, 20L, 1);
+
+        assertFalse(res.pronta());
+        assertTrue(res.bloqueios().stream().anyMatch((b) -> b.contains("Autor:") && b.contains("credencial PROJUDI")));
+        assertNull(res.autor());
     }
 
     private static ParteProjudiResolvida partePronta() {

@@ -16,6 +16,7 @@ import {
 import { normalizarTipoAudienciaCanonico } from '../data/processosDadosRelatorio.js';
 import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
 import { salvarResponseComoArquivo } from '../utils/streamFileDownload.js';
+import { parseValorMonetarioBr } from '../utils/parseValorMonetarioBr.js';
 
 function flagAssistenteIaUsuarioHistorico(u) {
   if (!u) return false;
@@ -1032,6 +1033,75 @@ export async function salvarCabecalhoProcesso(payload) {
     return request(`/api/processos/${processoId}`, { method: 'PUT', body });
   }
   return request('/api/processos', { method: 'POST', body });
+}
+
+/**
+ * Atualiza valor da causa no processo a partir do total atualizado dos Cálculos (Aceitar Pagamento).
+ * Preserva os demais campos do cabeçalho via GET + PUT.
+ */
+export async function atualizarValorCausaProcesso({
+  processoId,
+  codigoCliente,
+  numeroInterno,
+  valorTotalAtualizado,
+}) {
+  if (!featureFlags.useApiProcessos) return null;
+  const valorCausaNumero = parseValorMonetarioBr(valorTotalAtualizado);
+  if (valorCausaNumero == null) return null;
+
+  const mapped = await obterCamposProcessoApiFirst({ processoId, codigoCliente, numeroInterno });
+  if (!mapped) return null;
+
+  const clienteApi = await buscarClientePorCodigo(codigoCliente ?? mapped.codigoCliente);
+  const clientePk =
+    clienteApi?.clienteId != null
+      ? Number(clienteApi.clienteId)
+      : clienteApi?.id != null
+        ? Number(clienteApi.id)
+        : mapped.clienteId != null
+          ? Number(mapped.clienteId)
+          : null;
+  if (!Number.isFinite(clientePk) || clientePk < 1) return null;
+
+  const titularRaw = mapped.pessoaTitularId ?? mapped.pessoaId;
+  return salvarCabecalhoProcesso({
+    processoId: mapped.processoId ?? processoId,
+    clienteId: clientePk,
+    pessoaTitularId:
+      titularRaw != null && Number.isFinite(Number(titularRaw)) && Number(titularRaw) > 0
+        ? Number(titularRaw)
+        : null,
+    numeroInterno: mapped.numeroInterno ?? numeroInterno,
+    numeroProcessoNovo: mapped.numeroProcessoNovo,
+    numeroProcessoVelho: mapped.numeroProcessoVelho,
+    naturezaAcao: mapped.naturezaAcao,
+    competencia: mapped.competencia,
+    faseSelecionada: mapped.faseSelecionada,
+    faseCampo: mapped.observacaoFase ?? '',
+    tramitacao: mapped.tramitacao,
+    pjeTribunal: mapped.pjeTribunal,
+    pjeGrau: mapped.pjeGrau,
+    dataProtocolo: mapped.dataProtocolo,
+    prazoFatal: mapped.prazoFatal,
+    proximaConsultaData: mapped.proximaConsultaData,
+    observacao: mapped.observacao,
+    valorCausaNumero,
+    estado: mapped.estado,
+    cidade: mapped.cidade,
+    municipioId: mapped.municipioId,
+    orgaoJulgadorId: mapped.orgaoJulgadorId,
+    consultaAutomatica: mapped.consultaAutomatica,
+    statusAtivo: mapped.statusAtivo,
+    responsavel: mapped.responsavel,
+    usuarioResponsavelId: mapped.usuarioResponsavelId,
+    unidade: mapped.unidade,
+    pasta: mapped.pasta,
+    papelParte: mapped.papelParte,
+    audienciaData: mapped.audienciaData,
+    audienciaHora: mapped.audienciaHora,
+    audienciaTipo: mapped.audienciaTipo,
+    avisoAudiencia: mapped.avisoAudiencia,
+  });
 }
 
 export async function alterarAtivoProcesso(processoId, ativo) {

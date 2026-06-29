@@ -662,6 +662,32 @@ export function salvarNumeroProcessoNovoDaGradeCadastro(codCliente, proc, numero
   });
 }
 
+/** Grava só `valorCausa`, preservando o restante do registro do processo (merge com histórico existente). */
+export function salvarValorCausaDoProcesso(codCliente, proc, valorCausa) {
+  const prev = getRegistroProcesso(codCliente, proc);
+  const val = String(valorCausa ?? '').trim();
+  if (prev) {
+    return salvarHistoricoDoProcesso({ ...prev, valorCausa: val });
+  }
+  return salvarHistoricoDoProcesso({
+    codCliente: normalizarCodCliente(codCliente),
+    proc: normalizarProc(proc),
+    cliente: '',
+    parteCliente: '',
+    parteOposta: '',
+    numeroProcessoNovo: '',
+    historico: [],
+    prazoFatal: '',
+    parteClienteIds: [],
+    parteOpostaIds: [],
+    faseSelecionada: '',
+    periodicidadeConsulta: '',
+    tramitacao: '',
+    naturezaAcao: '',
+    valorCausa: val,
+  });
+}
+
 /** Grava só `naturezaAcao`, preservando o restante do registro do processo (merge com histórico existente). */
 export function salvarNaturezaAcaoDoProcesso(codCliente, proc, naturezaAcao) {
   const prev = getRegistroProcesso(codCliente, proc);

@@ -11,7 +11,13 @@
     <style type="text/css">
         .corpo-documento {
             line-height: 1.21;
-            margin-left: 15mm;
+            box-sizing: border-box;
+            width: 100%;
+            max-width: 100%;
+            padding-left: 15mm;
+            padding-right: 2mm;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
             /* Contadores: capítulos (1.,2.,3.), subtítulos (3.1.,3.2.…),
                alíneas dos débitos (a),b)…) e pedidos (a),b)…). */
             counter-reset: cap sub alinead pedido-counter;
@@ -115,17 +121,28 @@
 
         /* Alínea de item de débito (capítulo DOS TÍTULOS): "a) ", "b) "…
            Counter próprio (alinead), independente do counter dos pedidos.
-           Hanging indent: marcador na margem, texto recuado alinhado. */
+           Hanging indent via padding (mais estável no OpenHTMLToPDF que margin negativo).
+           Evita quebra de página no meio do item quando couber numa folha. */
+        .item-debito-bloco {
+            page-break-inside: avoid;
+            break-inside: avoid-page;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+            margin-top: 6pt;
+            margin-bottom: 6pt;
+        }
+
         .corpo .alinea-debito,
         p.alinea-debito {
             font-family: "Arial Unicode MS", Arial, sans-serif;
             font-size: 12pt;
             text-align: justify;
-            text-indent: 0;
+            text-indent: -1.0cm;
+            padding-left: 1.0cm;
             line-height: 1.21;
-            margin-top: 6pt;
-            margin-bottom: 6pt;
-            margin-left: 1.0cm;
+            margin: 0;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
             counter-increment: alinead;
         }
 
@@ -133,7 +150,6 @@
         p.alinea-debito::before {
             content: counter(alinead, lower-alpha) ") ";
             font-weight: bold;
-            margin-left: -1.0cm;
         }
 
         /* Parágrafo: justificado, recuo de 1ª linha (mesmo padrão do corpo do peticao-base) */
@@ -146,6 +162,8 @@
             line-height: 1.21;
             margin-top: 12pt;
             margin-bottom: 12pt;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
         }
 
         /* Citação/transcrição legal: recuo à esquerda, sem recuo de 1ª linha */
@@ -202,12 +220,18 @@
         }
 
         /* Valor numérico: «R$ X,XX» permanece junto; o extenso entre parênteses pode quebrar linha. */
+        .valor-monetario {
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+        }
+
         .valor-monetario-num {
             white-space: nowrap;
         }
 
         .url-ref {
-            white-space: nowrap;
+            overflow-wrap: anywhere;
+            word-break: break-all;
         }
 
         /* Realce de texto */

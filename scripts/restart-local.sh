@@ -122,11 +122,38 @@ if [[ "$WANT_BACKEND" -eq 1 ]]; then
     echo "Java 21 não encontrado. Instale: brew install openjdk@21" >&2
     exit 1
   fi
+
+  BACKEND_DIR="$ROOT/e-vilareal-java-backend"
+  KEY_FILE="$BACKEND_DIR/.projudi-cred-key.local"
+  if [[ -z "${PROJUDI_CRED_KEY:-}" ]]; then
+    if [[ -f "$KEY_FILE" ]]; then
+      export PROJUDI_CRED_KEY="$(tr -d '[:space:]' < "$KEY_FILE")"
+      echo "PROJUDI_CRED_KEY carregada de $KEY_FILE"
+    else
+      export PROJUDI_CRED_KEY="$(openssl rand -base64 32)"
+      printf '%s\n' "$PROJUDI_CRED_KEY" > "$KEY_FILE"
+      chmod 600 "$KEY_FILE"
+      echo "PROJUDI_CRED_KEY nova gravada em $KEY_FILE"
+      echo "  (Se já havia credencial PROJUDI no banco, recadastre: e-vilareal-java-backend/scripts/projudi-recadastrar-credencial.sh)"
+    fi
+  fi
+
+  DRIVE_IMPERSONATE_FILE="$BACKEND_DIR/.google-drive-impersonate.local"
+  if [[ -z "${GOOGLE_DRIVE_IMPERSONATE_USER:-}" && -f "$DRIVE_IMPERSONATE_FILE" ]]; then
+    export GOOGLE_DRIVE_IMPERSONATE_USER="$(tr -d '[:space:]' < "$DRIVE_IMPERSONATE_FILE")"
+  fi
+
+  export VILAREAL_IMPORT_PESSOAS_ENABLED=false
+  export VILAREAL_IMPORT_BATCH_ENABLED=false
+  export VILAREAL_IMPORT_CLIENTES_PLANILHA_JOB_ENABLED=false
+  export VILAREAL_IMPORT_IMOVEIS_PLANILHA_JOB_ENABLED=false
+
   echo "Iniciando backend (Java 21, perfil dev) -> http://localhost:$BACKEND_PORT"
   (
-    cd "$ROOT/e-vilareal-java-backend"
+    cd "$BACKEND_DIR"
     export JAVA_HOME="$JAVA21" SPRING_PROFILES_ACTIVE=dev
-    start_detached "$LOG_DIR/backend.log" ./mvnw -q spring-boot:run
+    start_detached "$LOG_DIR/backend.log" ./mvnw -q spring-boot:run \
+      -Dspring-boot.run.jvmArguments="-Dvilareal.import.pessoas.enabled=false -Dvilareal.import.batch.enabled=false -Dvilareal.import.clientes-planilha.job.enabled=false -Dvilareal.import.imoveis-planilha.job.enabled=false"
     echo $! > "$PID_DIR/backend.pid"
   )
 fi

@@ -52,6 +52,9 @@ import {
 import TitulosGrid from './calculos/TitulosGrid.jsx';
 import { IndicesAtualizacaoConferenciaModal } from './calculos/IndicesAtualizacaoConferenciaModal.jsx';
 import { parseValorMonetarioBr } from '../utils/parseValorMonetarioBr.js';
+import { formatValorMoedaCampo } from '../utils/moneyBr.js';
+import { salvarValorCausaDoProcesso } from '../data/processosHistoricoData.js';
+import { atualizarValorCausaProcesso } from '../repositories/processosRepository.js';
 import {
   enriquecerTitulosAPartirDeParcelasNaRodada,
   linhaTituloVaziaCalculos,
@@ -516,6 +519,18 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       ? 'Confirmar travar o cálculo? Ao travar, as atualizações automáticas param e você poderá ajustar manualmente (se “Modo de Alteração” estiver marcado).'
       : 'Confirmar liberar o cálculo? Os valores serão recalculados para hoje, os débitos voltam a ser editáveis (e você pode incluir novos) e o plano de pagamento (parcelamento) será apagado.';
     return window.confirm(msg);
+  }
+
+  function aplicarValorCausaProcessoAoAceitarPagamento(valorTotalAtualizado) {
+    const valorCampo = formatValorMoedaCampo(valorTotalAtualizado);
+    if (!valorCampo) return;
+    salvarValorCausaDoProcesso(codigoClienteNorm, procNorm, valorCampo);
+    void atualizarValorCausaProcesso({
+      processoId: navCalculos?.processoApiId,
+      codigoCliente: codigoClienteNorm,
+      numeroInterno: procNorm,
+      valorTotalAtualizado,
+    });
   }
 
   // Datas Especiais (por linha)
@@ -3187,7 +3202,9 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                   const ok = confirmarAlternarAceitarPagamento(next);
                   if (!ok) return;
                   setAceitarPagamento(next);
-                  if (!next) {
+                  if (next) {
+                    aplicarValorCausaProcessoAoAceitarPagamento(resumoGeral.total);
+                  } else {
                     // Liberar: recálculo automático para hoje, débitos editáveis e plano de pagamento apagado.
                     setDataCalculo(hojeBR());
                     setIndicesRefreshToken((t) => t + 1);

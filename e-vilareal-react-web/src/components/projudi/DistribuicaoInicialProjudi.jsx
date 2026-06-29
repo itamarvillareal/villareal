@@ -9,11 +9,13 @@ import {
   Scale,
   Trash2,
   User,
+  X,
   XCircle,
 } from 'lucide-react';
 import {
   distribuirInicial,
   listarAssuntosProjudi,
+  listarClassesProjudi,
   prepararInicial,
   sugerirAssuntoProjudi,
   validarProntidaoInicial,
@@ -21,6 +23,7 @@ import {
 import { listarCredenciais } from '../../api/peticoesProjudiApi.js';
 import { isArquivoP7s } from '../../domain/peticaoArquivo.js';
 import { SeletorPessoaParteImovel } from '../imoveis/SeletorPessoaParteImovel.jsx';
+import { buildLinkDestinoProcesso } from '../../domain/camposProcessoCliente.js';
 import { ProcessosToast, processosBtnPrimary } from '../processos/ProcessosAdminLayout.jsx';
 
 const inputClass =
@@ -70,6 +73,8 @@ function montarCsvAssuntos(idsSelecionados, outroId) {
   return ids.join(',');
 }
 
+const CLASSE_JEC_PADRAO = { idProcessoTipo: 162, processoTipoCodigo: 1436 };
+
 function montarFormDataInicial({
   credencialId,
   valorCausa,
@@ -78,6 +83,8 @@ function montarFormDataInicial({
   pessoaAutor,
   pessoaReu,
   linhasP7s,
+  idProcessoTipo,
+  processoTipoCodigo,
   processoIdOrigem,
   confirmar,
 }) {
@@ -87,6 +94,8 @@ function montarFormDataInicial({
   fd.append('idAssuntos', montarCsvAssuntos(idsAssuntosSelecionados, outroIdAssunto));
   fd.append('pessoaIdAutor', String(pessoaAutor.id));
   fd.append('pessoaIdReu', String(pessoaReu.id));
+  fd.append('idProcessoTipo', String(idProcessoTipo ?? CLASSE_JEC_PADRAO.idProcessoTipo));
+  fd.append('processoTipoCodigo', String(processoTipoCodigo ?? CLASSE_JEC_PADRAO.processoTipoCodigo));
   for (const linha of linhasP7s) {
     if (linha.file) {
       fd.append('pdfs', linha.file);
@@ -239,9 +248,13 @@ export function DistribuicaoInicialProjudi() {
   const [credenciais, setCredenciais] = useState([]);
   const [valorCausa, setValorCausa] = useState('');
   const [catalogoAssuntos, setCatalogoAssuntos] = useState([]);
+  const [catalogoClasses, setCatalogoClasses] = useState([]);
   const [idsAssuntosSelecionados, setIdsAssuntosSelecionados] = useState([]);
   const [outroIdAssunto, setOutroIdAssunto] = useState('');
   const [assuntoSugerido, setAssuntoSugerido] = useState(null);
+  const [modalidadeSugerida, setModalidadeSugerida] = useState(null);
+  const [idProcessoTipo, setIdProcessoTipo] = useState(CLASSE_JEC_PADRAO.idProcessoTipo);
+  const [processoTipoCodigo, setProcessoTipoCodigo] = useState(CLASSE_JEC_PADRAO.processoTipoCodigo);
   const sugestaoAplicadaRef = useRef(false);
   const [linhasP7s, setLinhasP7s] = useState([]);
 
@@ -289,6 +302,17 @@ export function DistribuicaoInicialProjudi() {
   }, []);
 
   useEffect(() => {
+    void (async () => {
+      try {
+        const rows = await listarClassesProjudi();
+        setCatalogoClasses(Array.isArray(rows) ? rows : []);
+      } catch {
+        setCatalogoClasses([]);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
     if (!toast) return undefined;
     const t = window.setTimeout(() => setToast(''), 5000);
     return () => window.clearTimeout(t);
@@ -313,8 +337,13 @@ export function DistribuicaoInicialProjudi() {
         const res = await sugerirAssuntoProjudi(natureza);
         const idSugerido = res?.idAssuntoSugerido ?? null;
         setAssuntoSugerido(idSugerido);
+        setModalidadeSugerida(res);
         if (idSugerido != null) {
           setIdsAssuntosSelecionados((prev) => (prev.length === 0 ? [idSugerido] : prev));
+        }
+        if (res?.idProcessoTipo != null && res?.processoTipoCodigo != null) {
+          setIdProcessoTipo(res.idProcessoTipo);
+          setProcessoTipoCodigo(res.processoTipoCodigo);
         }
       } catch {
         // sugestão opcional
@@ -381,6 +410,26 @@ export function DistribuicaoInicialProjudi() {
 
   const podePreparar = validacaoProntidao?.pronta === true && !validandoProntidao;
 
+  const classeSelecionada =
+    catalogoClasses.find(
+      (c) => c.idProcessoTipo === idProcessoTipo && c.processoTipoCodigo === processoTipoCodigo,
+    ) ?? null;
+
+  const voltarParaProcesso = () => {
+    if (dadosProcesso?.codigoCliente || dadosProcesso?.numeroInterno || dadosProcesso?.processoApiId) {
+      navigate(
+        buildLinkDestinoProcesso(
+          '/processos',
+          dadosProcesso.codigoCliente,
+          dadosProcesso.numeroInterno,
+          { processoApiId: dadosProcesso.processoApiId },
+        ),
+      );
+      return;
+    }
+    navigate('/processos');
+  };
+
   const onPreparar = async (e) => {
     e.preventDefault();
     if (!podePreparar) return;
@@ -396,6 +445,8 @@ export function DistribuicaoInicialProjudi() {
         pessoaAutor,
         pessoaReu,
         linhasP7s,
+        idProcessoTipo,
+        processoTipoCodigo,
       });
       const res = await prepararInicial(fd);
       setResultado(res);
@@ -427,6 +478,8 @@ export function DistribuicaoInicialProjudi() {
         pessoaAutor,
         pessoaReu,
         linhasP7s,
+        idProcessoTipo,
+        processoTipoCodigo,
         processoIdOrigem: dadosProcesso?.processoApiId,
         confirmar: true,
       });
@@ -448,26 +501,37 @@ export function DistribuicaoInicialProjudi() {
 
   return (
     <div className="w-full min-w-0 text-slate-900">
-      <div className="mx-auto w-full max-w-[1400px] space-y-5 px-4 py-6 pb-20 sm:px-6">
-        <header>
-          <h1 className="text-xl font-semibold text-slate-900 flex items-center gap-2">
-            <Scale className="w-5 h-5 text-sky-700" aria-hidden />
-            Distribuir Inicial PROJUDI
-          </h1>
-          {dadosProcesso?.chaveProcesso ? (
-            <p className="text-sm text-sky-800 mt-1">
-              Processo <span className="font-mono font-medium">{dadosProcesso.chaveProcesso}</span> — dados
-              pré-preenchidos a partir do cadastro.
+      <div className="mx-auto w-full max-w-[1400px] space-y-5 px-4 py-6 pb-6 sm:px-6">
+        <header className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl font-semibold text-slate-900 flex items-center gap-2">
+              <Scale className="w-5 h-5 text-sky-700" aria-hidden />
+              Distribuir Inicial PROJUDI
+            </h1>
+            {dadosProcesso?.chaveProcesso ? (
+              <p className="text-sm text-sky-800 mt-1">
+                Processo <span className="font-mono font-medium">{dadosProcesso.chaveProcesso}</span> — dados
+                pré-preenchidos a partir do cadastro.
+              </p>
+            ) : (
+              <p className="text-sm text-amber-800 mt-1">
+                Abra esta tela pelo botão <strong>Distribuir Inicial PROJUDI</strong> no formulário de Processos
+                para carregar autor, réu e valor da causa automaticamente.
+              </p>
+            )}
+            <p className="text-sm text-slate-600 mt-1">
+              Monta a inicial no PROJUDI até a tela de <strong>revisão</strong> (Passo 3).
             </p>
-          ) : (
-            <p className="text-sm text-amber-800 mt-1">
-              Abra esta tela pelo botão <strong>Distribuir Inicial PROJUDI</strong> no formulário de Processos
-              para carregar autor, réu e valor da causa automaticamente.
-            </p>
-          )}
-          <p className="text-sm text-slate-600 mt-1">
-            Monta a inicial no PROJUDI até a tela de <strong>revisão</strong> (Passo 3).
-          </p>
+          </div>
+          <button
+            type="button"
+            onClick={voltarParaProcesso}
+            className="flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm hover:bg-slate-50 hover:text-slate-800"
+            aria-label="Voltar ao processo"
+            title="Voltar ao processo"
+          >
+            <X className="h-5 w-5" aria-hidden />
+          </button>
         </header>
 
         {!dadosProcesso ? (
@@ -539,12 +603,50 @@ export function DistribuicaoInicialProjudi() {
                   placeholder="Ex.: 1500,00"
                 />
               </label>
+              <label className="block sm:col-span-2">
+                <span className="text-xs text-slate-600">Classe processual (PROJUDI)</span>
+                {catalogoClasses.length > 0 ? (
+                  <select
+                    className={inputClass}
+                    value={`${idProcessoTipo}:${processoTipoCodigo}`}
+                    onChange={(ev) => {
+                      const [tipo, codigo] = ev.target.value.split(':');
+                      setIdProcessoTipo(Number(tipo));
+                      setProcessoTipoCodigo(Number(codigo));
+                    }}
+                  >
+                    {catalogoClasses.map((classe) => (
+                      <option
+                        key={classe.id}
+                        value={`${classe.idProcessoTipo}:${classe.processoTipoCodigo}`}
+                      >
+                        {classe.rotulo} (Id {classe.idProcessoTipo} / código {classe.processoTipoCodigo})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    className={inputClass}
+                    readOnly
+                    value={`Id ${idProcessoTipo} / código ${processoTipoCodigo}`}
+                  />
+                )}
+                <p className="text-xs text-sky-800 mt-1">
+                  Será enviada ao PROJUDI:{' '}
+                  <strong>{classeSelecionada?.rotulo ?? 'Procedimento do Juizado Especial Cível'}</strong>
+                  {modalidadeSugerida?.modalidadeRotulo
+                    ? ` — modalidade sugerida: ${modalidadeSugerida.modalidadeRotulo}.`
+                    : '.'}
+                </p>
+              </label>
               <div className="block sm:col-span-2 space-y-2">
                 <span className="text-xs text-slate-600">Assuntos (PROJUDI)</span>
                 {dadosProcesso?.naturezaAcao ? (
                   <p className="text-xs text-sky-800">
                     Natureza da ação: <strong>{dadosProcesso.naturezaAcao}</strong>
-                    {assuntoSugerido != null ? ' — id sugerido pré-selecionado (pode alterar).' : ''}
+                    {assuntoSugerido != null
+                      ? ' — assunto e classe sugeridos pré-selecionados (pode alterar).'
+                      : ''}
                   </p>
                 ) : null}
                 {catalogoAssuntos.length === 0 ? (

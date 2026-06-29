@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -151,6 +152,29 @@ class ProjudiProcessoCivelRevisaoHtmlUtilTest {
         assertTrue(corpo.contains("__Pedido__=-2147483647"));
         assertTrue(corpo.contains("imgInserir=Confirmar"));
         assertEquals("-2147483647", ProjudiProcessoCivelRevisaoHtmlUtil.pedidoValorNoFormulario(form.get()));
+    }
+
+    @Test
+    void extrairFormulario_digital100MarcadoNoHtml_naoEntraNoCorpoFinal() {
+        String html =
+                """
+                <form id="Formulario" action="ProcessoCivel">
+                  <input type="hidden" name="PaginaAtual" value="5"/>
+                  <input type="hidden" name="PassoEditar" value="6"/>
+                  <input type="hidden" name="__Pedido__" value="-1"/>
+                  <input type="hidden" name="Passo1" value="Passo 1 OK"/>
+                  <input type="hidden" name="Passo2" value="Passo 2 OK"/>
+                  <input type="hidden" name="Passo3" value="Passo 3"/>
+                  <input type="checkbox" name="digital100" value="true" checked="checked"/>
+                  <input type="submit" name="imgInserir" value="Confirmar"/>
+                </form>
+                """;
+        var form = ProjudiProcessoCivelRevisaoHtmlUtil.extrairFormularioDistribuicao(html);
+        assertTrue(form.isPresent());
+        assertTrue(form.get().campos().keySet().stream().noneMatch(n -> n.equalsIgnoreCase("digital100")));
+        String corpo = form.get().montarCorpoPostIso8859();
+        assertFalse(corpo.toLowerCase(Locale.ROOT).contains("digital100"));
+        assertTrue(corpo.contains("imgInserir=Confirmar"));
     }
 
     @Test

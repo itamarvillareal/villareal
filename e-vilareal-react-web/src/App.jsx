@@ -254,7 +254,7 @@ function Layout() {
             resetKey={location.pathname}
             onFechar={() => window.location.reload()}
           >
-            <div className="flex w-full min-w-0 flex-col max-lg:flex-none lg:min-h-0 lg:flex-1">
+            <div className="flex w-full min-w-0 flex-col max-lg:flex-none lg:min-h-0">
               <Outlet />
             </div>
           </ProcessoEmbedErrorBoundary>

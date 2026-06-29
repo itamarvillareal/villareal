@@ -31,7 +31,8 @@ class ProjudiProcessoCivelInicialCorpoUtilTest {
 
     @Test
     void montarCorpoEstado_incluiDependenciaProcesso2() {
-        String corpo = ProjudiProcessoCivelInicialCorpoUtil.montarCorpoAvancarAnexos("1.294,57");
+        String corpo = ProjudiProcessoCivelInicialCorpoUtil.montarCorpoAvancarAnexos(
+                "1.294,57", ProjudiClasseProcessoInicial.JEC);
         assertTrue(corpo.contains("dependenciaProcesso=2"));
         assertTrue(corpo.contains("custaTipo=3"));
         assertTrue(corpo.contains("grauProcesso=1"));
@@ -40,6 +41,16 @@ class ProjudiProcessoCivelInicialCorpoUtilTest {
         assertTrue(corpo.contains("Passo1=Passo+1"));
         assertTrue(corpo.contains("dependente=false"));
         assertTrue(corpo.contains("imgInserir=Avan%E7ar"));
+        assertTrue(corpo.contains("Id_ProcessoTipo=162&ProcessoTipoCodigo=1436"));
+    }
+
+    @Test
+    void montarCorpoPasso1Area_execucaoTituloExtrajudicial() {
+        String corpo = ProjudiProcessoCivelInicialCorpoUtil.montarCorpoPasso1Area(
+                "4.516,85", "2852", "-1", ProjudiClasseProcessoInicial.EXECUCAO_TITULO_EXTRAJUDICIAL);
+        assertTrue(corpo.contains("Id_ProcessoTipo=114&ProcessoTipoCodigo=1159"));
+        assertTrue(corpo.contains("Comarca=AN%C1POLIS"));
+        assertTrue(corpo.contains("Id_AreaDistribuicao=19"));
     }
 
     @Test

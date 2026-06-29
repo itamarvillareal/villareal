@@ -65,7 +65,13 @@ public class ProjudiDistribuicaoService {
             List<Integer> idAssuntos,
             Long pessoaIdAutor,
             Long pessoaIdReu,
-            List<ArquivoPeticao> arquivos) {}
+            List<ArquivoPeticao> arquivos,
+            ProjudiClasseProcessoInicial classe) {
+
+        public ProjudiClasseProcessoInicial classeEfetiva() {
+            return classe != null ? classe : ProjudiClasseProcessoInicial.JEC;
+        }
+    }
 
     public record PendenciaParte(String papel, Long pessoaId, List<String> pendencias) {}
 
@@ -164,7 +170,9 @@ public class ProjudiDistribuicaoService {
      * Valida se a inicial pode ser preparada/distribuída, com motivos explícitos de bloqueio.
      * Não executa o fluxo PROJUDI — apenas checagens locais e resolução de partes.
      */
-    @Transactional(readOnly = true)
+    /** Sem {@code @Transactional}: chama {@link ProjudiParteResolverService#resolver} que pode falhar
+     *  (ex.: credencial PROJUDI inválida); a exceção é convertida em bloqueio — transação externa
+     *  marcaria rollback-only e geraria 500 ao commit. */
     public ValidacaoProntidaoInicial validarProntidao(
             Long credencialId,
             String valorCausa,
@@ -302,6 +310,9 @@ public class ProjudiDistribuicaoService {
         trilha.registrarInstrumentacao(
                 "Corpo Passo3 (envio)",
                 ProjudiProcessoCivelRevisaoHtmlUtil.formatarCorpoPasso3(form));
+        trilha.registrarInstrumentacao(
+                "Corpo Passo3 (ISO-8859-1)",
+                sanitizarDetalhe(corpoEnvio, HASH_DIAG_MAX));
         String pedidoForm = ProjudiProcessoCivelRevisaoHtmlUtil.pedidoValorNoFormulario(form);
         String hashRevisaoHtml = ProjudiProcessoCivelHtmlUtil.hashFluxoPreferidoNoHtml(htmlOut.html);
         trilha.registrarInstrumentacao(
@@ -516,8 +527,8 @@ public class ProjudiDistribuicaoService {
             trilha.ok("POST custas/dependência", navCustas, "custaTipo=3 dependenciaProcesso=2");
             registrarHashFluxoHtml(trilha, "POST custas/dependência", corpo(navCustas));
 
-            String corpoPasso1 =
-                    ProjudiProcessoCivelInicialCorpoUtil.montarCorpoPasso1Area(request.valorCausa(), "2852", "-1");
+            String corpoPasso1 = ProjudiProcessoCivelInicialCorpoUtil.montarCorpoPasso1Area(
+                    request.valorCausa(), "2852", "-1", request.classeEfetiva());
             HttpResponse<String> pPasso1 = postProcessoCivelComTrilha(
                     trilha, "POST Passo1", credencialId, corpoPasso1, REF_PROCESSO_CIVEL);
             if (pareceFalhaPost(pPasso1)) {
@@ -562,7 +573,7 @@ public class ProjudiDistribuicaoService {
                 registrarHashFluxoHtml(trilha, nomeAssunto, corpo(pAssunto));
             }
 
-            tokens = inserirParte(credencialId, request.valorCausa(), tokens, 1, autor, "AUTOR", trilha);
+            tokens = inserirParte(credencialId, request.valorCausa(), request.classeEfetiva(), tokens, 1, autor, "AUTOR", trilha);
             if (tokens == null) {
                 return new ResultadoPreparacaoInicial(
                         false,
@@ -573,7 +584,7 @@ public class ProjudiDistribuicaoService {
                         trilha.passos());
             }
 
-            tokens = inserirParte(credencialId, request.valorCausa(), tokens, 0, reu, "REU", trilha);
+            tokens = inserirParte(credencialId, request.valorCausa(), request.classeEfetiva(), tokens, 0, reu, "REU", trilha);
             if (tokens == null) {
                 return new ResultadoPreparacaoInicial(
                         false,
@@ -588,7 +599,8 @@ public class ProjudiDistribuicaoService {
                     trilha,
                     "POST avançar anexos",
                     credencialId,
-                    ProjudiProcessoCivelInicialCorpoUtil.montarCorpoAvancarAnexos(request.valorCausa()),
+                    ProjudiProcessoCivelInicialCorpoUtil.montarCorpoAvancarAnexos(
+                            request.valorCausa(), request.classeEfetiva()),
                     REF_PROCESSO_CIVEL);
             if (pareceFalhaPost(pAnexos)) {
                 return falha(
@@ -752,6 +764,7 @@ public class ProjudiDistribuicaoService {
     private TokensFluxo inserirParte(
             Long credencialId,
             String valorCausa,
+            ProjudiClasseProcessoInicial classe,
             TokensFluxo tokens,
             int parteTipo,
             ParteProjudiResolvida parte,
@@ -764,7 +777,8 @@ public class ProjudiDistribuicaoService {
                 trilha,
                 "Parte " + papel + " abrir busca",
                 credencialId,
-                ProjudiProcessoCivelInicialCorpoUtil.montarCorpoAbrirBuscaParte(valorCausa, parteTipo, localizar),
+                ProjudiProcessoCivelInicialCorpoUtil.montarCorpoAbrirBuscaParte(
+                        valorCausa, parteTipo, localizar, classe),
                 REF_PROCESSO_CIVEL);
         if (pareceFalhaPost(abrir)) {
             trilha.falha("Parte " + papel + " abrir busca", abrir, truncar(corpo(abrir)));
@@ -836,7 +850,6 @@ public class ProjudiDistribuicaoService {
         sb.append("&Nome=").append(ProjudiProcessoCivelInicialCorpoUtil.encIso(p.nome()));
         if (cnpj) {
             sb.append("&Cnpj=").append(ProjudiProcessoCivelInicialCorpoUtil.encIso(digitos(p.documento())));
-            sb.append("&digital100=true");
         } else {
             sb.append("&Cpf=").append(ProjudiProcessoCivelInicialCorpoUtil.encIso(digitos(p.documento())));
         }

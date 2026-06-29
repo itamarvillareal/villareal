@@ -1323,6 +1323,10 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     } else {
       // Com API: cabeçalho, partes e histórico vêm de GET /api/processos e sub-rotas (importação/planilha).
       setPeriodicidadeConsulta(registroPersistido?.periodicidadeConsulta ?? '');
+      const valorCausaHist = pickCampoStrSalvo(r, 'valorCausa', '');
+      if (valorCausaHist.trim() !== '') {
+        setValorCausa(valorCausaHist);
+      }
     }
     setPasta(pickCampoStrSalvo(r, 'pasta', pickCampoStrSalvo(r, 'pastaArquivo', '')));
     setFaseCampo(pickCampoStrSalvo(r, 'faseCampo', ''));

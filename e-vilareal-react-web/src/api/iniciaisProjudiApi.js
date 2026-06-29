@@ -75,6 +75,21 @@ import { postFormData, request } from './httpClient.js';
 /**
  * @typedef {Object} AssuntoSugeridoResponse
  * @property {number|null} idAssuntoSugerido
+ * @property {number|null} [idProcessoTipo]
+ * @property {number|null} [processoTipoCodigo]
+ * @property {string|null} [modalidadeId]
+ * @property {string|null} [modalidadeRotulo]
+ * @property {string|null} [classeId]
+ * @property {string|null} [classeRotulo]
+ */
+
+/**
+ * @typedef {Object} ClasseProjudiItem
+ * @property {string} id
+ * @property {string} rotulo
+ * @property {number} idProcessoTipo
+ * @property {number} processoTipoCodigo
+ * @property {string} processoTipoLabel
  */
 
 /**
@@ -103,12 +118,27 @@ export async function listarAssuntosProjudi() {
   return request('/api/projudi/iniciais/assuntos');
 }
 
+/** @returns {Promise<ClasseProjudiItem[]>} */
+export async function listarClassesProjudi() {
+  return request('/api/projudi/iniciais/classes');
+}
+
 /**
  * @param {string} [naturezaAcao]
  * @returns {Promise<AssuntoSugeridoResponse>}
  */
 export async function sugerirAssuntoProjudi(naturezaAcao) {
   return request('/api/projudi/iniciais/assunto-sugerido', {
+    query: { naturezaAcao: naturezaAcao ?? '' },
+  });
+}
+
+/**
+ * @param {string} [naturezaAcao]
+ * @returns {Promise<AssuntoSugeridoResponse>}
+ */
+export async function sugerirModalidadeProjudi(naturezaAcao) {
+  return request('/api/projudi/iniciais/modalidade-sugerida', {
     query: { naturezaAcao: naturezaAcao ?? '' },
   });
 }
