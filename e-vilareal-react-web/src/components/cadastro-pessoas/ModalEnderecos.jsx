@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, Search } from 'lucide-react';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 import { obterMunicipio } from '../../repositories/municipiosRepository.js';
 import { MunicipioAutocomplete } from '../ui/MunicipioAutocomplete.jsx';
 
