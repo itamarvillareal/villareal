@@ -688,6 +688,21 @@ export function salvarValorCausaDoProcesso(codCliente, proc, valorCausa) {
   });
 }
 
+/** Remove o registro local do processo (`vilareal:processos-historico:v1`). */
+export function removerRegistroProcessoDoHistorico(codCliente, proc) {
+  const current = loadStore();
+  const key = makeKey(codCliente, proc);
+  if (!current[key]) return false;
+  delete current[key];
+  saveStore(current);
+  try {
+    window.dispatchEvent(new CustomEvent('vilareal:processos-historico-atualizado'));
+  } catch {
+    /* ignore */
+  }
+  return true;
+}
+
 /** Grava só `naturezaAcao`, preservando o restante do registro do processo (merge com histórico existente). */
 export function salvarNaturezaAcaoDoProcesso(codCliente, proc, naturezaAcao) {
   const prev = getRegistroProcesso(codCliente, proc);

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { Columns3, FileSpreadsheet, FileText, Loader2 } from 'lucide-react';
+import { Columns3, FileSpreadsheet, FileText, Loader2, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { RelatorioUltimoAndamentoHeader } from './RelatorioUltimoAndamentoHeader.jsx';
 import { RelatorioPresetsPanel } from './RelatorioPresetsPanel.jsx';
@@ -17,6 +17,8 @@ import { preaquecerCamposRelatorioApiFirst, resolverStatusAtivoRelatorioProcesso
 import { featureFlags } from '../config/featureFlags.js';
 import { EVENT_RELATORIO_PERSISTENCIA_EXTERNA } from '../services/crossTabLocalStorageSync.js';
 import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
+import { removerRegistroProcessoDoHistorico } from '../data/processosHistoricoData.js';
+import { excluirProcessoCompleto } from '../repositories/processosRepository.js';
 
 const STORAGE_COLUNAS_RELATORIO = 'vilareal.relatorioProcessos.colunasVisiveis.v1';
 const STORAGE_LARGURA_UNIFORME = 'vilareal.relatorioProcessos.larguraUniforme.v1';
@@ -51,6 +53,13 @@ function timestampDataBr(val) {
   const d = new Date(yyyy, mm - 1, dd);
   const x = d.getTime();
   return Number.isNaN(x) ? 0 : x;
+}
+
+function chaveProcessoRelatorio(row) {
+  const cod = String(row?.codCliente ?? '').trim();
+  const proc = String(row?.proc ?? '').trim();
+  if (!cod || !proc) return '';
+  return `${cod}:${proc}`;
 }
 
 /** Colunas fixas ({@link COLUNAS_RELATORIO_PROCESSOS}); o menu de cada cabeçalho ainda lista todos os campos. */
@@ -278,6 +287,11 @@ export function Relatorio() {
   const [emitindoRelatorio, setEmitindoRelatorio] = useState(false);
   const [enriquecendoDetalhes, setEnriquecendoDetalhes] = useState(false);
   const [erroEmissao, setErroEmissao] = useState('');
+  const [excluindoChave, setExcluindoChave] = useState(null);
+  const [excluindoEmLote, setExcluindoEmLote] = useState(false);
+  const [selecionados, setSelecionados] = useState(() => new Set());
+  const [erroExclusao, setErroExclusao] = useState('');
+  const selectAllRef = useRef(null);
   const emitindoRelatorioRef = useRef(false);
   const baseRawEmissaoRef = useRef([]);
 
@@ -306,6 +320,7 @@ export function Relatorio() {
       const baseEnriched = montarLinhasRelatorioBaseDeCruas(baseRaw);
       const next = mesclarLinhasRelatorioComPersistido(relatorioEmitido, baseEnriched);
       setDados(next);
+      setSelecionados(new Set());
       setRelatorioEmitido(true);
       emitindoRelatorioRef.current = false;
       setEmitindoRelatorio(false);
@@ -356,6 +371,91 @@ export function Relatorio() {
       return next;
     });
   };
+
+  const executarExclusaoProcesso = useCallback(async (row) => {
+    const cod = String(row.codCliente ?? '').trim();
+    const proc = String(row.proc ?? '').trim();
+    if (!cod || !proc) return;
+    if (featureFlags.useApiProcessos) {
+      await excluirProcessoCompleto({
+        processoId: row.processoApiId,
+        codigoCliente: cod,
+        numeroInterno: proc,
+      });
+    }
+    removerRegistroProcessoDoHistorico(cod, proc);
+    setDados((prev) => prev.filter((r) => String(r.codCliente) !== cod || String(r.proc) !== proc));
+    baseRawEmissaoRef.current = (baseRawEmissaoRef.current || []).filter(
+      (r) => String(r.codCliente) !== cod || String(r.proc) !== proc
+    );
+    setSelecionados((prev) => {
+      const next = new Set(prev);
+      next.delete(`${cod}:${proc}`);
+      return next;
+    });
+  }, []);
+
+  const excluirProcessoDaLinha = useCallback(
+    async (row) => {
+      const cod = String(row.codCliente ?? '').trim();
+      const proc = String(row.proc ?? '').trim();
+      if (!cod || !proc) return;
+      const chave = `${cod}:${proc}`;
+      const cliente = String(row.cliente ?? '').trim() || cod;
+      const msg =
+        `Excluir permanentemente o processo?\n\n` +
+        `${cliente}\nCod. ${cod} · Proc. ${proc}\n\n` +
+        `Apaga andamentos, partes, cálculos, financeiro e demais vínculos. Esta ação não pode ser desfeita.`;
+      if (!window.confirm(msg)) return;
+
+      setErroExclusao('');
+      setExcluindoChave(chave);
+      try {
+        await executarExclusaoProcesso(row);
+      } catch (e) {
+        setErroExclusao(e?.message || 'Não foi possível excluir o processo.');
+      } finally {
+        setExcluindoChave(null);
+      }
+    },
+    [executarExclusaoProcesso]
+  );
+
+  const excluirProcessosSelecionados = useCallback(async () => {
+    const rows = dados.filter((r) => selecionados.has(chaveProcessoRelatorio(r)));
+    if (rows.length === 0) return;
+    const msg =
+      `Excluir permanentemente ${rows.length} processo(s) selecionado(s)?\n\n` +
+      `Apaga andamentos, partes, cálculos, financeiro e demais vínculos. Esta ação não pode ser desfeita.`;
+    if (!window.confirm(msg)) return;
+
+    setErroExclusao('');
+    setExcluindoEmLote(true);
+    let ok = 0;
+    const falhas = [];
+    try {
+      for (const row of rows) {
+        const chave = chaveProcessoRelatorio(row);
+        try {
+          await executarExclusaoProcesso(row);
+          ok += 1;
+        } catch (e) {
+          falhas.push(`${chave}: ${e?.message || 'erro'}`);
+        }
+      }
+      if (falhas.length > 0) {
+        setErroExclusao(
+          `${ok} excluído(s), ${falhas.length} falha(s). ${falhas.slice(0, 3).join(' · ')}${
+            falhas.length > 3 ? '…' : ''
+          }`
+        );
+      } else {
+        setSelecionados(new Set());
+      }
+    } finally {
+      setExcluindoEmLote(false);
+    }
+  }, [dados, selecionados, executarExclusaoProcesso]);
   const [filtrosPorColuna, setFiltrosPorColuna] = useState(() =>
     COLUNAS.reduce((acc, col) => ({ ...acc, [col.id]: '' }), {})
   );
@@ -390,6 +490,58 @@ export function Relatorio() {
       return ordemAsc ? cmp : -cmp;
     });
   }, [dadosFiltrados, ordenarPor, ordemAsc, campoPorColuna]);
+
+  const chavesFiltradas = useMemo(
+    () => dadosFiltrados.map(chaveProcessoRelatorio).filter(Boolean),
+    [dadosFiltrados]
+  );
+
+  const qtdSelecionados = selecionados.size;
+  const todosFiltradosSelecionados =
+    chavesFiltradas.length > 0 && chavesFiltradas.every((k) => selecionados.has(k));
+  const algumFiltradoSelecionado = chavesFiltradas.some((k) => selecionados.has(k));
+  const exclusaoEmAndamento = excluindoEmLote || excluindoChave != null;
+
+  useEffect(() => {
+    const el = selectAllRef.current;
+    if (!el) return;
+    el.indeterminate = algumFiltradoSelecionado && !todosFiltradosSelecionados;
+  }, [algumFiltradoSelecionado, todosFiltradosSelecionados]);
+
+  useEffect(() => {
+    setSelecionados((prev) => {
+      const validas = new Set(dados.map(chaveProcessoRelatorio).filter(Boolean));
+      let changed = false;
+      const next = new Set();
+      for (const k of prev) {
+        if (validas.has(k)) next.add(k);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [dados]);
+
+  const toggleSelecionarTodosFiltrados = () => {
+    setSelecionados((prev) => {
+      const next = new Set(prev);
+      if (todosFiltradosSelecionados) {
+        chavesFiltradas.forEach((k) => next.delete(k));
+      } else {
+        chavesFiltradas.forEach((k) => next.add(k));
+      }
+      return next;
+    });
+  };
+
+  const toggleSelecaoLinha = (chave) => {
+    if (!chave) return;
+    setSelecionados((prev) => {
+      const next = new Set(prev);
+      if (next.has(chave)) next.delete(chave);
+      else next.add(chave);
+      return next;
+    });
+  };
 
   const toggleOrdenacao = (id) => {
     if (ordenarPor === id) setOrdemAsc((a) => !a);
@@ -459,6 +611,22 @@ export function Relatorio() {
             )}
             {relatorioEmitido ? 'Atualizar relatório' : 'Emitir relatório'}
           </button>
+          {relatorioEmitido && qtdSelecionados > 0 ? (
+            <button
+              type="button"
+              disabled={exclusaoEmAndamento || modoAlteracao}
+              onClick={() => void excluirProcessosSelecionados()}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border border-red-200 bg-red-50 text-red-800 text-sm font-semibold hover:bg-red-100 disabled:opacity-60 disabled:pointer-events-none"
+              title="Excluir todos os processos marcados na lista"
+            >
+              {excluindoEmLote ? (
+                <Loader2 className="w-4 h-4 shrink-0 animate-spin" aria-hidden />
+              ) : (
+                <Trash2 className="w-4 h-4 shrink-0" aria-hidden />
+              )}
+              Excluir selecionados ({qtdSelecionados})
+            </button>
+          ) : null}
           <RelatorioPresetsPanel
             colIds={colIdsRelatorio}
             colunasVisiveis={colunasVisiveis}
@@ -570,12 +738,34 @@ export function Relatorio() {
             {erroEmissao && dados.length === 0 ? (
               <p className="px-4 py-3 text-sm text-red-700 bg-red-50 border-b border-red-100">{erroEmissao}</p>
             ) : null}
+            {erroExclusao ? (
+              <p className="px-4 py-3 text-sm text-red-700 bg-red-50 border-b border-red-100">{erroExclusao}</p>
+            ) : null}
             <table
               className={`w-full text-sm border-collapse ${larguraUniforme ? 'table-fixed' : ''}`}
               style={{ minWidth: larguraUniforme ? '100%' : 'max-content' }}
             >
               <thead className="sticky top-0 z-10">
                 <tr className="bg-gradient-to-r from-indigo-600 to-violet-700 text-white shadow-md">
+                  <th
+                    className="px-2 py-2 w-10 text-center sticky left-0 z-20 bg-indigo-600 shadow-[4px_0_8px_-2px_rgba(0,0,0,0.15)]"
+                    title="Selecionar todos os processos visíveis (filtros aplicados)"
+                  >
+                    <input
+                      ref={selectAllRef}
+                      type="checkbox"
+                      checked={todosFiltradosSelecionados}
+                      disabled={
+                        !relatorioEmitido ||
+                        chavesFiltradas.length === 0 ||
+                        exclusaoEmAndamento ||
+                        modoAlteracao
+                      }
+                      onChange={toggleSelecionarTodosFiltrados}
+                      className="rounded border-white/40"
+                      aria-label="Selecionar todos os processos da lista filtrada"
+                    />
+                  </th>
                   {colunasAtivas.map((col) => (
                     <RelatorioUltimoAndamentoHeader
                       key={col.id}
@@ -594,8 +784,15 @@ export function Relatorio() {
                       modoAlteracao={modoAlteracao}
                     />
                   ))}
+                  <th
+                    className="px-2 py-2 text-left text-xs font-semibold whitespace-nowrap w-12 sticky right-0 bg-gradient-to-r from-indigo-600 to-violet-700 shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.15)]"
+                    title="Excluir processo"
+                  >
+                    <span className="sr-only">Excluir</span>
+                  </th>
                 </tr>
                 <tr className="bg-slate-100">
+                  <th className="px-1.5 py-1 border-b border-r border-slate-300 sticky left-0 z-20 bg-slate-100 w-10" aria-hidden />
                   {colunasAtivas.map((col) => (
                     <th
                       key={`${col.id}-filtro`}
@@ -620,22 +817,28 @@ export function Relatorio() {
                       />
                     </th>
                   ))}
+                  <th className="px-1.5 py-1 border-b border-slate-300 bg-slate-100 sticky right-0 w-12" aria-hidden />
                 </tr>
               </thead>
               <tbody>
                 {dadosOrdenados.length === 0 ? (
                   <tr>
-                    <td colSpan={colunasAtivas.length} className="px-3 py-6 text-center text-slate-500">
+                    <td colSpan={colunasAtivas.length + 2} className="px-3 py-6 text-center text-slate-500">
                       Nenhum resultado para os filtros aplicados.
                     </td>
                   </tr>
                 ) : (
-                  dadosOrdenados.map((row, idx) => (
+                  dadosOrdenados.map((row, idx) => {
+                    const chaveExcluir = chaveProcessoRelatorio(row);
+                    const excluindo = excluindoChave === chaveExcluir;
+                    const selecionado = selecionados.has(chaveExcluir);
+                    const rowBg = idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50';
+                    return (
                     <tr
                       key={row.__relatorioIdx ?? idx}
-                      className={`border-b border-slate-200 hover:bg-slate-50 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} ${
+                      className={`border-b border-slate-200 hover:bg-slate-50 ${rowBg} ${
                         modoAlteracao ? 'cursor-default' : 'cursor-pointer'
-                      }`}
+                      } ${selecionado ? 'ring-1 ring-inset ring-indigo-200' : ''}`}
                       title={
                         modoAlteracao
                           ? 'Modo alteração: edite as células (texto em vermelho). Cod. Cliente e Proc. são fixos.'
@@ -648,6 +851,19 @@ export function Relatorio() {
                         });
                       }}
                     >
+                      <td
+                        className={`px-2 py-1.5 border-r border-slate-200 text-center sticky left-0 z-[1] ${rowBg}`}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selecionado}
+                          disabled={!chaveExcluir || exclusaoEmAndamento || modoAlteracao}
+                          onChange={() => toggleSelecaoLinha(chaveExcluir)}
+                          className="rounded border-slate-300"
+                          aria-label={`Selecionar processo ${row.codCliente} proc. ${row.proc}`}
+                        />
+                      </td>
                       {colunasAtivas.map((col) => {
                         const chaveValor = campoPorColuna[col.id] ?? col.id;
                         const textoCelula = row[chaveValor] ?? '';
@@ -704,8 +920,34 @@ export function Relatorio() {
                           </td>
                         );
                       })}
+                      <td
+                        className={`px-1 py-1 border-r-0 border-slate-200 text-center sticky right-0 ${rowBg}`}
+                      >
+                        <button
+                          type="button"
+                          disabled={excluindo || exclusaoEmAndamento || modoAlteracao}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void excluirProcessoDaLinha(row);
+                          }}
+                          className="inline-flex items-center justify-center w-8 h-8 rounded-md text-red-600 hover:bg-red-50 hover:text-red-700 disabled:opacity-40 disabled:pointer-events-none"
+                          title={
+                            modoAlteracao
+                              ? 'Desative o modo de alteração para excluir'
+                              : 'Excluir processo e todos os dados vinculados'
+                          }
+                          aria-label={`Excluir processo ${row.codCliente} proc. ${row.proc}`}
+                        >
+                          {excluindo ? (
+                            <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+                          ) : (
+                            <Trash2 className="w-4 h-4" aria-hidden />
+                          )}
+                        </button>
+                      </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>

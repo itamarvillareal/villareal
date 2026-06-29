@@ -77,6 +77,8 @@ class ClienteCadastroUpsertServiceTest {
     private OrgaoJulgadorDerivacaoService orgaoJulgadorDerivacaoService;
     @Mock
     private OrgaoJulgadorApplicationService orgaoJulgadorApplicationService;
+    @Mock
+    private ProcessoExclusaoService processoExclusaoService;
 
     private ProcessoApplicationService service;
 
@@ -102,7 +104,8 @@ class ClienteCadastroUpsertServiceTest {
                         municipioApplicationService,
                         orgaoJulgadorUsoService,
                         orgaoJulgadorDerivacaoService,
-                        orgaoJulgadorApplicationService);
+                        orgaoJulgadorApplicationService,
+                        processoExclusaoService);
     }
 
     @Test

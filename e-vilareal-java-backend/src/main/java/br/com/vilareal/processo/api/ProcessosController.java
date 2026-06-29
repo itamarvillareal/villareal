@@ -418,6 +418,16 @@ public class ProcessosController {
         return ResponseEntity.noContent().build();
     }
 
+    @DeleteMapping("/{id}")
+    @Operation(
+            summary = "Excluir processo",
+            description =
+                    "Remove o processo e todos os dados vinculados (andamentos, partes, prazos, financeiro, cálculos, publicações, etc.).")
+    public ResponseEntity<Void> excluirProcesso(@PathVariable Long id) {
+        processoApplicationService.excluirProcesso(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/{id}/partes")
     public List<ProcessoParteResponse> listarPartes(@PathVariable Long id) {
         return processoApplicationService.listarPartes(id);

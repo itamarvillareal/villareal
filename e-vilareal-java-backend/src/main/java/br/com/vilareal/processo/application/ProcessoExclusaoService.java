@@ -53,6 +53,7 @@ public class ProcessoExclusaoService {
             return;
         }
 
+        excluirCalculosRodadasDosProcessos(ids);
         limparAgendaDosProcessos(ids);
 
         String in = placeholders(ids.size());
@@ -95,8 +96,11 @@ public class ProcessoExclusaoService {
         jdbcTemplate.update("DELETE FROM agendamento_consulta WHERE processo_id IN (" + in + ")", args);
         jdbcTemplate.update("DELETE FROM whatsapp_messages WHERE processo_id IN (" + in + ")", args);
         jdbcTemplate.update("DELETE FROM scheduled_whatsapp_messages WHERE processo_id IN (" + in + ")", args);
-        jdbcTemplate.update("DELETE FROM imovel_processo_historico WHERE processo_id IN (" + in + ")", args);
+        jdbcTemplate.update("DELETE FROM imovel_processo WHERE processo_id IN (" + in + ")", args);
         jdbcTemplate.update("UPDATE imovel SET processo_id = NULL WHERE processo_id IN (" + in + ")", args);
+        jdbcTemplate.update("UPDATE contrato_locacao SET processo_id = NULL WHERE processo_id IN (" + in + ")", args);
+        jdbcTemplate.update(
+                "UPDATE imovel_vinculo_locatario SET processo_id = NULL WHERE processo_id IN (" + in + ")", args);
         jdbcTemplate.update("DELETE FROM processo_prazo WHERE processo_id IN (" + in + ")", args);
         jdbcTemplate.update(
                 """
@@ -108,6 +112,22 @@ public class ProcessoExclusaoService {
                 args);
         jdbcTemplate.update("DELETE FROM processo_parte WHERE processo_id IN (" + in + ")", args);
         jdbcTemplate.update("DELETE FROM processo WHERE id IN (" + in + ")", args);
+    }
+
+    private void excluirCalculosRodadasDosProcessos(List<Long> ids) {
+        for (Long id : ids) {
+            processoRepository.findById(id).ifPresent(p -> {
+                if (p.getCliente() == null
+                        || !StringUtils.hasText(p.getCliente().getCodigoCliente())
+                        || p.getNumeroInterno() == null) {
+                    return;
+                }
+                jdbcTemplate.update(
+                        "DELETE FROM calculo_rodada WHERE TRIM(codigo_cliente) = TRIM(?) AND numero_processo = ?",
+                        p.getCliente().getCodigoCliente(),
+                        p.getNumeroInterno());
+            });
+        }
     }
 
     private void limparAgendaDosProcessos(List<Long> ids) {

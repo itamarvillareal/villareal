@@ -1583,6 +1583,22 @@ export async function excluirAndamentoProcesso(processoId, andamentoId) {
   await request(`/api/processos/${pid}/andamentos/${aid}`, { method: 'DELETE' });
 }
 
+/**
+ * Exclui o processo na API (andamentos, partes, financeiro, cálculos, publicações, etc.).
+ * @returns {Promise<number>} id do processo excluído
+ */
+export async function excluirProcessoCompleto({ processoId, codigoCliente, numeroInterno } = {}) {
+  if (!featureFlags.useApiProcessos) {
+    throw new Error('Exclusão de processo requer API ativa (VITE_USE_API_PROCESSOS).');
+  }
+  const pid = await resolverProcessoId({ processoId, codigoCliente, numeroInterno });
+  if (!pid) {
+    throw new Error('Processo não encontrado para exclusão.');
+  }
+  await request(`/api/processos/${pid}`, { method: 'DELETE' });
+  return pid;
+}
+
 export async function obterCamposProcessoApiFirst({ processoId, codigoCliente, numeroInterno }) {
   if (!featureFlags.useApiProcessos) return null;
   const pid = await resolverProcessoId({ processoId, codigoCliente, numeroInterno });

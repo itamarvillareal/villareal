@@ -84,6 +84,7 @@ public class ProcessoApplicationService {
     private final OrgaoJulgadorUsoService orgaoJulgadorUsoService;
     private final OrgaoJulgadorDerivacaoService orgaoJulgadorDerivacaoService;
     private final OrgaoJulgadorApplicationService orgaoJulgadorApplicationService;
+    private final ProcessoExclusaoService processoExclusaoService;
 
     public ProcessoApplicationService(
             ProcessoRepository processoRepository,
@@ -104,7 +105,8 @@ public class ProcessoApplicationService {
             MunicipioApplicationService municipioApplicationService,
             OrgaoJulgadorUsoService orgaoJulgadorUsoService,
             OrgaoJulgadorDerivacaoService orgaoJulgadorDerivacaoService,
-            OrgaoJulgadorApplicationService orgaoJulgadorApplicationService) {
+            OrgaoJulgadorApplicationService orgaoJulgadorApplicationService,
+            ProcessoExclusaoService processoExclusaoService) {
         this.processoRepository = processoRepository;
         this.parteRepository = parteRepository;
         this.parteAdvogadoRepository = parteAdvogadoRepository;
@@ -124,6 +126,7 @@ public class ProcessoApplicationService {
         this.orgaoJulgadorUsoService = orgaoJulgadorUsoService;
         this.orgaoJulgadorDerivacaoService = orgaoJulgadorDerivacaoService;
         this.orgaoJulgadorApplicationService = orgaoJulgadorApplicationService;
+        this.processoExclusaoService = processoExclusaoService;
     }
 
     /**
@@ -916,6 +919,13 @@ public class ProcessoApplicationService {
         ProcessoEntity e = requireProcesso(id);
         e.setAtivo(ativo);
         processoRepository.save(e);
+    }
+
+    /** Remove o processo e todos os vínculos (andamentos, partes, financeiro, cálculos, etc.). */
+    @Transactional
+    public void excluirProcesso(Long id) {
+        requireProcesso(id);
+        processoExclusaoService.excluirPorIds(List.of(id));
     }
 
     /** Atualização pontual dos campos de audiência (ex.: triagem Júlia após leitura de certidão no Drive). */
