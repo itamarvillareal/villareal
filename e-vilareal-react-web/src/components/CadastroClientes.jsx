@@ -5,6 +5,7 @@ import {
   FolderOpen,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   ChevronsRight,
   SlidersHorizontal,
   MessageCircle,
@@ -57,6 +58,9 @@ import { filtrarProcessosGradeCliente } from '../data/buscaProcessosGradeCliente
 import { filtrarClientesIndicePorCodigo } from '../data/buscaClientesCadastro.js';
 import {
   listarClientesIndiceCadastro,
+  lerIndiceClientesCacheSincrono,
+  buscarClientesCadastroPorTermo,
+  obterContextoClienteCadastro,
   resolverClienteCadastroPorCodigo,
   salvarClienteCadastro,
 } from '../repositories/clientesRepository.js';
@@ -521,12 +525,23 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   const [pessoasModalApiLoading, setPessoasModalApiLoading] = useState(false);
   const [pessoasModalApiErro, setPessoasModalApiErro] = useState('');
   const [processos, setProcessos] = useState(ini.processos);
-  const [clientesApiIndex, setClientesApiIndex] = useState([]);
+  const [clientesApiIndex, setClientesApiIndex] = useState(() =>
+    featureFlags.useApiClientes ? lerIndiceClientesCacheSincrono() : []
+  );
   /** Ref sempre igual ao último `clientesApiIndex` — evita recriar `aplicarDadosCliente` a cada GET e re-disparar efeitos em cadeia. */
   const clientesApiIndexRef = useRef(clientesApiIndex);
   clientesApiIndexRef.current = clientesApiIndex;
-  /** Quando `useApiClientes`, fica `true` após o primeiro GET /api/clientes terminar (mesmo com lista vazia). */
-  const [clientesApiCarregados, setClientesApiCarregados] = useState(() => !featureFlags.useApiClientes);
+  /** Quando `useApiClientes`, fica `true` após o GET /api/clientes/indice (ou cache válido na sessão). */
+  const [clientesApiCarregados, setClientesApiCarregados] = useState(() => {
+    if (!featureFlags.useApiClientes) return true;
+    return lerIndiceClientesCacheSincrono().length > 0;
+  });
+  const [indiceClientesCarregando, setIndiceClientesCarregando] = useState(false);
+  const [clientesBuscaApi, setClientesBuscaApi] = useState([]);
+  const [clientesBuscaApiCarregando, setClientesBuscaApiCarregando] = useState(false);
+  /** PK `cliente.id` resolvido via `/contexto` ou `/resolucao` — não espera o índice completo. */
+  const [clientePkResolvido, setClientePkResolvido] = useState(null);
+  const [mensalistaSecaoAberta, setMensalistaSecaoAberta] = useState(false);
   const [erroApiCliente, setErroApiCliente] = useState('');
   /** GET /api/processos?codigoCliente= falhou — a grade fica só com dados locais/mock. */
   const [erroApiProcessosGrade, setErroApiProcessosGrade] = useState('');
@@ -561,6 +576,8 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   const resolucaoClientePendingRef = useRef(0);
   /** Evita aplicar GET /api/processos antigo ao trocar de cliente rápido. */
   const processosApiReqIdRef = useRef(0);
+  /** Cancela GET /api/processos anterior ao trocar de cliente ou re-disparar a grade. */
+  const processosFetchAbortRef = useRef(null);
   const codigoRef = useRef(codigo);
   codigoRef.current = codigo;
   const pesquisaProcessoInputDesktopRef = useRef(null);
@@ -577,38 +594,52 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   const processosGradeCodigoRef = useRef('');
 
   const refreshProcessosGrade = useCallback((padded, baseLista) => {
-    const enriched = alinharListaProcessosDescricaoComHistorico(
-      padded,
-      enriquecerListaProcessosComHistoricoLocal(padded, baseLista)
-    );
+    const baseLocal = Array.isArray(baseLista) ? baseLista : [];
     if (!featureFlags.useApiProcessos) {
+      const enriched = alinharListaProcessosDescricaoComHistorico(
+        padded,
+        enriquecerListaProcessosComHistoricoLocal(padded, baseLocal)
+      );
       setErroApiProcessosGrade('');
       setProcessosGradeCarregando(false);
       processosGradeCodigoRef.current = padded;
       setProcessos(enriched);
       return;
     }
+
+    processosFetchAbortRef.current?.abort();
+    const ac = new AbortController();
+    processosFetchAbortRef.current = ac;
+
     const myId = ++processosApiReqIdRef.current;
     const mesmoCliente = processosGradeCodigoRef.current === padded;
     processosGradeCodigoRef.current = padded;
     setErroApiProcessosGrade('');
     if (!mesmoCliente) {
-      setProcessos(enriched);
+      setProcessos([]);
     }
     setProcessosGradeCarregando(true);
-    void listarProcessosResumoPorCodigoCliente(padded)
+
+    const fallbackLocal = () =>
+      alinharListaProcessosDescricaoComHistorico(
+        padded,
+        enriquecerListaProcessosComHistoricoLocal(padded, baseLocal)
+      );
+
+    void listarProcessosResumoPorCodigoCliente(padded, { signal: ac.signal })
       .then((apiList) => {
         if (processosApiReqIdRef.current !== myId) return;
         setErroApiProcessosGrade('');
-        const merged = mergeCadastroClientesProcessosComApi(padded, enriched, apiList);
+        const merged = mergeCadastroClientesProcessosComApi(padded, [], apiList);
         setProcessos(alinharListaProcessosDescricaoComHistorico(padded, merged));
       })
       .catch((e) => {
         if (processosApiReqIdRef.current !== myId) return;
+        if (e?.name === 'AbortError') return;
         setErroApiProcessosGrade(
           String(e?.message || '').trim() || 'Não foi possível carregar os processos deste cliente na API.'
         );
-        setProcessos(enriched);
+        setProcessos(fallbackLocal());
       })
       .finally(() => {
         if (processosApiReqIdRef.current === myId) setProcessosGradeCarregando(false);
@@ -682,7 +713,9 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     let cancelado = false;
     void (async () => {
       if (featureFlags.useApiClientes) {
-        setClientesApiCarregados(false);
+        const tinhaCache = (clientesApiIndexRef.current || []).length > 0;
+        if (!tinhaCache) setClientesApiCarregados(false);
+        setIndiceClientesCarregando(true);
         try {
           const data = await listarClientesIndiceCadastro();
           if (!cancelado) {
@@ -691,11 +724,14 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
           }
         } catch (e) {
           if (!cancelado) {
-            setClientesApiIndex([]);
+            if (!tinhaCache) setClientesApiIndex([]);
             setErroApiCliente(e?.message || 'Erro ao carregar índice de clientes da API.');
           }
         } finally {
-          if (!cancelado) setClientesApiCarregados(true);
+          if (!cancelado) {
+            setClientesApiCarregados(true);
+            setIndiceClientesCarregando(false);
+          }
         }
       }
       if (!cancelado) setProximoClienteRefreshTick((t) => t + 1);
@@ -742,6 +778,9 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   const aplicarDadosCliente = useCallback((paddedRaw) => {
     pularSincPorCargaClienteRef.current = true;
     const padded = padCliente8(paddedRaw);
+    setClientePkResolvido(null);
+    setMensalistaSecaoAberta(false);
+    setMensalista(MENSALISTA_ESTADO_VAZIO);
     const idx = clientesApiIndexRef.current;
     const mock = gerarMockClienteEProcessos(padded, idx);
     const persisted = loadCadastroClienteDados(padded);
@@ -761,6 +800,9 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
       setObservacao(api.observacao ?? '');
       setClienteInativo(api.clienteInativo ?? false);
       setEdicaoDesabilitada(true);
+      if (api.clienteId != null && Number.isFinite(Number(api.clienteId))) {
+        setClientePkResolvido(Number(api.clienteId));
+      }
       try {
         saveCadastroClienteDados(api.codigo, { pessoa: api.pessoa ?? '' });
       } catch {
@@ -799,10 +841,10 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
       }
 
       resolucaoClientePendingRef.current += 1;
-      void resolverClienteCadastroPorCodigo(padded)
-        .then((resolved) => {
+      void obterContextoClienteCadastro(padded)
+        .then((ctx) => {
           if (resolucaoCodigoReqIdRef.current !== myId) return;
-          const api = resolved ?? fromList;
+          const api = ctx?.cliente ?? fromList;
           if (!api) return;
           aplicarCabecalhoApi(api);
           /** Grade já disparada no branch acima; 2º refresh resetava para mock+histórico e podia perder o merge da API. */
@@ -856,15 +898,17 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   }, []);
 
   useEffect(() => {
-    if (!featureFlags.useApiClientes || !formularioClienteAberto || !codigo) {
-      setMensalista(MENSALISTA_ESTADO_VAZIO);
+    if (!featureFlags.useApiClientes || !formularioClienteAberto || !codigo || !mensalistaSecaoAberta) {
       return undefined;
     }
     let cancelled = false;
     setMensalista((m) => ({ ...MENSALISTA_ESTADO_VAZIO, carregando: true }));
     void (async () => {
       try {
-        const clientePk = await resolveClientePkAtual();
+        let clientePk = clientePkResolvido;
+        if (clientePk == null || !Number.isFinite(Number(clientePk))) {
+          clientePk = await resolveClientePkAtual();
+        }
         if (cancelled) return;
         if (!clientePk) {
           setMensalista(MENSALISTA_ESTADO_VAZIO);
@@ -903,7 +947,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     return () => {
       cancelled = true;
     };
-  }, [codigo, formularioClienteAberto, clientesApiCarregados, resolveClientePkAtual]);
+  }, [codigo, formularioClienteAberto, mensalistaSecaoAberta, clientePkResolvido, resolveClientePkAtual]);
 
   const salvarMensalistaAtual = useCallback(async () => {
     if (!featureFlags.useApiClientes || edicaoDesabilitada) return;
@@ -1051,12 +1095,18 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   ]);
 
   useEffect(() => {
-    const h = () => aplicarDadosClienteRef.current(padCliente8(codigoRef.current));
-    window.addEventListener('vilareal:cadastro-clientes-externo-atualizado', h);
-    window.addEventListener('vilareal:processos-historico-atualizado', h);
+    const realinharGradeComHistoricoLocal = () => {
+      const padded = padCliente8(codigoRef.current);
+      setProcessos((prev) => alinharListaProcessosDescricaoComHistorico(padded, prev));
+    };
+    const recarregarClienteExterno = () =>
+      aplicarDadosClienteRef.current(padCliente8(codigoRef.current));
+    window.addEventListener('vilareal:cadastro-clientes-externo-atualizado', recarregarClienteExterno);
+    window.addEventListener('vilareal:processos-historico-atualizado', realinharGradeComHistoricoLocal);
     return () => {
-      window.removeEventListener('vilareal:cadastro-clientes-externo-atualizado', h);
-      window.removeEventListener('vilareal:processos-historico-atualizado', h);
+      window.removeEventListener('vilareal:cadastro-clientes-externo-atualizado', recarregarClienteExterno);
+      window.removeEventListener('vilareal:processos-historico-atualizado', realinharGradeComHistoricoLocal);
+      processosFetchAbortRef.current?.abort();
     };
   }, []);
 
@@ -1076,6 +1126,9 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
       pularSincPorCargaClienteRef.current = false;
       return;
     }
+    const nomeAtual = String(persistSnapshotRef.current?.nomeRazao ?? '').trim();
+    const docAtual = String(persistSnapshotRef.current?.cnpjCpf ?? '').replace(/\D/g, '');
+    if (nomeAtual && docAtual.length >= 11) return;
     const id = Number(String(pessoa ?? '').replace(/\D/g, ''));
     if (!Number.isFinite(id) || id < 1) return;
     let cancelado = false;
@@ -1369,15 +1422,21 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     [processos, pesquisaProcesso]
   );
 
+  /** Oculta cache/local incompleto enquanto GET /api/processos está em andamento. */
+  const processosGradeVisiveis = useMemo(
+    () => (processosGradeCarregando ? [] : processosFiltrados),
+    [processosGradeCarregando, processosFiltrados]
+  );
+
   const totalPaginasProcessos = useMemo(() => {
-    const n = processosFiltrados.length;
+    const n = processosGradeVisiveis.length;
     return Math.max(1, Math.ceil(n / PROCESSOS_POR_PAGINA));
-  }, [processosFiltrados.length]);
+  }, [processosGradeVisiveis.length]);
 
   const processosPagina = useMemo(() => {
     const inicio = (paginaProcessos - 1) * PROCESSOS_POR_PAGINA;
-    return processosFiltrados.slice(inicio, inicio + PROCESSOS_POR_PAGINA);
-  }, [processosFiltrados, paginaProcessos]);
+    return processosGradeVisiveis.slice(inicio, inicio + PROCESSOS_POR_PAGINA);
+  }, [processosGradeVisiveis, paginaProcessos]);
 
   useEffect(() => {
     setPaginaProcessos(1);
@@ -1557,6 +1616,22 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     if (raw && /^\d+$/.test(raw)) return [];
     const t = normalizarTextoBusca(buscaClienteNome);
     if (t.length < 2) return [];
+
+    if (featureFlags.useApiClientes && clientesBuscaApi.length > 0) {
+      return clientesBuscaApi.slice(0, 80).map((c) => {
+        const codP = String(c.codigo ?? '').trim();
+        const codigoNum = Number(codP.replace(/\D/g, '')) || 0;
+        return {
+          codigoPadded: codP.length === 8 ? codP : padCliente8(codP),
+          codigoNum,
+          nome:
+            String(c.nomeRazao ?? '').trim() ||
+            (c.pessoa ? `Pessoa nº ${String(c.pessoa).replace(/\D/g, '')}` : `Cliente ${codP}`),
+          cnpjCpf: String(c.cnpjCpf ?? '').replace(/\D/g, ''),
+        };
+      });
+    }
+
     const limite = 80;
     const hits = [];
     for (const row of indiceClientesPorNome) {
@@ -1564,7 +1639,47 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
       if (normalizarTextoBusca(row.nome).includes(t)) hits.push(row);
     }
     return hits;
-  }, [indiceClientesPorNome, buscaClienteNome]);
+  }, [indiceClientesPorNome, buscaClienteNome, clientesBuscaApi]);
+
+  useEffect(() => {
+    if (!featureFlags.useApiClientes) {
+      setClientesBuscaApi([]);
+      setClientesBuscaApiCarregando(false);
+      return undefined;
+    }
+    const raw = String(buscaClienteNome ?? '').trim();
+    if (!raw || /^\d+$/.test(raw)) {
+      setClientesBuscaApi([]);
+      setClientesBuscaApiCarregando(false);
+      return undefined;
+    }
+    if (normalizarTextoBusca(buscaClienteNome).length < 2) {
+      setClientesBuscaApi([]);
+      setClientesBuscaApiCarregando(false);
+      return undefined;
+    }
+    let cancelado = false;
+    setClientesBuscaApiCarregando(true);
+    const timer = window.setTimeout(() => {
+      void buscarClientesCadastroPorTermo(raw, { limite: 80 })
+        .then((rows) => {
+          if (!cancelado) {
+            setClientesBuscaApi(Array.isArray(rows) ? rows : []);
+            setClientesBuscaApiCarregando(false);
+          }
+        })
+        .catch(() => {
+          if (!cancelado) {
+            setClientesBuscaApi([]);
+            setClientesBuscaApiCarregando(false);
+          }
+        });
+    }, 300);
+    return () => {
+      cancelado = true;
+      window.clearTimeout(timer);
+    };
+  }, [buscaClienteNome]);
 
   /** Busca por código do cliente (8 dígitos ou parcial numérico, ex.: 491 → 00000491). */
   const clientesFiltradosPorCodigo = useMemo(
@@ -1728,9 +1843,18 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                       clientesApiCarregados && (
                         <p className="mb-2 text-sm text-slate-600">Nenhum cliente encontrado com esse código.</p>
                       )}
+                    {clientesBuscaApiCarregando &&
+                      !soDigitos &&
+                      normalizarTextoBusca(buscaClienteNome).length >= 2 && (
+                        <p className="mb-2 text-sm text-slate-600 flex items-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                          Buscando clientes…
+                        </p>
+                      )}
                     {!soDigitos &&
                       normalizarTextoBusca(buscaClienteNome).length >= 2 &&
-                      clientesFiltradosPorNome.length === 0 && (
+                      clientesFiltradosPorNome.length === 0 &&
+                      !clientesBuscaApiCarregando && (
                         <p className="mb-2 text-sm text-slate-600">Nenhum cliente encontrado com esse nome.</p>
                       )}
             {clientesFiltradosPorCodigo.length > 0 && (
@@ -2211,15 +2335,26 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
 
           {featureFlags.useApiClientes ? (
             <div className="rounded-xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/50 via-white to-teal-50/30 overflow-hidden shadow-sm ring-1 ring-emerald-500/10">
-              <div className="border-b border-emerald-200/70 bg-gradient-to-r from-emerald-600 via-teal-600 to-green-600 px-4 py-2.5">
+              <button
+                type="button"
+                className="w-full border-b border-emerald-200/70 bg-gradient-to-r from-emerald-600 via-teal-600 to-green-600 px-4 py-2.5 text-left"
+                onClick={() => setMensalistaSecaoAberta((aberta) => !aberta)}
+                aria-expanded={mensalistaSecaoAberta}
+              >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p className="text-sm font-bold uppercase tracking-wide text-white flex items-center gap-2">
                       <Wallet className="h-4 w-4" aria-hidden />
                       Mensalista
+                      <ChevronDown
+                        className={`h-4 w-4 transition-transform ${mensalistaSecaoAberta ? 'rotate-180' : ''}`}
+                        aria-hidden
+                      />
                     </p>
                     <p className="text-xs text-emerald-100/95 mt-0.5">
-                      Gera pagamento RECEBER (MENSALIDADE) mensal no quadro /recebiveis
+                      {mensalistaSecaoAberta
+                        ? 'Gera pagamento RECEBER (MENSALIDADE) mensal no quadro /recebiveis'
+                        : 'Clique para expandir e carregar dados de mensalista'}
                     </p>
                   </div>
                   {mensalista.salvando ? (
@@ -2229,7 +2364,8 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                     </span>
                   ) : null}
                 </div>
-              </div>
+              </button>
+              {mensalistaSecaoAberta ? (
               <div className="p-3 sm:p-4 space-y-3">
                 {mensalista.carregando ? (
                   <p className="text-sm text-slate-600 flex items-center gap-2">
@@ -2329,6 +2465,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                   </>
                 )}
               </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -2419,7 +2556,12 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
               </button>
             </div>
             <div className="mb-3 space-y-2 md:hidden">
-              {processosPagina.map((proc, idx) => {
+              {processosGradeCarregando ? (
+                <p className="rounded-xl border border-slate-200 bg-white px-3 py-6 text-center text-sm text-slate-500 shadow-sm">
+                  A carregar processos…
+                </p>
+              ) : (
+                processosPagina.map((proc, idx) => {
                 const n = proc.procNumero ?? idx + 1 + (paginaProcessos - 1) * PROCESSOS_POR_PAGINA;
                 const procLabel = String(n).padStart(2, '0');
                 const cnj = String(proc.processoNovo ?? '').trim();
@@ -2464,7 +2606,8 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                     </dl>
                   </button>
                 );
-              })}
+              })
+              )}
             </div>
             <div className="hidden overflow-x-auto rounded-xl border border-slate-200/90 bg-white shadow-inner ring-1 ring-slate-100 md:block">
               <table className="w-full text-sm border-collapse">
@@ -2479,14 +2622,15 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                   </tr>
                 </thead>
                 <tbody>
-                  {processosGradeCarregando && processosPagina.length === 0 ? (
+                  {processosGradeCarregando ? (
                     <tr>
                       <td colSpan={6} className="border border-slate-200 px-3 py-6 text-center text-slate-500">
                         A carregar processos…
                       </td>
                     </tr>
                   ) : null}
-                  {processosPagina.map((proc, idx) => {
+                  {!processosGradeCarregando
+                    ? processosPagina.map((proc, idx) => {
                     const parteClienteTxt = textoParteClienteGrade(proc);
                     const procLabelNum =
                       proc.procNumero ?? idx + 1 + (paginaProcessos - 1) * PROCESSOS_POR_PAGINA;
@@ -2561,7 +2705,8 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                       </td>
                     </tr>
                     );
-                  })}
+                  })
+                    : null}
                 </tbody>
               </table>
             </div>
@@ -2569,8 +2714,10 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
               <p className="text-sm text-slate-600">
                 Página <span className="font-semibold text-slate-800">{paginaProcessos}</span> de{' '}
                 <span className="font-semibold text-slate-800">{totalPaginasProcessos}</span>
-                {processosFiltrados.length > 0 ? (
-                  <span className="text-slate-500"> — {processosFiltrados.length} processo(s)</span>
+                {processosGradeCarregando ? (
+                  <span className="text-slate-500"> — carregando…</span>
+                ) : processosGradeVisiveis.length > 0 ? (
+                  <span className="text-slate-500"> — {processosGradeVisiveis.length} processo(s)</span>
                 ) : (
                   <span className="text-slate-500"> — nenhum processo</span>
                 )}

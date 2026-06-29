@@ -1,10 +1,12 @@
 package br.com.vilareal.pessoa.infrastructure.persistence.repository;
 
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -29,6 +31,19 @@ public interface ClienteRepository extends JpaRepository<ClienteEntity, Long> {
 
     @Query("SELECT c FROM ClienteEntity c JOIN FETCH c.pessoa ORDER BY c.codigoCliente ASC")
     List<ClienteEntity> findAllFetchPessoaOrderByCodigo();
+
+    @Query("SELECT COUNT(c), MAX(c.updatedAt) FROM ClienteEntity c")
+    Object[] countAndMaxUpdatedAt();
+
+    @Query(
+            """
+            SELECT c FROM ClienteEntity c JOIN FETCH c.pessoa p
+            WHERE (:digitsOnly = true AND c.codigoCliente LIKE CONCAT('%', :termo, '%'))
+               OR (:digitsOnly = false AND LOWER(p.nome) LIKE LOWER(CONCAT('%', :termo, '%')))
+            ORDER BY c.codigoCliente ASC
+            """)
+    List<ClienteEntity> buscarIndicePorTermo(
+            @Param("termo") String termo, @Param("digitsOnly") boolean digitsOnly, Pageable pageable);
 
     List<ClienteEntity> findByPessoa_IdOrderByCodigoClienteAsc(Long pessoaId);
 }

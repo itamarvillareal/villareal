@@ -16,6 +16,7 @@ import br.com.vilareal.orgaojulgador.infrastructure.persistence.entity.OrgaoJulg
 import br.com.vilareal.importacao.PlanilhaPasta1MapeamentoUtil;
 import br.com.vilareal.importacao.infrastructure.persistence.entity.PlanilhaPasta1ClienteEntity;
 import br.com.vilareal.importacao.infrastructure.persistence.repository.PlanilhaPasta1ClienteRepository;
+import br.com.vilareal.pessoa.api.dto.ClienteContextoResponse;
 import br.com.vilareal.pessoa.api.dto.ClienteCreateRequest;
 import br.com.vilareal.pessoa.api.dto.ClienteCreateResult;
 import br.com.vilareal.pessoa.api.dto.ClienteListItemResponse;
@@ -34,6 +35,7 @@ import br.com.vilareal.usuario.application.UsuarioDestinatarioGuard;
 import br.com.vilareal.usuario.infrastructure.persistence.entity.UsuarioEntity;
 import br.com.vilareal.usuario.infrastructure.persistence.repository.UsuarioRepository;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -202,6 +204,64 @@ public class ProcessoApplicationService {
                 .collect(Collectors.toList());
     }
 
+    /** ETag leve para cache condicional do índice ({@code If-None-Match}). */
+    @Transactional(readOnly = true)
+    public String calcularEtagIndiceClientes() {
+        Object[] row = clienteRepository.countAndMaxUpdatedAt();
+        long count = row != null && row[0] instanceof Number n ? n.longValue() : 0L;
+        long maxMs = 0L;
+        if (row != null && row.length > 1 && row[1] instanceof Instant instant) {
+            maxMs = instant.toEpochMilli();
+        }
+        return "\"" + count + "-" + maxMs + "\"";
+    }
+
+    /**
+     * Busca server-side para autocomplete na tela Clientes (nome ou código parcial).
+     */
+    @Transactional(readOnly = true)
+    public List<ClienteListItemResponse> buscarClientesIndicePorTermo(String termo, int limite) {
+        if (!StringUtils.hasText(termo)) {
+            return List.of();
+        }
+        String trimmed = termo.trim();
+        int cap = limite < 1 ? 80 : Math.min(limite, 200);
+        boolean digitsOnly = trimmed.chars().allMatch(Character::isDigit);
+        String q = digitsOnly ? trimmed.replaceAll("\\D", "") : trimmed;
+        if (!StringUtils.hasText(q)) {
+            return List.of();
+        }
+        if (digitsOnly && q.length() > 8) {
+            q = q.substring(q.length() - 8);
+        }
+        return clienteRepository
+                .buscarIndicePorTermo(q, digitsOnly, PageRequest.of(0, cap))
+                .stream()
+                .map(this::clienteEntityParaResumo)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Cabeçalho + contagem de processos num único round-trip (abertura rápida do formulário).
+     */
+    @Transactional(readOnly = true)
+    public Optional<ClienteContextoResponse> resolverContextoCliente(String codigoCliente) {
+        return resolverClientePorCodigo(codigoCliente)
+                .map(
+                        cliente -> {
+                            long total = 0L;
+                            if (cliente.getClienteId() != null) {
+                                total = processoRepository.countByCliente_Id(cliente.getClienteId());
+                                if (total == 0L && cliente.getPessoaId() != null) {
+                                    total = processoRepository.countByPessoa_Id(cliente.getPessoaId());
+                                }
+                            } else if (cliente.getPessoaId() != null) {
+                                total = processoRepository.countByPessoa_Id(cliente.getPessoaId());
+                            }
+                            return new ClienteContextoResponse(cliente, total);
+                        });
+    }
+
     private static String somenteDigitosDocumento(String cpf) {
         if (cpf == null) {
             return null;
@@ -363,31 +423,41 @@ public class ProcessoApplicationService {
 
     @Transactional(readOnly = true)
     public Page<ProcessoResponse> listarPorCodigoCliente(String codigoCliente, Pageable pageable) {
-        return listarPorCodigoCliente(codigoCliente, pageable, false);
+        return listarPorCodigoClienteFull(codigoCliente, pageable);
     }
 
     /**
-     * @param resumo parâmetro legado da API ({@code ?resumo=true}); textos de partes vêm sempre de
-     *               {@code processo_parte} (grade Clientes, combos, relatórios).
+     * @param resumo quando {@code true}, devolve {@link ProcessoGradeResponse} (payload enxuto para grade Clientes).
      */
     @Transactional(readOnly = true)
-    public Page<ProcessoResponse> listarPorCodigoCliente(String codigoCliente, Pageable pageable, boolean resumo) {
-        Page<ProcessoEntity> page;
+    public Page<?> listarPorCodigoCliente(String codigoCliente, Pageable pageable, boolean resumo) {
+        Page<ProcessoEntity> page = buscarPaginaProcessosPorCodigoCliente(codigoCliente, pageable);
+        if (resumo) {
+            return mapPageGradeListagem(page);
+        }
+        return mapPageComTextosPartesListagem(page);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ProcessoResponse> listarPorCodigoClienteFull(String codigoCliente, Pageable pageable) {
+        return mapPageComTextosPartesListagem(buscarPaginaProcessosPorCodigoCliente(codigoCliente, pageable));
+    }
+
+    private Page<ProcessoEntity> buscarPaginaProcessosPorCodigoCliente(String codigoCliente, Pageable pageable) {
         Optional<ClienteEntity> clienteOpt = clienteResolverService.encontrarClientePorCodigo(codigoCliente);
         if (clienteOpt.isPresent()) {
             ClienteEntity cliente = clienteOpt.get();
-            page = processoRepository.findByCliente_Id(cliente.getId(), pageable);
+            Page<ProcessoEntity> page = processoRepository.findByCliente_Id(cliente.getId(), pageable);
             if (page.isEmpty()) {
                 page = processoRepository.findByPessoa_Id(cliente.getPessoa().getId(), pageable);
             }
-        } else {
-            Optional<Long> resolved = clienteCodigoPessoaResolver.resolverPessoaIdComFallbackCliente(codigoCliente);
-            if (resolved.isEmpty() || !pessoaRepository.existsById(resolved.get())) {
-                return Page.empty(pageable);
-            }
-            page = processoRepository.findByPessoa_Id(resolved.get(), pageable);
+            return page;
         }
-        return mapPageComTextosPartesListagem(page);
+        Optional<Long> resolved = clienteCodigoPessoaResolver.resolverPessoaIdComFallbackCliente(codigoCliente);
+        if (resolved.isEmpty() || !pessoaRepository.existsById(resolved.get())) {
+            return Page.empty(pageable);
+        }
+        return processoRepository.findByPessoa_Id(resolved.get(), pageable);
     }
 
     private Page<ProcessoResponse> mapPageComTextosPartesListagem(Page<ProcessoEntity> page) {
@@ -405,6 +475,46 @@ public class ProcessoApplicationService {
                     List<ProcessoParteEntity> partes = partesPorProcesso.getOrDefault(e.getId(), List.of());
                     return toResponseComTextosPartes(e, partes);
                 });
+    }
+
+    private Page<ProcessoGradeResponse> mapPageGradeListagem(Page<ProcessoEntity> page) {
+        List<Long> procIds = page.getContent().stream().map(ProcessoEntity::getId).collect(Collectors.toList());
+        Map<Long, List<ProcessoParteEntity>> partesPorProcesso = new LinkedHashMap<>();
+        if (!procIds.isEmpty()) {
+            for (ProcessoParteEntity parte :
+                    parteRepository.findAllByProcessoIdInWithPessoaEProcesso(procIds)) {
+                Long pid = parte.getProcesso().getId();
+                partesPorProcesso.computeIfAbsent(pid, k -> new ArrayList<>()).add(parte);
+            }
+        }
+        return page.map(
+                e -> {
+                    List<ProcessoParteEntity> partes = partesPorProcesso.getOrDefault(e.getId(), List.of());
+                    return toGradeResponse(e, partes);
+                });
+    }
+
+    private ProcessoGradeResponse toGradeResponse(ProcessoEntity e, List<ProcessoParteEntity> partes) {
+        ProcessoGradeResponse r = new ProcessoGradeResponse();
+        r.setId(e.getId());
+        if (e.getCliente() != null) {
+            r.setClienteId(e.getCliente().getId());
+            r.setCodigoCliente(codigoClienteNormalizadoParaMapa(e.getCliente().getCodigoCliente()));
+        } else {
+            r.setClienteId(null);
+            r.setCodigoCliente(resolverCodigoClienteExibicaoParaPessoa(e.getPessoa().getId()));
+        }
+        r.setNumeroInterno(e.getNumeroInterno());
+        r.setNumeroCnj(Utf8MojibakeUtil.corrigir(e.getNumeroCnj()));
+        r.setNumeroProcessoAntigo(Utf8MojibakeUtil.corrigir(e.getNumeroProcessoAntigo()));
+        r.setNaturezaAcao(Utf8MojibakeUtil.corrigir(e.getNaturezaAcao()));
+        r.setDescricaoAcao(Utf8MojibakeUtil.corrigir(e.getDescricaoAcao()));
+        r.setParteCliente(montarTextoParteClienteListagem(e, partes));
+        r.setParteOposta(montarTextoParteOpostaListagem(e, partes));
+        r.setTitularNome(nomeTitularProcesso(e));
+        r.setUnidade(Utf8MojibakeUtil.corrigir(trimToNull(e.getUnidade())));
+        r.setAtivo(e.getAtivo());
+        return r;
     }
 
     private ProcessoResponse toResponseComTextosPartes(ProcessoEntity e) {

@@ -391,7 +391,7 @@ export function devePararPaginacaoProcessosCliente(body, chunkLength, pageIndex,
   return chunkLength < pageSize;
 }
 
-async function listarProcessosPorCodigoClientePaginado(codigoCliente, { resumo = false } = {}) {
+async function listarProcessosPorCodigoClientePaginado(codigoCliente, { resumo = false, signal } = {}) {
   if (!featureFlags.useApiProcessos) return [];
   const cod = padCliente8(codigoCliente);
   const out = [];
@@ -406,6 +406,7 @@ async function listarProcessosPorCodigoClientePaginado(codigoCliente, { resumo =
           sort: ['numeroInterno,asc', 'id,asc'],
           ...(resumo ? { resumo: 'true' } : {}),
         },
+        signal,
       });
     } catch (e) {
       throw e;
@@ -428,25 +429,28 @@ async function listarProcessosPorCodigoClientePaginado(codigoCliente, { resumo =
 }
 
 /** Listagem completa (inclui `parteOposta` montada a partir de partes na API). */
-export async function listarProcessosPorCodigoCliente(codigoCliente) {
-  return listarProcessosPorCodigoClientePaginado(codigoCliente, { resumo: false });
+export async function listarProcessosPorCodigoCliente(codigoCliente, options = {}) {
+  return listarProcessosPorCodigoClientePaginado(codigoCliente, { resumo: false, ...options });
 }
 
 /**
  * Grade Clientes / combos (`?resumo=true`): listagem leve; textos parte cliente/oposta vêm de `processo_parte` na API.
  * Se a API antiga falhar com `resumo`, repete sem o parâmetro.
+ * @param {object} [options]
+ * @param {AbortSignal} [options.signal]
  */
-export async function listarProcessosResumoPorCodigoCliente(codigoCliente) {
+export async function listarProcessosResumoPorCodigoCliente(codigoCliente, options = {}) {
   try {
-    return await listarProcessosPorCodigoClientePaginado(codigoCliente, { resumo: true });
+    return await listarProcessosPorCodigoClientePaginado(codigoCliente, { resumo: true, ...options });
   } catch (e) {
+    if (e?.name === 'AbortError') throw e;
     const msg = String(e?.message ?? '');
     const retry =
       msg.includes('404') ||
       msg.includes('500') ||
       /resumo|No static resource|NoResourceFound|ECONNREFUSED|502|503|Bad Gateway/i.test(msg);
     if (!retry) throw e;
-    return listarProcessosPorCodigoClientePaginado(codigoCliente, { resumo: false });
+    return listarProcessosPorCodigoClientePaginado(codigoCliente, { resumo: false, ...options });
   }
 }
 

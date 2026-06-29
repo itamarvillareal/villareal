@@ -1,5 +1,6 @@
 package br.com.vilareal.pessoa.api;
 
+import br.com.vilareal.pessoa.api.dto.ClienteContextoResponse;
 import br.com.vilareal.pessoa.api.dto.ClienteCreateRequest;
 import br.com.vilareal.pessoa.api.dto.ClienteCreateResult;
 import br.com.vilareal.pessoa.api.dto.ClienteListItemResponse;
@@ -12,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -43,9 +45,35 @@ public class ClientesController {
     @Operation(
             summary = "Índice leve de clientes (código + nome)",
             description =
-                    "Apenas registos em `cliente` (sem merge planilha Pasta1). Use `/resolucao` para códigos só na planilha.")
-    public List<ClienteListItemResponse> listarIndice() {
-        return processoApplicationService.listarClientesIndice();
+                    "Apenas registos em `cliente` (sem merge planilha Pasta1). Suporta ETag/`If-None-Match`. "
+                            + "Use `/resolucao` ou `/contexto` para códigos só na planilha.")
+    public ResponseEntity<List<ClienteListItemResponse>> listarIndice(
+            @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
+        String etag = processoApplicationService.calcularEtagIndiceClientes();
+        if (etag != null && etag.equals(ifNoneMatch)) {
+            return ResponseEntity.status(HttpStatus.NOT_MODIFIED).eTag(etag).build();
+        }
+        return ResponseEntity.ok().eTag(etag).body(processoApplicationService.listarClientesIndice());
+    }
+
+    @GetMapping("/busca")
+    @Operation(
+            summary = "Buscar clientes por nome ou código (server-side)",
+            description = "Autocomplete na tela Clientes — até `limit` resultados (padrão 80, máx. 200).")
+    public List<ClienteListItemResponse> buscar(
+            @RequestParam("q") String q, @RequestParam(value = "limit", defaultValue = "80") int limit) {
+        return processoApplicationService.buscarClientesIndicePorTermo(q, limit);
+    }
+
+    @GetMapping("/contexto")
+    @Operation(
+            summary = "Contexto do cliente para abertura rápida do formulário",
+            description = "Cabeçalho (`ClienteListItemResponse`) + contagem de processos num único GET.")
+    public ResponseEntity<ClienteContextoResponse> contexto(@RequestParam("codigoCliente") String codigoCliente) {
+        return processoApplicationService
+                .resolverContextoCliente(codigoCliente)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping

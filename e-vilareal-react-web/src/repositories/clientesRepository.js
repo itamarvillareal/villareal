@@ -1,4 +1,7 @@
 import { request } from '../api/httpClient.js';
+import { API_BASE_URL } from '../api/config.js';
+import { buildDefaultApiHeaders } from '../api/apiAuthHeaders.js';
+import { parseApiJsonResponse } from '../api/parseApiResponse.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { corrigirNomePessoaExibicao } from '../utils/utf8MojibakeUtil.js';
 import {
@@ -6,6 +9,10 @@ import {
   saveCadastroClienteDados,
   padCliente8Cadastro,
 } from '../data/cadastroClientesStorage.js';
+import {
+  readIndiceClientesCache,
+  writeIndiceClientesCache,
+} from '../data/clientesIndiceCache.js';
 
 function mapApiToFront(c) {
   let pessoaIdStr =
@@ -73,16 +80,82 @@ function indiceClientesApiIndisponivel(err) {
   );
 }
 
-/** Índice leve (sem planilha Pasta1) — busca por nome e navegação na tela Clientes. */
+async function fetchIndiceClientesComEtag(etagAnterior) {
+  const headers = {
+    ...buildDefaultApiHeaders(),
+    ...(etagAnterior ? { 'If-None-Match': etagAnterior } : {}),
+  };
+  const response = await fetch(`${API_BASE_URL}/api/clientes/indice`, { method: 'GET', headers });
+  if (response.status === 304) {
+    const cached = readIndiceClientesCache();
+    if (cached?.data?.length) return { data: cached.data, etag: etagAnterior || cached.etag };
+    return { data: [], etag: etagAnterior };
+  }
+  const body = await parseApiJsonResponse(response);
+  const etag = response.headers.get('ETag') || response.headers.get('Etag') || null;
+  const mapped = Array.isArray(body) ? body.map(mapApiToFront) : [];
+  writeIndiceClientesCache(mapped, etag);
+  return { data: mapped, etag };
+}
+
+/** Lê índice em cache (sessionStorage, TTL 15 min) — síncrono para hidratação imediata. */
+export function lerIndiceClientesCacheSincrono() {
+  if (!featureFlags.useApiClientes) return [];
+  const cached = readIndiceClientesCache();
+  return cached?.data?.length ? cached.data : [];
+}
+
+/**
+ * Índice leve (sem planilha Pasta1) — busca por nome e navegação na tela Clientes.
+ * Usa cache sessionStorage + ETag/`If-None-Match` quando disponível.
+ */
 export async function listarClientesIndiceCadastro() {
   if (!featureFlags.useApiClientes) return [];
+  const cached = readIndiceClientesCache();
   try {
-    const data = await request('/api/clientes/indice');
-    return Array.isArray(data) ? data.map(mapApiToFront) : [];
+    const { data } = await fetchIndiceClientesComEtag(cached?.etag ?? null);
+    return data;
   } catch (e) {
+    if (cached?.data?.length) return cached.data;
     if (!indiceClientesApiIndisponivel(e)) throw e;
     const legado = await request('/api/clientes');
-    return Array.isArray(legado) ? legado.map(mapApiToFront) : [];
+    const mapped = Array.isArray(legado) ? legado.map(mapApiToFront) : [];
+    writeIndiceClientesCache(mapped, null);
+    return mapped;
+  }
+}
+
+/** Busca server-side por nome ou código (autocomplete). */
+export async function buscarClientesCadastroPorTermo(termo, { limite = 80 } = {}) {
+  if (!featureFlags.useApiClientes) return [];
+  const q = String(termo ?? '').trim();
+  if (!q) return [];
+  try {
+    const data = await request('/api/clientes/busca', { query: { q, limit: limite } });
+    return Array.isArray(data) ? data.map(mapApiToFront) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Cabeçalho + contagem de processos num único GET (abertura rápida do formulário).
+ * @returns {Promise<{ cliente: object, totalProcessos: number } | null>}
+ */
+export async function obterContextoClienteCadastro(codigo) {
+  if (!featureFlags.useApiClientes) return null;
+  const cod = padCliente8Cadastro(codigo);
+  try {
+    const data = await request('/api/clientes/contexto', { query: { codigoCliente: cod } });
+    if (!data?.cliente) return null;
+    return {
+      cliente: mapApiToFront(data.cliente),
+      totalProcessos: Number(data.totalProcessos) || 0,
+    };
+  } catch {
+    const cliente = await resolverClienteCadastroPorCodigo(cod);
+    if (!cliente) return null;
+    return { cliente, totalProcessos: 0 };
   }
 }
 
