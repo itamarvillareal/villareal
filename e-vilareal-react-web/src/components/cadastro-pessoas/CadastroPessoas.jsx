@@ -244,6 +244,22 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
   });
   /** Aviso flutuante (CPF/CNPJ inválido ao sair do campo). */
   const [toastDocumento, setToastDocumento] = useState(null);
+  /** Erro inline no campo CPF/CNPJ (dígitos verificadores). */
+  const [erroDocumento, setErroDocumento] = useState(null);
+
+  useEffect(() => {
+    if (form.edicaoDesabilitada || !String(form.cpf ?? '').trim()) {
+      setErroDocumento(null);
+      return;
+    }
+    const digitos = normalizarDigitosCpfCnpj(form.cpf);
+    if (digitos.length === 11 || digitos.length === 14) {
+      const r = validarFormatarCpfCnpjAoSair(form.cpf);
+      setErroDocumento(r.ok ? null : r.aviso);
+      return;
+    }
+    setErroDocumento(null);
+  }, [form.cpf, form.edicaoDesabilitada]);
 
   useEffect(() => {
     modoRef.current = modo;
@@ -778,6 +794,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
         setCarregandoFicha(true);
         const c = await buscarCliente(id);
         if (cancelled) return;
+        if (modoRef.current === 'editar' && Number(editIdRef.current) === id) return;
         if (!c) {
           setError(`Pessoa nº ${id} não encontrada.`);
           return;
@@ -957,6 +974,15 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
   };
 
   function aplicarEdicaoPessoa(item) {
+    const idNum = Number(item?.id);
+    if (
+      Number.isFinite(idNum) &&
+      idNum >= 1 &&
+      modoRef.current === 'editar' &&
+      Number(editIdRef.current) === idNum
+    ) {
+      return;
+    }
     setEditId(item.id);
     complementaresAplicadosParaIdRef.current = null;
     autosaveAtivoRef.current = false;
@@ -1070,13 +1096,13 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
     const m = /^\/clientes\/editar\/(\d+)$/.exec(pathPessoasNorm);
     if (!m) return undefined;
     const id = Number(m[1]);
-    if (!Number.isFinite(id) || id < 1) return;
-    if (modo === 'editar' && Number(editId) === id) return;
+    if (!Number.isFinite(id) || id < 1) return undefined;
+    if (modo === 'editar' && Number(editId) === id) return undefined;
 
     const itemLista = lista.find((p) => Number(p.id) === id);
     if (itemLista) {
       aplicarEdicaoPessoa(itemLista);
-      return;
+      return undefined;
     }
 
     let cancelled = false;
@@ -1085,6 +1111,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
         setCarregandoFicha(true);
         const c = await buscarCliente(id);
         if (cancelled) return;
+        if (modoRef.current === 'editar' && Number(editIdRef.current) === id) return;
         if (!c) {
           setError(`Pessoa nº ${id} não encontrada.`);
           navigate('/clientes/lista', { replace: true });
@@ -1114,8 +1141,8 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fluxo da rota de edição
-  }, [lista, pathPessoasNorm, modo, editId, navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- carrega ficha ao mudar rota/id; lista não deve recarregar após autosave
+  }, [pathPessoasNorm, modo, editId, navigate]);
 
   useEffect(() => {
     if (modo !== 'criar' && modo !== 'editar') return;
@@ -1236,7 +1263,13 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
       if (!formAtual.nome?.trim() || !formAtual.cpf?.trim()) return false;
 
       const docFmt = validarFormatarCpfCnpjAoSair(formAtual.cpf);
-      if (!docFmt.ok) return false;
+      if (!docFmt.ok) {
+        setErroDocumento(docFmt.aviso);
+        setToastDocumento({ mensagem: docFmt.aviso });
+        setError(docFmt.aviso);
+        return false;
+      }
+      setErroDocumento(null);
 
       if (docFmt.valor !== formAtual.cpf) {
         setForm((f) => ({ ...f, cpf: docFmt.valor }));
@@ -2135,6 +2168,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                           value={form.cpf}
                           onChange={(e) => {
                             setCamposPreenchidosPorTexto((c) => ({ ...c, cpf: false }));
+                            setErroDocumento(null);
                             setForm((f) => ({ ...f, cpf: mascararCpfCnpjInput(e.target.value) }));
                           }}
                           onBlur={() => {
@@ -2142,6 +2176,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                             setForm((f) => {
                               if (f.edicaoDesabilitada) return f;
                               const r = validarFormatarCpfCnpjAoSair(f.cpf);
+                              setErroDocumento(r.ok ? null : r.aviso);
                               if (r.aviso) {
                                 queueMicrotask(() => setToastDocumento({ mensagem: r.aviso }));
                               }
@@ -2151,7 +2186,9 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                           }}
                           disabled={form.edicaoDesabilitada}
                           placeholder="000.000.000-00 ou 00.000.000/0000-00"
-                          className={`flex-1 ${inputClassComAutofill('cpf')}`}
+                          className={`flex-1 ${inputClassComAutofill('cpf')}${
+                            erroDocumento ? ' border-rose-500 ring-2 ring-rose-200 bg-rose-50/40' : ''
+                          }`}
                         />
                         <button
                           type="button"
@@ -2163,6 +2200,11 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                           Doc. pessoal
                         </button>
                       </div>
+                      {erroDocumento ? (
+                        <p className="text-xs text-rose-700 mt-1" role="alert">
+                          {erroDocumento}
+                        </p>
+                      ) : null}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">RG</label>

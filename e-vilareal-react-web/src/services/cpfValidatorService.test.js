@@ -49,4 +49,11 @@ describe('validarFormatarCpfCnpjAoSair', () => {
     expect(r.ok).toBe(false);
     expect(r.aviso).toMatch(/CPF inválido/i);
   });
+
+  it('sugere CPF correto quando dígitos verificadores estão errados', () => {
+    const r = validarFormatarCpfCnpjAoSair('90337862468');
+    expect(r.ok).toBe(false);
+    expect(r.aviso).toContain('903.378.624-94');
+    expect(r.sugestao).toBe('903.378.624-94');
+  });
 });

@@ -31,6 +31,12 @@ class CpfUtilTest {
     }
 
     @Test
+    void validarCpfRejeitaDigitosVerificadoresIncorretos() {
+        assertFalse(CpfUtil.validarCpf("90337862468"));
+        assertTrue(CpfUtil.validarCpf("90337862494"));
+    }
+
+    @Test
     void normalizarRetornaOnzeDigitos() {
         assertEquals("76467791134", CpfUtil.normalizar("764.677.911-34"));
         assertNull(CpfUtil.normalizar("1234567890"));
