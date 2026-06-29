@@ -2,11 +2,9 @@
  * Validação oficial de CPF (11 dígitos + DV).
  * Reexporta lógica única usada em todo o app.
  */
-export function validateCPF(cpf) {
-  if (!cpf) return { valido: false, normalizado: null };
-  const digitos = String(cpf).replace(/\D/g, '');
-  if (digitos.length !== 11) return { valido: false, normalizado: null };
-  if (/^(\d)\1+$/.test(digitos)) return { valido: false, normalizado: null };
+export function calcularCpfDigitosVerificadores(base9) {
+  const digitos = String(base9 ?? '').replace(/\D/g, '').slice(0, 9);
+  if (digitos.length !== 9) return null;
   const calcDv = (base) => {
     let soma = 0;
     for (let i = 0; i < base.length; i += 1) {
@@ -15,13 +13,24 @@ export function validateCPF(cpf) {
     const resto = soma % 11;
     return resto < 2 ? 0 : 11 - resto;
   };
-  const dv1 = calcDv(digitos.slice(0, 9));
-  const dv2 = calcDv(digitos.slice(0, 9) + String(dv1));
-  if (digitos.slice(9) !== String(dv1) + String(dv2)) {
-    return { valido: false, normalizado: null };
+  const dv1 = calcDv(digitos);
+  const dv2 = calcDv(digitos + String(dv1));
+  return `${dv1}${dv2}`;
+}
+
+export function validateCPF(cpf) {
+  if (!cpf) return { valido: false, normalizado: null, sugestao: null };
+  const digitos = String(cpf).replace(/\D/g, '');
+  if (digitos.length !== 11) return { valido: false, normalizado: null, sugestao: null };
+  if (/^(\d)\1+$/.test(digitos)) return { valido: false, normalizado: null, sugestao: null };
+  const dvEsperado = calcularCpfDigitosVerificadores(digitos.slice(0, 9));
+  if (digitos.slice(9) !== dvEsperado) {
+    const sugerido = digitos.slice(0, 9) + dvEsperado;
+    const sugestao = sugerido.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    return { valido: false, normalizado: null, sugestao };
   }
   const normalizado = digitos.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-  return { valido: true, normalizado };
+  return { valido: true, normalizado, sugestao: null };
 }
 
 /**
@@ -111,7 +120,10 @@ export function validarFormatarCpfCnpjAoSair(valorBruto) {
       return {
         ok: false,
         valor: bruto,
-        aviso: 'CPF inválido (dígitos verificadores incorretos).',
+        aviso: r.sugestao
+          ? `CPF inválido. O correto seria ${r.sugestao}.`
+          : 'CPF inválido (dígitos verificadores incorretos).',
+        sugestao: r.sugestao,
       };
     }
     return { ok: true, valor: r.normalizado, aviso: null };

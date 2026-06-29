@@ -17,6 +17,49 @@ function cepSugestaoParaExibicao(sugestao) {
   return formatarCepExibicao(sugestao.cep);
 }
 
+/** Separa logradouro combinado (rua + nº + complemento) para edição. */
+function parseRuaParaCampos(ruaCompleta) {
+  const texto = String(ruaCompleta || '').trim();
+  if (!texto) return { rua: '', numeroLogradouro: '', complemento: '' };
+
+  const matchNumero = texto.match(/^(.+?),\s*n[º°o]?\s*(.+)$/i);
+  if (matchNumero) {
+    const resto = matchNumero[2].trim();
+    const commaIdx = resto.indexOf(', ');
+    if (commaIdx >= 0) {
+      return {
+        rua: matchNumero[1].trim(),
+        numeroLogradouro: resto.slice(0, commaIdx).trim(),
+        complemento: resto.slice(commaIdx + 2).trim(),
+      };
+    }
+    return { rua: matchNumero[1].trim(), numeroLogradouro: resto, complemento: '' };
+  }
+
+  return { rua: texto, numeroLogradouro: '', complemento: '' };
+}
+
+function montarEnderecoItem({ numeroLista, rua, numeroLogradouro, complemento, bairro, municipioSel, cep }) {
+  let ruaFinal = rua.trim();
+  if (numeroLogradouro.trim() && !/\bn[º°o]\b/i.test(ruaFinal)) {
+    ruaFinal = `${ruaFinal}, nº ${numeroLogradouro.trim()}`;
+  }
+  if (complemento.trim()) {
+    ruaFinal = `${ruaFinal}, ${complemento.trim()}`;
+  }
+  return {
+    numero: numeroLista,
+    rua: ruaFinal,
+    bairro: bairro.trim(),
+    municipioId: municipioSel.municipioId,
+    municipio: municipioSel.municipio,
+    estado: municipioSel.municipio?.uf || municipioSel.uf || '',
+    cidade: municipioSel.municipio?.nome || municipioSel.nome || '',
+    cep: cep.replace(/\D/g, ''),
+    autoPreenchido: false,
+  };
+}
+
 export function ModalEnderecos({
   open,
   onClose,
@@ -36,13 +79,26 @@ export function ModalEnderecos({
   const [municipioSel, setMunicipioSel] = useState(null);
   const [cep, setCep] = useState('');
   const [buscandoCep, setBuscandoCep] = useState(false);
+  const [editandoIndex, setEditandoIndex] = useState(-1);
   const sessaoAbertaRef = useRef(false);
 
   useCloseOnEscape(open, onClose);
 
+  const limparFormulario = (proximoNumeroLista = 1) => {
+    setRua('');
+    setNumeroLogradouro('');
+    setComplemento('');
+    setBairro('');
+    setMunicipioSel(null);
+    setCep('');
+    setNumeroLista(proximoNumeroLista);
+    setEditandoIndex(-1);
+  };
+
   useEffect(() => {
     if (!open) {
       sessaoAbertaRef.current = false;
+      setEditandoIndex(-1);
       return;
     }
     if (sessaoAbertaRef.current) return;
@@ -123,43 +179,68 @@ export function ModalEnderecos({
     setBuscandoCep(false);
   };
 
-  const montarRuaCompleta = () => {
-    let ruaFinal = rua.trim();
-    if (numeroLogradouro.trim() && !/\bn[º°o]\b/i.test(ruaFinal)) {
-      ruaFinal = `${ruaFinal}, nº ${numeroLogradouro.trim()}`;
-    }
-    if (complemento.trim()) {
-      ruaFinal = `${ruaFinal}, ${complemento.trim()}`;
-    }
-    return ruaFinal;
-  };
-
-  const incluir = () => {
+  const salvarEndereco = () => {
     if (!rua.trim()) return;
     if (!municipioSel?.municipioId) return;
-    const novo = {
-      numero: numeroLista,
-      rua: montarRuaCompleta(),
-      bairro: bairro.trim(),
-      municipioId: municipioSel.municipioId,
-      municipio: municipioSel.municipio,
-      estado: municipioSel.municipio?.uf || municipioSel.uf || '',
-      cidade: municipioSel.municipio?.nome || municipioSel.nome || '',
-      cep: cep.replace(/\D/g, ''),
-      autoPreenchido: false,
-    };
-    onChange([...lista, novo]);
-    setRua('');
-    setNumeroLogradouro('');
-    setComplemento('');
-    setBairro('');
-    setMunicipioSel(null);
-    setCep('');
-    setNumeroLista(lista.length + 2);
+    const item = montarEnderecoItem({
+      numeroLista,
+      rua,
+      numeroLogradouro,
+      complemento,
+      bairro,
+      municipioSel,
+      cep,
+    });
+
+    if (editandoIndex >= 0) {
+      const atualizados = lista.map((e, i) =>
+        i === editandoIndex ? { ...e, ...item, autoPreenchido: false } : e,
+      );
+      onChange(atualizados);
+      limparFormulario(atualizados.length + 1);
+      return;
+    }
+
+    onChange([...lista, item]);
+    limparFormulario(lista.length + 2);
+  };
+
+  const iniciarEdicao = (index) => {
+    const e = lista[index];
+    if (!e) return;
+    const parsed = parseRuaParaCampos(e.rua);
+    setEditandoIndex(index);
+    setNumeroLista(Number(e.numero) >= 1 ? Number(e.numero) : index + 1);
+    setRua(parsed.rua);
+    setNumeroLogradouro(parsed.numeroLogradouro);
+    setComplemento(parsed.complemento);
+    setBairro(String(e.bairro || '').trim());
+    setCep(formatarCepExibicao(e.cep));
+    if (e.municipioId) {
+      setMunicipioSel({
+        municipioId: e.municipioId,
+        municipio: e.municipio || { id: e.municipioId, nome: e.cidade, uf: e.estado },
+      });
+    } else if (e.cidade || e.estado) {
+      setMunicipioSel({
+        municipioId: null,
+        municipio: { id: null, nome: e.cidade || '', uf: e.estado || 'GO' },
+        uf: e.estado || 'GO',
+        nome: e.cidade || '',
+      });
+    } else {
+      setMunicipioSel(null);
+    }
   };
 
   const remover = (index) => {
-    onChange(lista.filter((_, i) => i !== index));
+    const restantes = lista.filter((_, i) => i !== index);
+    onChange(restantes);
+    if (editandoIndex === index) {
+      limparFormulario(restantes.length + 1);
+    } else if (editandoIndex > index) {
+      setEditandoIndex((prev) => prev - 1);
+    }
   };
 
   return (
@@ -187,6 +268,11 @@ export function ModalEnderecos({
             </div>
           )}
           <div className="space-y-3 mb-4">
+            {editandoIndex >= 0 ? (
+              <p className="text-sm text-blue-800 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                Editando endereço #{editandoIndex + 1}. Altere os campos abaixo e clique em <strong>Salvar</strong>.
+              </p>
+            ) : null}
             <div className="flex items-center gap-2">
               <label className="text-sm font-medium text-gray-700 w-20">Número:</label>
               <div className="flex border border-gray-300 rounded-lg overflow-hidden">
@@ -284,12 +370,21 @@ export function ModalEnderecos({
               >
                 <Search className="w-5 h-5" />
               </button>
+              {editandoIndex >= 0 ? (
+                <button
+                  type="button"
+                  onClick={() => limparFormulario(lista.length + 1)}
+                  className="px-4 py-2.5 rounded-lg border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+              ) : null}
               <button
                 type="button"
-                onClick={incluir}
+                onClick={salvarEndereco}
                 className="px-4 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
               >
-                Incluir
+                {editandoIndex >= 0 ? 'Salvar' : 'Incluir'}
               </button>
             </div>
           </div>
@@ -302,23 +397,36 @@ export function ModalEnderecos({
                 {lista.map((e, i) => (
                   <li
                     key={i}
-                    className={`px-3 py-2 flex justify-between items-start text-sm ${
-                      e.autoPreenchido ? 'bg-amber-50' : ''
+                    className={`px-3 py-2 flex justify-between items-start text-sm gap-2 ${
+                      editandoIndex === i
+                        ? 'bg-blue-50 ring-1 ring-inset ring-blue-200'
+                        : e.autoPreenchido
+                          ? 'bg-amber-50'
+                          : ''
                     }`}
                   >
-                    <span className="text-gray-700">
+                    <span className="text-gray-700 min-w-0">
                       {e.rua}
                       {e.bairro ? ` – ${e.bairro}` : ''}
                       {e.cidade || e.estado ? ` – ${e.cidade || ''} ${e.estado || ''}`.trim() : ''}
                       {e.cep ? ` – CEP ${formatarCepExibicao(e.cep)}` : ''}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => remover(i)}
-                      className="text-red-600 hover:underline ml-2"
-                    >
-                      Remover
-                    </button>
+                    <span className="shrink-0 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => iniciarEdicao(i)}
+                        className="text-blue-600 hover:underline"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => remover(i)}
+                        className="text-red-600 hover:underline"
+                      >
+                        Remover
+                      </button>
+                    </span>
                   </li>
                 ))}
               </ul>

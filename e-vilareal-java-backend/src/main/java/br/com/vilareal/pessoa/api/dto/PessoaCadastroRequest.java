@@ -1,5 +1,7 @@
 package br.com.vilareal.pessoa.api.dto;
 
+import br.com.vilareal.common.util.CnpjUtil;
+import br.com.vilareal.common.util.CpfUtil;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Email;
@@ -29,6 +31,21 @@ public class PessoaCadastroRequest {
         }
         String d = cpf.replaceAll("\\D", "");
         return d.length() == 11 || d.length() == 14;
+    }
+
+    @AssertTrue(message = "CPF/CNPJ inválido (dígitos verificadores incorretos)")
+    public boolean isCpfDigitosVerificadoresValidos() {
+        if (cpf == null || cpf.isBlank()) {
+            return true;
+        }
+        String d = cpf.replaceAll("\\D", "");
+        if (d.length() == 11) {
+            return CpfUtil.validarCpf(d);
+        }
+        if (d.length() == 14) {
+            return CnpjUtil.validarCnpj(d);
+        }
+        return true;
     }
 
     @Size(max = 40)
