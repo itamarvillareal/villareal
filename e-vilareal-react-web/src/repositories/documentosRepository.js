@@ -27,8 +27,9 @@ async function parseErrorResponse(res) {
   }
 }
 
-async function postPdf(path, body, { signal } = {}) {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+async function postPdf(path, body, { signal, preview } = {}) {
+  const qs = preview ? '?preview=true' : '';
+  const res = await fetch(`${API_BASE_URL}${path}${qs}`, {
     method: 'POST',
     headers: headersJson(),
     body: JSON.stringify(body),
@@ -189,6 +190,10 @@ export async function gerarPdfComIA(dados, opts = {}) {
 export async function gerarPdfManual(dados, opts = {}) {
   const blob = await postPdf('/api/documentos/gerar-pdf', dados, opts);
   return blob;
+}
+
+export async function previewPdfManual(dados, opts = {}) {
+  return postPdf('/api/documentos/gerar-pdf', dados, { ...opts, preview: true });
 }
 
 export async function gerarPreviewIA(dados, opts = {}) {

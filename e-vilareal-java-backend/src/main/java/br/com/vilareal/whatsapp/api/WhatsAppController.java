@@ -11,7 +11,9 @@ import br.com.vilareal.whatsapp.dto.SendMessageResponse;
 import br.com.vilareal.whatsapp.dto.SendTemplateRequest;
 import br.com.vilareal.whatsapp.dto.SendTextRequest;
 import br.com.vilareal.whatsapp.dto.ScheduledMessageDTO;
+import br.com.vilareal.whatsapp.dto.WhatsAppConversationDTO;
 import br.com.vilareal.whatsapp.dto.WhatsAppMessageDTO;
+import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppMessageRepository.ConversationSummaryRow;
 import br.com.vilareal.whatsapp.dto.WhatsAppSendResponse;
 import br.com.vilareal.whatsapp.dto.WhatsAppStatsDTO;
 import br.com.vilareal.whatsapp.infrastructure.persistence.entity.ScheduledWhatsAppMessageEntity;
@@ -108,6 +110,16 @@ public class WhatsAppController {
             return ResponseEntity.status(mapWhatsAppHttpStatus(e))
                     .body(new SendMessageResponse(false, null, e.getMessage()));
         }
+    }
+
+    @GetMapping("/conversations")
+    @Operation(summary = "Listar conversas recentes (última mensagem por telefone)")
+    public ResponseEntity<Page<WhatsAppConversationDTO>> getConversations(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        Page<ConversationSummaryRow> rows =
+                whatsAppMessageRepository.findConversationSummaries(PageRequest.of(page, size));
+        return ResponseEntity.ok(rows.map(this::toConversationDto));
     }
 
     @GetMapping("/messages")
@@ -228,6 +240,24 @@ public class WhatsAppController {
             return false;
         }
         return !"123456789".equals(phoneId.trim());
+    }
+
+    private WhatsAppConversationDTO toConversationDto(ConversationSummaryRow row) {
+        String preview = row.getLastMessageContent();
+        if (!StringUtils.hasText(preview) && StringUtils.hasText(row.getLastMessageDirection())) {
+            preview = "OUTBOUND".equalsIgnoreCase(row.getLastMessageDirection())
+                    ? "Mensagem enviada"
+                    : "Mensagem recebida";
+        }
+        if (StringUtils.hasText(preview) && preview.length() > 120) {
+            preview = preview.substring(0, 117) + "...";
+        }
+        return new WhatsAppConversationDTO(
+                row.getPhoneNumber(),
+                row.getContactName(),
+                preview,
+                row.getLastMessageDirection(),
+                row.getLastMessageAt());
     }
 
     private WhatsAppMessageDTO toMessageDto(WhatsAppMessageEntity entity) {

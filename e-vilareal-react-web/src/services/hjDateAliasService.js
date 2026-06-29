@@ -73,8 +73,75 @@ export function mascararDigitosDataBr(valor) {
   return `${dd}/${mm}/${yyyy}`;
 }
 
+/** Extrai dia, mês e ano quando o texto já contém barras (edição por segmento). */
+export function extrairSegmentosDataBr(valor) {
+  const parts = String(valor ?? '').split('/');
+  const dd = (parts[0] ?? '').replace(/\D/g, '').slice(0, 2);
+  const mm = (parts[1] ?? '').replace(/\D/g, '').slice(0, 2);
+  const yyyy = parts.slice(2).join('').replace(/\D/g, '').slice(0, 4);
+  return { dd, mm, yyyy };
+}
+
+/** Remonta dd/mm/aaaa preservando segmentos já presentes no texto. */
+export function montarDataBrDeSegmentos({ dd, mm, yyyy }, quantidadePartes) {
+  if (!dd && !mm && !yyyy) return '';
+  if (quantidadePartes >= 3 || yyyy.length > 0) return `${dd}/${mm}/${yyyy}`;
+  if (quantidadePartes >= 2 || mm.length > 0) return `${dd}/${mm}`;
+  return dd;
+}
+
+/** Formata texto que já contém barras sem reagrupar todos os dígitos em sequência. */
+export function formatarDataBrInputComBarras(valor) {
+  const parts = String(valor ?? '').split('/');
+  return montarDataBrDeSegmentos(extrairSegmentosDataBr(valor), parts.length);
+}
+
 export function formatarDataBrInput(valor) {
-  return mascararDigitosDataBr(valor);
+  const t = String(valor ?? '').trim();
+  if (!t) return '';
+  if (t.includes('/')) return formatarDataBrInputComBarras(t);
+  return mascararDigitosDataBr(t);
+}
+
+/** Índice do segmento (0=dia, 1=mês, 2=ano) conforme posição do cursor. */
+export function indiceSegmentoDataBrPorPosicao(valor, posicao) {
+  const before = String(valor ?? '').slice(0, posicao);
+  const barras = (before.match(/\//g) || []).length;
+  return Math.min(barras, 2);
+}
+
+/** Reposiciona o cursor após formatar, mantendo o foco no segmento editado. */
+export function calcularPosicaoCursorDataBr(valorAntes, valorDepois, cursorAntes) {
+  const antes = String(valorAntes ?? '');
+  const depois = String(valorDepois ?? '');
+  const cursor = typeof cursorAntes === 'number' ? cursorAntes : antes.length;
+
+  if (antes.includes('/')) {
+    const segIdx = indiceSegmentoDataBrPorPosicao(antes, cursor);
+    const partsAntes = antes.split('/');
+    let offset = 0;
+    for (let i = 0; i < segIdx; i++) {
+      offset += (partsAntes[i]?.length ?? 0) + 1;
+    }
+    const digitosNoSegmento = antes.slice(offset, cursor).replace(/\D/g, '').length;
+    const partsDepois = depois.split('/');
+    let pos = 0;
+    for (let i = 0; i < segIdx; i++) {
+      pos += (partsDepois[i]?.length ?? 0) + 1;
+    }
+    pos += Math.min(digitosNoSegmento, (partsDepois[segIdx] ?? '').replace(/\D/g, '').length);
+    return Math.min(pos, depois.length);
+  }
+
+  const digitosAntes = antes.slice(0, cursor).replace(/\D/g, '').length;
+  let digitos = 0;
+  for (let i = 0; i < depois.length; i++) {
+    if (/\d/.test(depois[i])) {
+      digitos++;
+      if (digitos >= digitosAntes) return i + 1;
+    }
+  }
+  return depois.length;
 }
 
 /** Valor ISO, dd/mm/aaaa ou parcial digitado → dd/mm/aaaa para exibição. */

@@ -72,12 +72,16 @@ public class DocumentoController {
     }
 
     @PostMapping("/gerar-pdf")
-    public ResponseEntity<byte[]> gerarPdf(@RequestBody DocumentoGerarRequest request) {
+    public ResponseEntity<byte[]> gerarPdf(
+            @RequestBody DocumentoGerarRequest request,
+            @RequestParam(value = "preview", required = false, defaultValue = "false") boolean preview) {
         byte[] pdf = pdfService.gerarPeticaoPdf(request);
         LocalDate data = request.data() != null ? request.data() : LocalDate.now();
         String nomeArquivo = DocumentoDrivePastaService.formatarNomeArquivoPeticao("Peticao", data);
-        salvarPeticaoGeradaNoDriveAsync(request.processoId(), null, null, pdf, nomeArquivo);
-        return respostaPdf(nomeArquivo, pdf);
+        if (!preview) {
+            salvarPeticaoGeradaNoDriveAsync(request.processoId(), null, null, pdf, nomeArquivo);
+        }
+        return respostaPdf(nomeArquivo, pdf, preview);
     }
 
     @PostMapping("/gerar-pdf-ia")

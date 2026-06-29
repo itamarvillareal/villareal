@@ -18,12 +18,14 @@ import {
   extrairDataIsoDeLocalData,
   formatarLocalData,
   LOCAL_DATA_PADRAO,
+  resolveSelectExato,
 } from '../../helpers/documentoHelper.js';
 import { buildRouterStateChaveClienteProcesso } from '../../domain/camposProcessoCliente.js';
 import {
   downloadPdfBlob,
   gerarPdfComIA,
   gerarPdfManual,
+  previewPdfManual,
   gerarPreviewIA,
   gerarContratoAluguel,
   gerarContratoHonorarios,
@@ -65,6 +67,11 @@ const ModoModeloTopicos = lazy(() =>
 );
 const ModoEnviarArquivo = lazy(() =>
   import('./components/ModoEnviarArquivo.jsx').then((m) => ({ default: m.ModoEnviarArquivo })),
+);
+const PreviewManualPeticao = lazy(() =>
+  import('./components/PreviewManualPeticao.jsx').then((m) => ({
+    default: m.PreviewManualPeticao,
+  })),
 );
 const PreviewPeticao = lazy(() =>
   import('./components/PreviewPeticao.jsx').then((m) => ({ default: m.PreviewPeticao })),
@@ -222,6 +229,27 @@ function montarPeticaoAiRequest(form, processoId, dadosProcesso) {
   return payload;
 }
 
+function payloadManualParaForm(payload) {
+  const end = resolveSelectExato(payload?.enderecamento, ENDERECAMENTOS);
+  const cidadeEstado = payload?.cidadeEstado
+    ? formatarLocalData(payload.cidadeEstado, payload.data)
+    : LOCAL_DATA_PADRAO;
+  return {
+    enderecamentoSelect: end.select,
+    enderecamentoOutro: end.outro,
+    numeroProcesso: payload?.numeroProcesso || '',
+    preambulo: payload?.preambulo || '',
+    secoes: payload?.secoes?.length
+      ? payload.secoes
+      : [
+          { titulo: 'DOS FATOS', conteudo: '' },
+          { titulo: 'DO DIREITO', conteudo: '' },
+        ],
+    pedidos: payload?.pedidos?.length ? payload.pedidos : [''],
+    cidadeEstado,
+  };
+}
+
 function montarDocumentoManualRequest(form, processoId, dadosProcesso) {
   const secoes = (form.secoes || [])
     .map((s) => ({ titulo: s.titulo.trim(), conteudo: s.conteudo.trim() }))
@@ -324,6 +352,7 @@ export function GerarDocumento() {
     return MODO_IA;
   });
   const modoIA = modo === MODO_IA;
+  const modoManual = modo === MODO_MANUAL;
   const modoProcuracao = modo === MODO_PROCURACAO;
   const modoContrato = modo === MODO_CONTRATO;
   const modoModelo = modo === MODO_MODELO;
@@ -373,6 +402,12 @@ export function GerarDocumento() {
   const [mensagemSucesso, setMensagemSucesso] = useState('');
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewData, setPreviewData] = useState(null);
+  const [manualPreviewVisivel, setManualPreviewVisivel] = useState(false);
+  const [manualPreviewPayload, setManualPreviewPayload] = useState(null);
+  const [manualPreviewUrl, setManualPreviewUrl] = useState(null);
+  const [loadingManualPreview, setLoadingManualPreview] = useState(false);
+  const [loadingManualFinal, setLoadingManualFinal] = useState(false);
+  const manualPreviewUrlRef = useRef(null);
   const [formExecucao, setFormExecucao] = useState(() => ({
     enderecamento: dadosProcesso?.enderecamento || '',
     modo: 'Completo',
@@ -439,6 +474,92 @@ export function GerarDocumento() {
     setMensagemErro('');
   }, []);
 
+  const revogarManualPreviewUrl = useCallback(() => {
+    if (manualPreviewUrlRef.current) {
+      URL.revokeObjectURL(manualPreviewUrlRef.current);
+      manualPreviewUrlRef.current = null;
+    }
+    setManualPreviewUrl(null);
+  }, []);
+
+  const fecharManualPreview = useCallback(() => {
+    revogarManualPreviewUrl();
+    setManualPreviewVisivel(false);
+    setManualPreviewPayload(null);
+  }, [revogarManualPreviewUrl]);
+
+  useEffect(() => () => revogarManualPreviewUrl(), [revogarManualPreviewUrl]);
+
+  useEffect(() => {
+    if (!modoManual) {
+      fecharManualPreview();
+    }
+  }, [modoManual, fecharManualPreview]);
+
+  const atualizarManualPreviewPdf = async (payload) => {
+    const blob = await previewPdfManual(payload);
+    revogarManualPreviewUrl();
+    const url = URL.createObjectURL(blob);
+    manualPreviewUrlRef.current = url;
+    setManualPreviewUrl(url);
+  };
+
+  const handleIniciarPreviewManual = async () => {
+    setMensagemErro('');
+    const errs = validarModoManual(formManual);
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      return;
+    }
+    const payload = montarDocumentoManualRequest(formManual, processoApiId, dadosProcesso);
+    setManualPreviewPayload(payload);
+    setManualPreviewVisivel(true);
+    setLoadingManualPreview(true);
+    try {
+      await atualizarManualPreviewPdf(payload);
+    } catch (e) {
+      setMensagemErro(e?.message || 'Falha ao gerar prévia do documento.');
+      fecharManualPreview();
+    } finally {
+      setLoadingManualPreview(false);
+    }
+  };
+
+  const handleAtualizarPreviewManual = async () => {
+    if (!manualPreviewPayload) return;
+    setMensagemErro('');
+    setLoadingManualPreview(true);
+    try {
+      await atualizarManualPreviewPdf(manualPreviewPayload);
+    } catch (e) {
+      setMensagemErro(e?.message || 'Falha ao atualizar prévia.');
+    } finally {
+      setLoadingManualPreview(false);
+    }
+  };
+
+  const handleGerarPdfManualFinal = async () => {
+    if (!manualPreviewPayload) return;
+    setMensagemErro('');
+    setLoadingManualFinal(true);
+    try {
+      await baixarPdf(gerarPdfManual, manualPreviewPayload);
+    } catch (e) {
+      setMensagemErro(e?.message || 'Falha ao gerar PDF final.');
+    } finally {
+      setLoadingManualFinal(false);
+    }
+  };
+
+  const handleVoltarFormularioManual = () => {
+    if (manualPreviewPayload) {
+      setFormManual(payloadManualParaForm(manualPreviewPayload));
+    }
+    fecharManualPreview();
+    setErrors({});
+    setMensagemErro('');
+  };
+
   const patchManual = useCallback((patch) => {
     setFormManual((f) => ({ ...f, ...patch }));
     setErrors({});
@@ -471,6 +592,7 @@ export function GerarDocumento() {
     setMensagemErro('');
     setPreviewOpen(false);
     setPreviewData(null);
+    fecharManualPreview();
     fecharContratoPreview();
   };
 
@@ -819,15 +941,7 @@ export function GerarDocumento() {
       setErrors(errs);
       return;
     }
-    const payload = montarDocumentoManualRequest(formManual, processoApiId, dadosProcesso);
-    setLoading(true);
-    try {
-      await baixarPdf(gerarPdfManual, payload);
-    } catch (e) {
-      setMensagemErro(e?.message || 'Falha ao gerar PDF.');
-    } finally {
-      setLoading(false);
-    }
+    await handleIniciarPreviewManual();
   };
 
   const handleGerarPdfFromPreview = async () => {
@@ -866,7 +980,13 @@ export function GerarDocumento() {
     }
   };
 
-  const ocupado = loading || loadingPreview || loadingContratoPreview || loadingContratoFinal;
+  const ocupado =
+    loading ||
+    loadingPreview ||
+    loadingContratoPreview ||
+    loadingContratoFinal ||
+    loadingManualPreview ||
+    loadingManualFinal;
 
   const fecharParaProcesso = useCallback(() => {
     if (!dadosProcesso?.codigoCliente) {
@@ -882,7 +1002,7 @@ export function GerarDocumento() {
   }, [navigate, dadosProcesso]);
 
   return (
-    <div className={`mx-auto px-4 py-6 lg:px-6 ${modoArquivo ? 'max-w-7xl pb-8' : modoModelo || modoExecucao ? 'max-w-4xl pb-8' : 'max-w-4xl pb-32'}`}>
+    <div className={`mx-auto px-4 py-6 lg:px-6 ${modoArquivo || (modoManual && manualPreviewVisivel) ? 'max-w-7xl pb-8' : modoModelo || modoExecucao ? 'max-w-4xl pb-8' : 'max-w-4xl pb-32'}`}>
       <DocumentosSubmenu />
       <header className="mb-6 flex flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
@@ -1468,17 +1588,36 @@ export function GerarDocumento() {
             </CollapsibleSection>
           </>
         ) : (
-          <>
-            <CollapsibleSection title="1. Dados do processo" defaultOpen>
-              <DadosProcesso values={formManual} onChange={patchManual} errors={errors} />
-            </CollapsibleSection>
+          !manualPreviewVisivel ? (
+            <>
+              <CollapsibleSection title="1. Dados do processo" defaultOpen>
+                <DadosProcesso values={formManual} onChange={patchManual} errors={errors} />
+              </CollapsibleSection>
 
-            <CollapsibleSection title="2. Preâmbulo e seções" defaultOpen>
-              <SecoesManuais values={formManual} onChange={patchManual} errors={errors} />
-            </CollapsibleSection>
-          </>
+              <CollapsibleSection title="2. Preâmbulo e seções" defaultOpen>
+                <SecoesManuais values={formManual} onChange={patchManual} errors={errors} />
+              </CollapsibleSection>
+            </>
+          ) : null
         )}
       </div>
+
+      {modoManual && manualPreviewVisivel ? (
+        <div className="mt-6">
+          <Suspense fallback={<LazyModoFallback />}>
+            <PreviewManualPeticao
+              payload={manualPreviewPayload}
+              pdfUrl={manualPreviewUrl}
+              loading={loadingManualPreview}
+              gerandoFinal={loadingManualFinal}
+              onPayloadChange={setManualPreviewPayload}
+              onAtualizar={() => void handleAtualizarPreviewManual()}
+              onGerarFinal={() => void handleGerarPdfManualFinal()}
+              onVoltar={handleVoltarFormularioManual}
+            />
+          </Suspense>
+        </div>
+      ) : null}
 
       {modoContrato && contratoHonorarios && contratoPreviewVisivel ? (
         <div ref={contratoPreviewRef} className="mt-6">
@@ -1497,7 +1636,11 @@ export function GerarDocumento() {
         </div>
       ) : null}
 
-      {!modoModelo && !modoArquivo && !modoExecucao && !(modoContrato && contratoHonorarios && contratoPreviewVisivel && contratoPreviewConteudo) ? (
+      {!modoModelo &&
+      !modoArquivo &&
+      !modoExecucao &&
+      !(modoManual && manualPreviewVisivel) &&
+      !(modoContrato && contratoHonorarios && contratoPreviewVisivel && contratoPreviewConteudo) ? (
       <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-200 bg-white/95 px-4 py-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 lg:left-56">
         <div className="mx-auto flex max-w-4xl flex-wrap items-center gap-3">
           <button type="button" className={btnPrimary} disabled={ocupado} onClick={() => void handleGerarPdf()}>
@@ -1512,12 +1655,16 @@ export function GerarDocumento() {
                       : 'Gerando contrato…'
                     : modoIA
                       ? 'Gerando petição com IA…'
-                      : 'Gerando PDF…'}
+                      : modoManual
+                        ? 'Gerando prévia…'
+                        : 'Gerando PDF…'}
               </>
             ) : modoProcuracao ? (
               'Gerar Procuração'
             ) : modoContrato ? (
               contratoHonorarios ? 'Visualizar prévia' : `Gerar ${rotuloModeloContrato(formContrato.modelo)}`
+            ) : modoManual ? (
+              'Visualizar prévia'
             ) : (
               'Gerar PDF'
             )}

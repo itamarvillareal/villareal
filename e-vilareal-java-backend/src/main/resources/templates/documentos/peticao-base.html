@@ -349,7 +349,7 @@
                 <p>Diante do exposto, requer de Vossa Excelência:</p>
             </div>
             <p class="pedido-item" th:each="pedido, pedidoStat : ${pedidos}">
-                <span class="pedido-marcador" th:utext="${#strings.substring('abcdefghijklmnopqrstuvwxyz', pedidoStat.index, pedidoStat.index + 1) + ')&amp;nbsp;'}">a)&nbsp;</span><span th:text="${pedido}">Pedido</span>
+                <span class="pedido-marcador" th:text="${#strings.substring('abcdefghijklmnopqrstuvwxyz', pedidoStat.index, pedidoStat.index + 1) + ') '}">a) </span><span th:text="${pedido}">Pedido</span>
             </p>
         </th:block>
 

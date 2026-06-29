@@ -1,6 +1,7 @@
 import {
   cancelWhatsAppSchedule,
   createWhatsAppSchedule,
+  getWhatsAppConversations,
   getWhatsAppMessages,
   getWhatsAppMessagesByCliente,
   getWhatsAppScheduled,
@@ -13,6 +14,7 @@ import {
 export function useWhatsApp() {
   return {
     getStats: getWhatsAppStats,
+    getConversations: getWhatsAppConversations,
     getMessages: getWhatsAppMessages,
     getMessagesByCliente: getWhatsAppMessagesByCliente,
     getScheduled: getWhatsAppScheduled,

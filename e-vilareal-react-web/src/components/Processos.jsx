@@ -3,6 +3,7 @@ import { flushSync } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { OrgaoJulgadorAutocomplete } from './ui/OrgaoJulgadorAutocomplete.jsx';
 import { MunicipioAutocomplete } from './ui/MunicipioAutocomplete.jsx';
+import { CampoDataBr } from './ui/CampoDataBr.jsx';
 import {
   getLancamentosContaCorrente,
   getTransacoesContaCorrenteCompleto,
@@ -3655,27 +3656,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     setAvisoAudiencia('nao_avisado');
   }
 
-  function mascararDigitosDataBr(valor) {
-    const digits = String(valor ?? '').replace(/\D/g, '').slice(0, 8);
-    if (!digits) return '';
-    const dd = digits.slice(0, 2);
-    const mm = digits.slice(2, 4);
-    const yyyy = digits.slice(4, 8);
-    if (digits.length <= 2) return dd;
-    if (digits.length <= 4) return `${dd}/${mm}`;
-    return `${dd}/${mm}/${yyyy}`;
-  }
-
-  function formatarDataBrInput(valor) {
-    return mascararDigitosDataBr(valor);
-  }
-
-  function formatarDataAudienciaInput(valor) {
-    const alias = resolverAliasHojeEmTexto(valor, 'br');
-    if (alias) return alias;
-    return mascararDigitosDataBr(valor);
-  }
-
   function formatarHoraAudienciaInput(valor) {
     // Máscara parcial do horário para permitir digitação sem “embaralhar” dígitos.
     // Regras:
@@ -4078,14 +4058,11 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     <span className="text-[11px] font-bold uppercase tracking-wide">Urgência</span>
                   </div>
                   <Field label="Prazo Fatal" dense className="w-full [&_label]:text-rose-900">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={10}
+                    <CampoDataBr
                       value={prazoFatal}
                       readOnly={camposBloqueados}
-                      onChange={(e) => setPrazoFatal(formatarDataBrInput(e.target.value))}
-                      onBlur={(e) => persistirPrazoFatalAposEdicao(e.target.value)}
+                      onChange={setPrazoFatal}
+                      onBlurExtra={persistirPrazoFatalAposEdicao}
                       placeholder="dd/mm/aaaa"
                       title="Data do prazo fatal (dd/mm/aaaa)"
                       className={`${clsCampoDenso} border-rose-200/80 focus:border-rose-400 focus:ring-rose-200`}
@@ -4147,15 +4124,10 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                   </div>
                   <div className="flex flex-wrap items-end gap-x-2 gap-y-1.5">
                     <Field label="Data" className="w-[7.25rem] shrink-0 min-w-0">
-                      <input
-                        type="text"
+                      <CampoDataBr
                         value={audienciaData}
                         readOnly={camposBloqueados}
-                        onChange={(e) => setAudienciaData(formatarDataAudienciaInput(e.target.value))}
-                        onBlur={() => {
-                          const norm = normalizarDataBr(audienciaData);
-                          if (norm) setAudienciaData(norm);
-                        }}
+                        onChange={setAudienciaData}
                         placeholder="dd/mm/aaaa ou hj"
                         className={clsCampo}
                       />

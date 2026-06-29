@@ -134,13 +134,38 @@ public class ProjudiPeticaoService {
 
         emitir(progresso, "Conectando ao PROJUDI…");
 
+        ResultadoProtocoloPeticao resultado;
         try {
-            // 1) busca — reaproveita sessão em cache/disco (TTL projudi.session.ttl-min); login+OTP só se expirada
-            emitir(progresso, "Buscando o processo…");
-            var busca = sessionService.buscarProcessoConsulta(credencialId, processo);
-            if (pareceFalhaLeitura(busca.statusCode(), busca.body())) {
-                return falha("Passo 1 (busca processo) falhou.", busca.body());
-            }
+            resultado = executarPassosProtocolo(
+                    credencialId, processo, complementoIso, arquivos, executarConcluir, progresso, epochMillis);
+        } catch (Exception e) {
+            log.warn("Falha no protocolo PROJUDI (processo={}): {}", numeroProcesso, e.getMessage());
+            resultado = falha(e.getClass().getSimpleName() + ": " + e.getMessage(), "");
+        }
+        if (executarConcluir && deveInvalidarSessaoPosProtocolo(resultado)) {
+            log.info(
+                    "PROJUDI invalidando sessão após protocolo (credencialId={}): {}",
+                    credencialId,
+                    resultado.mensagem());
+            sessionService.invalidarSessao(credencialId);
+        }
+        return resultado;
+    }
+
+    private ResultadoProtocoloPeticao executarPassosProtocolo(
+            Long credencialId,
+            String processo,
+            String complementoIso,
+            List<ArquivoPeticao> arquivos,
+            boolean executarConcluir,
+            Consumer<String> progresso,
+            long epochMillis) {
+        // 1) busca — reaproveita sessão em cache/disco (TTL projudi.session.ttl-min); login+OTP só se expirada
+        emitir(progresso, "Buscando o processo…");
+        var busca = sessionService.buscarProcessoConsulta(credencialId, processo);
+        if (pareceFalhaLeitura(busca.statusCode(), busca.body())) {
+            return falha("Passo 1 (busca processo) falhou.", busca.body());
+        }
 
             // 2)
             var p2 = sessionService.getAutenticadoAjaxComReferer(
@@ -307,17 +332,32 @@ public class ProjudiPeticaoService {
             return falha(
                     "Passo 11 (Concluir) não confirmou sucesso — verifique respostaBruta (não repetir automaticamente).",
                     "location=" + location + "\n" + corpoP11);
+    }
 
-        } catch (Exception e) {
-            log.warn("Falha no protocolo PROJUDI (processo={}): {}", numeroProcesso, e.getMessage());
-            return falha(e.getClass().getSimpleName() + ": " + e.getMessage(), "");
-        } finally {
-            // __Pedido__ do Concluir é consumido por juntada; reutilizar a sessão no lote
-            // faz o PROJUDI rejeitar a seguinte com "pedido enviado mais de uma vez".
-            if (executarConcluir) {
-                sessionService.invalidarSessao(credencialId);
-            }
+    /**
+     * Após Concluir, mantém a sessão para o próximo processo do lote (1 OTP por login).
+     * Invalida só quando o PROJUDI sinaliza pedido duplicado ou sessão inconsistente.
+     */
+    static boolean deveInvalidarSessaoPosProtocolo(ResultadoProtocoloPeticao resultado) {
+        if (resultado == null || resultado.sucesso()) {
+            return false;
         }
+        String bruta = resultado.respostaBruta() == null ? "" : resultado.respostaBruta();
+        String mensagem = resultado.mensagem() == null ? "" : resultado.mensagem();
+        String combinado = (mensagem + "\n" + bruta).toLowerCase(Locale.ROOT);
+
+        if (combinado.contains("pedido enviado mais de uma vez")) {
+            return true;
+        }
+        if (ProjudiSessionService.pareceNaoLogado(bruta)) {
+            return true;
+        }
+        return combinado.contains("token otp")
+                || combinado.contains("tela de login")
+                || combinado.contains("http 555")
+                || combinado.contains("sessão inválida")
+                || combinado.contains("sessao invalida")
+                || combinado.contains("continuou na tela de login");
     }
 
     /** Reporta a etapa atual sem deixar o protocolo falhar por erro de telemetria. */

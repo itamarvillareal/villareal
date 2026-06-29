@@ -104,6 +104,30 @@ function montarEnderecamentoPorCompetencia(competencia, cidUpper, sigla) {
   return `MERITÍSSIMO JUÍZO ${artigo} ${competenciaUpper} ${local} - ${sigla}`;
 }
 
+/** Extrai ordinal do órgão (ex.: «1º», «3ª») a partir do nome ou da competência. */
+function extrairPrefixoJuizado(texto) {
+  const bruto = String(texto ?? '').trim();
+  if (!bruto) return null;
+  const m = bruto.match(/^(\d+\s*[ºªoa°]?)/iu);
+  if (!m) return null;
+  return m[1].replace(/\s+/g, '').replace(/o(?!\w)/iu, 'º').replace(/a(?!\w)/iu, 'ª').toUpperCase();
+}
+
+function montarEnderecamentoJuizado(orgaoJulgador, competencia, cidUpper, sigla) {
+  const prefixoOrg = extrairPrefixoJuizado(orgaoJulgador?.nome);
+  const competenciaNorm = String(competencia ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+  const prefixo =
+    prefixoOrg ||
+    (competenciaNorm.includes('JUIZADO') ? extrairPrefixoJuizado(competencia) : null);
+  const qualificacao = prefixo
+    ? `${prefixo} JUIZADO ESPECIAL CÍVEL`
+    : 'JUIZADO ESPECIAL CÍVEL';
+  return `MERITÍSSIMO JUÍZO DO ${qualificacao} DA COMARCA DE ${cidUpper} - ${sigla}`;
+}
+
 /**
  * Endereçamento da petição.
  * Primário: órgão julgador vinculado (catálogo) — se for Juizado Especial, endereça ao JEC da comarca.
@@ -120,7 +144,7 @@ export function inferirEnderecamento(competencia, cidade, uf, orgaoJulgador) {
 
   // Primário: órgão julgador do catálogo — Juizado Especial endereça ao JEC da comarca.
   if (ehJuizadoEspecial(orgaoJulgador)) {
-    return `MERITÍSSIMO JUÍZO DO JUIZADO ESPECIAL CÍVEL DA COMARCA DE ${cidUpper} - ${sigla}`;
+    return montarEnderecamentoJuizado(orgaoJulgador, competencia, cidUpper, sigla);
   }
 
   // Fallback: competência (texto).

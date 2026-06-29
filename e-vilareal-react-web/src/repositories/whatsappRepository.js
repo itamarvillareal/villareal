@@ -11,6 +11,13 @@ export async function getWhatsAppMessages(phoneNumber, page = 0, size = 20, sign
   });
 }
 
+export async function getWhatsAppConversations(page = 0, size = 50, signal) {
+  return request('/api/whatsapp/conversations', {
+    query: { page, size },
+    signal,
+  });
+}
+
 export async function getWhatsAppMessagesByCliente(clienteId, page = 0, size = 20, signal) {
   return request(`/api/whatsapp/messages/cliente/${clienteId}`, {
     query: { page, size },

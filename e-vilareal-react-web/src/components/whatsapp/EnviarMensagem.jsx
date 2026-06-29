@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { TemplateParamsForm, TemplateSelect } from './components/TemplateParamsForm.jsx';
 import { useWhatsApp } from './hooks/useWhatsApp.js';
@@ -8,6 +9,7 @@ import { isValidBrazilPhone, normalizePhoneForApi } from '../../utils/whatsappFo
 import { processosBtnPrimary, processosInputClass } from '../processos/ProcessosAdminLayout.jsx';
 
 export function WhatsAppEnviarMensagem() {
+  const navigate = useNavigate();
   const { sendText, sendTemplate } = useWhatsApp();
   const toast = useWhatsAppToast();
   const [mode, setMode] = useState('texto');
@@ -49,6 +51,7 @@ export function WhatsAppEnviarMensagem() {
         return;
       }
       toast.success('Mensagem enviada com sucesso.');
+      navigate(`/whatsapp/conversas?telefone=${encodeURIComponent(normalized)}`);
       resetForm();
     } catch (err) {
       toast.error(err?.message || 'Erro ao enviar mensagem.');
@@ -81,6 +84,7 @@ export function WhatsAppEnviarMensagem() {
         return;
       }
       toast.success('Template enviado com sucesso.');
+      navigate(`/whatsapp/conversas?telefone=${encodeURIComponent(normalized)}`);
       resetForm();
     } catch (err) {
       toast.error(err?.message || 'Erro ao enviar template.');

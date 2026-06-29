@@ -157,7 +157,23 @@ public class DocumentoPdfService {
         aplicarTemaAoContext(context, tema != null ? tema : TemaDocumento.padrao());
 
         String htmlRenderizado = templateEngine.process(templateName, context);
-        return converterHtmlParaPdf(htmlRenderizado);
+        return converterHtmlParaPdf(sanitizarHtmlParaOpenPdf(htmlRenderizado));
+    }
+
+    /**
+     * Converte entidades HTML nomeadas em caracteres Unicode — o openhtmltopdf exige XML válido
+     * e falha em {@code &nbsp;} e similares quando não há DTD de entidades no documento.
+     */
+    static String sanitizarHtmlParaOpenPdf(String html) {
+        if (!StringUtils.hasText(html)) {
+            return html;
+        }
+        return html.replace("&nbsp;", "\u00A0")
+                .replace("&ndash;", "\u2013")
+                .replace("&mdash;", "\u2014")
+                .replace("&hellip;", "\u2026")
+                .replace("&laquo;", "\u00AB")
+                .replace("&raquo;", "\u00BB");
     }
 
     /** Injeta logo, rodapé e advogado do timbrado no contexto Thymeleaf. */

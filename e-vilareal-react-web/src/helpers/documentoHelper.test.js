@@ -32,10 +32,25 @@ describe('montarTrechoAcaoPreambuloHtml', () => {
 });
 
 describe('inferirEnderecamento (órgão julgador → JEC, fallback competência)', () => {
-  it('órgão Juizado (tipo do catálogo) endereça ao JEC mesmo sem competência', () => {
+  it('órgão Juizado (tipo do catálogo) endereça ao JEC com ordinal do nome', () => {
     expect(
       inferirEnderecamento('', 'Anápolis', 'GO', { tipo: 'JUIZADO', nome: '3º Juizado Especial Cível' }),
-    ).toBe('MERITÍSSIMO JUÍZO DO JUIZADO ESPECIAL CÍVEL DA COMARCA DE ANÁPOLIS - GO');
+    ).toBe('MERITÍSSIMO JUÍZO DO 3º JUIZADO ESPECIAL CÍVEL DA COMARCA DE ANÁPOLIS - GO');
+  });
+
+  it('1º Juizado Especial Cível de Anápolis gera endereçamento específico', () => {
+    expect(
+      inferirEnderecamento('', 'Anápolis', 'GO', { tipo: 'JUIZADO', nome: '1º Juizado Especial Cível' }),
+    ).toBe('MERITÍSSIMO JUÍZO DO 1º JUIZADO ESPECIAL CÍVEL DA COMARCA DE ANÁPOLIS - GO');
+  });
+
+  it('usa competência como fallback quando o órgão Juizado não traz ordinal', () => {
+    expect(
+      inferirEnderecamento('1º JUIZADO ESPECIAL CÍVEL', 'Anápolis', 'GO', {
+        tipo: 'JUIZADO',
+        nome: 'Juizado Especial Cível',
+      }),
+    ).toBe('MERITÍSSIMO JUÍZO DO 1º JUIZADO ESPECIAL CÍVEL DA COMARCA DE ANÁPOLIS - GO');
   });
 
   it('órgão Juizado tem precedência sobre competência divergente', () => {
