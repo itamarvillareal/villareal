@@ -42,17 +42,21 @@ class CalculoRodadaRepositoryIntegrationTest extends AbstractIntegrationTest {
         calculoRodadaRepository.deleteAll();
     }
 
+    /**
+     * {@code JpaRepository.findAll()} em entidade completa inclui {@code payload_json} mesmo sem acessar o campo:
+     * {@code @Basic(LAZY)} não funciona sem bytecode enhancement. Em produção, listagens sem payload usam
+     * {@link CalculoRodadaRepository#findAllResumo()} (ver {@code findAllResumo_naoCarregaPayloadJson}).
+     * O único {@code findAll()} remanescente ({@code CalculoApplicationService#listarRodadas}) lê o payload de propósito.
+     */
     @Test
     @Transactional
-    void findAllSemAcessarPayload_naoCarregaJson() throws Exception {
-        for (int i = 0; i < 3; i++) {
-            CalculoRodadaEntity e = new CalculoRodadaEntity();
-            e.setCodigoCliente("00000001");
-            e.setNumeroProcesso(i + 1);
-            e.setDimensao(0);
-            e.setPayloadJson(objectMapper.readTree("{\"n\":" + i + ",\"parcelamentoAceito\":false}"));
-            calculoRodadaRepository.save(e);
-        }
+    void findAll_cruIncluiPayloadJson_semEnhancement() throws Exception {
+        CalculoRodadaEntity e = new CalculoRodadaEntity();
+        e.setCodigoCliente("00000001");
+        e.setNumeroProcesso(1);
+        e.setDimensao(0);
+        e.setPayloadJson(objectMapper.readTree("{\"parcelamentoAceito\":false}"));
+        calculoRodadaRepository.save(e);
         calculoRodadaRepository.flush();
         HibernateSqlCapture.clear();
 
@@ -63,7 +67,7 @@ class CalculoRodadaRepositoryIntegrationTest extends AbstractIntegrationTest {
             row.getDimensao();
         }
 
-        assertThat(HibernateSqlCapture.statementsReferencingCalculoRodada()).noneMatch(s -> containsPayloadJsonColumn(s));
+        assertThat(HibernateSqlCapture.statementsReferencingCalculoRodada()).anyMatch(CalculoRodadaRepositoryIntegrationTest::containsPayloadJsonColumn);
     }
 
     @Test
