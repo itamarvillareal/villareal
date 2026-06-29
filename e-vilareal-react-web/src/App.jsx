@@ -74,6 +74,8 @@ import {
   LazyWhatsAppConversas,
   LazyWhatsAppEnviarMensagem,
   LazyWhatsAppAgendamentos,
+  LazyWhatsAppTemplates,
+  LazyWhatsAppAniversarios,
   LazyPoliticaPrivacidade,
 } from './app/lazyScreens.jsx';
 import { atualizarIndicesMensaisAposDia10 } from './services/monetaryIndicesService.js';
@@ -478,6 +480,8 @@ function App() {
                 <Route path="conversas" element={<LazyWhatsAppConversas />} />
                 <Route path="enviar" element={<LazyWhatsAppEnviarMensagem />} />
                 <Route path="agendamentos" element={<LazyWhatsAppAgendamentos />} />
+                <Route path="templates" element={<LazyWhatsAppTemplates />} />
+                <Route path="aniversarios" element={<LazyWhatsAppAniversarios />} />
               </Route>
               <Route path="/integracoes/scraper-lab" element={<LazyIntegracoesTribunalScraperLab />} />
               <Route path="/integracoes/tribunais" element={<LazyTribunaisCatalogoAdmin />} />

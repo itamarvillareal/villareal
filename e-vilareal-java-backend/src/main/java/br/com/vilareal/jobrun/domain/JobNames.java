@@ -18,6 +18,7 @@ public final class JobNames {
     public static final String WHATSAPP_AGENDAMENTOS = "whatsapp_agendamentos";
     public static final String WHATSAPP_LEMBRETE_AUDIENCIA = "whatsapp_lembrete_audiencia";
     public static final String WHATSAPP_REFORCO_AUDIENCIA = "whatsapp_reforco_audiencia";
+    public static final String WHATSAPP_ANIVERSARIO = "whatsapp_aniversario";
 
     public static final List<String> TODOS_MONITORADOS = List.of(
             GMAIL_PROJUDI,
@@ -32,7 +33,8 @@ public final class JobNames {
             FINANCEIRO_FECHAMENTO_FATURA_CARTAO,
             WHATSAPP_AGENDAMENTOS,
             WHATSAPP_LEMBRETE_AUDIENCIA,
-            WHATSAPP_REFORCO_AUDIENCIA);
+            WHATSAPP_REFORCO_AUDIENCIA,
+            WHATSAPP_ANIVERSARIO);
 
     private JobNames() {}
 }

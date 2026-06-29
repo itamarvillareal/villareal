@@ -62,6 +62,67 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
             nativeQuery = true)
     Page<ConversationSummaryRow> findConversationSummaries(Pageable pageable);
 
+    @Query(
+            value =
+                    """
+                    SELECT w.phone_number AS phoneNumber,
+                           (
+                               SELECT w2.contact_name
+                               FROM whatsapp_messages w2
+                               WHERE w2.phone_number = w.phone_number
+                                 AND w2.contact_name IS NOT NULL
+                                 AND TRIM(w2.contact_name) <> ''
+                               ORDER BY w2.created_at DESC
+                               LIMIT 1
+                           ) AS contactName,
+                           (
+                               SELECT w3.direction
+                               FROM whatsapp_messages w3
+                               WHERE w3.phone_number = w.phone_number
+                               ORDER BY w3.created_at DESC
+                               LIMIT 1
+                           ) AS lastMessageDirection,
+                           (
+                               SELECT w4.content
+                               FROM whatsapp_messages w4
+                               WHERE w4.phone_number = w.phone_number
+                               ORDER BY w4.created_at DESC
+                               LIMIT 1
+                           ) AS lastMessageContent,
+                           MAX(w.created_at) AS lastMessageAt
+                    FROM whatsapp_messages w
+                    WHERE w.phone_number NOT IN (
+                        SELECT wm.phone_number
+                        FROM whatsapp_messages wm
+                        GROUP BY wm.phone_number
+                        HAVING SUM(CASE WHEN wm.direction = 'INBOUND' THEN 1 ELSE 0 END) = 0
+                           AND SUM(CASE WHEN wm.template_name IS NULL
+                                         OR wm.template_name <> 'felicitacao_aniversario' THEN 1 ELSE 0 END) = 0
+                           AND COUNT(*) > 0
+                    )
+                    GROUP BY w.phone_number
+                    ORDER BY lastMessageAt DESC
+                    """,
+            countQuery =
+                    """
+                    SELECT COUNT(*) FROM (
+                        SELECT w.phone_number
+                        FROM whatsapp_messages w
+                        WHERE w.phone_number NOT IN (
+                            SELECT wm.phone_number
+                            FROM whatsapp_messages wm
+                            GROUP BY wm.phone_number
+                            HAVING SUM(CASE WHEN wm.direction = 'INBOUND' THEN 1 ELSE 0 END) = 0
+                               AND SUM(CASE WHEN wm.template_name IS NULL
+                                             OR wm.template_name <> 'felicitacao_aniversario' THEN 1 ELSE 0 END) = 0
+                               AND COUNT(*) > 0
+                        )
+                        GROUP BY w.phone_number
+                    ) t
+                    """,
+            nativeQuery = true)
+    Page<ConversationSummaryRow> findConversationSummariesExcluindoAniversario(Pageable pageable);
+
     Page<WhatsAppMessageEntity> findByPhoneNumberOrderByCreatedAtDesc(String phoneNumber, Pageable pageable);
 
     List<WhatsAppMessageEntity> findByPhoneNumberAndCreatedAtAfterOrderByCreatedAtAsc(

@@ -5,6 +5,7 @@ import br.com.vilareal.whatsapp.ScheduledMessageStatus;
 import br.com.vilareal.whatsapp.WhatsAppApiException;
 import br.com.vilareal.whatsapp.WhatsAppMessageDirection;
 import br.com.vilareal.whatsapp.WhatsAppMessageStatus;
+import br.com.vilareal.whatsapp.dto.CreateTemplateRequest;
 import br.com.vilareal.whatsapp.dto.ScheduleMessageRequest;
 import br.com.vilareal.whatsapp.dto.ScheduleMessageResponse;
 import br.com.vilareal.whatsapp.dto.SendMessageResponse;
@@ -20,6 +21,9 @@ import br.com.vilareal.whatsapp.infrastructure.persistence.entity.ScheduledWhats
 import br.com.vilareal.whatsapp.infrastructure.persistence.entity.WhatsAppMessageEntity;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.ScheduledWhatsAppMessageRepository;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppMessageRepository;
+import br.com.vilareal.whatsapp.dto.WhatsAppTemplateDTO;
+import br.com.vilareal.whatsapp.service.WhatsAppContactResolverService;
+import br.com.vilareal.whatsapp.service.WhatsAppTemplateService;
 import br.com.vilareal.whatsapp.service.WhatsAppSchedulerService;
 import br.com.vilareal.whatsapp.service.WhatsAppService;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -65,6 +69,8 @@ public class WhatsAppController {
     private final ScheduledWhatsAppMessageRepository scheduledWhatsAppMessageRepository;
     private final ObjectMapper objectMapper;
     private final WhatsAppConfig whatsAppConfig;
+    private final WhatsAppContactResolverService contactResolver;
+    private final WhatsAppTemplateService whatsAppTemplateService;
 
     public WhatsAppController(
             WhatsAppService whatsAppService,
@@ -72,13 +78,17 @@ public class WhatsAppController {
             WhatsAppMessageRepository whatsAppMessageRepository,
             ScheduledWhatsAppMessageRepository scheduledWhatsAppMessageRepository,
             ObjectMapper objectMapper,
-            WhatsAppConfig whatsAppConfig) {
+            WhatsAppConfig whatsAppConfig,
+            WhatsAppContactResolverService contactResolver,
+            WhatsAppTemplateService whatsAppTemplateService) {
         this.whatsAppService = whatsAppService;
         this.whatsAppSchedulerService = whatsAppSchedulerService;
         this.whatsAppMessageRepository = whatsAppMessageRepository;
         this.scheduledWhatsAppMessageRepository = scheduledWhatsAppMessageRepository;
         this.objectMapper = objectMapper;
         this.whatsAppConfig = whatsAppConfig;
+        this.contactResolver = contactResolver;
+        this.whatsAppTemplateService = whatsAppTemplateService;
     }
 
     @PostMapping("/send")
@@ -118,7 +128,7 @@ public class WhatsAppController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size) {
         Page<ConversationSummaryRow> rows =
-                whatsAppMessageRepository.findConversationSummaries(PageRequest.of(page, size));
+                whatsAppMessageRepository.findConversationSummariesExcluindoAniversario(PageRequest.of(page, size));
         return ResponseEntity.ok(rows.map(this::toConversationDto));
     }
 
@@ -204,6 +214,48 @@ public class WhatsAppController {
         }
     }
 
+    @GetMapping("/templates")
+    @Operation(summary = "Listar templates de mensagem (Meta)")
+    public ResponseEntity<List<WhatsAppTemplateDTO>> listTemplates() {
+        try {
+            return ResponseEntity.ok(whatsAppTemplateService.listarTemplates());
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();
+        } catch (WhatsAppApiException e) {
+            return ResponseEntity.status(mapWhatsAppHttpStatus(e)).build();
+        }
+    }
+
+    @PostMapping("/templates")
+    @Operation(summary = "Criar template de mensagem (Meta)")
+    public ResponseEntity<WhatsAppTemplateDTO> createTemplate(@Valid @RequestBody CreateTemplateRequest request) {
+        try {
+            WhatsAppTemplateDTO created = whatsAppTemplateService.criarTemplate(request);
+            return ResponseEntity.status(HttpStatus.CREATED).body(created);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();
+        } catch (WhatsAppApiException e) {
+            return ResponseEntity.status(mapWhatsAppHttpStatus(e)).build();
+        }
+    }
+
+    @DeleteMapping("/templates/{name}")
+    @Operation(summary = "Deletar template de mensagem (Meta)")
+    public ResponseEntity<Void> deleteTemplate(@PathVariable String name) {
+        try {
+            whatsAppTemplateService.deletarTemplate(name);
+            return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();
+        } catch (WhatsAppApiException e) {
+            return ResponseEntity.status(mapWhatsAppHttpStatus(e)).build();
+        }
+    }
+
     @GetMapping("/stats")
     @Operation(summary = "Estatísticas de mensagens WhatsApp")
     public ResponseEntity<WhatsAppStatsDTO> getStats() {
@@ -254,7 +306,7 @@ public class WhatsAppController {
         }
         return new WhatsAppConversationDTO(
                 row.getPhoneNumber(),
-                row.getContactName(),
+                contactResolver.resolveContactName(row.getPhoneNumber(), row.getContactName()),
                 preview,
                 row.getLastMessageDirection(),
                 row.getLastMessageAt());
@@ -265,7 +317,8 @@ public class WhatsAppController {
                 entity.getId(),
                 entity.getWaMessageId(),
                 entity.getPhoneNumber(),
-                entity.getContactName(),
+                contactResolver.resolveContactName(
+                        entity.getPhoneNumber(), entity.getContactName(), entity.getClienteId()),
                 entity.getDirection() != null ? entity.getDirection().name() : null,
                 entity.getMessageType() != null ? entity.getMessageType().name() : null,
                 entity.getContent(),

@@ -93,6 +93,8 @@ export const navItems = [
       { id: 'whatsapp/conversas', label: 'Conversas', icon: 'MessageCircle' },
       { id: 'whatsapp/enviar', label: 'Enviar mensagem', icon: 'Send' },
       { id: 'whatsapp/agendamentos', label: 'Agendamentos', icon: 'CalendarClock' },
+      { id: 'whatsapp/templates', label: 'Templates', icon: 'FileText' },
+      { id: 'whatsapp/aniversarios', label: 'Aniversários', icon: 'Cake' },
     ],
   },
   {

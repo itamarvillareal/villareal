@@ -26,6 +26,9 @@ public class WhatsAppConfig {
 
     private CopiaMonitoramento copiaMonitoramento = new CopiaMonitoramento();
 
+    private boolean aniversarioEnabled = true;
+    private String aniversarioCron = "0 0 8 * * *";
+
     public String getApiUrl() {
         return apiUrl;
     }
@@ -128,6 +131,22 @@ public class WhatsAppConfig {
 
     public void setCopiaMonitoramento(CopiaMonitoramento copiaMonitoramento) {
         this.copiaMonitoramento = copiaMonitoramento != null ? copiaMonitoramento : new CopiaMonitoramento();
+    }
+
+    public boolean isAniversarioEnabled() {
+        return aniversarioEnabled;
+    }
+
+    public void setAniversarioEnabled(boolean aniversarioEnabled) {
+        this.aniversarioEnabled = aniversarioEnabled;
+    }
+
+    public String getAniversarioCron() {
+        return aniversarioCron;
+    }
+
+    public void setAniversarioCron(String aniversarioCron) {
+        this.aniversarioCron = aniversarioCron;
     }
 
     /** Cópia best-effort de cada envio outbound para número de monitoramento. */

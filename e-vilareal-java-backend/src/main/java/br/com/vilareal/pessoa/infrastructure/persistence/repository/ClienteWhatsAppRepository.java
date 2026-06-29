@@ -35,4 +35,20 @@ public interface ClienteWhatsAppRepository extends JpaRepository<ClienteWhatsApp
                     """,
             nativeQuery = true)
     Optional<Long> findClienteIdByTelefoneNormalizado(@Param("digits") String digits);
+
+    @Query(
+            value =
+                    """
+                    SELECT cw.nome_label FROM cliente_whatsapp cw
+                    WHERE cw.ativo = TRUE
+                      AND (
+                        cw.numero = :digits
+                        OR RIGHT(cw.numero, 11) = RIGHT(:digits, 11)
+                        OR RIGHT(cw.numero, 10) = RIGHT(:digits, 10)
+                      )
+                    ORDER BY cw.principal DESC, cw.id ASC
+                    LIMIT 1
+                    """,
+            nativeQuery = true)
+    Optional<String> findNomeLabelByTelefoneNormalizado(@Param("digits") String digits);
 }

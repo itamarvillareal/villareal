@@ -18,6 +18,7 @@ import br.com.vilareal.whatsapp.dto.WhatsAppTemplateMessageRequest.Template;
 import br.com.vilareal.whatsapp.dto.WhatsAppTextMessageRequest;
 import br.com.vilareal.whatsapp.dto.WhatsAppTextMessageRequest.TextBody;
 import br.com.vilareal.whatsapp.infrastructure.persistence.entity.WhatsAppMessageEntity;
+import br.com.vilareal.whatsapp.infrastructure.persistence.repository.AniversarioWhatsAppRepository;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppMessageRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -52,6 +53,7 @@ public class WhatsAppService {
     private final PessoaContatoRepository pessoaContatoRepository;
     private final ClienteRepository clienteRepository;
     private final ClienteWhatsAppRepository clienteWhatsAppRepository;
+    private final AniversarioWhatsAppRepository aniversarioWhatsAppRepository;
     private final WhatsAppAIService whatsAppAIService;
 
     public WhatsAppService(
@@ -62,6 +64,7 @@ public class WhatsAppService {
             PessoaContatoRepository pessoaContatoRepository,
             ClienteRepository clienteRepository,
             ClienteWhatsAppRepository clienteWhatsAppRepository,
+            AniversarioWhatsAppRepository aniversarioWhatsAppRepository,
             @Lazy WhatsAppAIService whatsAppAIService) {
         this.whatsAppConfig = whatsAppConfig;
         this.objectMapper = objectMapper;
@@ -69,6 +72,7 @@ public class WhatsAppService {
         this.pessoaContatoRepository = pessoaContatoRepository;
         this.clienteRepository = clienteRepository;
         this.clienteWhatsAppRepository = clienteWhatsAppRepository;
+        this.aniversarioWhatsAppRepository = aniversarioWhatsAppRepository;
         this.whatsAppAIService = whatsAppAIService;
 
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
@@ -224,6 +228,12 @@ public class WhatsAppService {
         try {
             whatsAppMessageRepository.save(msg);
             log.info("Status atualizado: {} → {}", waMessageId, newStatus);
+            if (WhatsAppTemplateService.TEMPLATE_ANIVERSARIO.equals(msg.getTemplateName())) {
+                aniversarioWhatsAppRepository.findByWaMessageId(waMessageId).ifPresent(aniv -> {
+                    aniv.setStatus(parsedStatus.name());
+                    aniversarioWhatsAppRepository.save(aniv);
+                });
+            }
         } catch (Exception e) {
             log.error("Falha ao atualizar status da mensagem {}: {}", waMessageId, e.getMessage());
         }

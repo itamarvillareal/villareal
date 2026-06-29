@@ -55,3 +55,40 @@ export async function createWhatsAppSchedule(data) {
 export async function cancelWhatsAppSchedule(id) {
   return request(`/api/whatsapp/schedule/${id}`, { method: 'DELETE' });
 }
+
+export async function getWhatsAppTemplates(signal) {
+  return request('/api/whatsapp/templates', { signal });
+}
+
+export async function createWhatsAppTemplate(name, category, bodyText, exampleValues) {
+  return request('/api/whatsapp/templates', {
+    method: 'POST',
+    body: { name, category, bodyText, exampleValues },
+  });
+}
+
+export async function deleteWhatsAppTemplate(name) {
+  return request(`/api/whatsapp/templates/${encodeURIComponent(name)}`, { method: 'DELETE' });
+}
+
+export async function getWhatsAppAniversarios(ano, page = 0, size = 20, signal) {
+  return request('/api/whatsapp/aniversarios', {
+    query: { ano, page, size },
+    signal,
+  });
+}
+
+export async function getProximosAniversarios(dias = 30, signal) {
+  return request('/api/whatsapp/aniversarios/proximos', {
+    query: { dias },
+    signal,
+  });
+}
+
+export async function getAniversarioStats(signal) {
+  return request('/api/whatsapp/aniversarios/stats', { signal });
+}
+
+export async function enviarAniversarioManual(pessoaId) {
+  return request(`/api/whatsapp/aniversarios/enviar-manual/${pessoaId}`, { method: 'POST' });
+}

@@ -202,6 +202,14 @@ export const LazyWhatsAppAgendamentos = fromNamed(
   () => import('../components/whatsapp/Agendamentos.jsx'),
   'WhatsAppAgendamentos',
 );
+export const LazyWhatsAppTemplates = fromNamed(
+  () => import('../components/whatsapp/Templates.jsx'),
+  'WhatsAppTemplates',
+);
+export const LazyWhatsAppAniversarios = fromNamed(
+  () => import('../components/whatsapp/Aniversarios.jsx'),
+  'WhatsAppAniversarios',
+);
 export const LazyPoliticaPrivacidade = fromNamed(
   () => import('../pages/PoliticaPrivacidade.jsx'),
   'PoliticaPrivacidade',

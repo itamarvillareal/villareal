@@ -1,11 +1,13 @@
 package br.com.vilareal.whatsapp.service;
 
 import br.com.vilareal.calculo.application.CalculoApplicationService;
+import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.pagamento.domain.PagamentoDominio;
 import br.com.vilareal.pagamento.infrastructure.persistence.entity.PagamentoEntity;
 import br.com.vilareal.pagamento.infrastructure.persistence.repository.PagamentoRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
+import br.com.vilareal.processo.application.CodigoClienteUtil;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -65,6 +67,15 @@ public class WhatsAppFinanceiroContextService {
             return "Dados financeiros indisponíveis (cliente não identificado).";
         }
 
+        try {
+            return montarContextoFinanceiroInterno(clienteId);
+        } catch (Exception e) {
+            log.error("WhatsApp financeiro: falha ao montar contexto para cliente id={}", clienteId, e);
+            return "Dados financeiros temporariamente indisponíveis.";
+        }
+    }
+
+    private String montarContextoFinanceiroInterno(Long clienteId) {
         log.info("Consulta financeira via WhatsApp para cliente {}", clienteId);
 
         ClienteEntity cliente = clienteRepository.findById(clienteId).orElse(null);
@@ -91,28 +102,38 @@ public class WhatsAppFinanceiroContextService {
             for (Map.Entry<String, List<PagamentoEntity>> entry : porGrupo.entrySet()) {
                 sb.append("- ").append(entry.getKey()).append('\n');
                 for (PagamentoEntity p : entry.getValue()) {
-                    BigDecimal valor = p.getValor() != null ? p.getValor() : BigDecimal.ZERO;
-                    String status = formatarStatusPagamento(p, hoje);
-                    if (status.startsWith("VENCIDO")) {
-                        totalVencido = totalVencido.add(valor);
-                    } else {
-                        totalPendente = totalPendente.add(valor);
+                    if (p == null) {
+                        continue;
                     }
-                    sb.append("   ")
-                            .append(formatarParcela(p))
-                            .append(" — ")
-                            .append(formatarMoeda(valor))
-                            .append(" — Vencimento: ")
-                            .append(formatarData(p.getDataVencimento()))
-                            .append(" — Status: ")
-                            .append(status);
-                    if (StringUtils.hasText(p.getFormaPagamento())) {
-                        sb.append(" — Forma: ").append(p.getFormaPagamento());
+                    try {
+                        BigDecimal valor = p.getValor() != null ? p.getValor() : BigDecimal.ZERO;
+                        String status = formatarStatusPagamento(p, hoje);
+                        if (status.startsWith("VENCIDO")) {
+                            totalVencido = totalVencido.add(valor);
+                        } else {
+                            totalPendente = totalPendente.add(valor);
+                        }
+                        sb.append("   ")
+                                .append(formatarParcela(p))
+                                .append(" — ")
+                                .append(formatarMoeda(valor))
+                                .append(" — Vencimento: ")
+                                .append(formatarData(p.getDataVencimento()))
+                                .append(" — Status: ")
+                                .append(status);
+                        if (StringUtils.hasText(p.getFormaPagamento())) {
+                            sb.append(" — Forma: ").append(p.getFormaPagamento());
+                        }
+                        if (StringUtils.hasText(p.getCodigoBarras()) || StringUtils.hasText(p.getBoletoArquivoPath())) {
+                            sb.append(" — Boleto disponível");
+                        }
+                        sb.append('\n');
+                    } catch (RuntimeException e) {
+                        log.warn(
+                                "WhatsApp financeiro: pagamento id={} ignorado no contexto: {}",
+                                p.getId(),
+                                e.getMessage());
                     }
-                    if (StringUtils.hasText(p.getCodigoBarras()) || StringUtils.hasText(p.getBoletoArquivoPath())) {
-                        sb.append(" — Boleto disponível");
-                    }
-                    sb.append('\n');
                 }
             }
         }
@@ -203,6 +224,15 @@ public class WhatsAppFinanceiroContextService {
             return linhas;
         }
 
+        String codigoNorm = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(codigo);
+        if (!isCodigoClienteValido(codigoNorm)) {
+            log.warn(
+                    "WhatsApp financeiro: codigoCliente invalido para cliente id={} ({}); cálculos de honorários omitidos",
+                    cliente.getId(),
+                    codigo);
+            return linhas;
+        }
+
         List<ProcessoEntity> processos = processoRepository
                 .findByCliente_Id(cliente.getId(), PageRequest.of(0, 15))
                 .getContent()
@@ -211,27 +241,56 @@ public class WhatsAppFinanceiroContextService {
                 .toList();
 
         for (ProcessoEntity proc : processos) {
-            if (proc.getNumeroInterno() == null) {
+            if (proc == null) {
                 continue;
             }
-            calculoApplicationService
-                    .obterRodada(codigo, proc.getNumeroInterno(), 0)
-                    .filter(payload -> payload.has("parcelamentoAceito") && payload.get("parcelamentoAceito").asBoolean(false))
-                    .ifPresent(payload -> {
-                        ResumoCalculo resumo = calcularResumoTitulos(payload.get("titulos"));
-                        if (resumo.totalGeral().compareTo(BigDecimal.ZERO) <= 0
-                                && resumo.totalHonorarios().compareTo(BigDecimal.ZERO) <= 0) {
-                            return;
-                        }
-                        String ref = StringUtils.hasText(proc.getNumeroCnj())
-                                ? proc.getNumeroCnj()
-                                : "nº interno " + proc.getNumeroInterno();
-                        linhas.add("- Processo " + ref + ": honorários " + formatarMoeda(resumo.totalHonorarios())
-                                + ", total do cálculo " + formatarMoeda(resumo.totalGeral())
-                                + " (parcelamento aceito — consulte parcelas acima se houver boletos gerados)");
-                    });
+            Integer numeroInterno = proc.getNumeroInterno();
+            if (numeroInterno == null || numeroInterno < 1) {
+                log.warn(
+                        "WhatsApp financeiro: processo id={} ignorado (numeroInterno invalido: {})",
+                        proc.getId(),
+                        numeroInterno);
+                continue;
+            }
+            try {
+                calculoApplicationService
+                        .obterRodada(codigoNorm, numeroInterno, 0)
+                        .filter(payload -> payload.has("parcelamentoAceito")
+                                && payload.get("parcelamentoAceito").asBoolean(false))
+                        .ifPresent(payload -> {
+                            ResumoCalculo resumo = calcularResumoTitulos(payload.get("titulos"));
+                            if (resumo.totalGeral().compareTo(BigDecimal.ZERO) <= 0
+                                    && resumo.totalHonorarios().compareTo(BigDecimal.ZERO) <= 0) {
+                                return;
+                            }
+                            String ref = StringUtils.hasText(proc.getNumeroCnj())
+                                    ? proc.getNumeroCnj()
+                                    : "nº interno " + numeroInterno;
+                            linhas.add("- Processo " + ref + ": honorários " + formatarMoeda(resumo.totalHonorarios())
+                                    + ", total do cálculo " + formatarMoeda(resumo.totalGeral())
+                                    + " (parcelamento aceito — consulte parcelas acima se houver boletos gerados)");
+                        });
+            } catch (BusinessRuleException e) {
+                log.warn(
+                        "WhatsApp financeiro: cálculo ignorado para processo id={} numeroInterno={}: {}",
+                        proc.getId(),
+                        numeroInterno,
+                        e.getMessage());
+            } catch (RuntimeException e) {
+                log.warn(
+                        "WhatsApp financeiro: cálculo ignorado para processo id={} numeroInterno={}",
+                        proc.getId(),
+                        numeroInterno,
+                        e);
+            }
         }
         return linhas;
+    }
+
+    private static boolean isCodigoClienteValido(String codigoNorm) {
+        return StringUtils.hasText(codigoNorm)
+                && codigoNorm.length() == 8
+                && codigoNorm.chars().allMatch(Character::isDigit);
     }
 
     private ResumoCalculo calcularResumoTitulos(JsonNode titulosNode) {

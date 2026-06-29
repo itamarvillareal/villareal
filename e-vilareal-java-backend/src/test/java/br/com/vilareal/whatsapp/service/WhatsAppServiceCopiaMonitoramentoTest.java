@@ -7,6 +7,7 @@ import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaContat
 import br.com.vilareal.whatsapp.WhatsAppApiException;
 import br.com.vilareal.whatsapp.dto.WhatsAppSendResponse;
 import br.com.vilareal.whatsapp.dto.WhatsAppTextMessageRequest;
+import br.com.vilareal.whatsapp.infrastructure.persistence.repository.AniversarioWhatsAppRepository;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppMessageRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
@@ -54,6 +55,9 @@ class WhatsAppServiceCopiaMonitoramentoTest {
     private ClienteWhatsAppRepository clienteWhatsAppRepository;
 
     @Mock
+    private AniversarioWhatsAppRepository aniversarioWhatsAppRepository;
+
+    @Mock
     private WhatsAppAIService whatsAppAIService;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -99,6 +103,7 @@ class WhatsAppServiceCopiaMonitoramentoTest {
                 pessoaContatoRepository,
                 clienteRepository,
                 clienteWhatsAppRepository,
+                aniversarioWhatsAppRepository,
                 whatsAppAIService);
     }
 
@@ -192,6 +197,7 @@ class WhatsAppServiceCopiaMonitoramentoTest {
                 pessoaContatoRepository,
                 clienteRepository,
                 clienteWhatsAppRepository,
+                aniversarioWhatsAppRepository,
                 whatsAppAIService);
 
         assertThatCode(() -> whatsAppService.sendTextMessage("62988765432", "ok"))

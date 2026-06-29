@@ -5,15 +5,29 @@ import { ChatBubble } from './components/ChatBubble.jsx';
 import { useWhatsApp } from './hooks/useWhatsApp.js';
 import { useWhatsAppToast } from './WhatsAppToast.jsx';
 import { formatPhoneDisplay, formatTimeBR, isValidBrazilPhone, normalizePhoneForApi } from '../../utils/whatsappFormat.js';
-import { processosBtnPrimary, processosInputClass } from '../processos/ProcessosAdminLayout.jsx';
+import { FREE_TEXT_DELIVERY_ERROR, FREE_TEXT_WINDOW_HINT } from '../../utils/whatsappTemplateUtils.js';
 
 const PAGE_SIZE = 20;
 const CONVERSATIONS_REFRESH_MS = 30_000;
+
+/** Input em linha flex (sem w-full — evita conflito com botão ao lado). */
+const chatComposeInputClass =
+  'flex-1 min-w-0 basis-0 px-3 py-2.5 text-sm rounded-xl border border-gray-200 bg-white text-gray-800 font-medium placeholder:text-gray-300 placeholder:italic focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-teal-400 transition-[box-shadow,border-color] duration-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100';
+
+/** Botão compacto de ícone (sem w-full do processosBtnPrimary). */
+const chatComposeBtnClass =
+  'inline-flex shrink-0 flex-none items-center justify-center px-3 py-2.5 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-emerald-700 to-green-800 hover:from-emerald-600 hover:to-green-700 shadow-md shadow-emerald-500/25 ring-1 ring-white/15 transition-all duration-150 disabled:opacity-50 disabled:pointer-events-none';
 
 function previewText(conv) {
   const raw = String(conv?.lastMessagePreview ?? '').trim();
   if (raw) return raw;
   return conv?.lastMessageDirection === 'INBOUND' ? 'Mensagem recebida' : 'Mensagem enviada';
+}
+
+function tituloContato(nome, telefone) {
+  const nomeLimpo = String(nome ?? '').trim();
+  if (nomeLimpo) return nomeLimpo;
+  return formatPhoneDisplay(telefone);
 }
 
 export function WhatsAppConversas() {
@@ -120,7 +134,7 @@ export function WhatsAppConversas() {
     try {
       const res = await sendText(activePhone, text);
       if (res?.success === false) {
-        toast.error(res.error || 'Falha ao enviar.');
+        toast.error(res.error || FREE_TEXT_DELIVERY_ERROR);
         return;
       }
       const optimistic = {
@@ -137,7 +151,7 @@ export function WhatsAppConversas() {
       window.setTimeout(scrollToBottom, 50);
       loadConversations();
     } catch (err) {
-      toast.error(err?.message || 'Erro ao enviar mensagem.');
+      toast.error(err?.message || FREE_TEXT_DELIVERY_ERROR);
     } finally {
       setSending(false);
     }
@@ -154,9 +168,11 @@ export function WhatsAppConversas() {
     const fromUrl = searchParams.get('telefone');
     if (fromUrl && isValidBrazilPhone(fromUrl)) {
       openedFromUrl.current = true;
-      openConversation(fromUrl);
+      const normalized = normalizePhoneForApi(fromUrl);
+      const conv = conversations.find((c) => normalizePhoneForApi(c.phoneNumber) === normalized);
+      openConversation(fromUrl, conv?.contactName);
     }
-  }, [openConversation, searchParams]);
+  }, [conversations, openConversation, searchParams]);
 
   useEffect(() => {
     if (messages.length && !loadingMore) scrollToBottom();
@@ -174,15 +190,15 @@ export function WhatsAppConversas() {
   return (
     <div className="flex flex-col lg:flex-row gap-0 h-[calc(100dvh-12rem)] max-w-6xl mx-auto rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900 shadow-sm">
       <aside className="w-full lg:w-80 shrink-0 flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/80">
-        <form onSubmit={handleSearch} className="flex gap-2 p-3 shrink-0 border-b border-slate-200 dark:border-slate-700">
+        <form onSubmit={handleSearch} className="flex items-center gap-2 p-3 shrink-0 border-b border-slate-200 dark:border-slate-700">
           <input
             type="search"
-            className={processosInputClass}
+            className={chatComposeInputClass}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Buscar conversa ou telefone"
           />
-          <button type="submit" className={processosBtnPrimary} disabled={loading} title="Buscar telefone">
+          <button type="submit" className={chatComposeBtnClass} disabled={loading} title="Buscar telefone">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
           </button>
         </form>
@@ -215,11 +231,11 @@ export function WhatsAppConversas() {
                     >
                       <div className="flex items-start justify-between gap-2">
                         <p className="font-medium text-sm text-slate-900 dark:text-slate-100 truncate">
-                          {conv.contactName || formatPhoneDisplay(conv.phoneNumber)}
+                          {tituloContato(conv.contactName, conv.phoneNumber)}
                         </p>
                         <span className="text-[10px] text-slate-400 shrink-0">{formatTimeBR(conv.lastMessageAt)}</span>
                       </div>
-                      {conv.contactName ? (
+                      {String(conv.contactName ?? '').trim() ? (
                         <p className="text-xs text-slate-500 truncate">{formatPhoneDisplay(conv.phoneNumber)}</p>
                       ) : null}
                       <p className="text-xs text-slate-500 truncate mt-0.5">{previewText(conv)}</p>
@@ -246,8 +262,10 @@ export function WhatsAppConversas() {
         ) : (
           <>
             <div className="shrink-0 px-3 py-2 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
-              <p className="font-medium text-slate-900 dark:text-slate-100">{contactName || 'Contato'}</p>
-              <p className="text-xs text-slate-500">{formatPhoneDisplay(activePhone)}</p>
+              <p className="font-medium text-slate-900 dark:text-slate-100">{tituloContato(contactName, activePhone)}</p>
+              {String(contactName ?? '').trim() ? (
+                <p className="text-xs text-slate-500">{formatPhoneDisplay(activePhone)}</p>
+              ) : null}
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto px-3 py-4 space-y-3 bg-[#e5ddd5] dark:bg-slate-800/50">
               {page + 1 < totalPages ? (
@@ -269,19 +287,27 @@ export function WhatsAppConversas() {
             </div>
             <form
               onSubmit={handleSend}
-              className="shrink-0 flex gap-2 p-3 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+              className="shrink-0 flex flex-col gap-1 p-3 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
             >
-              <input
-                type="text"
-                className={processosInputClass}
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                placeholder="Digite uma mensagem…"
-                disabled={sending}
-              />
-              <button type="submit" disabled={sending || !draft.trim()} className={processosBtnPrimary}>
-                {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              </button>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  className={chatComposeInputClass}
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  placeholder="Digite uma mensagem…"
+                  disabled={sending}
+                />
+                <button
+                  type="submit"
+                  disabled={sending || !draft.trim()}
+                  className={chatComposeBtnClass}
+                  title="Enviar mensagem"
+                >
+                  {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-[11px] text-amber-700 dark:text-amber-300/90 px-1">{FREE_TEXT_WINDOW_HINT}</p>
             </form>
           </>
         )}

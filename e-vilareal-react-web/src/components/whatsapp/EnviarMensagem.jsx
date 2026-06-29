@@ -1,16 +1,26 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { AlertTriangle, Loader2 } from 'lucide-react';
 import { TemplateParamsForm, TemplateSelect } from './components/TemplateParamsForm.jsx';
 import { useWhatsApp } from './hooks/useWhatsApp.js';
+import { useWhatsAppTemplates } from './hooks/useWhatsAppTemplates.js';
 import { useWhatsAppToast } from './WhatsAppToast.jsx';
-import { findWhatsAppTemplate } from '../../data/whatsappTemplates.js';
 import { isValidBrazilPhone, normalizePhoneForApi } from '../../utils/whatsappFormat.js';
+import {
+  FREE_TEXT_DELIVERY_ERROR,
+  FREE_TEXT_WINDOW_BANNER,
+} from '../../utils/whatsappTemplateUtils.js';
 import { processosBtnPrimary, processosInputClass } from '../processos/ProcessosAdminLayout.jsx';
+
+function findTemplate(templates, name) {
+  return templates.find((t) => t.value === name) ?? null;
+}
 
 export function WhatsAppEnviarMensagem() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { sendText, sendTemplate } = useWhatsApp();
+  const { templates, loading: loadingTemplates } = useWhatsAppTemplates({ approvedOnly: true });
   const toast = useWhatsAppToast();
   const [mode, setMode] = useState('texto');
   const [phone, setPhone] = useState('');
@@ -20,9 +30,17 @@ export function WhatsAppEnviarMensagem() {
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
-    const tpl = findWhatsAppTemplate(templateName);
+    const preselected = location.state?.templateName;
+    if (preselected) {
+      setMode('template');
+      setTemplateName(preselected);
+    }
+  }, [location.state?.templateName]);
+
+  useEffect(() => {
+    const tpl = findTemplate(templates, templateName);
     setParams(tpl ? tpl.params.map(() => '') : []);
-  }, [templateName]);
+  }, [templateName, templates]);
 
   const resetForm = () => {
     setPhone('');
@@ -47,14 +65,14 @@ export function WhatsAppEnviarMensagem() {
     try {
       const res = await sendText(normalized, text);
       if (res?.success === false) {
-        toast.error(res.error || 'Falha ao enviar.');
+        toast.error(res.error || FREE_TEXT_DELIVERY_ERROR);
         return;
       }
       toast.success('Mensagem enviada com sucesso.');
       navigate(`/whatsapp/conversas?telefone=${encodeURIComponent(normalized)}`);
       resetForm();
     } catch (err) {
-      toast.error(err?.message || 'Erro ao enviar mensagem.');
+      toast.error(err?.message || FREE_TEXT_DELIVERY_ERROR);
     } finally {
       setSending(false);
     }
@@ -118,6 +136,13 @@ export function WhatsAppEnviarMensagem() {
 
       {mode === 'texto' ? (
         <form onSubmit={handleSendText} className="space-y-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 shadow-sm">
+          <div
+            className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100"
+            role="status"
+          >
+            <AlertTriangle className="w-5 h-5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+            <p>{FREE_TEXT_WINDOW_BANNER}</p>
+          </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Telefone</label>
             <input
@@ -155,8 +180,19 @@ export function WhatsAppEnviarMensagem() {
               placeholder="(62) 99999-1234"
             />
           </div>
-          <TemplateSelect value={templateName} onChange={setTemplateName} id="enviar-template" />
-          <TemplateParamsForm templateName={templateName} values={params} onChange={setParams} />
+          <TemplateSelect
+            value={templateName}
+            onChange={setTemplateName}
+            id="enviar-template"
+            templates={templates}
+            loading={loadingTemplates}
+          />
+          <TemplateParamsForm
+            templateName={templateName}
+            values={params}
+            onChange={setParams}
+            templates={templates}
+          />
           <button type="submit" disabled={sending} className={processosBtnPrimary}>
             {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
             Enviar template

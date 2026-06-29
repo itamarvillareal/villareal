@@ -73,6 +73,7 @@ public class JobRunProperties {
         m.put("whatsapp_agendamentos", new JobDefinition(5, 10, "WhatsApp — envio agendado"));
         m.put("whatsapp_lembrete_audiencia", new JobDefinition(1500, 30, "WhatsApp — lembrete audiência"));
         m.put("whatsapp_reforco_audiencia", new JobDefinition(1500, 30, "WhatsApp — reforço audiência"));
+        m.put("whatsapp_aniversario", new JobDefinition(1500, 30, "WhatsApp — felicitações aniversário"));
         return m;
     }
 

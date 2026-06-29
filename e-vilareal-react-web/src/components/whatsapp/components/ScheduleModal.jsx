@@ -11,10 +11,12 @@ import {
   normalizePhoneForApi,
 } from '../../../utils/whatsappFormat.js';
 import { findWhatsAppTemplate } from '../../../data/whatsappTemplates.js';
+import { useWhatsAppTemplates } from '../hooks/useWhatsAppTemplates.js';
 import { useCloseOnEscape } from '../../../hooks/useCloseOnEscape.js';
 
 export function ScheduleModal({ open, onClose, onSuccess }) {
   const { createSchedule } = useWhatsApp();
+  const { templates, loading: loadingTemplates } = useWhatsAppTemplates({ approvedOnly: true });
   const toast = useWhatsAppToast();
   const [phone, setPhone] = useState('');
   const [templateName, setTemplateName] = useState('');
@@ -39,9 +41,10 @@ export function ScheduleModal({ open, onClose, onSuccess }) {
   }, [open]);
 
   useEffect(() => {
-    const tpl = findWhatsAppTemplate(templateName);
+    const tpl =
+      templates.find((t) => t.value === templateName) ?? findWhatsAppTemplate(templateName);
     setParams(tpl ? tpl.params.map(() => '') : []);
-  }, [templateName]);
+  }, [templateName, templates]);
 
   if (!open) return null;
 
@@ -123,8 +126,19 @@ export function ScheduleModal({ open, onClose, onSuccess }) {
               placeholder="(62) 99999-1234"
             />
           </div>
-          <TemplateSelect value={templateName} onChange={setTemplateName} id="schedule-template" />
-          <TemplateParamsForm templateName={templateName} values={params} onChange={setParams} />
+          <TemplateSelect
+            value={templateName}
+            onChange={setTemplateName}
+            id="schedule-template"
+            templates={templates}
+            loading={loadingTemplates}
+          />
+          <TemplateParamsForm
+            templateName={templateName}
+            values={params}
+            onChange={setParams}
+            templates={templates}
+          />
           <div>
             <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
               Data e hora do envio

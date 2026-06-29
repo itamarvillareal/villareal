@@ -27,4 +27,14 @@ public interface PessoaRepository extends JpaRepository<PessoaEntity, Long>, Jpa
     long countByImportacaoId(String importacaoId);
 
     long deleteByImportacaoId(String importacaoId);
+
+    @Query(
+            """
+            SELECT p FROM PessoaEntity p
+            WHERE p.dataNascimento IS NOT NULL
+              AND p.ativo = TRUE
+              AND DAY(p.dataNascimento) = :dia
+              AND MONTH(p.dataNascimento) = :mes
+            """)
+    java.util.List<PessoaEntity> findAniversariantes(@Param("dia") int dia, @Param("mes") int mes);
 }
