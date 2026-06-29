@@ -1,6 +1,5 @@
 package br.com.vilareal.projudi;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -9,6 +8,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
@@ -25,7 +26,7 @@ class ProjudiPeticaoServiceSessaoTest {
     private ProjudiPeticaoService peticaoService;
 
     @Test
-    void fluxoProtocolo_invalidaSessaoAoTerminarMesmoComFalhaPrecoce() {
+    void fluxoProtocolo_invalidaSessaoQuandoFalhaOtp() {
         when(sessionService.buscarProcessoConsulta(anyLong(), anyString()))
                 .thenThrow(new IllegalStateException("Token OTP não recebido no prazo."));
 
@@ -53,7 +54,7 @@ class ProjudiPeticaoServiceSessaoTest {
     }
 
     @Test
-    void protocoloComConcluir_invalidaSessaoAoTerminar() {
+    void protocoloComConcluir_falhaGenerica_naoInvalidaSessao() {
         when(sessionService.buscarProcessoConsulta(anyLong(), anyString()))
                 .thenThrow(new IllegalStateException("falha simulada"));
 
@@ -63,6 +64,39 @@ class ProjudiPeticaoServiceSessaoTest {
                 "",
                 List.of(new ProjudiPeticaoService.ArquivoPeticao(new byte[] {1}, 16, "doc.pdf.p7s")));
 
-        verify(sessionService).invalidarSessao(1L);
+        verify(sessionService, never()).invalidarSessao(anyLong());
+    }
+
+    @Test
+    void deveInvalidarSessaoPosProtocolo_sucesso_mantemSessao() {
+        var ok = new ProjudiPeticaoService.ResultadoProtocoloPeticao(true, "Petição enviada com sucesso.", "");
+        assertFalse(ProjudiPeticaoService.deveInvalidarSessaoPosProtocolo(ok));
+    }
+
+    @Test
+    void deveInvalidarSessaoPosProtocolo_pedidoDuplicado_descartaSessao() {
+        var erro = new ProjudiPeticaoService.ResultadoProtocoloPeticao(
+                false,
+                "Passo 11 falhou.",
+                "pedido enviado mais de uma vez");
+        assertTrue(ProjudiPeticaoService.deveInvalidarSessaoPosProtocolo(erro));
+    }
+
+    @Test
+    void deveInvalidarSessaoPosProtocolo_telaLogin_descartaSessao() {
+        var erro = new ProjudiPeticaoService.ResultadoProtocoloPeticao(
+                false,
+                "Passo 1 falhou.",
+                "<form id=\"formLogin\" name=\"usuario\" name=\"senha\">");
+        assertTrue(ProjudiPeticaoService.deveInvalidarSessaoPosProtocolo(erro));
+    }
+
+    @Test
+    void deveInvalidarSessaoPosProtocolo_falhaConcluirSemSinal_mantemSessao() {
+        var erro = new ProjudiPeticaoService.ResultadoProtocoloPeticao(
+                false,
+                "Passo 11 (Concluir) não confirmou sucesso.",
+                "location=\n<html>erro genérico</html>");
+        assertFalse(ProjudiPeticaoService.deveInvalidarSessaoPosProtocolo(erro));
     }
 }
