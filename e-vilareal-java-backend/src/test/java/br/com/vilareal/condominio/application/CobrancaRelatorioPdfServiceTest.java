@@ -66,7 +66,7 @@ class CobrancaRelatorioPdfServiceTest {
                         null,
                         List.of(new RelatorioDebitoInseridoDto("10/04/2026", "658,77", 0, 0)),
                         List.of(new RelatorioDebitoIgnoradoDto(
-                                "11/05/2026", "200,00", 0, ResultadoMerge.MOTIVO_DEBITO_JA_EXISTE)))),
+                                "11/05/2026", "200,00", 0, ResultadoMerge.MOTIVO_DEBITO_JA_EXISTE, 3)))),
                 List.of(),
                 List.of(
                         "1 devedor(es) não atingiram a regra D+60 e foram descartados (não importados)."));

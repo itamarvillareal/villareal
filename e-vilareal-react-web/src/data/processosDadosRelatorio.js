@@ -398,6 +398,14 @@ function ultimoHistoricoPorData(historico) {
 
 let _mapaImovelClienteProc = null;
 const _cacheCamposApi = new Map();
+/** Chaves com andamentos já carregados na emissão atual (evita GET repetido). */
+const _cacheAndamentosOk = new Set();
+
+/** Limpa cache de enriquecimento (nova emissão/atualização do relatório). */
+export function limparCacheCamposRelatorioApi() {
+  _cacheCamposApi.clear();
+  _cacheAndamentosOk.clear();
+}
 
 function mapaImovelPorClienteProc() {
   if (_mapaImovelClienteProc) return _mapaImovelClienteProc;
@@ -451,8 +459,22 @@ const CAMPOS_EXTRAS_API_RELATORIO = new Set([
   'unidade',
 ]);
 
-function montarCacheCamposApiRelatorio(cabecalho, partes, andamentos, statusCampos, processoId, papelParte = 'requerente') {
-  const { parteCliente, parteOposta } = textosPartesFromListaPartesApi(partes, papelParte);
+function montarCacheCamposApiRelatorio(
+  cabecalho,
+  partes,
+  andamentos,
+  statusCampos,
+  processoId,
+  papelParte = 'requerente',
+  textosPartesListagem = null
+) {
+  const { parteCliente, parteOposta } =
+    textosPartesListagem != null
+      ? {
+          parteCliente: String(textosPartesListagem.parteCliente ?? '').trim(),
+          parteOposta: String(textosPartesListagem.parteOposta ?? '').trim(),
+        }
+      : textosPartesFromListaPartesApi(partes, papelParte);
   const ultimo = extrairUltimoAndamento(andamentos || []);
   return {
     processoId,
@@ -491,6 +513,38 @@ export function temCacheCamposRelatorioApi(codClienteRaw, procRaw) {
   return _cacheCamposApi.has(keyClienteProc(codClienteRaw, procRaw));
 }
 
+/**
+ * Preenche cache a partir da listagem GET /api/processos?codigoCliente= (já traz cabeçalho + partes).
+ * Evita re-fetch de processo e partes no pré-aquecimento — resta só GET andamentos.
+ */
+export function seedCacheRelatorioFromProcessoListagem(codClienteRaw, procRaw, rawApi) {
+  if (!featureFlags.useApiProcessos || rawApi == null) return;
+  const cod = padCliente(codClienteRaw);
+  const proc = Number(normalizarProcesso(procRaw));
+  if (!Number.isFinite(proc) || proc < 1) return;
+  const processoId = rawApi.id != null ? Number(rawApi.id) : null;
+  if (!Number.isFinite(processoId) || processoId <= 0) return;
+
+  const cab = mapApiProcessoToUiShape(rawApi);
+  const statusCampos = camposStatusAtivoRelatorio(cod, proc, cab.statusAtivo !== false);
+  const key = keyClienteProc(cod, proc);
+  _cacheCamposApi.set(
+    key,
+    montarCacheCamposApiRelatorio(
+      cab,
+      [],
+      [],
+      statusCampos,
+      processoId,
+      cab.papelParte ?? 'requerente',
+      {
+        parteCliente: String(cab.parteCliente ?? '').trim(),
+        parteOposta: String(cab.parteOposta ?? '').trim(),
+      }
+    )
+  );
+}
+
 function normalizarEntradaPreaquecerRelatorio(entrada) {
   if (Array.isArray(entrada)) {
     return {
@@ -510,7 +564,31 @@ async function preaquecerUmProcessoRelatorio({ codCliente: codRaw, proc: procRaw
   const cod = padCliente(codRaw);
   const proc = Number(normalizarProcesso(procRaw));
   const key = keyClienteProc(cod, proc);
-  if (_cacheCamposApi.has(key)) return;
+
+  if (_cacheCamposApi.has(key)) {
+    if (_cacheAndamentosOk.has(key)) return;
+    const cached = _cacheCamposApi.get(key);
+    const hinted =
+      processoIdHint != null && Number.isFinite(Number(processoIdHint)) && Number(processoIdHint) > 0
+        ? Number(processoIdHint)
+        : null;
+    const processoId =
+      hinted ??
+      (Number.isFinite(Number(cached?.processoId)) && Number(cached.processoId) > 0
+        ? Number(cached.processoId)
+        : null) ??
+      (await resolverProcessoId({ codigoCliente: cod, numeroInterno: proc }));
+    if (!processoId) return;
+    const andamentos = await listarAndamentosProcesso(processoId);
+    const ultimo = extrairUltimoAndamento(andamentos || []);
+    _cacheCamposApi.set(key, {
+      ...cached,
+      ultimoHistoricoInfo: ultimo.info,
+      ultimoHistoricoData: ultimo.data,
+    });
+    _cacheAndamentosOk.add(key);
+    return;
+  }
 
   const hinted =
     processoIdHint != null && Number.isFinite(Number(processoIdHint)) && Number(processoIdHint) > 0
@@ -538,6 +616,7 @@ async function preaquecerUmProcessoRelatorio({ codCliente: codRaw, proc: procRaw
       cabecalho?.papelParte ?? reg?.papelParte ?? 'requerente'
     )
   );
+  _cacheAndamentosOk.add(key);
 }
 
 /**

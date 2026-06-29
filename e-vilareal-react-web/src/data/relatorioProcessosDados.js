@@ -4,12 +4,16 @@
 import { featureFlags } from '../config/featureFlags.js';
 import { listarClientesCadastro } from '../repositories/clientesRepository.js';
 import { listarProcessosPorCodigoCliente, mapApiProcessoToUiShape } from '../repositories/processosRepository.js';
-import { resolverStatusAtivoRelatorioProcesso } from './processosDadosRelatorio.js';
+import {
+  limparCacheCamposRelatorioApi,
+  resolverStatusAtivoRelatorioProcesso,
+  seedCacheRelatorioFromProcessoListagem,
+} from './processosDadosRelatorio.js';
 
 const CONSULTORES = ['Karla Almeida', 'ITAMAR', 'DAAE', 'Ana Luisa'];
 
 /** Paraleliza GET por cliente (evita N+1 sequencial no relatório). */
-const PROCESSOS_RELATORIO_FETCH_CONCURRENCY = 10;
+const PROCESSOS_RELATORIO_FETCH_CONCURRENCY = 16;
 
 /**
  * @param {Array<{ codigo?: string, nomeRazao?: string }>} sortedClientes já ordenados
@@ -94,6 +98,7 @@ export async function obterLinhasBaseRelatorioProcessos() {
   }
 
   const sorted = [...clientes].sort((a, b) => String(a.codigo ?? '').localeCompare(String(b.codigo ?? '')));
+  limparCacheCamposRelatorioApi();
   const entries = await listarProcessosPorClientesEmLotes(sorted);
   const out = [];
   let idx = 0;
@@ -115,6 +120,7 @@ export async function obterLinhasBaseRelatorioProcessos() {
       const parteSlice = '';
 
       const ativo = resolverStatusAtivoRelatorioProcesso(codPad, p, u.statusAtivo !== false);
+      seedCacheRelatorioFromProcessoListagem(codPad, p, raw);
       out.push({
         cliente: nomeCliente,
         codCliente: codPad,

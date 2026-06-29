@@ -161,7 +161,8 @@ public class CobrancaRelatorioMontador {
                         ig.vencimento(),
                         formatBrl(ig.valorCentavos()),
                         ig.dimensaoExistente(),
-                        ig.motivo()));
+                        ig.motivo(),
+                        res.numeroInterno()));
             }
         }
 

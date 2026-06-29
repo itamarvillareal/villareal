@@ -100,6 +100,11 @@ function montarTextoResumoProcessamentoCobranca(resultado, clienteCodigo, client
         `revisaoTrocaDono=${it.revisaoTrocaDono ?? false}`,
       ].join(' | '),
     );
+    for (const ig of it.ignorados || []) {
+      linhas.push(
+        `  Ignorado: proc=${ig.numeroInterno ?? it.numeroInterno ?? '—'} | venc=${ig.vencimento ?? '—'} | valor=${ig.valor ?? '—'} | dim=${ig.dimensaoExistente ?? '—'} | ${ig.motivo ?? '—'}`,
+      );
+    }
   }
   const erros = resultado?.erros || [];
   if (erros.length) {
@@ -126,6 +131,25 @@ function contagemDebitosItem(it, campoContagem, campoLista) {
   if (Number.isFinite(Number(n))) return Number(n);
   const lista = it?.[campoLista];
   return Array.isArray(lista) ? lista.length : 0;
+}
+
+function listarTitulosIgnoradosCobranca(resultado) {
+  const linhas = [];
+  for (const it of resultado?.itens || []) {
+    const cod = it.codigoUnidade ?? it.codigoUnidadeNormalizada ?? '?';
+    const proc = it.numeroInterno ?? null;
+    for (const ig of it.ignorados || []) {
+      linhas.push({
+        codigoUnidade: cod,
+        numeroInterno: ig.numeroInterno ?? proc,
+        vencimento: ig.vencimento ?? '—',
+        valor: ig.valor ?? '—',
+        dimensaoExistente: ig.dimensaoExistente ?? '—',
+        motivo: ig.motivo ?? '—',
+      });
+    }
+  }
+  return linhas;
 }
 
 function reconciliacaoCobranca(resultado) {
@@ -297,6 +321,11 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
 
   const reconc = useMemo(
     () => (processResult ? reconciliacaoCobranca(processResult) : null),
+    [processResult],
+  );
+
+  const titulosIgnorados = useMemo(
+    () => (processResult ? listarTitulosIgnoradosCobranca(processResult) : []),
     [processResult],
   );
 
@@ -579,6 +608,37 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
                       </tr>
                     );
                   })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {titulosIgnorados.length > 0 && (
+            <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+              <h3 className="px-3 py-2 text-sm font-medium text-slate-700 border-b border-slate-200 bg-slate-50">
+                Títulos ignorados
+              </h3>
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50 text-slate-600">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-medium">Unidade</th>
+                    <th className="text-left px-3 py-2 font-medium">Proc.</th>
+                    <th className="text-left px-3 py-2 font-medium">Vencimento</th>
+                    <th className="text-right px-3 py-2 font-medium">Valor</th>
+                    <th className="text-right px-3 py-2 font-medium">Dim.</th>
+                    <th className="text-left px-3 py-2 font-medium">Motivo</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {titulosIgnorados.map((ig, i) => (
+                    <tr key={`${ig.codigoUnidade}-${ig.vencimento}-${i}`} className="text-slate-800">
+                      <td className="px-3 py-2 font-mono text-xs">{ig.codigoUnidade}</td>
+                      <td className="px-3 py-2 tabular-nums">{ig.numeroInterno ?? '—'}</td>
+                      <td className="px-3 py-2">{ig.vencimento}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{ig.valor}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{ig.dimensaoExistente}</td>
+                      <td className="px-3 py-2 text-xs">{ig.motivo}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>

@@ -70,6 +70,7 @@ class CobrancaRelatorioMontadorTest {
         assertThat(r.itens().getFirst().ignorados().getFirst().motivo())
                 .isEqualTo(ResultadoMerge.MOTIVO_DEBITO_JA_EXISTE);
         assertThat(r.itens().getFirst().ignorados().getFirst().dimensaoExistente()).isZero();
+        assertThat(r.itens().getFirst().ignorados().getFirst().numeroInterno()).isEqualTo(3);
     }
 
     @Test

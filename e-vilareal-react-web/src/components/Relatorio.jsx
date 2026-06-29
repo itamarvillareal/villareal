@@ -456,7 +456,7 @@ export function Relatorio() {
       }));
       setEnriquecendoDetalhes(true);
       try {
-        await preaquecerCamposRelatorioApiFirst(entradasPreaquecer, { concurrency: 12 });
+        await preaquecerCamposRelatorioApiFirst(entradasPreaquecer, { concurrency: 20 });
         const atualizado = montarLinhasRelatorioBaseDeCruas(baseRawEmissaoRef.current);
         const dadosAtualizados = mesclarLinhasRelatorioComPersistido(true, atualizado);
         setDados(dadosAtualizados);

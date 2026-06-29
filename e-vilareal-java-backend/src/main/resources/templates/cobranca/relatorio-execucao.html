@@ -87,11 +87,12 @@
   <h2 th:if="${!ignoradosFlat.isEmpty()}">Títulos ignorados</h2>
   <table th:if="${!ignoradosFlat.isEmpty()}">
     <thead>
-      <tr><th>Unidade</th><th>Vencimento</th><th>Valor</th><th>Dim.</th><th>Motivo</th></tr>
+      <tr><th>Unidade</th><th>Proc.</th><th>Vencimento</th><th>Valor</th><th>Dim.</th><th>Motivo</th></tr>
     </thead>
     <tbody>
       <tr th:each="ig : ${ignoradosFlat}">
         <td th:text="${ig.codigoUnidade}">—</td>
+        <td th:text="${ig.numeroInterno}">—</td>
         <td th:text="${ig.vencimento}">—</td>
         <td th:text="${ig.valor}">—</td>
         <td class="num" th:text="${ig.dimensaoExistente}">0</td>

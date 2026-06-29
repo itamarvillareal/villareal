@@ -90,6 +90,7 @@ public class CobrancaRelatorioPdfService {
                 for (RelatorioDebitoIgnoradoDto ig : it.ignorados()) {
                     Map<String, Object> row = new HashMap<>();
                     row.put("codigoUnidade", it.codigoUnidade());
+                    row.put("numeroInterno", ig.numeroInterno() != null ? ig.numeroInterno() : it.numeroInterno());
                     row.put("vencimento", ig.vencimento());
                     row.put("valor", ig.valor());
                     row.put("dimensaoExistente", ig.dimensaoExistente());
