@@ -2,6 +2,7 @@ package br.com.vilareal.financeiro.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
@@ -9,9 +10,11 @@ import org.springframework.test.context.ActiveProfiles;
 /**
  * Dry-run local contra vilareal-db (profile dev). Não grava — só imprime simulação.
  * Rodar: SPRING_PROFILES_ACTIVE=dev ./mvnw -q test -Dtest=HonorariosRedeSegurancaDryRunTest
+ * -Dvilareal.honorarios.dryrun=true
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("dev")
+@EnabledIfSystemProperty(named = "vilareal.honorarios.dryrun", matches = "true")
 class HonorariosRedeSegurancaDryRunTest {
 
     @Autowired
