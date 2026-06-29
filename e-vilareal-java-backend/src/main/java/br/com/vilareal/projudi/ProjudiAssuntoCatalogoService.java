@@ -3,11 +3,19 @@ package br.com.vilareal.projudi;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import br.com.vilareal.projudi.infrastructure.persistence.entity.ProjudiAssuntoCadastroEntity;
+import br.com.vilareal.projudi.infrastructure.persistence.entity.ProjudiAssuntoOcultoEntity;
+import br.com.vilareal.projudi.infrastructure.persistence.repository.ProjudiAssuntoCadastroRepository;
+import br.com.vilareal.projudi.infrastructure.persistence.repository.ProjudiAssuntoOcultoRepository;
+
 import java.text.Normalizer;
-import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Catálogo fixo de assuntos/classes PROJUDI e regras de sugestão (modalidade) por natureza da ação.
@@ -15,7 +23,12 @@ import java.util.Map;
 @Service
 public class ProjudiAssuntoCatalogoService {
 
-    public record AssuntoItem(int idAssunto, String rotuloCompleto) {}
+    public record AssuntoItem(int idAssunto, String rotuloCompleto, boolean cadastroUsuario) {
+
+        public AssuntoItem(int idAssunto, String rotuloCompleto) {
+            this(idAssunto, rotuloCompleto, false);
+        }
+    }
 
     public record ClasseItem(
             String id,
@@ -74,8 +87,86 @@ public class ProjudiAssuntoCatalogoService {
             Map.entry("EXECUCAO DE TAXA CONDOMINIAL", "EXECUCAO_TAXA_CONDOMINIAL"),
             Map.entry("COBRANCA", "COBRANCA_JEC"));
 
+    private final ProjudiAssuntoCadastroRepository assuntoCadastroRepository;
+    private final ProjudiAssuntoOcultoRepository assuntoOcultoRepository;
+
+    public ProjudiAssuntoCatalogoService(
+            ProjudiAssuntoCadastroRepository assuntoCadastroRepository,
+            ProjudiAssuntoOcultoRepository assuntoOcultoRepository) {
+        this.assuntoCadastroRepository = assuntoCadastroRepository;
+        this.assuntoOcultoRepository = assuntoOcultoRepository;
+    }
+
     public List<AssuntoItem> listarCatalogo() {
-        return CATALOGO;
+        Set<Integer> ocultos = idsAssuntosOcultos();
+        Map<Integer, AssuntoItem> porId = new LinkedHashMap<>();
+        for (AssuntoItem item : CATALOGO) {
+            if (!ocultos.contains(item.idAssunto())) {
+                porId.put(item.idAssunto(), item);
+            }
+        }
+        for (ProjudiAssuntoCadastroEntity cadastro : assuntoCadastroRepository.findAllByOrderByIdAssuntoAsc()) {
+            porId.put(
+                    cadastro.getIdAssunto(),
+                    new AssuntoItem(cadastro.getIdAssunto(), cadastro.getDescricao().trim(), true));
+        }
+        return porId.values().stream()
+                .sorted(Comparator.comparingInt(AssuntoItem::idAssunto))
+                .toList();
+    }
+
+    public AssuntoItem cadastrarAssunto(int idAssunto, String descricao) {
+        if (idAssunto < 1) {
+            throw new IllegalArgumentException("idAssunto deve ser positivo.");
+        }
+        String rotulo = StringUtils.hasText(descricao) ? descricao.trim() : "";
+        if (!StringUtils.hasText(rotulo)) {
+            throw new IllegalArgumentException("descricao é obrigatória.");
+        }
+        if (rotulo.length() > 500) {
+            rotulo = rotulo.substring(0, 500);
+        }
+        Set<Integer> fixos = CATALOGO.stream().map(AssuntoItem::idAssunto).collect(Collectors.toSet());
+        if (fixos.contains(idAssunto) && !idsAssuntosOcultos().contains(idAssunto)) {
+            throw new IllegalArgumentException(
+                    "Id " + idAssunto + " já faz parte do catálogo fixo do sistema.");
+        }
+        if (assuntoOcultoRepository.existsById(idAssunto)) {
+            assuntoOcultoRepository.deleteById(idAssunto);
+        }
+        ProjudiAssuntoCadastroEntity entity = assuntoCadastroRepository
+                .findById(idAssunto)
+                .orElseGet(ProjudiAssuntoCadastroEntity::new);
+        entity.setIdAssunto(idAssunto);
+        entity.setDescricao(rotulo);
+        assuntoCadastroRepository.save(entity);
+        return new AssuntoItem(idAssunto, rotulo, true);
+    }
+
+    public void removerAssuntoCadastro(int idAssunto) {
+        if (idAssunto < 1) {
+            throw new IllegalArgumentException("idAssunto inválido.");
+        }
+        if (assuntoCadastroRepository.existsById(idAssunto)) {
+            assuntoCadastroRepository.deleteById(idAssunto);
+            return;
+        }
+        boolean fixo = CATALOGO.stream().anyMatch(a -> a.idAssunto() == idAssunto);
+        if (fixo) {
+            if (!assuntoOcultoRepository.existsById(idAssunto)) {
+                ProjudiAssuntoOcultoEntity oculto = new ProjudiAssuntoOcultoEntity();
+                oculto.setIdAssunto(idAssunto);
+                assuntoOcultoRepository.save(oculto);
+            }
+            return;
+        }
+        throw new IllegalArgumentException("Assunto não encontrado: " + idAssunto);
+    }
+
+    private Set<Integer> idsAssuntosOcultos() {
+        return assuntoOcultoRepository.findAll().stream()
+                .map(ProjudiAssuntoOcultoEntity::getIdAssunto)
+                .collect(Collectors.toSet());
     }
 
     public List<ClasseItem> listarClasses() {

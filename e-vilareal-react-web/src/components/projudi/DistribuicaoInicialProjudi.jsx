@@ -13,10 +13,12 @@ import {
   XCircle,
 } from 'lucide-react';
 import {
+  cadastrarAssuntoProjudi,
   distribuirInicial,
   listarAssuntosProjudi,
   listarClassesProjudi,
   prepararInicial,
+  removerAssuntoProjudi,
   sugerirAssuntoProjudi,
   validarProntidaoInicial,
 } from '../../api/iniciaisProjudiApi.js';
@@ -64,13 +66,8 @@ function baixarLogJson(resultado) {
   URL.revokeObjectURL(url);
 }
 
-function montarCsvAssuntos(idsSelecionados, outroId) {
-  const ids = [...idsSelecionados];
-  const extra = Number.parseInt(String(outroId).trim(), 10);
-  if (Number.isFinite(extra) && extra > 0 && !ids.includes(extra)) {
-    ids.push(extra);
-  }
-  return ids.join(',');
+function montarCsvAssuntos(idsSelecionados) {
+  return [...idsSelecionados].join(',');
 }
 
 const CLASSE_JEC_PADRAO = { idProcessoTipo: 162, processoTipoCodigo: 1436 };
@@ -79,7 +76,6 @@ function montarFormDataInicial({
   credencialId,
   valorCausa,
   idsAssuntosSelecionados,
-  outroIdAssunto,
   pessoaAutor,
   pessoaReu,
   linhasP7s,
@@ -91,7 +87,7 @@ function montarFormDataInicial({
   const fd = new FormData();
   fd.append('credencialId', String(credencialId).trim() || '1');
   fd.append('valorCausa', valorCausa.trim());
-  fd.append('idAssuntos', montarCsvAssuntos(idsAssuntosSelecionados, outroIdAssunto));
+  fd.append('idAssuntos', montarCsvAssuntos(idsAssuntosSelecionados));
   fd.append('pessoaIdAutor', String(pessoaAutor.id));
   fd.append('pessoaIdReu', String(pessoaReu.id));
   fd.append('idProcessoTipo', String(idProcessoTipo ?? CLASSE_JEC_PADRAO.idProcessoTipo));
@@ -248,9 +244,13 @@ export function DistribuicaoInicialProjudi() {
   const [credenciais, setCredenciais] = useState([]);
   const [valorCausa, setValorCausa] = useState('');
   const [catalogoAssuntos, setCatalogoAssuntos] = useState([]);
+  const [carregandoCatalogoAssuntos, setCarregandoCatalogoAssuntos] = useState(true);
+  const [erroCatalogoAssuntos, setErroCatalogoAssuntos] = useState('');
   const [catalogoClasses, setCatalogoClasses] = useState([]);
   const [idsAssuntosSelecionados, setIdsAssuntosSelecionados] = useState([]);
-  const [outroIdAssunto, setOutroIdAssunto] = useState('');
+  const [novoAssuntoId, setNovoAssuntoId] = useState('');
+  const [novoAssuntoDescricao, setNovoAssuntoDescricao] = useState('');
+  const [salvandoAssunto, setSalvandoAssunto] = useState(false);
   const [assuntoSugerido, setAssuntoSugerido] = useState(null);
   const [modalidadeSugerida, setModalidadeSugerida] = useState(null);
   const [idProcessoTipo, setIdProcessoTipo] = useState(CLASSE_JEC_PADRAO.idProcessoTipo);
@@ -291,15 +291,75 @@ export function DistribuicaoInicialProjudi() {
   }, []);
 
   useEffect(() => {
-    void (async () => {
-      try {
-        const rows = await listarAssuntosProjudi();
-        setCatalogoAssuntos(Array.isArray(rows) ? rows : []);
-      } catch {
-        setCatalogoAssuntos([]);
-      }
-    })();
+    void carregarCatalogoAssuntos();
   }, []);
+
+  async function carregarCatalogoAssuntos() {
+    setCarregandoCatalogoAssuntos(true);
+    setErroCatalogoAssuntos('');
+    try {
+      const rows = await listarAssuntosProjudi();
+      setCatalogoAssuntos(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      setCatalogoAssuntos([]);
+      setErroCatalogoAssuntos(err?.message || 'Falha ao carregar assuntos.');
+    } finally {
+      setCarregandoCatalogoAssuntos(false);
+    }
+  }
+
+  async function onGravarAssunto(e) {
+    e?.preventDefault?.();
+    const id = Number.parseInt(String(novoAssuntoId).trim(), 10);
+    const descricao = novoAssuntoDescricao.trim();
+    if (!Number.isFinite(id) || id < 1) {
+      setApiError('Informe um id de assunto válido (número positivo).');
+      return;
+    }
+    if (!descricao) {
+      setApiError('Informe a descrição do assunto.');
+      return;
+    }
+    setSalvandoAssunto(true);
+    setApiError('');
+    try {
+      const item = await cadastrarAssuntoProjudi(id, descricao);
+      const normalizado = {
+        idAssunto: item.idAssunto,
+        rotuloCompleto: item.rotuloCompleto,
+        cadastroUsuario: item.cadastroUsuario !== false,
+      };
+      setCatalogoAssuntos((prev) => {
+        const restantes = prev.filter((a) => a.idAssunto !== normalizado.idAssunto);
+        return [...restantes, normalizado].sort((a, b) => a.idAssunto - b.idAssunto);
+      });
+      setIdsAssuntosSelecionados((prev) =>
+        prev.includes(normalizado.idAssunto) ? prev : [...prev, normalizado.idAssunto],
+      );
+      setNovoAssuntoId('');
+      setNovoAssuntoDescricao('');
+      setToast(`Assunto ${normalizado.idAssunto} gravado no sistema.`);
+    } catch (err) {
+      setApiError(err?.message || 'Falha ao gravar assunto.');
+    } finally {
+      setSalvandoAssunto(false);
+    }
+  }
+
+  async function onRemoverAssuntoCadastro(idAssunto) {
+    if (!window.confirm(`Remover o assunto ${idAssunto} do cadastro do sistema?`)) {
+      return;
+    }
+    setApiError('');
+    try {
+      await removerAssuntoProjudi(idAssunto);
+      setCatalogoAssuntos((prev) => prev.filter((a) => a.idAssunto !== idAssunto));
+      setIdsAssuntosSelecionados((prev) => prev.filter((id) => id !== idAssunto));
+      setToast(`Assunto ${idAssunto} removido do cadastro.`);
+    } catch (err) {
+      setApiError(err?.message || 'Falha ao remover assunto.');
+    }
+  }
 
   useEffect(() => {
     void (async () => {
@@ -354,6 +414,13 @@ export function DistribuicaoInicialProjudi() {
   }, [dadosProcesso?.naturezaAcao]);
 
   useEffect(() => {
+    if (!dadosProcesso) {
+      setValidacaoProntidao(null);
+      setParteAutor(null);
+      setParteReu(null);
+      setValidandoProntidao(false);
+      return undefined;
+    }
     let cancelado = false;
     const timer = window.setTimeout(() => {
       void (async () => {
@@ -362,7 +429,7 @@ export function DistribuicaoInicialProjudi() {
           const res = await validarProntidaoInicial({
             credencialId,
             valorCausa,
-            idAssuntos: montarCsvAssuntos(idsAssuntosSelecionados, outroIdAssunto),
+            idAssuntos: montarCsvAssuntos(idsAssuntosSelecionados),
             pessoaIdAutor: pessoaAutor?.id,
             pessoaIdReu: pessoaReu?.id,
             quantidadeAnexos: linhasP7s.length,
@@ -394,10 +461,10 @@ export function DistribuicaoInicialProjudi() {
       window.clearTimeout(timer);
     };
   }, [
+    dadosProcesso,
     credencialId,
     valorCausa,
     idsAssuntosSelecionados,
-    outroIdAssunto,
     pessoaAutor?.id,
     pessoaReu?.id,
     linhasP7s.length,
@@ -441,7 +508,6 @@ export function DistribuicaoInicialProjudi() {
         credencialId,
         valorCausa,
         idsAssuntosSelecionados,
-        outroIdAssunto,
         pessoaAutor,
         pessoaReu,
         linhasP7s,
@@ -474,7 +540,6 @@ export function DistribuicaoInicialProjudi() {
         credencialId,
         valorCausa,
         idsAssuntosSelecionados,
-        outroIdAssunto,
         pessoaAutor,
         pessoaReu,
         linhasP7s,
@@ -535,16 +600,18 @@ export function DistribuicaoInicialProjudi() {
         </header>
 
         {!dadosProcesso ? (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 flex gap-2">
-            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden />
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 flex gap-2">
+            <Info className="w-4 h-4 shrink-0 mt-0.5" aria-hidden />
             <div>
-              Nenhum processo vinculado.{' '}
+              Nenhum processo vinculado — você pode cadastrar assuntos PROJUDI abaixo. Para preparar ou
+              distribuir uma inicial, abra esta tela pelo botão{' '}
+              <strong>Distribuir Inicial PROJUDI</strong> no formulário de Processos.{' '}
               <button
                 type="button"
                 className="underline font-medium"
                 onClick={() => navigate('/processos')}
               >
-                Voltar ao cadastro de Processos
+                Ir para Processos
               </button>
             </div>
           </div>
@@ -649,49 +716,122 @@ export function DistribuicaoInicialProjudi() {
                       : ''}
                   </p>
                 ) : null}
-                {catalogoAssuntos.length === 0 ? (
+                {carregandoCatalogoAssuntos ? (
                   <p className="text-xs text-slate-500">Carregando catálogo…</p>
+                ) : erroCatalogoAssuntos ? (
+                  <div className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-xs text-rose-800 flex items-start justify-between gap-2">
+                    <span>{erroCatalogoAssuntos}</span>
+                    <button
+                      type="button"
+                      className="shrink-0 underline font-medium"
+                      onClick={() => void carregarCatalogoAssuntos()}
+                    >
+                      Tentar de novo
+                    </button>
+                  </div>
+                ) : catalogoAssuntos.length === 0 ? (
+                  <p className="text-xs text-slate-500">Nenhum assunto cadastrado.</p>
                 ) : (
                   <div className="max-h-44 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50/50 p-2 space-y-1.5">
                     {catalogoAssuntos.map((item) => {
                       const checked = idsAssuntosSelecionados.includes(item.idAssunto);
                       return (
-                        <label
+                        <div
                           key={item.idAssunto}
-                          className="flex items-start gap-2 text-xs cursor-pointer hover:bg-white/80 rounded px-1 py-0.5"
+                          className="flex items-start gap-2 text-xs hover:bg-white/80 rounded px-1 py-0.5"
                         >
-                          <input
-                            type="checkbox"
-                            className="mt-0.5 shrink-0"
-                            checked={checked}
-                            onChange={(ev) => {
-                              setIdsAssuntosSelecionados((prev) =>
-                                ev.target.checked
-                                  ? [...prev, item.idAssunto]
-                                  : prev.filter((id) => id !== item.idAssunto),
-                              );
-                            }}
-                          />
-                          <span className="text-slate-800">
-                            <span className="font-mono font-semibold text-sky-800">{item.idAssunto}</span>
-                            {' — '}
-                            {item.rotuloCompleto}
-                          </span>
-                        </label>
+                          <label className="flex flex-1 items-start gap-2 cursor-pointer min-w-0">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5 shrink-0"
+                              checked={checked}
+                              onChange={(ev) => {
+                                setIdsAssuntosSelecionados((prev) =>
+                                  ev.target.checked
+                                    ? [...prev, item.idAssunto]
+                                    : prev.filter((id) => id !== item.idAssunto),
+                                );
+                              }}
+                            />
+                            <span className="text-slate-800 min-w-0">
+                              <span className="font-mono font-semibold text-sky-800">{item.idAssunto}</span>
+                              {' — '}
+                              {item.rotuloCompleto}
+                              {item.cadastroUsuario ? (
+                                <span className="ml-1.5 inline-flex rounded bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-900">
+                                  Cadastro
+                                </span>
+                              ) : null}
+                            </span>
+                          </label>
+                          <button
+                            type="button"
+                            className="shrink-0 inline-flex items-center gap-1 rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-700 hover:bg-red-100"
+                            title="Excluir da lista"
+                            onClick={() => void onRemoverAssuntoCadastro(item.idAssunto)}
+                          >
+                            <Trash2 className="w-3 h-3" aria-hidden />
+                            Excluir
+                          </button>
+                        </div>
                       );
                     })}
                   </div>
                 )}
-                <label className="block max-w-xs">
-                  <span className="text-xs text-slate-500">Outro id (fora do catálogo)</span>
-                  <input
-                    className={inputClass}
-                    value={outroIdAssunto}
-                    onChange={(ev) => setOutroIdAssunto(ev.target.value.replace(/\D/g, ''))}
-                    placeholder="Ex.: 1234"
-                    inputMode="numeric"
-                  />
-                </label>
+                <div
+                  className="rounded-lg border border-dashed border-slate-300 bg-white p-3 space-y-2"
+                  onKeyDown={(ev) => {
+                    if (ev.key === 'Enter' && !salvandoAssunto) {
+                      ev.preventDefault();
+                      ev.stopPropagation();
+                      void onGravarAssunto();
+                    }
+                  }}
+                >
+                  <p className="text-xs font-medium text-slate-700">Cadastrar assunto no sistema</p>
+                  <p className="text-[11px] text-slate-500">
+                    Informe id e descrição PROJUDI para reutilizar em futuras distribuições iniciais.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-[7rem_1fr_auto] gap-2 items-end">
+                    <label className="block">
+                      <span className="text-xs text-slate-500">Id</span>
+                      <input
+                        className={inputClass}
+                        value={novoAssuntoId}
+                        onChange={(ev) => setNovoAssuntoId(ev.target.value.replace(/\D/g, ''))}
+                        placeholder="Ex.: 1234"
+                        inputMode="numeric"
+                        disabled={salvandoAssunto}
+                      />
+                    </label>
+                    <label className="block min-w-0">
+                      <span className="text-xs text-slate-500">Descrição</span>
+                      <input
+                        className={inputClass}
+                        value={novoAssuntoDescricao}
+                        onChange={(ev) => setNovoAssuntoDescricao(ev.target.value)}
+                        placeholder="Ex.: DIREITO CIVIL > …"
+                        maxLength={500}
+                        disabled={salvandoAssunto}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className={`${processosBtnPrimary} whitespace-nowrap px-3 py-1.5 text-xs`}
+                      disabled={salvandoAssunto}
+                      onClick={() => void onGravarAssunto()}
+                    >
+                      {salvandoAssunto ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin inline mr-1" aria-hidden />
+                          Gravando…
+                        </>
+                      ) : (
+                        'Gravar no sistema'
+                      )}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </section>
@@ -799,14 +939,17 @@ export function DistribuicaoInicialProjudi() {
             ) : null}
           </section>
 
-          {validandoProntidao ? (
+          {dadosProcesso && validandoProntidao ? (
             <p className="text-xs text-slate-500 flex items-center gap-1.5">
               <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
               Verificando requisitos no servidor…
             </p>
           ) : null}
 
-          {validacaoProntidao && !validacaoProntidao.pronta && validacaoProntidao.bloqueios?.length > 0 ? (
+          {dadosProcesso &&
+          validacaoProntidao &&
+          !validacaoProntidao.pronta &&
+          validacaoProntidao.bloqueios?.length > 0 ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
               <p className="font-medium flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden />

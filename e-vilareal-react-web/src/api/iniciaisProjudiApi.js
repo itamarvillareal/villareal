@@ -66,11 +66,11 @@ import { postFormData, request } from './httpClient.js';
  * @property {PassoLog[]} passos
  */
 
-/**
- * @typedef {Object} AssuntoProjudiItem
- * @property {number} idAssunto
- * @property {string} rotuloCompleto
- */
+export {
+  cadastrarAssuntoProjudi,
+  listarAssuntosProjudi,
+  removerAssuntoProjudi,
+} from './projudiAssuntosApi.js';
 
 /**
  * @typedef {Object} AssuntoSugeridoResponse
@@ -111,11 +111,6 @@ export async function resolverParte(pessoaId, credencialId = 1) {
   return request('/api/projudi/iniciais/resolver-parte', {
     query: { pessoaId, credencialId },
   });
-}
-
-/** @returns {Promise<AssuntoProjudiItem[]>} */
-export async function listarAssuntosProjudi() {
-  return request('/api/projudi/iniciais/assuntos');
 }
 
 /** @returns {Promise<ClasseProjudiItem[]>} */

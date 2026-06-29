@@ -2753,15 +2753,9 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         setHistorico(hist);
         setPaginaHistorico(1);
       } else {
-        /** GET vazio: mantém último estado local se houver (ex.: redes/falhas evitando apagar novo andamento só na UI). */
-        const persisted = getHistoricoDoProcesso(codigoCliente, processo);
-        if (persisted.length > 0) {
-          setHistorico(persisted);
-          setPaginaHistorico(1);
-        } else {
-          setHistorico([]);
-          setPaginaHistorico(1);
-        }
+        /** Com API: lista vazia = sem andamentos na base (não reidratar localStorage — evita histórico de outro processo). */
+        setHistorico([]);
+        setPaginaHistorico(1);
       }
       historicoCarregadoParaProcessoRef.current = processoId;
     } catch (e) {

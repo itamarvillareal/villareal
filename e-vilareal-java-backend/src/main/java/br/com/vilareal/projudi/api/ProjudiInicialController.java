@@ -2,7 +2,6 @@ package br.com.vilareal.projudi.api;
 
 import br.com.vilareal.projudi.ProjudiAssuntoCatalogoService;
 import br.com.vilareal.projudi.ProjudiClasseProcessoInicial;
-import br.com.vilareal.projudi.ProjudiAssuntoCatalogoService.AssuntoItem;
 import br.com.vilareal.projudi.ProjudiAssuntoCatalogoService.ClasseItem;
 import br.com.vilareal.projudi.ProjudiAssuntoCatalogoService.ModalidadeSugeridaResponse;
 import br.com.vilareal.projudi.ProjudiDistribuicaoService;
@@ -62,12 +61,6 @@ public class ProjudiInicialController {
     @Operation(summary = "Catálogo de classes processuais PROJUDI conhecidas")
     public List<ClasseItem> listarClasses() {
         return assuntoCatalogoService.listarClasses();
-    }
-
-    @GetMapping("/assuntos")
-    @Operation(summary = "Catálogo de assuntos PROJUDI conhecidos")
-    public List<AssuntoItem> listarAssuntos() {
-        return assuntoCatalogoService.listarCatalogo();
     }
 
     @GetMapping("/assunto-sugerido")

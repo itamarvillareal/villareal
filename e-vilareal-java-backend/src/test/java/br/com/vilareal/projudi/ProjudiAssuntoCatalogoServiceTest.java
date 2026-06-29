@@ -1,14 +1,33 @@
 package br.com.vilareal.projudi;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+import br.com.vilareal.projudi.infrastructure.persistence.repository.ProjudiAssuntoCadastroRepository;
+import br.com.vilareal.projudi.infrastructure.persistence.repository.ProjudiAssuntoOcultoRepository;
 
 class ProjudiAssuntoCatalogoServiceTest {
 
-    private final ProjudiAssuntoCatalogoService service = new ProjudiAssuntoCatalogoService();
+    private ProjudiAssuntoCadastroRepository assuntoCadastroRepository;
+    private ProjudiAssuntoOcultoRepository assuntoOcultoRepository;
+    private ProjudiAssuntoCatalogoService service;
+
+    @BeforeEach
+    void setUp() {
+        assuntoCadastroRepository = mock(ProjudiAssuntoCadastroRepository.class);
+        assuntoOcultoRepository = mock(ProjudiAssuntoOcultoRepository.class);
+        when(assuntoCadastroRepository.findAllByOrderByIdAssuntoAsc()).thenReturn(List.of());
+        when(assuntoOcultoRepository.findAll()).thenReturn(List.of());
+        service = new ProjudiAssuntoCatalogoService(assuntoCadastroRepository, assuntoOcultoRepository);
+    }
 
     @Test
     void listarCatalogo_contemAssuntosConfirmados() {
