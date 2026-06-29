@@ -10,6 +10,7 @@ import {
   carregarCampoPorColunaSalvo,
   salvarCampoPorColuna,
   enriquecerCamposRelatorioProcessos,
+  preservarCamposApiRelatorioProcessos,
 } from '../data/relatorioProcessosColunaDinamica.js';
 import { normalizarFiltroProcessoAtivo } from '../data/relatorioPresets.js';
 import { obterLinhasBaseRelatorioProcessos } from '../data/relatorioProcessosDados.js';
@@ -166,23 +167,23 @@ function mesclarLinhasRelatorioComPersistido(preferirCamposDaBase, baseLinhas) {
             }
           : {};
       if (preferirCamposDaBase) {
-        return {
+        return preservarCamposApiRelatorioProcessos(b, {
           ...salvo,
           ...b,
           ...statusDaBase,
           __relatorioIdx: i,
           codCliente: b.codCliente,
           proc: b.proc,
-        };
+        });
       }
-      return {
+      return preservarCamposApiRelatorioProcessos(b, {
         ...b,
         ...salvo,
         ...statusDaBase,
         __relatorioIdx: i,
         codCliente: b.codCliente,
         proc: b.proc,
-      };
+      });
     });
   } catch {
     return base;

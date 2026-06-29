@@ -1323,19 +1323,21 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     } else {
       // Com API: cabeçalho, partes e histórico vêm de GET /api/processos e sub-rotas (importação/planilha).
       setPeriodicidadeConsulta(registroPersistido?.periodicidadeConsulta ?? '');
+    }
+    if (!featureFlags.useApiProcessos) {
+      setPasta(pickCampoStrSalvo(r, 'pasta', pickCampoStrSalvo(r, 'pastaArquivo', '')));
+      setFaseCampo(pickCampoStrSalvo(r, 'faseCampo', ''));
+      setAudienciaData(pickCampoStrSalvo(r, 'audienciaData', ''));
+      setAudienciaHora(pickCampoStrSalvo(r, 'audienciaHora', ''));
+      setAudienciaTipo(normalizarTipoAudienciaCanonico(pickCampoStrSalvo(r, 'audienciaTipo', '')));
+      setAvisoAudiencia(pickCampoStrSalvo(r, 'avisoAudiencia', 'nao_avisado') || 'nao_avisado');
+      setProximaInformacao(pickCampoStrSalvo(r, 'proximaInformacao', ''));
+      setDataProximaInformacao(pickCampoStrSalvo(r, 'dataProximaInformacao', ''));
       const valorCausaHist = pickCampoStrSalvo(r, 'valorCausa', '');
       if (valorCausaHist.trim() !== '') {
         setValorCausa(valorCausaHist);
       }
     }
-    setPasta(pickCampoStrSalvo(r, 'pasta', pickCampoStrSalvo(r, 'pastaArquivo', '')));
-    setFaseCampo(pickCampoStrSalvo(r, 'faseCampo', ''));
-    setAudienciaData(pickCampoStrSalvo(r, 'audienciaData', ''));
-    setAudienciaHora(pickCampoStrSalvo(r, 'audienciaHora', ''));
-    setAudienciaTipo(normalizarTipoAudienciaCanonico(pickCampoStrSalvo(r, 'audienciaTipo', '')));
-    setAvisoAudiencia(pickCampoStrSalvo(r, 'avisoAudiencia', 'nao_avisado') || 'nao_avisado');
-    setProximaInformacao(pickCampoStrSalvo(r, 'proximaInformacao', ''));
-    setDataProximaInformacao(pickCampoStrSalvo(r, 'dataProximaInformacao', ''));
     const vinc = buscarVinculoImovelMock(mock.codigoCliente, mock.processo);
     const imovelSalvo = pickCampoStrSalvo(r, 'imovelId', '');
 
@@ -1385,9 +1387,10 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
             : vinc && String(vinc.unidade ?? '').trim() !== ''
               ? String(vinc.unidade).trim()
               : '';
-    setUnidadeEndereco(mergedUnidade);
-
+    // Com API: unidade vem de GET /api/processos (efeito carregarProcessoApiAtual), não do localStorage.
     if (!featureFlags.useApiProcessos) {
+      setUnidadeEndereco(mergedUnidade);
+
       const historicoPersistido = getHistoricoDoProcesso(mock.codigoCliente, mock.processo);
       setPrazoFatal(registroPersistido?.prazoFatal ?? '');
       const payloadFormBase = {
@@ -2893,7 +2896,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
           const cad = await carregarImovelCadastroPorNumeroPlanilha(numImovel);
           if (seq === carregarProcessoApiSeqRef.current) {
             const u = String(cad.item?.unidade ?? '').trim();
-            if (u && !unidadeEnderecoManual) {
+            const unidadeProcesso = String(mapped.unidade ?? '').trim();
+            if (u && !unidadeProcesso) {
               setUnidadeEndereco(u);
             }
           }

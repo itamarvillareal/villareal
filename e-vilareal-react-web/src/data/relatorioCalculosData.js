@@ -386,7 +386,7 @@ export function getLinhasRelatorioCalculosConsolidadoFromMap(
     const extra =
       processoExtrasPorChave instanceof Map ? processoExtrasPorChave.get(pk) : undefined;
     const unidade =
-      String(reg?.unidade ?? '').trim() || String(extra?.unidade ?? '').trim();
+      String(extra?.unidade ?? '').trim() || String(reg?.unidade ?? '').trim();
     const cliente = getNomeClienteCadastroPorCodigo(Number.isFinite(codNum) && codNum >= 1 ? codNum : 1);
     const reu =
       String(cab.reu ?? '').trim() ||

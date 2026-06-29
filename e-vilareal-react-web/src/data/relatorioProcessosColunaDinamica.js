@@ -1,7 +1,67 @@
 /**
  * Coluna dinâmica do Relatório Processos (mesma coluna física; título e conteúdo escolhidos pelo usuário).
  */
-import { getCamposExtrasRelatorioPorProcesso, padCliente } from './processosDadosRelatorio.js';
+import { featureFlags } from '../config/featureFlags.js';
+import {
+  getCamposExtrasRelatorioPorProcesso,
+  padCliente,
+  temCacheCamposRelatorioApi,
+} from './processosDadosRelatorio.js';
+
+/** Campos da linha base (listagem API) que não devem ser apagados por merge/enriquecimento vazio. */
+export const CAMPOS_PRESERVAR_API_RELATORIO = [
+  'unidade',
+  'numeroProcesso',
+  'numeroProcessoNovo',
+  'numeroProcessoVelho',
+  'observacaoProcesso',
+  'observacaoCadastroProcesso',
+  'proximaConsulta',
+  'proximaConsultaCalculada',
+  'prazoFatal',
+  'prazoFatalCadastroProcesso',
+  'fase',
+  'faseCadastroProcesso',
+  'competencia',
+  'competenciaCadastroProcesso',
+  'descricaoAcao',
+  'naturezaAcaoProcesso',
+  'consultor',
+  'responsavelProcesso',
+  'estadoProcesso',
+  'cidadeProcesso',
+  'dataProtocolo',
+  'tramitacao',
+  'valorCausaProcesso',
+  'pastaArquivoProcesso',
+  'audienciaDataProcesso',
+  'dataAudiencia',
+  'audienciaHoraProcesso',
+  'horaAudiencia',
+  'tipoAudienciaProcesso',
+  'tipoAudiencia',
+  'parteCliente',
+  'parteOposta',
+];
+
+/** Com API ativa, não deixa localStorage/snapshot vazio apagar valores da listagem. */
+export function preservarCamposApiRelatorioProcessos(linhaBase, linhaMesclada) {
+  if (!featureFlags.useApiProcessos) return linhaMesclada;
+  let out = linhaMesclada;
+  for (const key of CAMPOS_PRESERVAR_API_RELATORIO) {
+    const valorBase = String(linhaBase?.[key] ?? '').trim();
+    if (!valorBase) continue;
+    const valorMesclado = String(out?.[key] ?? '').trim();
+    if (valorMesclado) continue;
+    out = { ...out, [key]: valorBase };
+  }
+  return out;
+}
+
+/** @deprecated Use {@link preservarCamposApiRelatorioProcessos}. */
+export function preservarUnidadeApiRelatorioProcessos(linhaBase, linhaMesclada) {
+  return preservarCamposApiRelatorioProcessos(linhaBase, linhaMesclada);
+}
 
 export const STORAGE_CAMPO_COLUNA_ULTIMO_ANDAMENTO = 'vilareal.relatorioProcessos.campoColunaUltimoAndamento.v1';
 
@@ -244,16 +304,13 @@ export function enriquecerCamposRelatorioProcessos(row, idx) {
   const cod = row.codCliente != null && String(row.codCliente).trim() !== '' ? row.codCliente : String(idx + 1).padStart(8, '0');
   const proc = row.proc != null && String(row.proc).trim() !== '' ? row.proc : '1';
   const fallbackApi = row.processoCadastroAtivo !== false;
-  const extras = getCamposExtrasRelatorioPorProcesso(padCliente(cod), proc, fallbackApi);
-  const merged = { ...row, ...extras };
-  const uBase = String(row.unidade ?? '').trim();
-  const uExtra = String(extras.unidade ?? '').trim();
-  if (!uExtra && uBase) merged.unidade = uBase;
+  const codPad = padCliente(cod);
+  const extras = getCamposExtrasRelatorioPorProcesso(codPad, proc, fallbackApi);
+  const merged = preservarCamposApiRelatorioProcessos(row, { ...row, ...extras });
   const infoUlt = String(extras.ultimoHistoricoInfo ?? '').trim();
   const dataUlt = String(extras.ultimoHistoricoData ?? '').trim();
-  const usuarioUlt = String(extras.ultimoHistoricoUsuario ?? '').trim();
-  if (infoUlt) merged.ultimoAndamento = infoUlt;
-  if (dataUlt) merged.dataConsulta = dataUlt;
-  if (usuarioUlt) merged.consultor = usuarioUlt;
+  const temCacheApi = temCacheCamposRelatorioApi(codPad, proc);
+  if (infoUlt && (!featureFlags.useApiProcessos || temCacheApi)) merged.ultimoAndamento = infoUlt;
+  if (dataUlt && (!featureFlags.useApiProcessos || temCacheApi)) merged.dataConsulta = dataUlt;
   return merged;
 }

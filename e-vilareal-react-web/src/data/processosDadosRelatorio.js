@@ -422,6 +422,75 @@ function extrairUltimoAndamento(lista = []) {
   return { info, data };
 }
 
+/** Campos do cabeçalho/processos que, com API ativa, não devem vir de mock/localStorage. */
+const CAMPOS_EXTRAS_API_RELATORIO = new Set([
+  'parteCliente',
+  'parteOposta',
+  'estadoProcesso',
+  'cidadeProcesso',
+  'faseCadastroProcesso',
+  'competenciaCadastroProcesso',
+  'numeroProcessoVelho',
+  'numeroProcessoNovo',
+  'dataProtocolo',
+  'naturezaAcaoProcesso',
+  'valorCausaProcesso',
+  'consultaAutomaticaTexto',
+  'observacaoCadastroProcesso',
+  'tramitacao',
+  'prazoFatalCadastroProcesso',
+  'proximaConsultaCalculada',
+  'ultimoHistoricoInfo',
+  'ultimoHistoricoData',
+  'tipoAudienciaProcesso',
+  'audienciaDataProcesso',
+  'audienciaHoraProcesso',
+  'tipoAudiencia',
+  'pastaArquivoProcesso',
+  'responsavelProcesso',
+  'unidade',
+]);
+
+function montarCacheCamposApiRelatorio(cabecalho, partes, andamentos, statusCampos, processoId, papelParte = 'requerente') {
+  const { parteCliente, parteOposta } = textosPartesFromListaPartesApi(partes, papelParte);
+  const ultimo = extrairUltimoAndamento(andamentos || []);
+  return {
+    processoId,
+    numeroProcessoNovo: cabecalho?.numeroProcessoNovo || '',
+    numeroProcessoVelho: cabecalho?.numeroProcessoVelho || '',
+    naturezaAcaoProcesso: cabecalho?.naturezaAcao || '',
+    competenciaCadastroProcesso: cabecalho?.competencia || '',
+    faseCadastroProcesso: cabecalho?.faseSelecionada || '',
+    ...statusCampos,
+    prazoFatalCadastroProcesso: cabecalho?.prazoFatal || '',
+    observacaoCadastroProcesso: cabecalho?.observacao || '',
+    proximaConsultaCalculada: cabecalho?.proximaConsultaData || '',
+    unidade: String(cabecalho?.unidade ?? '').trim(),
+    parteCliente,
+    parteOposta,
+    estadoProcesso: cabecalho?.estado ?? '',
+    cidadeProcesso: cabecalho?.cidade ?? '',
+    dataProtocolo: cabecalho?.dataProtocolo ?? '',
+    tramitacao: cabecalho?.tramitacao ?? '',
+    valorCausaProcesso: cabecalho?.valorCausa ?? '',
+    responsavelProcesso: cabecalho?.responsavel ?? '',
+    pastaArquivoProcesso: cabecalho?.pasta ?? '',
+    audienciaDataProcesso: cabecalho?.audienciaData ?? '',
+    audienciaHoraProcesso: cabecalho?.audienciaHora ?? '',
+    tipoAudienciaProcesso: cabecalho?.audienciaTipo ?? '',
+    tipoAudiencia: cabecalho?.audienciaTipo ?? '',
+    consultaAutomaticaTexto:
+      cabecalho?.consultaAutomatica != null ? simNao(cabecalho.consultaAutomatica === true) : '',
+    ultimoHistoricoInfo: ultimo.info,
+    ultimoHistoricoData: ultimo.data,
+  };
+}
+
+/** Indica se o processo já foi pré-aquecido com GET detalhado da API. */
+export function temCacheCamposRelatorioApi(codClienteRaw, procRaw) {
+  return _cacheCamposApi.has(keyClienteProc(codClienteRaw, procRaw));
+}
+
 function normalizarEntradaPreaquecerRelatorio(entrada) {
   if (Array.isArray(entrada)) {
     return {
@@ -456,29 +525,19 @@ async function preaquecerUmProcessoRelatorio({ codCliente: codRaw, proc: procRaw
     listarAndamentosProcesso(processoId),
   ]);
   const reg = getRegistroProcesso(cod, proc);
-  const { parteCliente, parteOposta } = textosPartesFromListaPartesApi(
-    partes,
-    cabecalho?.papelParte ?? reg?.papelParte ?? 'requerente'
-  );
-  const ultimo = extrairUltimoAndamento(andamentos || []);
   const statusApi = cabecalho?.statusAtivo !== false;
   const statusCampos = camposStatusAtivoRelatorio(cod, proc, statusApi);
-  _cacheCamposApi.set(key, {
-    processoId,
-    numeroProcessoNovo: cabecalho?.numeroProcessoNovo || '',
-    numeroProcessoVelho: cabecalho?.numeroProcessoVelho || '',
-    naturezaAcaoProcesso: cabecalho?.naturezaAcao || '',
-    competenciaCadastroProcesso: cabecalho?.competencia || '',
-    faseCadastroProcesso: cabecalho?.faseSelecionada || '',
-    ...statusCampos,
-    prazoFatalCadastroProcesso: cabecalho?.prazoFatal || '',
-    observacaoCadastroProcesso: cabecalho?.observacao || '',
-    unidade: String(cabecalho?.unidade ?? '').trim(),
-    parteCliente,
-    parteOposta,
-    ultimoHistoricoInfo: ultimo.info,
-    ultimoHistoricoData: ultimo.data,
-  });
+  _cacheCamposApi.set(
+    key,
+    montarCacheCamposApiRelatorio(
+      cabecalho,
+      partes,
+      andamentos,
+      statusCampos,
+      processoId,
+      cabecalho?.papelParte ?? reg?.papelParte ?? 'requerente'
+    )
+  );
 }
 
 /**
@@ -544,6 +603,7 @@ export function getCamposExtrasRelatorioPorProcesso(codClienteRaw, procRaw, fall
 
   const papel = String(reg?.papelParte ?? '').toLowerCase();
   const temRegistro = !!reg;
+  const cacheApi = _cacheCamposApi.get(keyClienteProc(codClienteRaw, procRaw));
 
   const base = {
     codigoClienteProcesso: mock.codigoCliente,
@@ -613,12 +673,21 @@ export function getCamposExtrasRelatorioPorProcesso(codClienteRaw, procRaw, fall
     tituloPessoa1Autor: '',
     nPessoa1Autor: '',
     nEndPessoa1Autor: '',
-    unidade: imovel
-      ? String(imovel.unidade ?? '')
-      : String(reg?.unidade ?? reg?.unidadeEndereco ?? '').trim(),
     tipoAudiencia: String(reg?.audienciaTipo ?? '').trim(),
   };
-  const cacheApi = _cacheCamposApi.get(keyClienteProc(codClienteRaw, procRaw));
+  const useApi = featureFlags.useApiProcessos && fallbackApiAtivo;
+  if (useApi) {
+    for (const k of CAMPOS_EXTRAS_API_RELATORIO) {
+      delete base[k];
+    }
+    const uApi = String(cacheApi?.unidade ?? '').trim();
+    if (uApi) base.unidade = uApi;
+  } else {
+    const unidadeLegado = imovel
+      ? String(imovel.unidade ?? '')
+      : String(reg?.unidade ?? reg?.unidadeEndereco ?? '').trim();
+    if (unidadeLegado) base.unidade = unidadeLegado;
+  }
   const merged = cacheApi ? { ...base, ...cacheApi } : base;
   return { ...merged, ...camposStatusAtivoRelatorio(codClienteRaw, procRaw, fallbackApiAtivo) };
 }

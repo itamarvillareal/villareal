@@ -124,6 +124,8 @@ export async function obterLinhasBaseRelatorioProcessos() {
         statusAtivoTexto: ativo ? 'Ativo' : 'Inativo',
         numeroProcesso: String(u.numeroProcessoNovo ?? '').trim(),
         unidade: String(u.unidade ?? '').trim(),
+        parteCliente: String(u.parteCliente ?? '').trim(),
+        parteOposta: String(u.parteOposta ?? '').trim(),
         inRequerente: (cHash + p + idx) % 4 === 1 ? 'REQUERIDO' : '',
         ultimoAndamento: `ANDAMENTO — ${descricao.slice(0, 80)}`,
         dataConsulta: dataBrDeslocada(cHash, p, 0),
