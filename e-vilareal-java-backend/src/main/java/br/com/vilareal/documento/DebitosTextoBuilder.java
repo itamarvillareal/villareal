@@ -236,10 +236,13 @@ public final class DebitosTextoBuilder {
         return "";
     }
 
-    /** Evita quebra de linha entre «R$ …» e «(por extenso)» na geração do PDF. */
+    /** Evita quebra entre «R$ …» e «(»; o extenso pode quebrar linha no PDF. */
     private static String valorComExtenso(BigDecimal valor) {
-        return "<span class=\"valor-monetario\">" + esc(formatBRL(nz(valor)))
-                + " (" + esc(ValorExtensoUtil.reaisPorExtenso(nz(valor))) + ")</span>";
+        return "<span class=\"valor-monetario\"><span class=\"valor-monetario-num\">"
+                + esc(formatBRL(nz(valor)))
+                + "</span> ("
+                + esc(ValorExtensoUtil.reaisPorExtenso(nz(valor)))
+                + ")</span>";
     }
 
     /** Encargo presente = valor não nulo e diferente de zero (comparação numérica, não de string). */

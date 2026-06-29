@@ -201,8 +201,11 @@
             text-indent: 0;
         }
 
-        /* Valores monetários e URLs: não quebrar linha no meio de «R$ X (extenso)» */
-        .valor-monetario,
+        /* Valor numérico: «R$ X,XX» permanece junto; o extenso entre parênteses pode quebrar linha. */
+        .valor-monetario-num {
+            white-space: nowrap;
+        }
+
         .url-ref {
             white-space: nowrap;
         }

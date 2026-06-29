@@ -99,6 +99,41 @@ final class ProjudiProcessoCivelRevisaoHtmlUtil {
         return loc;
     }
 
+    /**
+     * Redirect pós-distribuição que descarta o rascunho e volta à Área do Advogado
+     * ({@code /Usuario?PaginaAtual=-10&...}).
+     */
+    static boolean pareceRedirect302DescarteUsuario(String locationHeader) {
+        if (!StringUtils.hasText(locationHeader)) {
+            return false;
+        }
+        String loc = locationHeader.trim();
+        String lower = loc.toLowerCase(Locale.ROOT);
+        if (!lower.contains("usuario")) {
+            return false;
+        }
+        if (lower.contains("paginaatual=-10") || lower.contains("paginaatual%3d-10")) {
+            return true;
+        }
+        try {
+            String dec = java.net.URLDecoder.decode(loc, StandardCharsets.ISO_8859_1);
+            return dec.toLowerCase(Locale.ROOT).contains("paginaatual=-10");
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    /** Rótulo legível para trilha/diagnóstico do redirect pós-distribuição. */
+    static String rotuloClassificacaoRedirect302Distribuicao(String locationHeader) {
+        if (!StringUtils.hasText(locationHeader)) {
+            return "INDETERMINADO (Location ausente)";
+        }
+        if (pareceRedirect302DescarteUsuario(locationHeader)) {
+            return "DESCARTE (Usuario PaginaAtual=-10)";
+        }
+        return "SUCESSO_PROVAVEL (destino do processo)";
+    }
+
     static Optional<ExtracaoNumero> extrairNumeroProcessoGerado(String html, String locationHeader) {
         Optional<ExtracaoNumero> doLocation = extrairNumeroDoLocation(locationHeader);
         if (doLocation.isPresent()) {

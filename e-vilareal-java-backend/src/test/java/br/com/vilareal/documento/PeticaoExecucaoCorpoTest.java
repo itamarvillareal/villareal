@@ -95,7 +95,7 @@ class PeticaoExecucaoCorpoTest {
         assertThat(PeticaoExecucaoService.montarCapituloValorCausa(cap)).isEqualTo(
                 "<p class=\"titulo\">DO VALOR DA CAUSA:</p>"
                         + "<p class=\"paragrafo\">Dá-se ao presente pleito, o valor defeso e cabível de "
-                        + "<span class=\"valor-monetario\"><strong>R$ 5.912,88 (cinco mil, novecentos e doze reais"
+                        + "<span class=\"valor-monetario\"><strong><span class=\"valor-monetario-num\">R$ 5.912,88</span> (cinco mil, novecentos e doze reais"
                         + " e oitenta e oito centavos)</strong></span>.</p>");
     }
 

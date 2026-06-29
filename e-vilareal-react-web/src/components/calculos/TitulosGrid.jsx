@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { resolverAliasHojeEmTexto } from '../../services/hjDateAliasService.js';
+import { formatarDataBrInput, resolverAliasHojeEmTexto } from '../../services/hjDateAliasService.js';
 import { formatBRL, normalizarTextoDataBRparaSalvar, parseBRL } from './calculosTitulosGridUtils.js';
 
 if (import.meta.env.DEV) {
@@ -144,7 +144,7 @@ const TitulosGrid = memo(function TitulosGrid({
                         onChange={(e) => {
                           const v = e.target.value;
                           const r = resolverAliasHojeEmTexto(v, 'br');
-                          onTituloFieldChange(globalIdx, { dataVencimento: r ?? v });
+                          onTituloFieldChange(globalIdx, { dataVencimento: r ?? formatarDataBrInput(v) });
                         }}
                         onBlur={(e) =>
                           onTituloFieldChange(globalIdx, {

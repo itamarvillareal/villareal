@@ -58,6 +58,21 @@ describe('calculosRodadaTitulosPaginacao', () => {
     expect(merged[20].valorInicial).toBe('R$ 50,00');
   });
 
+  it('montarTitulosDimensaoParaResumo inclui linhas novas além do total da API', () => {
+    const titulosLocal = [
+      { valorInicial: 'R$ 100,00', juros: 'R$ 10,00' },
+      { valorInicial: 'R$ 200,00', juros: 'R$ 20,00' },
+      { valorInicial: 'R$ 300,00', juros: 'R$ 30,00' },
+      { valorInicial: 'R$ 400,00', juros: 'R$ 40,00' },
+      { valorInicial: 'R$ 500,00', juros: 'R$ 50,00' },
+      { valorInicial: 'R$ 600,00', juros: 'R$ 60,00' },
+    ];
+    const merged = montarTitulosDimensaoParaResumo(titulosLocal, 3, null, 'cli:1:1');
+    const resumo = calcularResumoTitulosGrade(merged);
+    expect(resumo.qtd).toContain('06');
+    expect(resumo.valorInicial).toBe('R$ 2.100,00');
+  });
+
   it('resumoTitulosFromApi formata totais', () => {
     const r = resumoTitulosFromApi({
       quantidadeTitulos: 3,

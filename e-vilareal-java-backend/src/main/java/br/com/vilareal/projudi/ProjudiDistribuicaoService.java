@@ -320,45 +320,8 @@ public class ProjudiDistribuicaoService {
             String location = respDist.headers().firstValue("Location").orElse("").trim();
 
             if (pareceRedirectPost(statusDist)) {
-                trilha.registrar(
-                        "POST Passo3 distribuir",
-                        respDist,
-                        false,
-                        statusDist + " redirect — diagnóstico (não é sucesso automático)");
-                trilha.registrarDiagnostico("Location 302", "Location 302 = " + location);
-
-                String trechoDestino = "";
-                if (StringUtils.hasText(location)) {
-                    String caminhoGet = ProjudiProcessoCivelRevisaoHtmlUtil.caminhoGetPosRedirect(location);
-                    if (StringUtils.hasText(caminhoGet)) {
-                        var paginaDestino =
-                                sessionService.getAutenticadoComReferer(credencialId, caminhoGet, REF_PROCESSO_CIVEL);
-                        if (pareceFalhaLeitura(paginaDestino.statusCode(), paginaDestino.body())) {
-                            trechoDestino =
-                                    "Falha ao ler destino (status=" + paginaDestino.statusCode() + ")";
-                            trilha.falha("GET destino 302", paginaDestino, trechoDestino);
-                        } else {
-                            trechoDestino = ProjudiProcessoCivelRevisaoHtmlUtil.extrairTrechoDiagnosticoDestino302(
-                                    paginaDestino.body());
-                            trilha.registrarDiagnostico("Destino 302", trechoDestino);
-                        }
-                    } else {
-                        trechoDestino = "(Location não parseável para GET)";
-                        trilha.registrarDiagnostico("Destino 302", trechoDestino);
-                    }
-                } else {
-                    trechoDestino = "(header Location ausente)";
-                    trilha.registrarDiagnostico("Destino 302", trechoDestino);
-                }
-
-                String respostaBruta = montarRespostaDiagnostico302(statusDist, location, trechoDestino);
-                return new ResultadoDistribuicaoInicial(
-                        false,
-                        "DISTRIBUIR",
-                        null,
-                        false,
-                        sanitizarDetalhe(respostaBruta, RESPOSTA_DIAGNOSTICO_MAX),
-                        trilha.passos());
+                return processarRedirectPosDistribuicao(
+                        trilha, credencialId, processoIdOrigem, respDist, statusDist, location);
             }
 
             trilha.registrar(
@@ -907,6 +870,136 @@ public class ProjudiDistribuicaoService {
                 credencialId, "ProcessoCivel", null, corpo, StandardCharsets.ISO_8859_1, referer);
     }
 
+    private ResultadoDistribuicaoInicial processarRedirectPosDistribuicao(
+            TrilhaExecucao trilha,
+            Long credencialId,
+            Long processoIdOrigem,
+            HttpResponse<String> respDist,
+            int statusDist,
+            String location) {
+        String classificacao =
+                ProjudiProcessoCivelRevisaoHtmlUtil.rotuloClassificacaoRedirect302Distribuicao(location);
+        trilha.registrarDiagnostico(
+                "302 classificação", "Location=" + location + " | classificação=" + classificacao);
+
+        if (ProjudiProcessoCivelRevisaoHtmlUtil.pareceRedirect302DescarteUsuario(location)) {
+            trilha.registrar(
+                    "POST Passo3 distribuir",
+                    respDist,
+                    false,
+                    statusDist + " redirect DESCARTE — volta à Área do Advogado");
+            String trechoDestino = lerTrechoDestino302(trilha, credencialId, location);
+            log.warn(
+                    "PROJUDI inicial distribuição DESCARTADA (credencialId={}, Location={}).",
+                    credencialId,
+                    location);
+            String respostaBruta = montarRespostaDiagnostico302(statusDist, location, trechoDestino);
+            return new ResultadoDistribuicaoInicial(
+                    false,
+                    "DISTRIBUIR",
+                    null,
+                    false,
+                    sanitizarDetalhe(respostaBruta, RESPOSTA_DIAGNOSTICO_MAX),
+                    trilha.passos());
+        }
+
+        trilha.registrar(
+                "POST Passo3 distribuir",
+                respDist,
+                false,
+                statusDist + " redirect SUCESSO_PROVAVEL — lendo destino (POST não será reenviado)");
+
+        String caminhoGet = ProjudiProcessoCivelRevisaoHtmlUtil.caminhoGetPosRedirect(location);
+        if (!StringUtils.hasText(caminhoGet)) {
+            trilha.registrarDiagnostico("Destino 302", "(Location não parseável para GET)");
+            return falhaDistribuicaoAmbigua302(trilha, credencialId, statusDist, location, "(Location não parseável para GET)");
+        }
+
+        var paginaDestino = sessionService.getAutenticadoComReferer(credencialId, caminhoGet, REF_PROCESSO_CIVEL);
+        if (pareceFalhaLeitura(paginaDestino.statusCode(), paginaDestino.body())) {
+            String trechoDestino = "Falha ao ler destino (status=" + paginaDestino.statusCode() + ")";
+            trilha.falha("GET destino 302", paginaDestino, trechoDestino);
+            return falhaDistribuicaoAmbigua302(trilha, credencialId, statusDist, location, trechoDestino);
+        }
+
+        String htmlDestino = paginaDestino.body();
+        trilha.registrarDiagnostico(
+                "Destino 302",
+                ProjudiProcessoCivelRevisaoHtmlUtil.extrairTrechoDiagnosticoDestino302(htmlDestino));
+
+        Optional<ExtracaoNumero> numeroOpt =
+                ProjudiProcessoCivelRevisaoHtmlUtil.extrairNumeroProcessoGerado(htmlDestino, location);
+        if (numeroOpt.isPresent()) {
+            ExtracaoNumero numero = numeroOpt.get();
+            trilha.ok("GET destino 302", paginaDestino, "CNJ extraído: " + numero.numero());
+            trilha.okSemResposta("Número extraído", numero.detalhe() + " → " + numero.numero());
+            trilha.registrar(
+                    "POST Passo3 distribuir",
+                    respDist,
+                    true,
+                    statusDist + " redirect SUCESSO — CNJ confirmado no destino");
+            boolean gravado = gravarNumeroNoProcesso(processoIdOrigem, numero.numero());
+            log.info(
+                    "PROJUDI inicial DISTRIBUIDA via 302 (credencialId={}, numero={}, processoIdOrigem={}, gravado={}, Location={}).",
+                    credencialId,
+                    numero.numero(),
+                    processoIdOrigem,
+                    gravado,
+                    location);
+            return new ResultadoDistribuicaoInicial(
+                    true,
+                    "DISTRIBUIDO",
+                    numero.numero(),
+                    gravado,
+                    sanitizarDetalhe(truncar(htmlDestino)),
+                    trilha.passos());
+        }
+
+        String trechoDestino =
+                ProjudiProcessoCivelRevisaoHtmlUtil.extrairTrechoDiagnosticoDestino302(htmlDestino);
+        return falhaDistribuicaoAmbigua302(trilha, credencialId, statusDist, location, trechoDestino);
+    }
+
+    private String lerTrechoDestino302(TrilhaExecucao trilha, Long credencialId, String location) {
+        if (!StringUtils.hasText(location)) {
+            trilha.registrarDiagnostico("Destino 302", "(header Location ausente)");
+            return "(header Location ausente)";
+        }
+        String caminhoGet = ProjudiProcessoCivelRevisaoHtmlUtil.caminhoGetPosRedirect(location);
+        if (!StringUtils.hasText(caminhoGet)) {
+            trilha.registrarDiagnostico("Destino 302", "(Location não parseável para GET)");
+            return "(Location não parseável para GET)";
+        }
+        var paginaDestino = sessionService.getAutenticadoComReferer(credencialId, caminhoGet, REF_PROCESSO_CIVEL);
+        if (pareceFalhaLeitura(paginaDestino.statusCode(), paginaDestino.body())) {
+            String trechoDestino = "Falha ao ler destino (status=" + paginaDestino.statusCode() + ")";
+            trilha.falha("GET destino 302", paginaDestino, trechoDestino);
+            return trechoDestino;
+        }
+        String trechoDestino =
+                ProjudiProcessoCivelRevisaoHtmlUtil.extrairTrechoDiagnosticoDestino302(paginaDestino.body());
+        trilha.registrarDiagnostico("Destino 302", trechoDestino);
+        return trechoDestino;
+    }
+
+    private ResultadoDistribuicaoInicial falhaDistribuicaoAmbigua302(
+            TrilhaExecucao trilha,
+            Long credencialId,
+            int statusDist,
+            String location,
+            String trechoDestino) {
+        String msg =
+                "302 não-descarte sem CNJ reconhecido — CONFERIR MANUALMENTE no PROJUDI antes de redistribuir";
+        log.warn(
+                "PROJUDI inicial 302 ambíguo (credencialId={}, Location={}, trecho={})",
+                credencialId,
+                location,
+                trechoDestino);
+        trilha.falhaSemResposta("POST Passo3 distribuir", msg);
+        String respostaBruta = montarRespostaDiagnostico302Ambiguo(statusDist, location, trechoDestino);
+        return falhaDistribuicao("DISTRIBUIR", msg, respostaBruta, trilha);
+    }
+
     private boolean gravarNumeroNoProcesso(Long processoIdOrigem, String numeroProcessoGerado) {
         if (processoIdOrigem == null || !StringUtils.hasText(numeroProcessoGerado)) {
             return false;
@@ -984,7 +1077,17 @@ public class ProjudiDistribuicaoService {
 
     private static String montarRespostaDiagnostico302(int status, String location, String trechoDestino) {
         StringBuilder sb = new StringBuilder();
-        sb.append("HTTP ").append(status).append(" — redirect (processo NÃO confirmado)\n");
+        sb.append("HTTP ").append(status).append(" — redirect DESCARTE (processo NÃO confirmado)\n");
+        sb.append("Location: ").append(location != null ? location : "").append('\n');
+        sb.append("Destino: ").append(trechoDestino != null ? trechoDestino : "");
+        return sb.toString();
+    }
+
+    private static String montarRespostaDiagnostico302Ambiguo(int status, String location, String trechoDestino) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("HTTP ")
+                .append(status)
+                .append(" — redirect não-descarte, CNJ NÃO confirmado (não redistribuir)\n");
         sb.append("Location: ").append(location != null ? location : "").append('\n');
         sb.append("Destino: ").append(trechoDestino != null ? trechoDestino : "");
         return sb.toString();

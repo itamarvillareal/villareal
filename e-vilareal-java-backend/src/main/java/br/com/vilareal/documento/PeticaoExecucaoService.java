@@ -304,8 +304,8 @@ public class PeticaoExecucaoService {
             extenso = "zero reais";
         }
         String paragrafo = esc(TEXTO_CAPITULO_VALOR_CAUSA_PREFIXO)
-                + "<span class=\"valor-monetario\"><strong>"
-                + esc(formatado) + " (" + esc(extenso) + ")</strong></span>.";
+                + "<span class=\"valor-monetario\"><strong><span class=\"valor-monetario-num\">"
+                + esc(formatado) + "</span> (" + esc(extenso) + ")</strong></span>.";
         return "<p class=\"titulo\">" + TITULO_CAPITULO_VALOR_CAUSA + "</p>"
                 + "<p class=\"paragrafo\">" + paragrafo + "</p>";
     }

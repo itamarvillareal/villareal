@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -93,6 +94,40 @@ class ProjudiProcessoCivelRevisaoHtmlUtilTest {
         String trecho = ProjudiProcessoCivelRevisaoHtmlUtil.extrairTrechoDiagnosticoDestino302(html);
         assertTrue(trecho.contains("obrigatório") || trecho.contains("obrigatorio"));
         assertTrue(trecho.contains("mensagemErro") || trecho.contains("Assunto"));
+    }
+
+    @Test
+    void classificarRedirect302_descarteUsuarioPaginaMenos10() {
+        String descarte =
+                "https://projudi.tjgo.jus.br/Usuario?PaginaAtual=-10&hashFluxo=abc123";
+        assertTrue(ProjudiProcessoCivelRevisaoHtmlUtil.pareceRedirect302DescarteUsuario(descarte));
+        assertEquals(
+                "DESCARTE (Usuario PaginaAtual=-10)",
+                ProjudiProcessoCivelRevisaoHtmlUtil.rotuloClassificacaoRedirect302Distribuicao(descarte));
+    }
+
+    @Test
+    void classificarRedirect302_sucessoBuscaProcesso() {
+        String sucesso = "BuscaProcesso?Id_Processo=613514431950939873912188056&PassoBusca=5";
+        assertFalse(ProjudiProcessoCivelRevisaoHtmlUtil.pareceRedirect302DescarteUsuario(sucesso));
+        assertEquals(
+                "SUCESSO_PROVAVEL (destino do processo)",
+                ProjudiProcessoCivelRevisaoHtmlUtil.rotuloClassificacaoRedirect302Distribuicao(sucesso));
+    }
+
+    @Test
+    void extrairNumero_confirmacaoCadastroProcessoReal5589351() {
+        String html =
+                """
+                <html><body>
+                Processo cadastrado com sucesso
+                <a id="numeroProcesso">5589351-81.2026.8.09.0007</a>
+                </body></html>
+                """;
+        var ext = ProjudiProcessoCivelRevisaoHtmlUtil.extrairNumeroProcessoGerado(
+                html, "BuscaProcesso?Id_Processo=613999999999999999999999999");
+        assertTrue(ext.isPresent());
+        assertEquals("5589351-81.2026.8.09.0007", ext.get().numero());
     }
 
     @Test

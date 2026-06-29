@@ -101,20 +101,40 @@ export function calcularResumoTitulosGrade(lista) {
  * @param {string} rodadaKey
  */
 export function montarTitulosDimensaoParaResumo(titulosAtual, totalEsperado, paginasCache, rodadaKey) {
-  const total =
+  const arrAtual = Array.isArray(titulosAtual) ? titulosAtual : [];
+  const totalFromState = arrAtual.length;
+  const totalFromMeta =
     totalEsperado != null && Number(totalEsperado) > 0
       ? Math.floor(Number(totalEsperado))
-      : (Array.isArray(titulosAtual) ? titulosAtual.length : 0);
-  let base = garantirArrayTitulosTamanho(titulosAtual, total);
+      : 0;
+
   const prefix = `${rodadaKey}:page:`;
+  let totalFromCache = 0;
+  let base = [];
+
   if (paginasCache) {
     for (const [key, cached] of paginasCache) {
       if (!String(key).startsWith(prefix) || !cached?.titulos) continue;
       const pg = Number(String(key).slice(prefix.length));
       if (!Number.isFinite(pg) || pg < 1) continue;
+      const start = (pg - 1) * TITULOS_POR_PAGINA_API;
+      totalFromCache = Math.max(totalFromCache, start + cached.titulos.length);
       base = mesclarTitulosPaginaNoArray(base, cached.titulos, pg, TITULOS_POR_PAGINA_API);
     }
   }
+
+  // Não truncar linhas novas digitadas localmente além do total persistido na API.
+  const total = Math.max(totalFromMeta, totalFromState, totalFromCache);
+  base = garantirArrayTitulosTamanho(base, total);
+
+  // Estado local prevalece sobre páginas em cache (edições da sessão).
+  for (let i = 0; i < arrAtual.length; i++) {
+    while (base.length <= i) {
+      base.push(linhaTituloVaziaCalculos());
+    }
+    base[i] = linhaTituloVaziaFromApi(arrAtual[i]);
+  }
+
   return base;
 }
 
