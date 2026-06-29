@@ -57,12 +57,16 @@ class ConsultaPeriodicaBackupServiceIntegrationTest extends AbstractIntegrationT
         Assumptions.assumeTrue(processo != null, "banco de teste sem processo com CNJ");
 
         cnjOriginal = processo.getNumeroCnj();
-        cnjUnico = "9" + UUID.randomUUID().toString().replace("-", "").substring(0, 19) + ".8.09.0001";
+        cnjUnico = cnjUnicoParaIsolamento();
+        Long processoId = processo.getId();
         transactionTemplate.executeWithoutResult(status -> {
-            processo.setNumeroCnj(cnjUnico);
-            processoRepository.saveAndFlush(processo);
-            limparConfig(processo.getId());
+            ProcessoEntity p = processoRepository.findById(processoId).orElseThrow();
+            p.setNumeroCnj(cnjUnico);
+            processoRepository.saveAndFlush(p);
+            limparConfig(processoId);
         });
+        processo = processoRepository.findById(processoId).orElseThrow();
+        assertThat(processoRepository.findByNumeroCnj(cnjUnico)).isPresent();
     }
 
     @AfterEach
@@ -82,25 +86,30 @@ class ConsultaPeriodicaBackupServiceIntegrationTest extends AbstractIntegrationT
 
     @Test
     void roundTrip_exportarLimparImportar_recriaConfig() {
-        processo.setConsultaPeriodicaHabilitada(true);
-        processoRepository.saveAndFlush(processo);
+        Long processoId = processo.getId();
+        transactionTemplate.executeWithoutResult(status -> {
+            ProcessoEntity p = processoRepository.findById(processoId).orElseThrow();
+            p.setConsultaPeriodicaHabilitada(true);
+            processoRepository.saveAndFlush(p);
 
-        AgendamentoConsultaEntity ag1 = novoAgendamento(TipoCadencia.INTERVALO);
-        ag1.setIntervaloMinutos(45);
-        ag1.setProximaExecucao(LocalDateTime.now().plusHours(1));
-        agendamentoConsultaRepository.saveAndFlush(ag1);
+            AgendamentoConsultaEntity ag1 = novoAgendamento(p, TipoCadencia.INTERVALO);
+            ag1.setIntervaloMinutos(45);
+            ag1.setProximaExecucao(LocalDateTime.now().plusHours(1));
+            agendamentoConsultaRepository.saveAndFlush(ag1);
 
-        AgendamentoConsultaEntity ag2 = novoAgendamento(TipoCadencia.HORARIOS_FIXOS);
-        ag2.setHorariosFixos("08:00,14:30");
-        ag2.setProximaExecucao(LocalDateTime.now().plusHours(2));
-        agendamentoConsultaRepository.saveAndFlush(ag2);
+            AgendamentoConsultaEntity ag2 = novoAgendamento(p, TipoCadencia.HORARIOS_FIXOS);
+            ag2.setHorariosFixos("08:00,14:30");
+            ag2.setProximaExecucao(LocalDateTime.now().plusHours(2));
+            agendamentoConsultaRepository.saveAndFlush(ag2);
 
-        NotificacaoDestinatarioEntity dest = new NotificacaoDestinatarioEntity();
-        dest.setProcesso(processo);
-        dest.setCanal(CanalNotificacao.EMAIL);
-        dest.setValor("backup-roundtrip@teste.com");
-        dest.setAtivo(true);
-        notificacaoDestinatarioRepository.saveAndFlush(dest);
+            NotificacaoDestinatarioEntity dest = new NotificacaoDestinatarioEntity();
+            dest.setProcesso(p);
+            dest.setCanal(CanalNotificacao.EMAIL);
+            dest.setValor("backup-roundtrip@teste.com");
+            dest.setAtivo(true);
+            notificacaoDestinatarioRepository.saveAndFlush(dest);
+        });
+        processo = processoRepository.findById(processoId).orElseThrow();
 
         byte[] csv = backupService.exportar().conteudo();
         assertThat(csv.length).isGreaterThan(100);
@@ -172,9 +181,15 @@ class ConsultaPeriodicaBackupServiceIntegrationTest extends AbstractIntegrationT
         assertThat(rel.getProcessosAtualizados()).isZero();
     }
 
-    private AgendamentoConsultaEntity novoAgendamento(TipoCadencia tipo) {
+    /** CNJ só com dígitos/pontuação padrão — compatível com {@code ProcessoRepository.findByNumeroCnj}. */
+    private static String cnjUnicoParaIsolamento() {
+        long seed = Math.abs(UUID.randomUUID().getMostSignificantBits());
+        return String.format("%07d-%02d.2026.8.09.0001", seed % 10_000_000L, seed % 100);
+    }
+
+    private AgendamentoConsultaEntity novoAgendamento(ProcessoEntity proc, TipoCadencia tipo) {
         AgendamentoConsultaEntity ag = new AgendamentoConsultaEntity();
-        ag.setProcesso(processo);
+        ag.setProcesso(proc);
         ag.setTipoCadencia(tipo);
         ag.setAtivo(true);
         ag.setApenasDiasUteis(false);
