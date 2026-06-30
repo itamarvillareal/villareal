@@ -35,6 +35,7 @@ public class PjeCopiaIntegralPorProcessoService {
     private final PublicacaoDriveAndamentosService publicacaoDriveAndamentosService;
     private final PublicacaoRepository publicacaoRepository;
     private final CredencialTotpRepository credencialTotpRepository;
+    private final PjeCopiaIntegralStatusStore statusStore;
     private final ExecutorService executor;
 
     public PjeCopiaIntegralPorProcessoService(
@@ -43,12 +44,14 @@ public class PjeCopiaIntegralPorProcessoService {
             PublicacaoDriveAndamentosService publicacaoDriveAndamentosService,
             PublicacaoRepository publicacaoRepository,
             CredencialTotpRepository credencialTotpRepository,
+            PjeCopiaIntegralStatusStore statusStore,
             @Qualifier("pjeEmailTriggerExecutor") ExecutorService executor) {
         this.trt18TriggerProperties = trt18TriggerProperties;
         this.copiaIntegralOrchestrator = copiaIntegralOrchestrator;
         this.publicacaoDriveAndamentosService = publicacaoDriveAndamentosService;
         this.publicacaoRepository = publicacaoRepository;
         this.credencialTotpRepository = credencialTotpRepository;
+        this.statusStore = statusStore;
         this.executor = executor;
     }
 
@@ -64,17 +67,21 @@ public class PjeCopiaIntegralPorProcessoService {
             return Optional.empty();
         }
         String cnjNorm = cnj.trim();
+        statusStore.marcarEmAndamento(cnjNorm);
         Optional<String> login = resolverLogin();
         if (login.isEmpty()) {
             log.warn("PJe cópia integral CNJ {}: login não resolvido", cnjNorm);
+            statusStore.registrarFalha(cnjNorm, "Login PJe TRT18 não configurado (cofre TOTP ou PJE_TRT18_LOGIN_PADRAO).");
             return Optional.empty();
         }
         Optional<PjeCopiaIntegralResult> resultado = executarComFallbackGrau(cnjNorm, login.get(), grauSalvo);
         if (resultado.isEmpty()) {
             log.warn("PJe cópia integral CNJ {}: robô global ocupado", cnjNorm);
+            statusStore.registrarFalha(cnjNorm, "Robô PJe ocupado; tente novamente em alguns minutos.");
             return Optional.empty();
         }
         PjeCopiaIntegralResult r = resultado.get();
+        statusStore.registrar(r);
         if (r.sucesso() && StringUtils.hasText(r.pastaMovimentacoesId())) {
             publicacaoDriveAndamentosService.tentarMarcarAndamentosNoDrivePorCnj(
                     cnjNorm, r.pastaMovimentacoesId(), 1);
@@ -108,8 +115,16 @@ public class PjeCopiaIntegralPorProcessoService {
                 executarPorCnj(cnjNorm, grau);
             } catch (Exception e) {
                 log.warn("PJe cópia integral assíncrona falhou (cnj={}): {}", cnjNorm, e.getMessage());
+                statusStore.registrarFalha(cnjNorm, e.getMessage());
             }
         });
+    }
+
+    public Optional<PjeCopiaIntegralStatusStore.Entrada> consultarStatus(String cnj) {
+        if (!StringUtils.hasText(cnj)) {
+            return Optional.empty();
+        }
+        return statusStore.consultar(cnj.trim());
     }
 
     Optional<String> resolverLogin() {

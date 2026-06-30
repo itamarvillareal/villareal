@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ExternalLink, Eye, Loader2, Star, X } from 'lucide-react';
 import { padCliente } from '../../data/processosDadosRelatorio.js';
 import { featureFlags } from '../../config/featureFlags.js';
 import {
   definirVinculoPrincipalProcessoImovelApi,
   listarVinculosProcessoImovel,
+  marcarVinculoPrincipalNaLista,
 } from '../../repositories/imoveisRepository.js';
 import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 import { imoveisBtnPrimary, imoveisBtnSecondary, imoveisBtnIconGhost } from './ImoveisAdminLayout.jsx';
@@ -21,9 +22,11 @@ export function ModalVinculosProcessoImovel({
   onPrincipalAlterado,
 }) {
   const [carregando, setCarregando] = useState(false);
-  const [salvando, setSalvando] = useState(false);
+  const [salvandoChave, setSalvandoChave] = useState('');
   const [erro, setErro] = useState('');
   const [vinculos, setVinculos] = useState([]);
+  const imovelIdApiRef = useRef(imovelIdApi);
+  imovelIdApiRef.current = imovelIdApi;
 
   useCloseOnEscape(open, onClose);
 
@@ -34,7 +37,7 @@ export function ModalVinculosProcessoImovel({
     setErro('');
     void listarVinculosProcessoImovel({
       numeroPlanilha,
-      imovelIdApi: imovelIdApi ?? undefined,
+      imovelIdApi: imovelIdApiRef.current ?? undefined,
     })
       .then((r) => {
         if (!ativo) return;
@@ -51,25 +54,37 @@ export function ModalVinculosProcessoImovel({
     return () => {
       ativo = false;
     };
-  }, [open, numeroPlanilha, imovelIdApi]);
+  }, [open, numeroPlanilha]);
 
   async function definirComoPrincipal(v) {
-    if (!featureFlags.useApiImoveis || v.principal) return;
-    setSalvando(true);
+    if (v.principal) return;
+    const chaveAlvo = `${padCliente(v.codigoCliente ?? '')}|${Number(v.numeroInterno)}`;
+    const snapshot = vinculos;
+    setVinculos(marcarVinculoPrincipalNaLista(vinculos, v.codigoCliente, v.numeroInterno));
+    setSalvandoChave(chaveAlvo);
     setErro('');
+
+    if (!featureFlags.useApiImoveis) {
+      setSalvandoChave('');
+      return;
+    }
+
     try {
       const r = await definirVinculoPrincipalProcessoImovelApi({
         numeroPlanilha,
-        imovelIdApi: imovelIdApi ?? undefined,
+        imovelIdApi: imovelIdApiRef.current ?? undefined,
         codigoCliente: v.codigoCliente,
         numeroInterno: v.numeroInterno,
       });
       setVinculos(Array.isArray(r?.vinculos) ? r.vinculos : []);
-      onPrincipalAlterado?.();
+      const novoPrincipal =
+        (Array.isArray(r?.vinculos) ? r.vinculos : []).find((x) => x.principal) || null;
+      void Promise.resolve(onPrincipalAlterado?.(novoPrincipal));
     } catch (e) {
+      setVinculos(snapshot);
       setErro(e?.message || 'Não foi possível definir o vínculo principal.');
     } finally {
-      setSalvando(false);
+      setSalvandoChave('');
     }
   }
 
@@ -78,6 +93,7 @@ export function ModalVinculosProcessoImovel({
   const codCad = padCliente(codigoCadastro ?? '');
   const procCad = String(procCadastro ?? '').trim();
   const vinculoPrincipal = vinculos.find((x) => x.principal) || vinculos[vinculos.length - 1] || null;
+  const salvando = salvandoChave !== '';
 
   return (
     <div
@@ -121,10 +137,12 @@ export function ModalVinculosProcessoImovel({
               {vinculos.map((v) => {
                 const cod = padCliente(v.codigoCliente ?? '');
                 const procN = Number(v.numeroInterno);
+                const chaveItem = `${cod}|${procN}`;
                 const ehPrincipal = !!v.principal;
                 const ehCadastroAtual =
                   (codCad && procCad && cod === codCad && String(procN) === procCad) || v.cadastroAtual;
                 const destaque = ehPrincipal;
+                const salvandoEste = salvandoChave === chaveItem;
                 return (
                   <li
                     key={`${cod}-${procN}-${v.processoId ?? v.imovelId ?? 'x'}`}
@@ -160,14 +178,18 @@ export function ModalVinculosProcessoImovel({
                           Ver cadastro
                         </button>
                       ) : null}
-                      {!ehPrincipal && featureFlags.useApiImoveis ? (
+                      {ehPrincipal ? (
+                        <span className="text-[11px] text-teal-700/90 dark:text-teal-300/90 px-2 py-1 rounded-md border border-teal-300/50 dark:border-teal-600/40">
+                          Já é o principal
+                        </span>
+                      ) : featureFlags.useApiImoveis ? (
                         <button
                           type="button"
                           disabled={salvando}
                           onClick={() => void definirComoPrincipal(v)}
                           className={`${imoveisBtnSecondary} text-xs py-1.5 px-2.5 inline-flex items-center gap-1`}
                         >
-                          {salvando ? (
+                          {salvandoEste ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
                           ) : (
                             <Star className="w-3.5 h-3.5" aria-hidden />

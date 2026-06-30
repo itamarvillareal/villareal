@@ -188,6 +188,7 @@ import {
   alterarAtivoProcesso,
   baixarAutosIntegralProcesso,
   obterMovimentacoesDrive,
+  consultarStatusPjeCopiaIntegral,
 } from '../repositories/processosRepository.js';
 import {
   buscarNumeroImovelPorVinculo,
@@ -2479,6 +2480,43 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     [codigoCliente, processo],
   );
 
+  const aguardarResultadoPjeCopiaIntegral = useCallback(
+    async (processoId) => {
+      const maxTentativas = 40;
+      for (let i = 0; i < maxTentativas; i += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 15_000));
+        try {
+          const st = await consultarStatusPjeCopiaIntegral(processoId);
+          const fase = String(st?.fase ?? '').toUpperCase();
+          if (fase === 'EM_ANDAMENTO' || fase === 'NENHUM') {
+            continue;
+          }
+          if (fase === 'SUCESSO') {
+            showProcessoToast(
+              String(st?.mensagem ?? '').trim()
+                || 'Cópia integral salva na subpasta Movimentações do Drive.',
+            );
+            return;
+          }
+          if (fase === 'FALHA') {
+            showProcessoToast(
+              String(st?.mensagem ?? '').trim() || 'Falha na cópia integral PJe TRT18.',
+              'error',
+            );
+            return;
+          }
+        } catch {
+          /* polling silencioso */
+        }
+      }
+      showProcessoToast(
+        'PJe ainda em execução ou sem resposta — confira a subpasta Movimentações no Drive em alguns minutos.',
+        'warning',
+      );
+    },
+    [showProcessoToast],
+  );
+
   const executarObterMovimentacoesDrive = useCallback(async () => {
     const id = Number(processoApiId);
     if (!id || buscandoMovimentacoes) return;
@@ -2503,8 +2541,9 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       if (status === 'INICIADO') {
         showProcessoToast(
           String(r?.mensagem ?? '').trim()
-            || 'PJe iniciado — acompanhe o badge No Drive na publicação por e-mail.',
+            || 'PJe TRT18 em execução — aguarde; o PDF irá para a subpasta Movimentações.',
         );
+        void aguardarResultadoPjeCopiaIntegral(id);
         return;
       }
       if (status === 'PJE_AUTOMACAO_INDISPONIVEL') {
@@ -2534,6 +2573,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     buscandoMovimentacoes,
     showProcessoToast,
     aplicarDataProtocoloObterMovimentacoesNaUi,
+    aguardarResultadoPjeCopiaIntegral,
   ]);
 
   const handleObterMovimentacoes = useCallback(async () => {

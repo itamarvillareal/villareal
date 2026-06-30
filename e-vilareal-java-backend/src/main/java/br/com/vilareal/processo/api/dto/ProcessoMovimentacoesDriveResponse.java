@@ -41,7 +41,8 @@ public record ProcessoMovimentacoesDriveResponse(
                 null,
                 null,
                 null,
-                "PJe iniciado — acompanhe o badge No Drive na publicação por e-mail.",
+                "PJe TRT18 em execução — o PDF será salvo na subpasta Movimentações do Drive. "
+                        + "Aguarde alguns minutos; a tela avisa sucesso ou erro.",
                 null,
                 null,
                 null);

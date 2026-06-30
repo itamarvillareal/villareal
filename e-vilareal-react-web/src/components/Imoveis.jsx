@@ -1228,8 +1228,29 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
         onSelecionarVinculo={(codigoCliente, numeroInterno) => {
           void carregarFormularioPorVinculo(codigoCliente, numeroInterno);
         }}
-        onPrincipalAlterado={async () => {
+        onPrincipalAlterado={async (vinculoPrincipal) => {
           recarregarListaImoveisPesquisa();
+          const np = Number(imovelId);
+          if (
+            vinculoPrincipal?.codigoCliente &&
+            vinculoPrincipal?.numeroInterno != null &&
+            Number.isFinite(np) &&
+            np >= 1
+          ) {
+            const item = await carregarCadastroPorVinculoImovel({
+              numeroPlanilha: np,
+              imovelIdApi: apiImovelIdRef.current ?? _apiImovelId,
+              codigoCliente: vinculoPrincipal.codigoCliente,
+              numeroInterno: vinculoPrincipal.numeroInterno,
+            });
+            if (item) {
+              popularFormulario(item);
+              setApiSuccess(
+                `Vínculo principal atualizado: Cliente ${padCliente(vinculoPrincipal.codigoCliente)} · Proc. ${vinculoPrincipal.numeroInterno}. Salve o cadastro se alterou locatário ou link de vistoria.`,
+              );
+              return;
+            }
+          }
           await recarregarCadastroAtual();
         }}
       />

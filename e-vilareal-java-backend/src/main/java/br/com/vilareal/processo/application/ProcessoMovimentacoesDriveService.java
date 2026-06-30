@@ -6,6 +6,7 @@ import br.com.vilareal.pje.application.PjeCopiaIntegralPorProcessoService;
 import br.com.vilareal.pje.application.PjeTribunalCnjResolver;
 import br.com.vilareal.pje.domain.PjeGrau;
 import br.com.vilareal.pje.domain.PjeTribunal;
+import br.com.vilareal.processo.api.dto.PjeCopiaIntegralStatusResponse;
 import br.com.vilareal.processo.api.dto.ProcessoMovimentacoesDriveResponse;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
@@ -79,6 +80,20 @@ public class ProcessoMovimentacoesDriveService {
         String msg =
                 "Sem sistema digital para consulta automática; defina a tramitação (Projudi ou PJe).";
         return ProcessoMovimentacoesDriveResponse.semSistema(tramitacaoExibicao, msg);
+    }
+
+    public PjeCopiaIntegralStatusResponse consultarStatusPje(Long processoId) {
+        ProcessoEntity processo = processoRepository
+                .findById(processoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Processo não encontrado: " + processoId));
+        String cnj = processo.getNumeroCnj();
+        if (!StringUtils.hasText(cnj)) {
+            return PjeCopiaIntegralStatusResponse.nenhum();
+        }
+        return pjeCopiaIntegralPorProcessoService
+                .consultarStatus(cnj.trim())
+                .map(PjeCopiaIntegralStatusResponse::from)
+                .orElse(PjeCopiaIntegralStatusResponse.nenhum());
     }
 
     private static PjeTribunal resolverTribunalEfetivo(

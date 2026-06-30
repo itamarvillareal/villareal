@@ -1964,6 +1964,15 @@ export async function obterMovimentacoesDrive(processoId) {
   return request(`/api/processos/${id}/movimentacoes-drive`, { method: 'POST' });
 }
 
+/** Polling do robô PJe TRT18 após POST movimentacoes-drive (status INICIADO). */
+export async function consultarStatusPjeCopiaIntegral(processoId) {
+  const id = Number(processoId);
+  if (!Number.isFinite(id) || id < 1) {
+    throw new Error('Processo sem id na API.');
+  }
+  return request(`/api/processos/${id}/movimentacoes-drive/pje-status`);
+}
+
 /**
  * Monitora movimentações PROJUDI (somente listagem F3; sem download/Drive/publicações).
  * @param {number|string} processoId

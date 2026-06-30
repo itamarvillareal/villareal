@@ -27,8 +27,21 @@ import {
   escolherVinculoPrincipalProcessoLista,
   invalidarCacheVinculoPrincipalProcessoImovel,
   listarVinculosProcessoImovel,
+  marcarVinculoPrincipalNaLista,
   resolverChaveProcessoContaCorrentePainel,
 } from './imoveisRepository.js';
+
+describe('marcarVinculoPrincipalNaLista', () => {
+  it('move a estrela para o par escolhido', () => {
+    const vinculos = [
+      { codigoCliente: '00000938', numeroInterno: 57, principal: false },
+      { codigoCliente: '00000692', numeroInterno: 7, principal: true },
+    ];
+    const out = marcarVinculoPrincipalNaLista(vinculos, '938', 57);
+    expect(out.find((v) => v.numeroInterno === 57)?.principal).toBe(true);
+    expect(out.find((v) => v.numeroInterno === 7)?.principal).toBe(false);
+  });
+});
 
 describe('escolherVinculoPrincipalProcessoLista', () => {
   it('prioriza principal sobre cadastroAtual e ordem da lista', () => {

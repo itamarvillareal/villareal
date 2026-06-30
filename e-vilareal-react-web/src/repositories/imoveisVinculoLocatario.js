@@ -92,6 +92,29 @@ export function mesclarExtrasVinculoLocatarioNoItem(item, extrasRaw, normalizarE
   return merged;
 }
 
+/** Garante que campos versionados por Cod.+Proc. reflitam o que acabou de ser salvo no formulário. */
+export function mesclarCamposVinculoLocatarioDoUiNoItem(item, ui) {
+  if (!item || !ui) return item;
+  const merged = { ...item };
+  for (const chave of CHAVES_EXTRAS_VINCULO_LOCATARIO) {
+    if (!Object.prototype.hasOwnProperty.call(ui, chave)) continue;
+    if (chave === 'inquilinos') {
+      if (Array.isArray(ui.inquilinos)) merged.inquilinos = ui.inquilinos;
+      continue;
+    }
+    if (chave === 'inquilinoPessoaId' || chave === 'inquilinoNumeroPessoa') {
+      const id = String(ui.inquilinoNumeroPessoa ?? ui.inquilinoPessoaId ?? '').trim();
+      if (id) merged.inquilinoNumeroPessoa = id;
+      continue;
+    }
+    merged[chave] = ui[chave];
+  }
+  if (Object.prototype.hasOwnProperty.call(ui, 'observacoesInquilino')) {
+    merged.observacoesInquilino = ui.observacoesInquilino;
+  }
+  return merged;
+}
+
 export async function carregarVinculoLocatarioImovel({ numeroPlanilha, codigoCliente, numeroInterno }) {
   if (!featureFlags.useApiImoveis) return null;
   const np = Number(numeroPlanilha);

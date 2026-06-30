@@ -5,6 +5,7 @@ import { featureFlags, FEATURE_IPTU_NOVO } from '../config/featureFlags.js';
 import {
   carregarVinculoLocatarioImovel,
   extrairExtrasVinculoLocatarioJsonDoUi,
+  mesclarCamposVinculoLocatarioDoUiNoItem,
   mesclarExtrasVinculoLocatarioNoItem,
   removerExtrasVinculoLocatarioDoObjeto,
   resolverProcessoIdParaVinculoUi,
@@ -1061,6 +1062,19 @@ function chaveVinculoCodProc(codigoCliente, numeroInterno) {
   return `${padCliente8(codigoCliente)}|${Math.trunc(Number(numeroInterno))}`;
 }
 
+function vinculoMarcadoComoPrincipal(item) {
+  return item?.principal === true || item?.isPrincipal === true;
+}
+
+/** Marca exatamente um par Cod.+Proc. como principal na lista (UI imediata). */
+export function marcarVinculoPrincipalNaLista(vinculos, codigoCliente, numeroInterno) {
+  const chaveAlvo = chaveVinculoCodProc(codigoCliente, numeroInterno);
+  return (Array.isArray(vinculos) ? vinculos : []).map((v) => ({
+    ...v,
+    principal: chaveVinculoCodProc(v.codigoCliente, v.numeroInterno) === chaveAlvo,
+  }));
+}
+
 function mesclarVinculosProcessoImovel(apiPayload, numeroPlanilha) {
   const np = Number(numeroPlanilha);
   const fromApi = Array.isArray(apiPayload?.vinculos) ? apiPayload.vinculos.map((v) => ({ ...v })) : [];
@@ -1086,7 +1100,8 @@ function mesclarVinculosProcessoImovel(apiPayload, numeroPlanilha) {
     v.principal = false;
   });
   if (fromApi.length > 0) {
-    const apiPrincipal = fromApi.find((x) => x.principal) || fromApi[fromApi.length - 1];
+    const apiPrincipal =
+      fromApi.find(vinculoMarcadoComoPrincipal) || fromApi[fromApi.length - 1];
     const chavePrincipal = chaveVinculoCodProc(apiPrincipal.codigoCliente, apiPrincipal.numeroInterno);
     const item = merged.find((v) => chaveVinculoCodProc(v.codigoCliente, v.numeroInterno) === chavePrincipal);
     if (item) item.principal = true;
@@ -1203,7 +1218,11 @@ export async function definirVinculoPrincipalProcessoImovelApi(opts = {}) {
     throw new Error('Informe o imóvel (nº planilha ou id API).');
   }
   invalidarCacheVinculoPrincipalProcessoImovel();
-  return mesclarVinculosProcessoImovel(payload, payload?.numeroPlanilha ?? np);
+  const merged = mesclarVinculosProcessoImovel(payload, payload?.numeroPlanilha ?? np);
+  return {
+    ...merged,
+    vinculos: marcarVinculoPrincipalNaLista(merged.vinculos, codigoCliente, numeroInterno),
+  };
 }
 
 function corpoPutImovelFromApi(imo, patch) {
@@ -1832,6 +1851,16 @@ export async function salvarImovelCadastro(uiPayload) {
   }
 
   let item = await enriquecerNomesPartesImovelUi(mapApiToUi(imovelSalvo, contratoAtual));
+  item.codigo = vinculo.espelhoCodigo || item.codigo;
+  item.proc = vinculo.espelhoProc || item.proc;
+  item._vinculoCodigoOriginal = vinculo.espelhoCodigo || item.codigo;
+  item._vinculoProcOriginal = vinculo.espelhoProc || item.proc;
+  if (processoIdEfetivo != null && Number(processoIdEfetivo) > 0) {
+    item._apiProcessoId = Number(processoIdEfetivo);
+  }
+  item = await aplicarVinculoLocatarioNaUi(item);
+  item = mesclarCamposVinculoLocatarioDoUiNoItem(item, uiPayload);
+  item = await enriquecerNomesPartesImovelUi(item);
 
   const enviados = Array.isArray(uiPayload.inquilinos)
     ? uiPayload.inquilinos.map(normalizarEntradaInquilinoUi).filter(Boolean)

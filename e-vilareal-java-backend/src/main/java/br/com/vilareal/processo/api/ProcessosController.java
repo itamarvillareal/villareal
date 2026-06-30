@@ -366,6 +366,14 @@ public class ProcessosController {
         return processoMovimentacoesDriveService.executar(id);
     }
 
+    @GetMapping("/{id}/movimentacoes-drive/pje-status")
+    @Operation(
+            summary = "Status da cópia integral PJe (polling após disparo assíncrono)",
+            description = "Retorna EM_ANDAMENTO, SUCESSO, FALHA ou NENHUM para o CNJ do processo.")
+    public PjeCopiaIntegralStatusResponse statusCopiaIntegralPje(@PathVariable Long id) {
+        return processoMovimentacoesDriveService.consultarStatusPje(id);
+    }
+
     @PostMapping("/{id}/projudi/movimentacoes-drive")
     @Operation(
             summary = "Obter movimentações PROJUDI (progressivo → Drive)",

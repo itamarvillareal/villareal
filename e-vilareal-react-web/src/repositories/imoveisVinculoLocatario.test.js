@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   extrairExtrasVinculoLocatarioJsonDoUi,
+  mesclarCamposVinculoLocatarioDoUiNoItem,
   mesclarExtrasVinculoLocatarioNoItem,
   removerExtrasVinculoLocatarioDoObjeto,
   usuarioAlterouVinculoProcessoNoFormulario,
@@ -45,5 +46,13 @@ describe('imoveisVinculoLocatario', () => {
     );
     expect(merged.inquilino).toBe('Maria');
     expect(merged.valorLocacao).toBe('1700');
+  });
+
+  it('preserva link de vistoria enviado pelo formulário após save', () => {
+    const merged = mesclarCamposVinculoLocatarioDoUiNoItem(
+      { linkVistoria: '' },
+      { linkVistoria: 'https://dropbox.com/vistoria-nova' },
+    );
+    expect(merged.linkVistoria).toBe('https://dropbox.com/vistoria-nova');
   });
 });
