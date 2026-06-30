@@ -8,6 +8,7 @@ import br.com.vilareal.whatsapp.WhatsAppApiException;
 import br.com.vilareal.whatsapp.dto.WhatsAppSendResponse;
 import br.com.vilareal.whatsapp.dto.WhatsAppTextMessageRequest;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.AniversarioWhatsAppRepository;
+import br.com.vilareal.whatsapp.infrastructure.persistence.repository.CobrancaWhatsAppRepository;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppMessageRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
@@ -58,7 +59,16 @@ class WhatsAppServiceCopiaMonitoramentoTest {
     private AniversarioWhatsAppRepository aniversarioWhatsAppRepository;
 
     @Mock
+    private CobrancaWhatsAppRepository cobrancaWhatsAppRepository;
+
+    @Mock
     private WhatsAppAIService whatsAppAIService;
+
+    @Mock
+    private WhatsAppMediaService whatsAppMediaService;
+
+    @Mock
+    private WhatsAppNotificationService whatsAppNotificationService;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -95,7 +105,11 @@ class WhatsAppServiceCopiaMonitoramentoTest {
         whatsAppConfig.setAccessToken("token-test");
         whatsAppConfig.setApiUrl("http://localhost:" + httpServer.getAddress().getPort());
 
-        whatsAppService = new WhatsAppService(
+        whatsAppService = newService();
+    }
+
+    private WhatsAppService newService() {
+        return new WhatsAppService(
                 whatsAppConfig,
                 RestClient.builder(),
                 objectMapper,
@@ -104,7 +118,10 @@ class WhatsAppServiceCopiaMonitoramentoTest {
                 clienteRepository,
                 clienteWhatsAppRepository,
                 aniversarioWhatsAppRepository,
-                whatsAppAIService);
+                cobrancaWhatsAppRepository,
+                whatsAppAIService,
+                whatsAppMediaService,
+                whatsAppNotificationService);
     }
 
     @AfterEach
@@ -189,16 +206,7 @@ class WhatsAppServiceCopiaMonitoramentoTest {
                 });
         httpServer.start();
         whatsAppConfig.setApiUrl("http://localhost:" + httpServer.getAddress().getPort());
-        whatsAppService = new WhatsAppService(
-                whatsAppConfig,
-                RestClient.builder(),
-                objectMapper,
-                whatsAppMessageRepository,
-                pessoaContatoRepository,
-                clienteRepository,
-                clienteWhatsAppRepository,
-                aniversarioWhatsAppRepository,
-                whatsAppAIService);
+        whatsAppService = newService();
 
         assertThatCode(() -> whatsAppService.sendTextMessage("62988765432", "ok"))
                 .doesNotThrowAnyException();
