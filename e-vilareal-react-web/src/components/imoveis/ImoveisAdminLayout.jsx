@@ -16,6 +16,7 @@ import {
   Home,
   KeyRound,
   Landmark,
+  Loader2,
   MapPin,
   Phone,
   UserRound,
@@ -23,6 +24,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { CampoDataBr } from '../ui/CampoDataBr.jsx';
+import { featureFlags } from '../../config/featureFlags.js';
 import { formatValorMoeda, formatValorMoedaCampo } from '../../utils/moneyBr.js';
 
 export { formatValorMoeda, formatValorMoedaCampo };
@@ -280,8 +282,7 @@ export function AccordionSection({
  *   valorLocacao: string,
  *   inquilinoNome: string,
  *   apiSaving: boolean,
- *   salvarDisabled?: boolean,
- *   onSalvar: () => void,
+ *   autosavePendente?: boolean,
  *   onAbrirProc: () => void,
  *   onContaCorrente: () => void,
  *   contaCorrenteDisabled: boolean,
@@ -305,8 +306,7 @@ export function ImoveisStickyHeader({
   valorLocacao,
   inquilinoNome,
   apiSaving,
-  salvarDisabled = false,
-  onSalvar,
+  autosavePendente = false,
   onAbrirProc,
   onContaCorrente,
   contaCorrenteDisabled,
@@ -363,19 +363,12 @@ export function ImoveisStickyHeader({
           ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2 shrink-0 pt-1 border-t border-slate-200/60 dark:border-white/[0.06] xl:border-t-0 xl:pt-0">
-          <button
-            type="button"
-            onClick={onSalvar}
-            disabled={apiSaving || salvarDisabled}
-            title={
-              salvarDisabled && !apiSaving
-                ? 'Aguarde o cadastro carregar na API antes de salvar.'
-                : undefined
-            }
-            className={imoveisBtnPrimary}
-          >
-            {apiSaving ? 'Salvando…' : 'Salvar'}
-          </button>
+          {featureFlags.useApiImoveis && (apiSaving || autosavePendente) ? (
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-teal-300/60 bg-teal-50/80 px-2.5 py-1.5 text-xs font-medium text-teal-800 dark:border-teal-600/40 dark:bg-teal-950/40 dark:text-teal-200">
+              <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" aria-hidden />
+              Salvando…
+            </span>
+          ) : null}
           <button type="button" onClick={onAbrirProc} className={imoveisBtnSecondary}>
             Abrir Proc.
           </button>

@@ -163,6 +163,7 @@ export function ImoveisCadastroView(props) {
     linkVistoria,
     setLinkVistoria,
     onSalvar,
+    autosavePendente = false,
     onAbrirProc,
     onContaCorrente,
     contaCorrenteDisabled,
@@ -184,8 +185,6 @@ export function ImoveisCadastroView(props) {
   } = props;
 
   const unidadeResumo = unidadeResumoCabecalho(unidade, condominio);
-  const salvarDisabled =
-    apiLoading || (featureFlags.useApiImoveis && !(Number(_apiImovelId) > 0));
 
   const summaryCards = useMemo(
     () => [
@@ -310,7 +309,7 @@ export function ImoveisCadastroView(props) {
   const catalogoDisabled =
     !(Number(_apiImovelId) > 0) && !(Number.isFinite(Number(imovelId)) && Number(imovelId) >= 1);
   const catalogoTitle = catalogoDisabled
-    ? 'Informe um imóvel válido ou salve o cadastro na API'
+    ? 'Informe um imóvel válido'
     : 'Abrir pasta do imóvel no Google Drive';
 
   return (
@@ -330,8 +329,7 @@ export function ImoveisCadastroView(props) {
           valorLocacao={valorLocacao}
           inquilinoNome={inquilino}
           apiSaving={apiSaving}
-          salvarDisabled={salvarDisabled}
-          onSalvar={onSalvar}
+          autosavePendente={autosavePendente}
           onAbrirProc={onAbrirProc}
           onContaCorrente={onContaCorrente}
           contaCorrenteDisabled={contaCorrenteDisabled}

@@ -11,6 +11,10 @@ import {
   imoveisInputReadOnlyClass,
 } from './imoveis/ImoveisAdminLayout.jsx';
 import { ImoveisCadastroView } from './imoveis/ImoveisCadastroView.jsx';
+import {
+  buildSnapshotImovelCadastro,
+  IMOVEIS_AUTOSAVE_DEBOUNCE_MS,
+} from './imoveis/imoveisCadastroAutosave.js';
 import { ModalVinculosProcessoImovel } from './imoveis/ModalVinculosProcessoImovel.jsx';
 import { ModalGerarContratoLocacao } from './imoveis/ModalGerarContratoLocacao.jsx';
 import { PessoaEmbedModal } from './PessoaEmbedModal.jsx';
@@ -123,6 +127,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   const [apiLoading, setApiLoading] = useState(false);
   const [apiError, setApiError] = useState('');
   const [apiSaving, setApiSaving] = useState(false);
+  const [autosavePendente, setAutosavePendente] = useState(false);
   const [apiSuccess, setApiSuccess] = useState('');
   const [_apiImovelId, setApiImovelId] = useState(null);
   const [_apiContratoId, setApiContratoId] = useState(null);
@@ -142,6 +147,11 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   const cargaFormularioSeqRef = useRef(0);
   /** PK interna do imóvel carregado — evita recarregar duplicata errada da planilha após salvar. */
   const apiImovelIdRef = useRef(null);
+  const autosaveAtivoRef = useRef(false);
+  const autosaveTimerRef = useRef(null);
+  const autosaveEmCursoRef = useRef(false);
+  const autosaveReagendarRef = useRef(false);
+  const ultimoSnapshotSalvoRef = useRef(null);
   const unidadeAlvo =
     !modoModal && location.state && typeof location.state === 'object' ? location.state.unidade : null;
 
@@ -184,6 +194,8 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   }, [listaImoveisPesquisa, pesquisaCondUnidade]);
 
   function popularFormulario(data) {
+    ultimoSnapshotSalvoRef.current = null;
+    autosaveAtivoRef.current = false;
     if (!data) {
       // Sem cadastro para este nº de imóvel: formulário em branco (não marcar como desocupado por engano).
       setCodigo('');
@@ -348,11 +360,108 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     vinculoProcOriginalRef.current = String(data._vinculoProcOriginal ?? data.proc ?? '').trim();
   }
 
+  function montarDadosCadastroImovel(overrides = {}) {
+    return {
+      imovelId,
+      imovelOcupado,
+      codigo,
+      proc,
+      observacoesInquilino,
+      endereco,
+      municipioId: municipioSelecionado?.municipioId ?? null,
+      condominio,
+      unidade,
+      garagens,
+      garantia,
+      valorGarantia,
+      valorLocacao,
+      taxaAdministracaoPercent,
+      diaPagAluguel,
+      formaPagamentoAluguel,
+      dataPag1TxCond,
+      inscricaoImobiliaria,
+      existeDebIptu,
+      dataConsIptu,
+      aguaNumero,
+      dataConsAgua,
+      existeDebAgua,
+      diaVencAgua,
+      energiaNumero,
+      dataConsEnergia,
+      existeDebEnergia,
+      diaVencEnergia,
+      gasNumero,
+      dataConsGas,
+      existeDebGas,
+      diaVencGas,
+      dataInicioContrato,
+      dataFimContrato,
+      dataConsDebitoCond,
+      existeDebitoCond,
+      diaRepasse,
+      banco,
+      agencia,
+      numeroBanco,
+      conta,
+      cpfBanco,
+      titular,
+      chavePix,
+      proprietarioNumeroPessoa,
+      proprietario,
+      proprietarioCpf,
+      proprietarioContato,
+      linkVistoria,
+      inquilinoNumeroPessoa,
+      inquilino,
+      inquilinoCpf,
+      inquilinoContato,
+      inquilinos,
+      fiadores,
+      infoIptuTexto,
+      contratoAssinadoInquilino,
+      contratoAssinadoProprietario,
+      contratoAssinadoGarantidor,
+      contratoAssinadoTestemunhas,
+      contratoArquivado,
+      contratoIntermediacaoArquivado,
+      contratoIntermediacaoAssinadoProprietario,
+      ...overrides,
+    };
+  }
+
+  function aplicarMetadadosPosSaveSilencioso(itemForm) {
+    if (itemForm._apiImovelId != null) {
+      setApiImovelId(itemForm._apiImovelId);
+      apiImovelIdRef.current = itemForm._apiImovelId;
+    }
+    if (itemForm._apiContratoId != null) setApiContratoId(itemForm._apiContratoId);
+    if (itemForm._apiClienteId != null) setApiClienteId(itemForm._apiClienteId);
+    if (itemForm._apiProcessoId != null) setApiProcessoId(itemForm._apiProcessoId);
+    if (itemForm._jsonExtrasOriginal && typeof itemForm._jsonExtrasOriginal === 'object') {
+      jsonExtrasOriginalRef.current = itemForm._jsonExtrasOriginal;
+    }
+    if (itemForm._contratoObservacoesOriginal !== undefined) {
+      contratoObservacoesOriginalRef.current = itemForm._contratoObservacoesOriginal;
+    }
+    if (itemForm._contratoSnapshotOriginal && typeof itemForm._contratoSnapshotOriginal === 'object') {
+      contratoSnapshotOriginalRef.current = itemForm._contratoSnapshotOriginal;
+    }
+    if (itemForm._vinculoCodigoOriginal) {
+      vinculoCodigoOriginalRef.current = String(itemForm._vinculoCodigoOriginal).trim();
+    }
+    if (itemForm._vinculoProcOriginal) {
+      vinculoProcOriginalRef.current = String(itemForm._vinculoProcOriginal).trim();
+    }
+  }
+
   useEffect(() => {
     let ativo = true;
     const numero = Math.max(1, Number(imovelId) || 1);
     const seqCarga = ++cargaFormularioSeqRef.current;
     apiImovelIdRef.current = null;
+    autosaveAtivoRef.current = false;
+    ultimoSnapshotSalvoRef.current = null;
+    setAutosavePendente(false);
     setApiImovelId(null);
     setApiContratoId(null);
     setApiError('');
@@ -397,7 +506,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
             setApiError(
               cargaInicialFeitaRef.current
                 ? `Nenhum imóvel cadastrado com o número ${numero}.`
-                : 'Nenhum imóvel no banco. Rode o import do imoveis.xlsx (job Java) ou preencha e salve um novo cadastro.',
+                : 'Nenhum imóvel no banco. Rode o import do imoveis.xlsx (job Java) ou preencha um novo cadastro (salvo automaticamente).',
             );
             return;
           }
@@ -609,8 +718,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     setProprietarioCadastroErro('');
     setProprietarioCadastroCarregando(false);
     atualizarExtrasParteNoRef('proprietario', { id, nome, cpf, contato });
-    const idApi = _apiImovelId != null ? Number(_apiImovelId) : null;
-    if (featureFlags.useApiImoveis && Number.isFinite(idApi) && idApi >= 1) {
+    if (featureFlags.useApiImoveis) {
       await salvarCadastroAtual({
         proprietarioNumeroPessoa: id,
         proprietario: nome,
@@ -634,8 +742,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     setProprietarioCadastroErro('');
     setProprietarioCadastroCarregando(false);
     limparExtrasParteNoRef('proprietario');
-    const idApi = _apiImovelId != null ? Number(_apiImovelId) : null;
-    if (featureFlags.useApiImoveis && Number.isFinite(idApi) && idApi >= 1) {
+    if (featureFlags.useApiImoveis) {
       await salvarCadastroAtual({
         proprietarioNumeroPessoa: '',
         proprietario: '',
@@ -655,8 +762,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     setInquilinoCadastroErro('');
     setInquilinoCadastroCarregando(false);
     limparExtrasParteNoRef('inquilino');
-    const idApi = _apiImovelId != null ? Number(_apiImovelId) : null;
-    if (featureFlags.useApiImoveis && Number.isFinite(idApi) && idApi >= 1) {
+    if (featureFlags.useApiImoveis) {
       await salvarCadastroAtual({
         inquilinoNumeroPessoa: '',
         inquilino: '',
@@ -681,8 +787,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     setInquilinoCadastroErro('');
     setInquilinoCadastroCarregando(false);
     atualizarExtrasParteNoRef('inquilino', { id, nome, cpf, contato });
-    const idApi = _apiImovelId != null ? Number(_apiImovelId) : null;
-    if (featureFlags.useApiImoveis && Number.isFinite(idApi) && idApi >= 1) {
+    if (featureFlags.useApiImoveis) {
       await salvarCadastroAtual({
         inquilinoNumeroPessoa: id,
         inquilino: nome,
@@ -753,76 +858,18 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   const vinculoClienteProcOk =
     String(codigo ?? '').trim() !== '' && String(proc ?? '').trim() !== '';
 
-  async function salvarCadastroAtual(overrides = {}) {
-    setApiError('');
-    setApiSuccess('');
-    cargaFormularioSeqRef.current += 1;
+  async function salvarCadastroAtual(overrides = {}, { silent = false } = {}) {
+    if (!silent) {
+      setApiError('');
+      setApiSuccess('');
+      cargaFormularioSeqRef.current += 1;
+    }
     setApiSaving(true);
+    setAutosavePendente(false);
     try {
+      const dados = montarDadosCadastroImovel(overrides);
       const r = await salvarImovelCadastro({
-        imovelId,
-        imovelOcupado,
-        codigo,
-        proc,
-        observacoesInquilino,
-        endereco,
-        municipioId: municipioSelecionado?.municipioId ?? null,
-        condominio,
-        unidade,
-        garagens,
-        garantia,
-        valorGarantia,
-        valorLocacao,
-        taxaAdministracaoPercent,
-        diaPagAluguel,
-        formaPagamentoAluguel,
-        dataPag1TxCond,
-        inscricaoImobiliaria,
-        existeDebIptu,
-        dataConsIptu,
-        aguaNumero,
-        dataConsAgua,
-        existeDebAgua,
-        diaVencAgua,
-        energiaNumero,
-        dataConsEnergia,
-        existeDebEnergia,
-        diaVencEnergia,
-        gasNumero,
-        dataConsGas,
-        existeDebGas,
-        diaVencGas,
-        dataInicioContrato,
-        dataFimContrato,
-        dataConsDebitoCond,
-        existeDebitoCond,
-        diaRepasse,
-        banco,
-        agencia,
-        numeroBanco,
-        conta,
-        cpfBanco,
-        titular,
-        chavePix,
-        proprietarioNumeroPessoa,
-        proprietario,
-        proprietarioCpf,
-        proprietarioContato,
-        linkVistoria,
-        inquilinoNumeroPessoa,
-        inquilino,
-        inquilinoCpf,
-        inquilinoContato,
-        inquilinos,
-        fiadores,
-        infoIptuTexto,
-        contratoAssinadoInquilino,
-        contratoAssinadoProprietario,
-        contratoAssinadoGarantidor,
-        contratoAssinadoTestemunhas,
-        contratoArquivado,
-        contratoIntermediacaoArquivado,
-        contratoIntermediacaoAssinadoProprietario,
+        ...dados,
         _apiImovelId,
         _apiContratoId,
         _apiClienteId,
@@ -831,7 +878,6 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
         _contratoSnapshotOriginal: contratoSnapshotOriginalRef.current,
         _vinculoCodigoOriginal: vinculoCodigoOriginalRef.current,
         _vinculoProcOriginal: vinculoProcOriginalRef.current,
-        ...overrides,
       });
       if (r?.item) {
         let itemForm = r.item;
@@ -842,16 +888,23 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
             ...derivarCamposLegadoInquilino(overrides.inquilinos),
           };
         }
-        cargaFormularioSeqRef.current += 1;
-        popularFormulario(itemForm);
-        if (itemForm._apiImovelId != null) {
-          apiImovelIdRef.current = itemForm._apiImovelId;
+        if (silent) {
+          aplicarMetadadosPosSaveSilencioso(itemForm);
+          ultimoSnapshotSalvoRef.current = buildSnapshotImovelCadastro(montarDadosCadastroImovel(overrides));
+        } else {
+          cargaFormularioSeqRef.current += 1;
+          popularFormulario(itemForm);
+          if (itemForm._apiImovelId != null) {
+            apiImovelIdRef.current = itemForm._apiImovelId;
+          }
+          setImovelId(Number(itemForm.imovelId || imovelId));
+          ultimoSnapshotSalvoRef.current = buildSnapshotImovelCadastro(montarDadosCadastroImovel());
         }
-        setImovelId(Number(itemForm.imovelId || imovelId));
       }
       if (featureFlags.useApiImoveis) {
-        const msgPartes =
-          Object.keys(overrides).length === 0
+        const msgPartes = silent
+          ? 'Alterações salvas.'
+          : Object.keys(overrides).length === 0
             ? 'Cadastro do imóvel salvo na API.'
             : overrides.proprietarioNumeroPessoa === '' && Object.hasOwn(overrides, 'proprietario')
               ? 'Vínculo do proprietário removido.'
@@ -859,19 +912,19 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
                 ? 'Vínculo do inquilino removido.'
                 : overrides.proprietarioNumeroPessoa
                   ? `Proprietário vinculado (#${overrides.proprietarioNumeroPessoa}).`
-                : overrides.inquilinoNumeroPessoa
-                  ? `Inquilino vinculado (#${overrides.inquilinoNumeroPessoa}).`
-                  : Object.hasOwn(overrides, 'fiadores')
-                    ? 'Fiadores salvos no contrato de locação.'
-                    : Object.hasOwn(overrides, 'inquilinos')
-                      ? 'Inquilinos salvos e sincronizados com o processo.'
-                      : 'Cadastro do imóvel salvo na API.';
+                  : overrides.inquilinoNumeroPessoa
+                    ? `Inquilino vinculado (#${overrides.inquilinoNumeroPessoa}).`
+                    : Object.hasOwn(overrides, 'fiadores')
+                      ? 'Fiadores salvos no contrato de locação.'
+                      : Object.hasOwn(overrides, 'inquilinos')
+                        ? 'Inquilinos salvos e sincronizados com o processo.'
+                        : 'Cadastro do imóvel salvo na API.';
         setApiSuccess(msgPartes);
         recarregarListaImoveisPesquisa();
-      } else {
+      } else if (!silent) {
         setApiSuccess('Fluxo em fallback legado/mock (sem persistência real).');
       }
-      onCadastroSalvo?.();
+      if (!silent) onCadastroSalvo?.();
     } catch (e) {
       setApiError(e?.message || 'Falha ao salvar cadastro do imóvel.');
     } finally {
@@ -951,11 +1004,67 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     return () => window.clearTimeout(t);
   }, [apiSuccess]);
 
+  const cadastroSnapshot = buildSnapshotImovelCadastro(montarDadosCadastroImovel());
+
+  useEffect(() => {
+    if (apiLoading || !featureFlags.useApiImoveis) {
+      autosaveAtivoRef.current = false;
+      return;
+    }
+    if (ultimoSnapshotSalvoRef.current === null) {
+      ultimoSnapshotSalvoRef.current = cadastroSnapshot;
+      autosaveAtivoRef.current = true;
+    }
+  }, [apiLoading, cadastroSnapshot]);
+
+  useEffect(() => {
+    if (!featureFlags.useApiImoveis || apiLoading || !autosaveAtivoRef.current) return undefined;
+    if (ultimoSnapshotSalvoRef.current === null) return undefined;
+
+    if (ultimoSnapshotSalvoRef.current === cadastroSnapshot) {
+      setAutosavePendente(false);
+      return undefined;
+    }
+
+    setAutosavePendente(true);
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = window.setTimeout(() => {
+      autosaveTimerRef.current = null;
+      const executar = async () => {
+        if (autosaveEmCursoRef.current) {
+          autosaveReagendarRef.current = true;
+          return;
+        }
+        autosaveEmCursoRef.current = true;
+        try {
+          await salvarCadastroAtual({}, { silent: true });
+        } finally {
+          autosaveEmCursoRef.current = false;
+          if (autosaveReagendarRef.current) {
+            autosaveReagendarRef.current = false;
+            const snapNovo = buildSnapshotImovelCadastro(montarDadosCadastroImovel());
+            if (ultimoSnapshotSalvoRef.current !== snapNovo) {
+              void salvarCadastroAtual({}, { silent: true });
+            }
+          }
+        }
+      };
+      void executar();
+    }, IMOVEIS_AUTOSAVE_DEBOUNCE_MS);
+
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+    };
+  }, [cadastroSnapshot, apiLoading]);
+
   const contaCorrenteDisabled = !vinculoClienteProcOk || (featureFlags.useApiImoveis && !_apiImovelId);
   const contaCorrenteTitle = !vinculoClienteProcOk
     ? 'Informe Código e Proc. para vincular ao Cliente e Processo'
     : featureFlags.useApiImoveis && !_apiImovelId
-      ? 'Salve o cadastro do imóvel na API antes de abrir o financeiro (é necessário o id interno do registro).'
+      ? 'Aguarde o cadastro ser gravado na API (autosave) ou preencha código e proc.'
       : 'Movimentações do Financeiro com o mesmo Cod. cliente e Proc. (conta corrente do processo)';
 
   const overlayModalClass = modoModal
@@ -1145,6 +1254,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
             linkVistoria={linkVistoria}
             setLinkVistoria={setLinkVistoria}
             onSalvar={salvarCadastroAtual}
+            autosavePendente={autosavePendente}
             onAbrirProc={abrirProcessoDoImovel}
             onContaCorrente={() => {
               const np = Number(imovelId);
@@ -1246,7 +1356,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
             if (item) {
               popularFormulario(item);
               setApiSuccess(
-                `Vínculo principal atualizado: Cliente ${padCliente(vinculoPrincipal.codigoCliente)} · Proc. ${vinculoPrincipal.numeroInterno}. Salve o cadastro se alterou locatário ou link de vistoria.`,
+                `Vínculo principal atualizado: Cliente ${padCliente(vinculoPrincipal.codigoCliente)} · Proc. ${vinculoPrincipal.numeroInterno}.`,
               );
               return;
             }
