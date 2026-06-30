@@ -77,8 +77,10 @@ export function mascararDigitosDataBr(valor) {
 export function extrairSegmentosDataBr(valor) {
   const parts = String(valor ?? '').split('/');
   const dd = (parts[0] ?? '').replace(/\D/g, '').slice(0, 2);
-  const mm = (parts[1] ?? '').replace(/\D/g, '').slice(0, 2);
-  const yyyy = parts.slice(2).join('').replace(/\D/g, '').slice(0, 4);
+  const mmRaw = (parts[1] ?? '').replace(/\D/g, '');
+  const mm = mmRaw.slice(0, 2);
+  const yyyyOverflow = mmRaw.slice(2);
+  const yyyy = (parts.slice(2).join('').replace(/\D/g, '') + yyyyOverflow).slice(0, 4);
   return { dd, mm, yyyy };
 }
 

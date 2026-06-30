@@ -27,6 +27,13 @@ describe('hjDateAliasService — máscara dd/mm/aaaa', () => {
     expect(formatarDataBrInput('30/06/2026')).toBe('30/06/2026');
   });
 
+  it('formatarDataBrInputComBarras aceita ano após dd/mm sem terceira barra', () => {
+    expect(formatarDataBrInput('10/07')).toBe('10/07');
+    expect(formatarDataBrInput('10/072')).toBe('10/07/2');
+    expect(formatarDataBrInput('10/072026')).toBe('10/07/2026');
+    expect(formatarDataBrInput('10/07/2026')).toBe('10/07/2026');
+  });
+
   it('não deforma ao substituir dia 29 por 30 em data completa', () => {
     expect(formatarDataBrInput('3/06/2026')).not.toBe('30/62/0260');
     expect(formatarDataBrInput('30/06/2026')).toBe('30/06/2026');

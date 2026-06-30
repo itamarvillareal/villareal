@@ -356,6 +356,17 @@ public class DocumentoController {
         return respostaPdf(nomeArquivo, pdf);
     }
 
+    @PostMapping("/contrato-locacao/preview-conteudo")
+    public ContratoLocacaoConteudoPreview previewConteudoContratoLocacao(@RequestBody ContratoLocacaoRequest request) {
+        return contratoLocacaoDocumentoService.montarConteudoPreview(request);
+    }
+
+    @PostMapping("/contrato-locacao/preview-pdf")
+    public ResponseEntity<byte[]> previewPdfContratoLocacao(@RequestBody ContratoLocacaoPreviewPdfRequest request) {
+        byte[] pdf = contratoLocacaoDocumentoService.gerarPdfPreview(request);
+        return respostaPdf("contrato_locacao_preview.pdf", pdf, true);
+    }
+
     @PostMapping("/contrato-locacao")
     public ResponseEntity<byte[]> gerarContratoLocacao(@RequestBody ContratoLocacaoRequest request) {
         byte[] pdf = contratoLocacaoDocumentoService.gerarContrato(request);

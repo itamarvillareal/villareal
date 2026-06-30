@@ -116,20 +116,18 @@ public class WhatsAppSchedulerService {
     }
 
     @Transactional
-    public void agendarLembreteAudiencia(
+    public boolean agendarLembreteAudiencia(
             Long clienteId,
             Long processoId,
             String phoneNumber,
             String nomeCliente,
             String numeroProcesso,
             Instant dataAudiencia) {
+        String formattedPhone = WhatsAppService.formatPhoneNumber(phoneNumber);
         if (processoId != null
-                && !scheduledRepository
-                        .findByProcessoIdAndStatusAndTemplateName(
-                                processoId, ScheduledMessageStatus.PENDING, "lembrete_audiencia")
-                        .isEmpty()) {
-            log.info("Lembrete de audiência já agendado para processo {}", processoId);
-            return;
+                && lembreteAudienciaPendenteParaTelefone(processoId, formattedPhone, false)) {
+            log.debug("Lembrete de audiência já agendado para processo {} e telefone {}", processoId, maskPhoneNumber(formattedPhone));
+            return false;
         }
 
         Instant scheduledAt = calcularHorarioEnvio(dataAudiencia, 24, 2);
@@ -137,7 +135,7 @@ public class WhatsAppSchedulerService {
                 List.of(nomeCliente, numeroProcesso, formatarDataHoraBR(dataAudiencia));
 
         agendarMensagem(
-                phoneNumber,
+                formattedPhone,
                 "lembrete_audiencia",
                 params,
                 scheduledAt,
@@ -145,6 +143,50 @@ public class WhatsAppSchedulerService {
                 processoId,
                 "sistema",
                 "Lembrete de audiência - " + numeroProcesso);
+        return true;
+    }
+
+    /** @return {@code true} se criou agendamento; {@code false} se já existia pendente para o mesmo telefone. */
+    @Transactional
+    public boolean agendarReforcoAudiencia(
+            Long clienteId,
+            Long processoId,
+            String phoneNumber,
+            List<String> params,
+            Instant scheduledAt,
+            String numeroProcesso) {
+        String formattedPhone = WhatsAppService.formatPhoneNumber(phoneNumber);
+        String descricao = "Reforço véspera — " + numeroProcesso;
+        if (processoId != null
+                && lembreteAudienciaPendenteParaTelefone(processoId, formattedPhone, true)) {
+            log.debug(
+                    "Reforço véspera já agendado para processo {} e telefone {}",
+                    processoId,
+                    maskPhoneNumber(formattedPhone));
+            return false;
+        }
+
+        agendarMensagem(
+                formattedPhone,
+                "lembrete_audiencia",
+                params,
+                scheduledAt,
+                clienteId,
+                processoId,
+                "sistema",
+                descricao);
+        return true;
+    }
+
+    private boolean lembreteAudienciaPendenteParaTelefone(
+            Long processoId, String formattedPhone, boolean reforco) {
+        return scheduledRepository
+                .findByProcessoIdAndStatusAndTemplateName(
+                        processoId, ScheduledMessageStatus.PENDING, "lembrete_audiencia")
+                .stream()
+                .anyMatch(e -> formattedPhone.equals(e.getPhoneNumber())
+                        && reforco == (e.getDescricao() != null
+                                && e.getDescricao().startsWith("Reforço véspera — ")));
     }
 
     @Transactional

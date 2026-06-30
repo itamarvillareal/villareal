@@ -70,6 +70,63 @@ public class ContratoLocacaoDocumentoService {
 
     @Transactional(readOnly = true)
     public byte[] gerarContrato(ContratoLocacaoRequest request) {
+        DadosContratoLocacao dados = carregarDados(request);
+        ContratoLocacaoConteudoPreview conteudo = request.conteudoEditado() != null
+                ? request.conteudoEditado()
+                : montarConteudoPreview(request, dados);
+        return gerarPdfFromConteudo(conteudo, dados, request);
+    }
+
+    @Transactional(readOnly = true)
+    public ContratoLocacaoConteudoPreview montarConteudoPreview(ContratoLocacaoRequest request) {
+        return montarConteudoPreview(request, carregarDados(request));
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] gerarPdfPreview(ContratoLocacaoPreviewPdfRequest request) {
+        if (request == null || request.conteudo() == null) {
+            throw new IllegalArgumentException("conteudo é obrigatório");
+        }
+        if (request.contratoLocacaoId() == null) {
+            throw new IllegalArgumentException("contratoLocacaoId é obrigatório");
+        }
+        ContratoLocacaoRequest base = new ContratoLocacaoRequest(
+                request.contratoLocacaoId(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                request.formaAssinatura(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+        DadosContratoLocacao dados = carregarDados(base);
+        return gerarPdfFromConteudo(request.conteudo(), dados, base);
+    }
+
+    private record DadosContratoLocacao(
+            ContratoLocacaoEntity contrato,
+            PessoaEntity locador,
+            List<Long> locatariosPessoaIds,
+            List<PessoaEntity> locatarios,
+            boolean pluralLocatarios,
+            List<Long> fiadoresPessoaIds,
+            List<PessoaEntity> fiadores,
+            boolean temFiadores,
+            List<TopicoEntity> blocos,
+            LocalDate data,
+            Map<String, String> parametros,
+            String prazoLocacaoTexto,
+            TemaDocumento tema) {}
+
+    private DadosContratoLocacao carregarDados(ContratoLocacaoRequest request) {
         if (request == null || request.contratoLocacaoId() == null) {
             throw new IllegalArgumentException("contratoLocacaoId é obrigatório");
         }
@@ -107,7 +164,7 @@ public class ContratoLocacaoDocumentoService {
         }
 
         LocalDate data = request.data() != null ? request.data() : LocalDate.now();
-        java.math.BigDecimal valorAluguelEfetivo = request.valorAluguelContrato() != null
+        BigDecimal valorAluguelEfetivo = request.valorAluguelContrato() != null
                 ? request.valorAluguelContrato()
                 : contrato.getValorAluguel();
         Map<String, String> parametros = montarParametros(contrato, data, valorAluguelEfetivo);
@@ -123,21 +180,48 @@ public class ContratoLocacaoDocumentoService {
         LocacaoTemplateLegadoSupport.aplicarDataPagamentoPrimeiraTaxaCondominial(
                 parametros, resolverDataPagamentoPrimeiraTaxaCondominial(request, contrato, vigenciaInicio));
         parametros.put("quantidadeLocatarios", String.valueOf(locatariosPessoaIds.size()));
-        final String prazoLocacaoTexto = parametros.get("prazoLocacaoTexto");
+
         List<Long> fiadoresPessoaIds = ContratoLocacaoFiadorSupport.extrairPessoaIds(contrato.getFiadoresJson());
         List<PessoaEntity> fiadores = ContratoLocacaoFiadorSupport.carregarFiadores(contrato, pessoaRepository);
         boolean temFiadores = !fiadores.isEmpty();
+        TemaDocumento tema = resolverTema(contrato.getImovel());
+
+        return new DadosContratoLocacao(
+                contrato,
+                locador,
+                locatariosPessoaIds,
+                locatarios,
+                pluralLocatarios,
+                fiadoresPessoaIds,
+                fiadores,
+                temFiadores,
+                blocos,
+                data,
+                parametros,
+                parametros.get("prazoLocacaoTexto"),
+                tema);
+    }
+
+    private ContratoLocacaoConteudoPreview montarConteudoPreview(
+            ContratoLocacaoRequest request, DadosContratoLocacao dados) {
+        PessoaEntity locador = dados.locador();
+        List<Long> locatariosPessoaIds = dados.locatariosPessoaIds();
+        List<PessoaEntity> locatarios = dados.locatarios();
+        List<Long> fiadoresPessoaIds = dados.fiadoresPessoaIds();
+        List<PessoaEntity> fiadores = dados.fiadores();
+        boolean temFiadores = dados.temFiadores();
+        String prazoLocacaoTexto = dados.prazoLocacaoTexto();
+        Map<String, String> parametros = dados.parametros();
 
         String tituloContrato = ContratoLocacaoBlocoUtil.tituloPadrao();
         List<String> clausulasHtml = new ArrayList<>();
         String preambuloPlain = "";
-        String preambuloHtml = "";
         int numeroClausula = 0;
         StringBuilder clausulaTextoAtual = null;
         Integer numeroClausulaAtual = null;
         boolean clausulaVotacaoAssembleiaIncluida = false;
 
-        for (TopicoEntity bloco : blocos) {
+        for (TopicoEntity bloco : dados.blocos()) {
             String template = bloco.getConteudoTemplate();
             if (!StringUtils.hasText(template)) {
                 continue;
@@ -216,8 +300,25 @@ public class ContratoLocacaoDocumentoService {
             throw new BusinessRuleException("O modelo selecionado não produziu texto após processar os dados do imóvel.");
         }
 
+        String preambuloHtml = montarPreambuloHtml(locador, locatarios, fiadores, temFiadores, preambuloPlain, dados.pluralLocatarios());
+
+        String cidadeEstado = StringUtils.hasText(request.cidadeEstado())
+                ? request.cidadeEstado().trim()
+                : CIDADE_ESTADO_PADRAO;
+        String localData = pdfService.montarLocalData(cidadeEstado, dados.data());
+        String fechoHtml = ContratoFechoTexto.montarFechoAluguel(ContratoFormaAssinatura.resolver(request.formaAssinatura()));
+
+        return new ContratoLocacaoConteudoPreview(tituloContrato, preambuloHtml, clausulasHtml, fechoHtml, localData);
+    }
+
+    private String montarPreambuloHtml(
+            PessoaEntity locador,
+            List<PessoaEntity> locatarios,
+            List<PessoaEntity> fiadores,
+            boolean temFiadores,
+            String preambuloPlain,
+            boolean pluralLocatarios) {
         if (pluralLocatarios) {
-            // Modelo legado repete Nome/Qualifica do Autor (locador) após os locatários — evitar artefato no PDF.
             preambuloPlain = montarPreambuloProgramatico(locador, locatarios, true);
         } else if (!StringUtils.hasText(preambuloPlain)) {
             preambuloPlain = montarPreambuloProgramatico(locador, locatarios, false);
@@ -229,7 +330,7 @@ public class ContratoLocacaoDocumentoService {
                 preambuloPlain, locatarios, locador, qualificacaoPessoaUtil);
         preambuloPlain = LocacaoConcordanciaReuUtil.aplicarConcordanciaLocatarioProcessado(
                 preambuloPlain, locatarios.size(), inferirFemininoLocatarios(locatarios));
-        preambuloHtml = textoProcessadoParaHtml(preambuloPlain);
+        String preambuloHtml = textoProcessadoParaHtml(preambuloPlain);
         if (temFiadores) {
             preambuloHtml = ContratoLocacaoPreambuloUtil.injetarFiadoresNoPreambuloHtml(
                     preambuloHtml, fiadores, qualificacaoPessoaUtil);
@@ -248,30 +349,46 @@ public class ContratoLocacaoDocumentoService {
         }
         preambuloHtml = ContratoLocacaoNegritoUtil.aplicarNegritoNomesCompletos(
                 preambuloHtml, nomesNegrito.toArray(String[]::new));
-        preambuloHtml = LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao(preambuloHtml);
+        return LocacaoTemplateLegadoSupport.corrigirArtefatosTextoLocacao(preambuloHtml);
+    }
 
-        String cidadeEstado = StringUtils.hasText(request.cidadeEstado())
-                ? request.cidadeEstado().trim()
-                : CIDADE_ESTADO_PADRAO;
-        String localData = pdfService.montarLocalData(cidadeEstado, data);
-
-        TemaDocumento tema = resolverTema(contrato.getImovel());
-
+    private byte[] gerarPdfFromConteudo(
+            ContratoLocacaoConteudoPreview conteudo,
+            DadosContratoLocacao dados,
+            ContratoLocacaoRequest request) {
+        if (conteudo == null) {
+            throw new IllegalArgumentException("conteudo é obrigatório");
+        }
+        if (conteudo.clausulas() == null || conteudo.clausulas().isEmpty()) {
+            throw new BusinessRuleException("O contrato precisa ter ao menos uma cláusula.");
+        }
         Map<String, Object> variables = new HashMap<>();
-        variables.put("tituloContrato", tituloContrato);
-        variables.put("preambuloHtml", preambuloHtml);
-        variables.put("clausulas", clausulasHtml);
+        variables.put("tituloContrato", conteudo.tituloContrato());
+        variables.put("preambuloHtml", conteudo.preambuloHtml());
+        variables.put("clausulas", conteudo.clausulas());
         variables.put(
                 "fechoHtml",
-                ContratoFechoTexto.montarFechoAluguel(ContratoFormaAssinatura.resolver(request.formaAssinatura())));
-        variables.put("localData", localData);
+                StringUtils.hasText(conteudo.fechoHtml())
+                        ? conteudo.fechoHtml()
+                        : ContratoFechoTexto.montarFechoAluguel(ContratoFormaAssinatura.resolver(request.formaAssinatura())));
+        variables.put(
+                "localData",
+                StringUtils.hasText(conteudo.localData())
+                        ? conteudo.localData()
+                        : pdfService.montarLocalData(
+                                StringUtils.hasText(request.cidadeEstado())
+                                        ? request.cidadeEstado().trim()
+                                        : CIDADE_ESTADO_PADRAO,
+                                dados.data()));
         variables.put(
                 "linhasAssinatura",
-                ContratoLocacaoAssinaturaUtil.montarVariaveisLinhasAssinaturaLocadorLocatario(locador, locatarios));
-        variables.put("temFiadores", temFiadores);
-        variables.put("fiadorAssinaturas", ContratoLocacaoAssinaturaUtil.montarVariaveisAssinaturaFiadores(fiadores));
-
-        return pdfService.gerarPdfDeTemplate(TEMPLATE_CONTRATO, variables, tema);
+                ContratoLocacaoAssinaturaUtil.montarVariaveisLinhasAssinaturaLocadorLocatario(
+                        dados.locador(), dados.locatarios()));
+        variables.put("temFiadores", dados.temFiadores());
+        variables.put(
+                "fiadorAssinaturas",
+                ContratoLocacaoAssinaturaUtil.montarVariaveisAssinaturaFiadores(dados.fiadores()));
+        return pdfService.gerarPdfDeTemplate(TEMPLATE_CONTRATO, variables, dados.tema());
     }
 
     private List<PessoaEntity> carregarPessoasPorIds(List<Long> pessoaIds) {

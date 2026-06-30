@@ -4,15 +4,10 @@ import br.com.vilareal.config.WhatsAppConfig;
 import br.com.vilareal.jobrun.application.JobRunTracker;
 import br.com.vilareal.jobrun.domain.JobNames;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
-import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaContatoEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
-import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteWhatsAppEntity;
-import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteWhatsAppRepository;
-import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaContatoRepository;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.whatsapp.ScheduledMessageStatus;
-import br.com.vilareal.whatsapp.infrastructure.persistence.entity.ScheduledWhatsAppMessageEntity;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.ScheduledWhatsAppMessageRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,12 +38,10 @@ public class AudienciaReminderJob {
     private static final DateTimeFormatter DATA_HORA_BR = DateTimeFormatter.ofPattern("dd/MM/yyyy 'às' HH:mm");
     private static final LocalTime HORA_PADRAO = LocalTime.of(9, 0);
     private static final String TEMPLATE_LEMBRETE = "lembrete_audiencia";
-    private static final String DESCRICAO_REFORCO_PREFIX = "Reforço véspera — ";
 
     private final WhatsAppConfig whatsAppConfig;
     private final ProcessoRepository processoRepository;
-    private final PessoaContatoRepository pessoaContatoRepository;
-    private final ClienteWhatsAppRepository clienteWhatsAppRepository;
+    private final ClienteEnvioTelefoneResolver clienteEnvioTelefoneResolver;
     private final ScheduledWhatsAppMessageRepository scheduledRepository;
     private final WhatsAppSchedulerService whatsAppSchedulerService;
     private final JobRunTracker jobRunTracker;
@@ -56,15 +49,13 @@ public class AudienciaReminderJob {
     public AudienciaReminderJob(
             WhatsAppConfig whatsAppConfig,
             ProcessoRepository processoRepository,
-            PessoaContatoRepository pessoaContatoRepository,
-            ClienteWhatsAppRepository clienteWhatsAppRepository,
+            ClienteEnvioTelefoneResolver clienteEnvioTelefoneResolver,
             ScheduledWhatsAppMessageRepository scheduledRepository,
             WhatsAppSchedulerService whatsAppSchedulerService,
             JobRunTracker jobRunTracker) {
         this.whatsAppConfig = whatsAppConfig;
         this.processoRepository = processoRepository;
-        this.pessoaContatoRepository = pessoaContatoRepository;
-        this.clienteWhatsAppRepository = clienteWhatsAppRepository;
+        this.clienteEnvioTelefoneResolver = clienteEnvioTelefoneResolver;
         this.scheduledRepository = scheduledRepository;
         this.whatsAppSchedulerService = whatsAppSchedulerService;
         this.jobRunTracker = jobRunTracker;
@@ -122,10 +113,9 @@ public class AudienciaReminderJob {
 
         for (ProcessoEntity processo : audiencias) {
             try {
-                ResultadoItem resultado = processarAudienciaParaLembrete(processo);
-                if (resultado == ResultadoItem.AGENDADO) {
-                    agendados++;
-                } else {
+                int criados = processarAudienciaParaLembrete(processo);
+                agendados += criados;
+                if (criados == 0) {
                     pulados++;
                 }
             } catch (Exception e) {
@@ -154,9 +144,9 @@ public class AudienciaReminderJob {
 
         for (ProcessoEntity processo : audiencias) {
             try {
-                if (processarReforcoVespera(processo)) {
-                    agendados++;
-                } else {
+                int criados = processarReforcoVespera(processo);
+                agendados += criados;
+                if (criados == 0) {
                     pulados++;
                 }
             } catch (Exception e) {
@@ -173,19 +163,19 @@ public class AudienciaReminderJob {
         return new ExecucaoStats(agendados, pulados);
     }
 
-    private ResultadoItem processarAudienciaParaLembrete(ProcessoEntity processo) {
+    private int processarAudienciaParaLembrete(ProcessoEntity processo) {
         Instant dataAudiencia = montarInstantAudiencia(processo);
         if (dataAudiencia == null) {
             log.warn(
                     "Audiência do processo {} em {} sem data/hora válida. Pulando.",
                     processo.getId(),
                     processo.getAudienciaData());
-            return ResultadoItem.PULADO;
+            return 0;
         }
 
         if (!dataAudiencia.isAfter(Instant.now())) {
             log.debug("Audiência do processo {} já passou ({}). Pulando.", processo.getId(), dataAudiencia);
-            return ResultadoItem.PULADO;
+            return 0;
         }
 
         ClienteEntity cliente = processo.getCliente();
@@ -194,124 +184,94 @@ public class AudienciaReminderJob {
                     "Audiência do processo {} em {} sem cliente vinculado. Pulando.",
                     processo.getId(),
                     formatarDataHoraBR(dataAudiencia));
-            return ResultadoItem.PULADO;
+            return 0;
         }
 
-        String telefone = resolverTelefoneCliente(cliente);
-        if (!StringUtils.hasText(telefone)) {
+        List<String> telefones = clienteEnvioTelefoneResolver.resolverTelefonesCliente(cliente);
+        if (telefones.isEmpty()) {
             log.warn(
                     "Audiência do processo {} em {} sem telefone do cliente. Pulando.",
                     processo.getId(),
                     formatarDataHoraBR(dataAudiencia));
-            return ResultadoItem.PULADO;
+            return 0;
         }
-
-        Long processoId = processo.getId();
-        if (!scheduledRepository
-                .findByProcessoIdAndStatusAndTemplateName(processoId, ScheduledMessageStatus.PENDING, TEMPLATE_LEMBRETE)
-                .isEmpty()) {
-            log.debug(
-                    "Lembrete já agendado para processo {}. Pulando.",
-                    formatNumeroProcesso(processo));
-            return ResultadoItem.PULADO;
-        }
-
-        int pendentesAntes = scheduledRepository
-                .findByProcessoIdAndStatusAndTemplateName(
-                        processoId, ScheduledMessageStatus.PENDING, TEMPLATE_LEMBRETE)
-                .size();
 
         String nomeCliente = resolverNomeCliente(cliente, processo);
         String numeroProcesso = formatNumeroProcesso(processo);
+        int criados = 0;
 
-        whatsAppSchedulerService.agendarLembreteAudiencia(
-                cliente.getId(),
-                processoId,
-                telefone,
-                nomeCliente,
-                numeroProcesso,
-                dataAudiencia);
-
-        int pendentesDepois = scheduledRepository
-                .findByProcessoIdAndStatusAndTemplateName(
-                        processoId, ScheduledMessageStatus.PENDING, TEMPLATE_LEMBRETE)
-                .size();
-
-        if (pendentesDepois > pendentesAntes) {
-            log.info(
-                    "Lembrete agendado para {} — audiência em {} — processo {}",
-                    nomeCliente,
-                    formatarDataHoraBR(dataAudiencia),
-                    numeroProcesso);
-            return ResultadoItem.AGENDADO;
+        for (String telefone : telefones) {
+            boolean agendado = whatsAppSchedulerService.agendarLembreteAudiencia(
+                    cliente.getId(), processo.getId(), telefone, nomeCliente, numeroProcesso, dataAudiencia);
+            if (agendado) {
+                criados++;
+                log.info(
+                        "Lembrete agendado para {} ({}) — audiência em {} — processo {}",
+                        nomeCliente,
+                        WhatsAppService.formatPhoneDisplay(telefone),
+                        formatarDataHoraBR(dataAudiencia),
+                        numeroProcesso);
+            }
         }
 
-        log.debug("Lembrete não criado (duplicata interna) para processo {}. Pulando.", numeroProcesso);
-        return ResultadoItem.PULADO;
+        if (criados == 0) {
+            log.debug("Lembretes já existentes para todos os telefones do processo {}. Pulando.", numeroProcesso);
+        }
+        return criados;
     }
 
-    private boolean processarReforcoVespera(ProcessoEntity processo) {
+    private int processarReforcoVespera(ProcessoEntity processo) {
         Instant dataAudiencia = montarInstantAudiencia(processo);
         if (dataAudiencia == null || !dataAudiencia.isAfter(Instant.now())) {
-            return false;
+            return 0;
         }
 
         Long processoId = processo.getId();
-        List<ScheduledWhatsAppMessageEntity> enviados = scheduledRepository.findByProcessoIdAndStatusAndTemplateName(
-                processoId, ScheduledMessageStatus.SENT, TEMPLATE_LEMBRETE);
-        if (enviados.isEmpty()) {
+        if (scheduledRepository
+                .findByProcessoIdAndStatusAndTemplateName(processoId, ScheduledMessageStatus.SENT, TEMPLATE_LEMBRETE)
+                .isEmpty()) {
             log.debug("Reforço véspera: processo {} sem lembrete 24h enviado. Pulando.", processoId);
-            return false;
-        }
-
-        boolean reforcoPendente = scheduledRepository
-                .findByProcessoIdAndStatusAndTemplateName(
-                        processoId, ScheduledMessageStatus.PENDING, TEMPLATE_LEMBRETE)
-                .stream()
-                .anyMatch(e -> e.getDescricao() != null && e.getDescricao().startsWith(DESCRICAO_REFORCO_PREFIX));
-        if (reforcoPendente) {
-            log.debug("Reforço véspera já pendente para processo {}. Pulando.", processoId);
-            return false;
+            return 0;
         }
 
         Instant scheduledAt = dataAudiencia.minus(2, ChronoUnit.HOURS);
         if (!scheduledAt.isAfter(Instant.now())) {
             log.debug("Reforço véspera: horário 2h antes já passou para processo {}. Pulando.", processoId);
-            return false;
+            return 0;
         }
 
         ClienteEntity cliente = processo.getCliente();
         if (cliente == null) {
             log.warn("Reforço véspera: processo {} sem cliente. Pulando.", processoId);
-            return false;
+            return 0;
         }
 
-        String telefone = resolverTelefoneCliente(cliente);
-        if (!StringUtils.hasText(telefone)) {
+        List<String> telefones = clienteEnvioTelefoneResolver.resolverTelefonesCliente(cliente);
+        if (telefones.isEmpty()) {
             log.warn("Reforço véspera: processo {} sem telefone. Pulando.", processoId);
-            return false;
+            return 0;
         }
 
         String nomeCliente = resolverNomeCliente(cliente, processo);
         String numeroProcesso = formatNumeroProcesso(processo);
         List<String> params = List.of(nomeCliente, numeroProcesso, formatarDataHoraBR(dataAudiencia));
+        int criados = 0;
 
-        whatsAppSchedulerService.agendarMensagem(
-                telefone,
-                TEMPLATE_LEMBRETE,
-                params,
-                scheduledAt,
-                cliente.getId(),
-                processoId,
-                "sistema",
-                DESCRICAO_REFORCO_PREFIX + numeroProcesso);
+        for (String telefone : telefones) {
+            boolean agendado = whatsAppSchedulerService.agendarReforcoAudiencia(
+                    cliente.getId(), processoId, telefone, params, scheduledAt, numeroProcesso);
+            if (agendado) {
+                criados++;
+                log.info(
+                        "Reforço véspera agendado para {} ({}) — audiência em {} — envio em {}",
+                        nomeCliente,
+                        WhatsAppService.formatPhoneDisplay(telefone),
+                        formatarDataHoraBR(dataAudiencia),
+                        formatarDataHoraBR(scheduledAt));
+            }
+        }
 
-        log.info(
-                "Reforço véspera agendado para {} — audiência em {} — envio em {}",
-                nomeCliente,
-                formatarDataHoraBR(dataAudiencia),
-                formatarDataHoraBR(scheduledAt));
-        return true;
+        return criados;
     }
 
     private static LocalDate proximoDiaUtilComAudiencia(LocalDate hoje) {
@@ -355,33 +315,8 @@ public class AudienciaReminderJob {
         return HORA_PADRAO;
     }
 
-    private String resolverTelefoneCliente(ClienteEntity cliente) {
-        List<ClienteWhatsAppEntity> whatsappCadastro =
-                clienteWhatsAppRepository.findByCliente_IdAndAtivoTrueOrderByPrincipalDescIdAsc(cliente.getId());
-        for (ClienteWhatsAppEntity w : whatsappCadastro) {
-            if (StringUtils.hasText(w.getNumero())) {
-                return w.getNumero().trim();
-            }
-        }
-
-        PessoaEntity pessoa = cliente.getPessoa();
-        if (pessoa == null) {
-            return null;
-        }
-
-        List<PessoaContatoEntity> contatos = pessoaContatoRepository.findByPessoa_IdOrderByIdAsc(pessoa.getId());
-        for (PessoaContatoEntity c : contatos) {
-            if (c.getTipo() != null
-                    && "telefone".equalsIgnoreCase(c.getTipo().trim())
-                    && StringUtils.hasText(c.getValor())) {
-                return c.getValor().trim();
-            }
-        }
-
-        if (StringUtils.hasText(pessoa.getTelefone())) {
-            return pessoa.getTelefone().trim();
-        }
-        return null;
+    private static String formatarDataHoraBR(Instant instant) {
+        return DATA_HORA_BR.withZone(ZONE_BRASILIA).format(instant);
     }
 
     private static String resolverNomeCliente(ClienteEntity cliente, ProcessoEntity processo) {
@@ -404,14 +339,5 @@ public class AudienciaReminderJob {
             return "Nº interno " + processo.getNumeroInterno();
         }
         return "Processo " + processo.getId();
-    }
-
-    private static String formatarDataHoraBR(Instant instant) {
-        return DATA_HORA_BR.withZone(ZONE_BRASILIA).format(instant);
-    }
-
-    private enum ResultadoItem {
-        AGENDADO,
-        PULADO
     }
 }

@@ -13,7 +13,7 @@ const OFX_SICOOB_VRV = `<OFX>
 <BANKACCTFROM>
 <BANKID>756</BANKID>
 <BRANCHID>5024-5</BRANCHID>
-<ACCTID>2754-5</ACCTID>
+<ACCTID>36448-7</ACCTID>
 <ACCTTYPE>CHECKING</ACCTTYPE>
 </BANKACCTFROM>
 </STMTRS>
@@ -21,8 +21,19 @@ const OFX_SICOOB_VRV = `<OFX>
 </BANKMSGSRSV1>
 </OFX>`;
 
+const OFX_SICOOB_JA = `<BANKACCTFROM><BANKID>756</BANKID><BRANCHID>5024-5</BRANCHID><ACCTID>31707-1</ACCTID></BANKACCTFROM>`;
+
+const OFX_SICOOB = `<BANKACCTFROM><BANKID>756</BANKID><BRANCHID>5024-5</BRANCHID><ACCTID>2754-5</ACCTID></BANKACCTFROM>`;
+
 const BANCOS = [
   { nome: 'Itaú', numero: 1 },
+  {
+    nome: 'Sicoob',
+    numero: 4,
+    ofxBankId: '756',
+    ofxAgencia: '5024-5',
+    ofxConta: '2754-5',
+  },
   {
     nome: 'CEF',
     numero: 5,
@@ -35,7 +46,7 @@ const BANCOS = [
     numero: 29,
     ofxBankId: '756',
     ofxAgencia: '5024-5',
-    ofxConta: '2754-5',
+    ofxConta: '36448-7',
   },
   {
     nome: 'Sicoob JA',
@@ -46,8 +57,6 @@ const BANCOS = [
   },
   { nome: 'Bradesco', numero: 2 },
 ];
-
-const OFX_SICOOB_JA = `<BANKACCTFROM><BANKID>756</BANKID><BRANCHID>5024-5</BRANCHID><ACCTID>31707-1</ACCTID></BANKACCTFROM>`;
 
 const OFX_CEF = `<OFX>
 <BANKACCTFROM>
@@ -62,7 +71,7 @@ describe('parseOfxContaBancaria', () => {
     expect(parseOfxContaBancaria(OFX_SICOOB_VRV)).toEqual({
       bankId: '756',
       agencia: '5024-5',
-      conta: '2754-5',
+      conta: '36448-7',
       acctType: 'CHECKING',
     });
   });
@@ -72,7 +81,7 @@ describe('validarOfxParaContaDestino', () => {
   const ofxConta = parseOfxContaBancaria(OFX_SICOOB_VRV);
 
   it('aceita quando destino coincide com cadastro', () => {
-    const res = validarOfxParaContaDestino(ofxConta, BANCOS[2], BANCOS);
+    const res = validarOfxParaContaDestino(ofxConta, BANCOS.find((b) => b.nome === 'Sicoob VRV'), BANCOS);
     expect(res.ok).toBe(true);
   });
 
@@ -85,12 +94,12 @@ describe('validarOfxParaContaDestino', () => {
 
   it('identifica conta pelo OFX', () => {
     expect(identificarContaPorOfx(ofxConta, BANCOS)?.nome).toBe('Sicoob VRV');
-    expect(formatarRotuloContaOfx(BANCOS[2])).toBe('756 / 5024-5 / 2754-5');
+    expect(formatarRotuloContaOfx(BANCOS.find((b) => b.nome === 'Sicoob VRV'))).toBe('756 / 5024-5 / 36448-7');
   });
 
   it('aceita CEF com BANKID 0104 (normalizado para 104)', () => {
     const ofxCef = parseOfxContaBancaria(OFX_CEF);
-    const res = validarOfxParaContaDestino(ofxCef, BANCOS[1], BANCOS);
+    const res = validarOfxParaContaDestino(ofxCef, BANCOS.find((b) => b.nome === 'CEF'), BANCOS);
     expect(res.ok).toBe(true);
     expect(identificarContaPorOfx(ofxCef, BANCOS)?.nome).toBe('CEF');
   });
@@ -106,5 +115,15 @@ describe('validarOfxParaContaDestino', () => {
     const ofxJa = parseOfxContaBancaria(OFX_SICOOB_JA);
     const vrv = BANCOS.find((b) => b.nome === 'Sicoob VRV');
     expect(validarOfxParaContaDestino(ofxJa, vrv, BANCOS).ok).toBe(false);
+  });
+
+  it('aceita Sicoob (4) com conta 2754-5', () => {
+    const ofxSicoob = parseOfxContaBancaria(OFX_SICOOB);
+    const bancoSicoob = BANCOS.find((b) => b.nome === 'Sicoob');
+    expect(validarOfxParaContaDestino(ofxSicoob, bancoSicoob, BANCOS).ok).toBe(true);
+    expect(identificarContaPorOfx(ofxSicoob, BANCOS)?.nome).toBe('Sicoob');
+    expect(validarOfxParaContaDestino(ofxSicoob, BANCOS.find((b) => b.nome === 'Sicoob VRV'), BANCOS).ok).toBe(
+      false,
+    );
   });
 });

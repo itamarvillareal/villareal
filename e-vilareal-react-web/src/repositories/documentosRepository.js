@@ -350,6 +350,7 @@ export async function gerarContratoLocacao(
     diaVencimentoAluguel,
     formaPagamentoAluguel,
     dataPagamentoPrimeiraTaxaCondominial,
+    conteudoEditado,
   },
   opts = {},
 ) {
@@ -382,7 +383,28 @@ export async function gerarContratoLocacao(
       .map((id) => Number(id))
       .filter((id) => Number.isFinite(id) && id > 0);
   }
+  if (conteudoEditado) body.conteudoEditado = conteudoEditado;
   return postPdf('/api/documentos/contrato-locacao', body, opts);
+}
+
+export async function previewConteudoContratoLocacao(payload, opts = {}) {
+  return request('/api/documentos/contrato-locacao/preview-conteudo', {
+    method: 'POST',
+    body: payload,
+    signal: opts.signal,
+  });
+}
+
+export async function previewPdfContratoLocacao(conteudo, { contratoLocacaoId, formaAssinatura, signal } = {}) {
+  return postPdf(
+    '/api/documentos/contrato-locacao/preview-pdf',
+    {
+      conteudo,
+      contratoLocacaoId: contratoLocacaoId != null && contratoLocacaoId !== '' ? Number(contratoLocacaoId) : null,
+      formaAssinatura: formaAssinatura || undefined,
+    },
+    { signal },
+  );
 }
 
 /** Gera a petição de Execução de Taxa Condominial (PDF). Retorna Blob. */

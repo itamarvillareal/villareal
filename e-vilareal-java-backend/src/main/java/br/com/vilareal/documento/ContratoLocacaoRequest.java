@@ -27,4 +27,6 @@ public record ContratoLocacaoRequest(
         /** Opcional: {@code DEPOSITO_TED} ou {@code BOLETO} — Cláusula 3ª. */
         String formaPagamentoAluguel,
         /** Opcional: data da 1ª taxa condominial (§3º) — sobrescreve imóvel gravado só na geração do PDF. */
-        LocalDate dataPagamentoPrimeiraTaxaCondominial) {}
+        LocalDate dataPagamentoPrimeiraTaxaCondominial,
+        /** Opcional: conteúdo revisado na prévia (cláusulas editadas/excluídas). */
+        ContratoLocacaoConteudoPreview conteudoEditado) {}
