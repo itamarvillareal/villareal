@@ -12,9 +12,11 @@ import br.com.vilareal.whatsapp.dto.SendMessageResponse;
 import br.com.vilareal.whatsapp.dto.SendTemplateRequest;
 import br.com.vilareal.whatsapp.dto.SendTextRequest;
 import br.com.vilareal.whatsapp.dto.ScheduledMessageDTO;
+import br.com.vilareal.whatsapp.dto.RecentConversationDTO;
 import br.com.vilareal.whatsapp.dto.WhatsAppConversationDTO;
 import br.com.vilareal.whatsapp.dto.WhatsAppMessageDTO;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppMessageRepository.ConversationSummaryRow;
+import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppMessageRepository.RecentConversationRow;
 import br.com.vilareal.whatsapp.dto.WhatsAppSendResponse;
 import br.com.vilareal.whatsapp.dto.WhatsAppStatsDTO;
 import br.com.vilareal.whatsapp.infrastructure.persistence.entity.ScheduledWhatsAppMessageEntity;
@@ -23,6 +25,7 @@ import br.com.vilareal.whatsapp.infrastructure.persistence.repository.ScheduledW
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppMessageRepository;
 import br.com.vilareal.whatsapp.dto.WhatsAppTemplateDTO;
 import br.com.vilareal.whatsapp.service.WhatsAppContactResolverService;
+import br.com.vilareal.whatsapp.service.WhatsAppNotificationService;
 import br.com.vilareal.whatsapp.service.WhatsAppTemplateService;
 import br.com.vilareal.whatsapp.service.WhatsAppSchedulerService;
 import br.com.vilareal.whatsapp.service.WhatsAppService;
@@ -36,6 +39,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -48,12 +52,15 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/whatsapp")
@@ -71,6 +78,7 @@ public class WhatsAppController {
     private final WhatsAppConfig whatsAppConfig;
     private final WhatsAppContactResolverService contactResolver;
     private final WhatsAppTemplateService whatsAppTemplateService;
+    private final WhatsAppNotificationService whatsAppNotificationService;
 
     public WhatsAppController(
             WhatsAppService whatsAppService,
@@ -80,7 +88,8 @@ public class WhatsAppController {
             ObjectMapper objectMapper,
             WhatsAppConfig whatsAppConfig,
             WhatsAppContactResolverService contactResolver,
-            WhatsAppTemplateService whatsAppTemplateService) {
+            WhatsAppTemplateService whatsAppTemplateService,
+            WhatsAppNotificationService whatsAppNotificationService) {
         this.whatsAppService = whatsAppService;
         this.whatsAppSchedulerService = whatsAppSchedulerService;
         this.whatsAppMessageRepository = whatsAppMessageRepository;
@@ -89,6 +98,7 @@ public class WhatsAppController {
         this.whatsAppConfig = whatsAppConfig;
         this.contactResolver = contactResolver;
         this.whatsAppTemplateService = whatsAppTemplateService;
+        this.whatsAppNotificationService = whatsAppNotificationService;
     }
 
     @PostMapping("/send")
@@ -130,6 +140,31 @@ public class WhatsAppController {
         Page<ConversationSummaryRow> rows =
                 whatsAppMessageRepository.findConversationSummariesExcluindoAniversario(PageRequest.of(page, size));
         return ResponseEntity.ok(rows.map(this::toConversationDto));
+    }
+
+    @GetMapping("/conversations/recent")
+    @Operation(summary = "Conversas recentes com mensagens recebidas (para chat flutuante)")
+    public ResponseEntity<List<RecentConversationDTO>> getRecentConversations(
+            @RequestParam(defaultValue = "10") int limit) {
+        int safeLimit = Math.min(Math.max(limit, 1), 50);
+        List<RecentConversationRow> rows =
+                whatsAppMessageRepository.findRecentConversationsWithInbound(PageRequest.of(0, safeLimit));
+        return ResponseEntity.ok(rows.stream().map(this::toRecentConversationDto).toList());
+    }
+
+    @GetMapping(value = "/notifications/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @Operation(summary = "Stream SSE de notificações WhatsApp em tempo real")
+    public SseEmitter streamNotifications() {
+        return whatsAppNotificationService.subscribe();
+    }
+
+    @GetMapping("/notifications/unread-count")
+    @Operation(summary = "Contagem de mensagens recebidas nas últimas 24h")
+    public ResponseEntity<Map<String, Long>> getUnreadCount() {
+        Instant since = Instant.now().minus(24, ChronoUnit.HOURS);
+        long count = whatsAppMessageRepository.countByDirectionAndCreatedAtAfter(
+                WhatsAppMessageDirection.INBOUND, since);
+        return ResponseEntity.ok(Map.of("unreadCount", count));
     }
 
     @GetMapping("/messages")
@@ -243,16 +278,19 @@ public class WhatsAppController {
 
     @DeleteMapping("/templates/{name}")
     @Operation(summary = "Deletar template de mensagem (Meta)")
-    public ResponseEntity<Void> deleteTemplate(@PathVariable String name) {
+    public ResponseEntity<SendMessageResponse> deleteTemplate(
+            @PathVariable String name, @RequestParam(required = false) String hsmId) {
         try {
-            whatsAppTemplateService.deletarTemplate(name);
+            whatsAppTemplateService.deletarTemplate(name, hsmId);
             return ResponseEntity.noContent().build();
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.badRequest().body(new SendMessageResponse(false, null, e.getMessage()));
         } catch (IllegalStateException e) {
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(new SendMessageResponse(false, null, "Integração WhatsApp não configurada."));
         } catch (WhatsAppApiException e) {
-            return ResponseEntity.status(mapWhatsAppHttpStatus(e)).build();
+            return ResponseEntity.status(mapWhatsAppHttpStatus(e))
+                    .body(new SendMessageResponse(false, null, e.getMessage()));
         }
     }
 
@@ -295,12 +333,7 @@ public class WhatsAppController {
     }
 
     private WhatsAppConversationDTO toConversationDto(ConversationSummaryRow row) {
-        String preview = row.getLastMessageContent();
-        if (!StringUtils.hasText(preview) && StringUtils.hasText(row.getLastMessageDirection())) {
-            preview = "OUTBOUND".equalsIgnoreCase(row.getLastMessageDirection())
-                    ? "Mensagem enviada"
-                    : "Mensagem recebida";
-        }
+        String preview = previewFromRow(row);
         if (StringUtils.hasText(preview) && preview.length() > 120) {
             preview = preview.substring(0, 117) + "...";
         }
@@ -309,7 +342,57 @@ public class WhatsAppController {
                 contactResolver.resolveContactName(row.getPhoneNumber(), row.getContactName()),
                 preview,
                 row.getLastMessageDirection(),
+                row.getLastMessageType(),
                 row.getLastMessageAt());
+    }
+
+    private static String previewFromRow(ConversationSummaryRow row) {
+        String type = row.getLastMessageType();
+        if (StringUtils.hasText(type)) {
+            return switch (type.toUpperCase(Locale.ROOT)) {
+                case "IMAGE" -> "📷 Imagem";
+                case "DOCUMENT" -> "📎 Documento";
+                case "AUDIO" -> "🎤 Áudio";
+                case "VIDEO" -> "🎬 Vídeo";
+                default -> row.getLastMessageContent();
+            };
+        }
+        String preview = row.getLastMessageContent();
+        if (!StringUtils.hasText(preview) && StringUtils.hasText(row.getLastMessageDirection())) {
+            preview = "OUTBOUND".equalsIgnoreCase(row.getLastMessageDirection())
+                    ? "Mensagem enviada"
+                    : "Mensagem recebida";
+        }
+        return preview;
+    }
+
+    private RecentConversationDTO toRecentConversationDto(RecentConversationRow row) {
+        String preview = previewFromRecentRow(row);
+        if (StringUtils.hasText(preview) && preview.length() > 120) {
+            preview = preview.substring(0, 117) + "...";
+        }
+        return new RecentConversationDTO(
+                row.getPhoneNumber(),
+                WhatsAppService.formatPhoneDisplay(row.getPhoneNumber()),
+                contactResolver.resolveContactName(row.getPhoneNumber(), row.getContactName()),
+                preview,
+                row.getLastMessageType(),
+                row.getLastMessageAt(),
+                row.getTotalMessages() != null ? row.getTotalMessages() : 0L);
+    }
+
+    private static String previewFromRecentRow(RecentConversationRow row) {
+        String type = row.getLastMessageType();
+        if (StringUtils.hasText(type)) {
+            return switch (type.toUpperCase(Locale.ROOT)) {
+                case "IMAGE" -> "📷 Imagem";
+                case "DOCUMENT" -> "📎 Documento";
+                case "AUDIO" -> "🎤 Áudio";
+                case "VIDEO" -> "🎬 Vídeo";
+                default -> row.getLastMessageContent();
+            };
+        }
+        return row.getLastMessageContent();
     }
 
     private WhatsAppMessageDTO toMessageDto(WhatsAppMessageEntity entity) {
@@ -326,6 +409,10 @@ public class WhatsAppController {
                 entity.getStatus() != null ? entity.getStatus().name() : null,
                 entity.getClienteId(),
                 entity.getProcessoId(),
+                entity.getMediaId(),
+                entity.getMediaMimeType(),
+                entity.getMediaFilename(),
+                entity.getMediaDriveUrl(),
                 entity.getCreatedAt());
     }
 

@@ -32,4 +32,30 @@ public interface ImovelRepository extends JpaRepository<ImovelEntity, Long> {
             ORDER BY i.id ASC
             """)
     List<ImovelEntity> findAllPorNumeroPlanilhaLegado(@Param("numero") Integer numero);
+
+    @Query(
+            """
+            SELECT im.condominio, COUNT(im)
+            FROM ImovelEntity im
+            WHERE im.ativo = TRUE
+              AND im.condominio IS NOT NULL
+              AND TRIM(im.condominio) <> ''
+            GROUP BY im.condominio
+            ORDER BY im.condominio ASC
+            """)
+    List<Object[]> findCondominiosDistinctComContagem();
+
+    @Query(
+            """
+            SELECT im FROM ImovelEntity im
+            LEFT JOIN FETCH im.cliente c
+            LEFT JOIN FETCH c.pessoa
+            LEFT JOIN FETCH im.processo proc
+            WHERE im.ativo = TRUE
+              AND (:condominio IS NULL OR LOWER(TRIM(im.condominio)) = LOWER(TRIM(:condominio)))
+              AND (:clienteId IS NULL OR c.id = :clienteId)
+            ORDER BY im.condominio ASC, im.unidade ASC, im.id ASC
+            """)
+    List<ImovelEntity> findForCobrancaPreview(
+            @Param("condominio") String condominio, @Param("clienteId") Long clienteId);
 }

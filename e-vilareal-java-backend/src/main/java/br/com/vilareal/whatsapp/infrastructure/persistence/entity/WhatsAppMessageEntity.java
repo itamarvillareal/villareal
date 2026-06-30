@@ -62,6 +62,18 @@ public class WhatsAppMessageEntity {
     @Column(name = "processo_id")
     private Long processoId;
 
+    @Column(name = "media_id", length = 255)
+    private String mediaId;
+
+    @Column(name = "media_mime_type", length = 100)
+    private String mediaMimeType;
+
+    @Column(name = "media_filename", length = 255)
+    private String mediaFilename;
+
+    @Column(name = "media_drive_url", length = 500)
+    private String mediaDriveUrl;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 

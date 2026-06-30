@@ -23,7 +23,23 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
 
         String getLastMessageContent();
 
+        String getLastMessageType();
+
         Instant getLastMessageAt();
+    }
+
+    interface RecentConversationRow {
+        String getPhoneNumber();
+
+        String getContactName();
+
+        String getLastMessageContent();
+
+        String getLastMessageType();
+
+        Instant getLastMessageAt();
+
+        Long getTotalMessages();
     }
 
     @Query(
@@ -53,6 +69,13 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                                ORDER BY w4.created_at DESC
                                LIMIT 1
                            ) AS lastMessageContent,
+                           (
+                               SELECT w5.message_type
+                               FROM whatsapp_messages w5
+                               WHERE w5.phone_number = w.phone_number
+                               ORDER BY w5.created_at DESC
+                               LIMIT 1
+                           ) AS lastMessageType,
                            MAX(w.created_at) AS lastMessageAt
                     FROM whatsapp_messages w
                     GROUP BY w.phone_number
@@ -89,6 +112,13 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                                ORDER BY w4.created_at DESC
                                LIMIT 1
                            ) AS lastMessageContent,
+                           (
+                               SELECT w5.message_type
+                               FROM whatsapp_messages w5
+                               WHERE w5.phone_number = w.phone_number
+                               ORDER BY w5.created_at DESC
+                               LIMIT 1
+                           ) AS lastMessageType,
                            MAX(w.created_at) AS lastMessageAt
                     FROM whatsapp_messages w
                     WHERE w.phone_number NOT IN (
@@ -97,7 +127,8 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                         GROUP BY wm.phone_number
                         HAVING SUM(CASE WHEN wm.direction = 'INBOUND' THEN 1 ELSE 0 END) = 0
                            AND SUM(CASE WHEN wm.template_name IS NULL
-                                         OR wm.template_name <> 'felicitacao_aniversario' THEN 1 ELSE 0 END) = 0
+                                         OR wm.template_name NOT IN ('felicitacao_aniversario', 'cobranca_pagamento')
+                                    THEN 1 ELSE 0 END) = 0
                            AND COUNT(*) > 0
                     )
                     GROUP BY w.phone_number
@@ -114,7 +145,8 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                             GROUP BY wm.phone_number
                             HAVING SUM(CASE WHEN wm.direction = 'INBOUND' THEN 1 ELSE 0 END) = 0
                                AND SUM(CASE WHEN wm.template_name IS NULL
-                                             OR wm.template_name <> 'felicitacao_aniversario' THEN 1 ELSE 0 END) = 0
+                                             OR wm.template_name NOT IN ('felicitacao_aniversario', 'cobranca_pagamento')
+                                        THEN 1 ELSE 0 END) = 0
                                AND COUNT(*) > 0
                         )
                         GROUP BY w.phone_number
@@ -122,6 +154,48 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                     """,
             nativeQuery = true)
     Page<ConversationSummaryRow> findConversationSummariesExcluindoAniversario(Pageable pageable);
+
+    @Query(
+            value =
+                    """
+                    SELECT w.phone_number AS phoneNumber,
+                           (
+                               SELECT w2.contact_name
+                               FROM whatsapp_messages w2
+                               WHERE w2.phone_number = w.phone_number
+                                 AND w2.contact_name IS NOT NULL
+                                 AND TRIM(w2.contact_name) <> ''
+                               ORDER BY w2.created_at DESC
+                               LIMIT 1
+                           ) AS contactName,
+                           (
+                               SELECT w3.content
+                               FROM whatsapp_messages w3
+                               WHERE w3.phone_number = w.phone_number
+                               ORDER BY w3.created_at DESC
+                               LIMIT 1
+                           ) AS lastMessageContent,
+                           (
+                               SELECT w4.message_type
+                               FROM whatsapp_messages w4
+                               WHERE w4.phone_number = w.phone_number
+                               ORDER BY w4.created_at DESC
+                               LIMIT 1
+                           ) AS lastMessageType,
+                           MAX(w.created_at) AS lastMessageAt,
+                           COUNT(*) AS totalMessages
+                    FROM whatsapp_messages w
+                    WHERE EXISTS (
+                        SELECT 1
+                        FROM whatsapp_messages wi
+                        WHERE wi.phone_number = w.phone_number
+                          AND wi.direction = 'INBOUND'
+                    )
+                    GROUP BY w.phone_number
+                    ORDER BY lastMessageAt DESC
+                    """,
+            nativeQuery = true)
+    List<RecentConversationRow> findRecentConversationsWithInbound(Pageable pageable);
 
     Page<WhatsAppMessageEntity> findByPhoneNumberOrderByCreatedAtDesc(String phoneNumber, Pageable pageable);
 

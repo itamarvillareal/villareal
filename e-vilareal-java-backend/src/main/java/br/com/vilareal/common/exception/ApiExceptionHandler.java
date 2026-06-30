@@ -1,5 +1,6 @@
 package br.com.vilareal.common.exception;
 
+import br.com.vilareal.whatsapp.WhatsAppApiException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
@@ -66,6 +67,21 @@ public class ApiExceptionHandler {
         return body(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage(), req);
     }
 
+    @ExceptionHandler(WhatsAppApiException.class)
+    public ResponseEntity<Map<String, Object>> whatsAppApi(WhatsAppApiException ex, HttpServletRequest req) {
+        log.warn("WhatsApp API {} — {}", req.getRequestURI(), ex.getMessage());
+        HttpStatus status;
+        int code = ex.getHttpStatusCode();
+        if (code >= 500) {
+            status = HttpStatus.BAD_GATEWAY;
+        } else if (code >= 400) {
+            status = HttpStatus.BAD_REQUEST;
+        } else {
+            status = HttpStatus.BAD_GATEWAY;
+        }
+        return body(status, ex.getMessage(), req);
+    }
+
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<Map<String, Object>> dataIntegrity(DataIntegrityViolationException ex, HttpServletRequest req) {
         if (violacaoUkImovelClienteNumeroPlanilha(ex)) {
@@ -81,6 +97,11 @@ public class ApiExceptionHandler {
     @ExceptionHandler(InvalidAssigneeException.class)
     public ResponseEntity<Map<String, Object>> invalidAssignee(InvalidAssigneeException ex, HttpServletRequest req) {
         return body(HttpStatus.BAD_REQUEST, ex.getMessage(), req);
+    }
+
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<Map<String, Object>> illegalState(IllegalStateException ex, HttpServletRequest req) {
+        return body(HttpStatus.CONFLICT, ex.getMessage(), req);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

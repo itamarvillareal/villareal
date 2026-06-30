@@ -67,8 +67,10 @@ export async function createWhatsAppTemplate(name, category, bodyText, exampleVa
   });
 }
 
-export async function deleteWhatsAppTemplate(name) {
-  return request(`/api/whatsapp/templates/${encodeURIComponent(name)}`, { method: 'DELETE' });
+export async function deleteWhatsAppTemplate(name, hsmId) {
+  const query = {};
+  if (hsmId) query.hsmId = hsmId;
+  return request(`/api/whatsapp/templates/${encodeURIComponent(name)}`, { method: 'DELETE', query });
 }
 
 export async function getWhatsAppAniversarios(ano, page = 0, size = 20, signal) {
@@ -91,4 +93,50 @@ export async function getAniversarioStats(signal) {
 
 export async function enviarAniversarioManual(pessoaId) {
   return request(`/api/whatsapp/aniversarios/enviar-manual/${pessoaId}`, { method: 'POST' });
+}
+
+export async function getWhatsAppUnreadCount(signal) {
+  return request('/api/whatsapp/notifications/unread-count', { signal });
+}
+
+export async function getWhatsAppRecentConversations(limit = 10, signal) {
+  return request('/api/whatsapp/conversations/recent', {
+    query: { limit },
+    signal,
+  });
+}
+
+export async function getCondominiosCobranca(signal) {
+  return request('/api/whatsapp/cobrancas/condominios', { signal });
+}
+
+export async function getCobrancaPreview({ condominioId, condominio, clienteId } = {}, signal) {
+  const query = {};
+  if (condominioId != null) query.condominioId = condominioId;
+  if (condominio) query.condominio = condominio;
+  if (clienteId != null) query.clienteId = clienteId;
+  return request('/api/whatsapp/cobrancas/preview', { query, signal });
+}
+
+export async function dispararCobrancas(itens, loteDescricao) {
+  return request('/api/whatsapp/cobrancas/disparar', {
+    method: 'POST',
+    body: { itens, loteDescricao },
+  });
+}
+
+export async function getCobrancaLotes(page = 0, size = 20, signal) {
+  return request('/api/whatsapp/cobrancas/lotes', { query: { page, size }, signal });
+}
+
+export async function getCobrancaLoteDetalhes(loteId, signal) {
+  return request(`/api/whatsapp/cobrancas/lote/${encodeURIComponent(loteId)}`, { signal });
+}
+
+export async function reenviarCobrancasFalhas(loteId) {
+  return request(`/api/whatsapp/cobrancas/reenviar/${encodeURIComponent(loteId)}`, { method: 'POST' });
+}
+
+export async function getCobrancaStats(signal) {
+  return request('/api/whatsapp/cobrancas/stats', { signal });
 }

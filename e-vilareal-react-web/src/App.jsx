@@ -76,6 +76,7 @@ import {
   LazyWhatsAppAgendamentos,
   LazyWhatsAppTemplates,
   LazyWhatsAppAniversarios,
+  LazyWhatsAppCobrancas,
   LazyPoliticaPrivacidade,
 } from './app/lazyScreens.jsx';
 import { atualizarIndicesMensaisAposDia10 } from './services/monetaryIndicesService.js';
@@ -100,6 +101,9 @@ import { installCrossTabLocalStorageSync } from './services/crossTabLocalStorage
 import { executarSincronizacaoAudienciasAgendaEProcessosCompleta, SYNC_AUDIENCIAS_AGENDA_AUTOMATICA } from './services/sincronizacaoAudienciasAgendaProcessosService.js';
 import { hydrateRodadasCalculosResumoFromApi } from './data/calculosRodadasStorage.js';
 import { ProcessoEmbedErrorBoundary } from './components/ProcessoEmbedErrorBoundary.jsx';
+import { WhatsAppNotificationProvider } from './components/whatsapp/WhatsAppNotificationProvider.jsx';
+import { WhatsAppNotificationToast } from './components/whatsapp/WhatsAppNotificationToast.jsx';
+import { WhatsAppFloatingChat } from './components/whatsapp/WhatsAppFloatingChat.jsx';
 
 function RedirectClientesParaLista() {
   const location = useLocation();
@@ -210,7 +214,8 @@ function Layout() {
     (String(idSessaoTopo || '').trim() ? String(idSessaoTopo).toUpperCase() : String(perfilTopo || '—'));
 
   return (
-    <div className="flex h-dvh min-h-0 max-h-dvh flex-col bg-gray-100 overflow-hidden lg:flex-row">
+    <WhatsAppNotificationProvider>
+      <div className="flex h-dvh min-h-0 max-h-dvh flex-col bg-gray-100 overflow-hidden lg:flex-row">
       <header className="flex shrink-0 items-center gap-2 border-b border-[var(--vl-border)] bg-[var(--vl-bg-elevated)] px-2 py-1.5 lg:hidden">
         <button
           type="button"
@@ -272,7 +277,14 @@ function Layout() {
           roteiro: <code className="rounded bg-amber-100/90 px-1 dark:bg-black/30">docs/homologation-quick-start.md</code>
         </div>
       ) : null}
+      {usuarioPodeAcessarModulo(getPerfilAtivoParaPermissoes(), 'whatsapp/conversas') ? (
+        <>
+          <WhatsAppNotificationToast />
+          <WhatsAppFloatingChat />
+        </>
+      ) : null}
     </div>
+    </WhatsAppNotificationProvider>
   );
 }
 
@@ -482,6 +494,7 @@ function App() {
                 <Route path="agendamentos" element={<LazyWhatsAppAgendamentos />} />
                 <Route path="templates" element={<LazyWhatsAppTemplates />} />
                 <Route path="aniversarios" element={<LazyWhatsAppAniversarios />} />
+                <Route path="cobrancas" element={<LazyWhatsAppCobrancas />} />
               </Route>
               <Route path="/integracoes/scraper-lab" element={<LazyIntegracoesTribunalScraperLab />} />
               <Route path="/integracoes/tribunais" element={<LazyTribunaisCatalogoAdmin />} />

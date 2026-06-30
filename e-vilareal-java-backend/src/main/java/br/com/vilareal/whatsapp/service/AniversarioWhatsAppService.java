@@ -42,18 +42,21 @@ public class AniversarioWhatsAppService {
     private final PessoaContatoRepository pessoaContatoRepository;
     private final AniversarioWhatsAppRepository aniversarioRepository;
     private final WhatsAppService whatsAppService;
+    private final WhatsAppTemplateService whatsAppTemplateService;
 
     public AniversarioWhatsAppService(
             WhatsAppConfig whatsAppConfig,
             PessoaRepository pessoaRepository,
             PessoaContatoRepository pessoaContatoRepository,
             AniversarioWhatsAppRepository aniversarioRepository,
-            WhatsAppService whatsAppService) {
+            WhatsAppService whatsAppService,
+            WhatsAppTemplateService whatsAppTemplateService) {
         this.whatsAppConfig = whatsAppConfig;
         this.pessoaRepository = pessoaRepository;
         this.pessoaContatoRepository = pessoaContatoRepository;
         this.aniversarioRepository = aniversarioRepository;
         this.whatsAppService = whatsAppService;
+        this.whatsAppTemplateService = whatsAppTemplateService;
     }
 
     public record ExecucaoStats(int enviados, int semTelefone, int duplicados, int falhas) {}
@@ -119,12 +122,20 @@ public class AniversarioWhatsAppService {
         return new AniversarioStatsDTO(enviadosAno, enviadosMes, proximosSeteDias, semTelefone);
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = {WhatsAppApiException.class, IllegalArgumentException.class})
     public AniversarioDTO enviarManual(Long pessoaId) {
         PessoaEntity pessoa = pessoaRepository
                 .findById(pessoaId)
                 .orElseThrow(() -> new IllegalArgumentException("Pessoa não encontrada: " + pessoaId));
-        return enviarParaPessoa(pessoa, LocalDate.now(ZONE_BRASILIA).getYear(), true);
+
+        int anoEnvio = LocalDate.now(ZONE_BRASILIA).getYear();
+        Optional<AniversarioWhatsAppEntity> existente =
+                aniversarioRepository.findByPessoaIdAndAnoEnvio(pessoa.getId(), anoEnvio);
+        if (existente.isPresent() && !"FAILED".equalsIgnoreCase(existente.get().getStatus())) {
+            throw new IllegalStateException("Felicitação já enviada este ano para esta pessoa.");
+        }
+
+        return enviarParaPessoa(pessoa, anoEnvio, true);
     }
 
     public ExecucaoStats enviarFelicitacoesDoDia() {
@@ -233,6 +244,8 @@ public class AniversarioWhatsAppService {
         registro.setAnoEnvio(anoEnvio);
         registro.setErrorMessage(null);
 
+        validarTemplateAniversarioAprovado();
+
         try {
             WhatsAppSendResponse response = whatsAppService.sendTemplateMessage(
                     telefoneFormatado, TEMPLATE, "pt_BR", List.of(primeiroNome));
@@ -246,6 +259,30 @@ public class AniversarioWhatsAppService {
             registro.setErrorMessage(resumirErro(e));
             aniversarioRepository.save(registro);
             throw e;
+        }
+    }
+
+    private void validarTemplateAniversarioAprovado() {
+        try {
+            var templates = whatsAppTemplateService.listarTemplates();
+            var template = templates.stream()
+                    .filter(t -> TEMPLATE.equals(t.name()))
+                    .findFirst();
+            if (template.isEmpty()) {
+                throw new IllegalStateException(
+                        "Template \"" + TEMPLATE + "\" não encontrado na Meta. "
+                                + "Aguarde a criação automática ou contate o administrador.");
+            }
+            String status = template.get().status();
+            if (!"APPROVED".equalsIgnoreCase(status)) {
+                throw new IllegalStateException(
+                        "Template \"" + TEMPLATE + "\" ainda não foi aprovado pela Meta (status: "
+                                + status + "). Envio só é possível após aprovação.");
+            }
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("Não foi possível verificar template de aniversário: {}", e.getMessage());
         }
     }
 

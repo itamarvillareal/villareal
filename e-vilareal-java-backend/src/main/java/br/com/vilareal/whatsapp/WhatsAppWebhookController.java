@@ -8,6 +8,7 @@ import br.com.vilareal.whatsapp.dto.WhatsAppWebhookPayload.IncomingMessage;
 import br.com.vilareal.whatsapp.dto.WhatsAppWebhookPayload.MessageStatus;
 import br.com.vilareal.whatsapp.dto.WhatsAppWebhookPayload.Value;
 import br.com.vilareal.whatsapp.dto.WhatsAppWebhookPayload.WebhookContact;
+import br.com.vilareal.whatsapp.service.WhatsAppMediaService;
 import br.com.vilareal.whatsapp.service.WhatsAppService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -129,18 +130,64 @@ public class WhatsAppWebhookController {
             }
 
             String from = message.from();
-            String body = message.text() != null ? message.text().body() : null;
             String type = message.type();
             String msgId = message.id();
+
+            String body = message.text() != null ? message.text().body() : null;
+            String mediaId = null;
+            String mimeType = null;
+            String filename = null;
+
+            switch (type != null ? type.toLowerCase() : "") {
+                case "image" -> {
+                    if (message.image() != null) {
+                        mediaId = message.image().mediaId();
+                        mimeType = message.image().mimeType();
+                        filename = "imagem." + WhatsAppMediaService.extensaoFromMime(mimeType);
+                        if (body == null && StringUtils.hasText(message.image().caption())) {
+                            body = message.image().caption();
+                        }
+                    }
+                }
+                case "document" -> {
+                    if (message.document() != null) {
+                        mediaId = message.document().mediaId();
+                        mimeType = message.document().mimeType();
+                        filename = message.document().filename();
+                        if (body == null && StringUtils.hasText(message.document().caption())) {
+                            body = message.document().caption();
+                        }
+                    }
+                }
+                case "audio" -> {
+                    if (message.audio() != null) {
+                        mediaId = message.audio().mediaId();
+                        mimeType = message.audio().mimeType();
+                        filename = "audio." + WhatsAppMediaService.extensaoFromMime(mimeType);
+                    }
+                }
+                case "video" -> {
+                    if (message.video() != null) {
+                        mediaId = message.video().mediaId();
+                        mimeType = message.video().mimeType();
+                        filename = "video." + WhatsAppMediaService.extensaoFromMime(mimeType);
+                        if (body == null && StringUtils.hasText(message.video().caption())) {
+                            body = message.video().caption();
+                        }
+                    }
+                }
+                default -> { }
+            }
 
             log.info(
                     "Mensagem recebida de {} ({}): tipo={}",
                     maskPhoneNumber(from),
                     contactName != null ? contactName : "desconhecido",
                     type);
-            log.debug("Conteúdo: {} (id={})", body, msgId);
+            log.debug("Conteúdo: {} (id={}, mediaId={})", body, msgId, mediaId);
 
-            whatsAppService.processInboundMessage(from, body, type, msgId, contactName);
+            whatsAppService.processInboundMessage(
+                    from, body, type, msgId, contactName, mediaId, mimeType, filename);
         }
     }
 

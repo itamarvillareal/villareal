@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { LayoutDashboard, MessageCircle, Send, CalendarClock, FileText, Cake } from 'lucide-react';
+import { LayoutDashboard, MessageCircle, Send, CalendarClock, FileText, Cake, Banknote } from 'lucide-react';
 import { WhatsAppToastProvider } from './WhatsAppToast.jsx';
 
 const TABS = [
@@ -9,6 +9,7 @@ const TABS = [
   { to: '/whatsapp/agendamentos', label: 'Agendamentos', icon: CalendarClock },
   { to: '/whatsapp/templates', label: 'Templates', icon: FileText },
   { to: '/whatsapp/aniversarios', label: 'Aniversários', icon: Cake },
+  { to: '/whatsapp/cobrancas', label: 'Cobranças', icon: Banknote },
 ];
 
 export function WhatsAppLayout() {

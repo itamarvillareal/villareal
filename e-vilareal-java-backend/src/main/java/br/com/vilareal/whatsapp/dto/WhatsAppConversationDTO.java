@@ -7,4 +7,5 @@ public record WhatsAppConversationDTO(
         String contactName,
         String lastMessagePreview,
         String lastMessageDirection,
+        String lastMessageType,
         Instant lastMessageAt) {}

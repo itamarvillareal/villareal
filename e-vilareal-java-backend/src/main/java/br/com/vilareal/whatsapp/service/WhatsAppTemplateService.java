@@ -177,32 +177,48 @@ public class WhatsAppTemplateService {
         return toDto(response);
     }
 
-    public void deletarTemplate(String templateName) {
+    public void deletarTemplate(String templateName, String hsmId) {
         validarConfiguracao();
         if (!StringUtils.hasText(templateName)) {
             throw new IllegalArgumentException("Nome do template é obrigatório");
         }
-
-        String uri = UriComponentsBuilder.fromPath("/{wabaId}/message_templates")
-                .queryParam("name", templateName.trim())
-                .build(whatsAppConfig.getWabaId())
-                .toString();
+        String name = templateName.trim();
+        if (isTemplateProtegido(name)) {
+            throw new IllegalArgumentException(
+                    "O template \"" + name + "\" é padrão da Meta e não pode ser excluído.");
+        }
 
         try {
             restClient
                     .delete()
-                    .uri(uri)
+                    .uri(uriBuilder -> {
+                        var builder = uriBuilder
+                                .path("/{wabaId}/message_templates")
+                                .queryParam("name", name);
+                        if (StringUtils.hasText(hsmId)) {
+                            builder.queryParam("hsm_id", hsmId.trim());
+                        }
+                        return builder.build(whatsAppConfig.getWabaId());
+                    })
                     .accept(MediaType.APPLICATION_JSON)
                     .retrieve()
                     .toBodilessEntity();
-            log.info("Template WhatsApp deletado: {}", templateName);
+            log.info("Template WhatsApp deletado: {}", name);
         } catch (RestClientResponseException e) {
             throw traduzirErroHttp(e);
         } catch (Exception e) {
-            log.error("Falha ao deletar template WhatsApp {}: {}", templateName, e.getMessage());
+            log.error("Falha ao deletar template WhatsApp {}: {}", name, e.getMessage());
             throw new WhatsAppApiException(
                     "Falha ao deletar template: " + e.getMessage(), 0, null, 0, e);
         }
+    }
+
+    public void deletarTemplate(String templateName) {
+        deletarTemplate(templateName, null);
+    }
+
+    private static boolean isTemplateProtegido(String name) {
+        return "hello_world".equalsIgnoreCase(name);
     }
 
     private void validarConfiguracao() {

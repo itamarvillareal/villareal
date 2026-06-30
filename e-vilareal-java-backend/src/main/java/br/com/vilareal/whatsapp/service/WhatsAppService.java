@@ -9,6 +9,7 @@ import br.com.vilareal.whatsapp.WhatsAppMessageDirection;
 import br.com.vilareal.whatsapp.WhatsAppMessageStatus;
 import br.com.vilareal.whatsapp.WhatsAppMessageType;
 import br.com.vilareal.whatsapp.dto.WhatsAppErrorResponse;
+import br.com.vilareal.whatsapp.dto.WhatsAppNotificationDTO;
 import br.com.vilareal.whatsapp.dto.WhatsAppSendResponse;
 import br.com.vilareal.whatsapp.dto.WhatsAppTemplateMessageRequest;
 import br.com.vilareal.whatsapp.dto.WhatsAppTemplateMessageRequest.Component;
@@ -19,6 +20,7 @@ import br.com.vilareal.whatsapp.dto.WhatsAppTextMessageRequest;
 import br.com.vilareal.whatsapp.dto.WhatsAppTextMessageRequest.TextBody;
 import br.com.vilareal.whatsapp.infrastructure.persistence.entity.WhatsAppMessageEntity;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.AniversarioWhatsAppRepository;
+import br.com.vilareal.whatsapp.infrastructure.persistence.repository.CobrancaWhatsAppRepository;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppMessageRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -34,9 +36,11 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Envio de mensagens via WhatsApp Business Cloud API (Meta Graph).
@@ -54,7 +58,10 @@ public class WhatsAppService {
     private final ClienteRepository clienteRepository;
     private final ClienteWhatsAppRepository clienteWhatsAppRepository;
     private final AniversarioWhatsAppRepository aniversarioWhatsAppRepository;
+    private final CobrancaWhatsAppRepository cobrancaWhatsAppRepository;
     private final WhatsAppAIService whatsAppAIService;
+    private final WhatsAppMediaService whatsAppMediaService;
+    private final WhatsAppNotificationService whatsAppNotificationService;
 
     public WhatsAppService(
             WhatsAppConfig whatsAppConfig,
@@ -65,7 +72,10 @@ public class WhatsAppService {
             ClienteRepository clienteRepository,
             ClienteWhatsAppRepository clienteWhatsAppRepository,
             AniversarioWhatsAppRepository aniversarioWhatsAppRepository,
-            @Lazy WhatsAppAIService whatsAppAIService) {
+            CobrancaWhatsAppRepository cobrancaWhatsAppRepository,
+            @Lazy WhatsAppAIService whatsAppAIService,
+            WhatsAppMediaService whatsAppMediaService,
+            WhatsAppNotificationService whatsAppNotificationService) {
         this.whatsAppConfig = whatsAppConfig;
         this.objectMapper = objectMapper;
         this.whatsAppMessageRepository = whatsAppMessageRepository;
@@ -73,7 +83,10 @@ public class WhatsAppService {
         this.clienteRepository = clienteRepository;
         this.clienteWhatsAppRepository = clienteWhatsAppRepository;
         this.aniversarioWhatsAppRepository = aniversarioWhatsAppRepository;
+        this.cobrancaWhatsAppRepository = cobrancaWhatsAppRepository;
         this.whatsAppAIService = whatsAppAIService;
+        this.whatsAppMediaService = whatsAppMediaService;
+        this.whatsAppNotificationService = whatsAppNotificationService;
 
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofSeconds(10));
@@ -158,7 +171,14 @@ public class WhatsAppService {
 
     @Transactional
     public void processInboundMessage(
-            String from, String body, String type, String waMessageId, String contactName) {
+            String from,
+            String body,
+            String type,
+            String waMessageId,
+            String contactName,
+            String mediaId,
+            String mimeType,
+            String filename) {
         if (!StringUtils.hasText(waMessageId)) {
             log.warn("Mensagem inbound ignorada: waMessageId ausente");
             return;
@@ -169,36 +189,98 @@ public class WhatsAppService {
             return;
         }
 
+        WhatsAppMessageType messageType = parseMessageType(type);
+        String content = montarConteudoInbound(body, messageType, filename);
+
         WhatsAppMessageEntity msg = new WhatsAppMessageEntity();
         msg.setWaMessageId(waMessageId);
         msg.setPhoneNumber(from);
         msg.setContactName(contactName);
         msg.setDirection(WhatsAppMessageDirection.INBOUND);
-        msg.setMessageType(parseMessageType(type));
-        msg.setContent(body);
+        msg.setMessageType(messageType);
+        msg.setContent(content);
         msg.setStatus(WhatsAppMessageStatus.RECEIVED);
+        msg.setMediaId(mediaId);
+        msg.setMediaMimeType(mimeType);
+        msg.setMediaFilename(filename);
 
         Long clienteId = resolveClienteId(from);
         msg.setClienteId(clienteId);
 
+        WhatsAppMessageEntity saved;
         try {
-            WhatsAppMessageEntity saved = whatsAppMessageRepository.save(msg);
+            saved = whatsAppMessageRepository.save(msg);
             log.info(
-                    "Mensagem inbound salva. ID: {}, Cliente: {}",
+                    "Mensagem inbound salva. ID: {}, Cliente: {}, tipo: {}",
                     saved.getId(),
-                    clienteId != null ? clienteId : "não identificado");
+                    clienteId != null ? clienteId : "não identificado",
+                    messageType);
         } catch (Exception e) {
             log.error("Falha ao salvar mensagem inbound no banco: {}", e.getMessage());
             return;
         }
 
-        if ("text".equalsIgnoreCase(type) && body != null && !body.isBlank()) {
+        try {
+            Instant createdAt = saved.getCreatedAt() != null ? saved.getCreatedAt() : Instant.now();
+            whatsAppNotificationService.notifyNewMessage(new WhatsAppNotificationDTO(
+                    saved.getId(),
+                    from,
+                    formatPhoneDisplay(from),
+                    contactName,
+                    content,
+                    messageType.name(),
+                    WhatsAppMessageDirection.INBOUND.name(),
+                    createdAt));
+        } catch (Exception e) {
+            log.warn("Falha ao notificar mensagem inbound via SSE: {}", e.getMessage());
+        }
+
+        if (StringUtils.hasText(mediaId)) {
+            CompletableFuture.runAsync(() -> {
+                String driveUrl = whatsAppMediaService.downloadAndSaveMedia(
+                        mediaId, filename, mimeType, contactName, from);
+                if (driveUrl != null) {
+                    whatsAppMessageRepository.findByWaMessageId(waMessageId).ifPresent(m -> {
+                        m.setMediaDriveUrl(driveUrl);
+                        whatsAppMessageRepository.save(m);
+                    });
+                }
+            });
+        }
+
+        boolean hasText = body != null && !body.isBlank();
+        if (hasText || StringUtils.hasText(mediaId)) {
             try {
-                whatsAppAIService.handleIncomingMessage(from, body, contactName);
+                String aiInput = hasText ? body : content;
+                whatsAppAIService.handleIncomingMessage(from, aiInput, contactName);
             } catch (Exception e) {
                 log.error("Falha ao processar mensagem inbound com IA: {}", e.getMessage(), e);
             }
         }
+    }
+
+    /** Compatibilidade com chamadas legadas sem metadados de mídia. */
+    @Transactional
+    public void processInboundMessage(
+            String from, String body, String type, String waMessageId, String contactName) {
+        processInboundMessage(from, body, type, waMessageId, contactName, null, null, null);
+    }
+
+    private static String montarConteudoInbound(String body, WhatsAppMessageType messageType, String filename) {
+        if (body != null && !body.isBlank()) {
+            return body;
+        }
+        return switch (messageType) {
+            case IMAGE -> "📷 Imagem recebida" + suffixFilename(filename);
+            case DOCUMENT -> "📎 Documento recebido" + suffixFilename(filename);
+            case AUDIO -> "🎤 Áudio recebido";
+            case VIDEO -> "🎬 Vídeo recebido" + suffixFilename(filename);
+            default -> "📩 Mídia recebida";
+        };
+    }
+
+    private static String suffixFilename(String filename) {
+        return filename != null && !filename.isBlank() ? ": " + filename : "";
     }
 
     @Transactional
@@ -228,10 +310,18 @@ public class WhatsAppService {
         try {
             whatsAppMessageRepository.save(msg);
             log.info("Status atualizado: {} → {}", waMessageId, newStatus);
+            whatsAppNotificationService.notifyStatusUpdate(waMessageId, newStatus);
             if (WhatsAppTemplateService.TEMPLATE_ANIVERSARIO.equals(msg.getTemplateName())) {
                 aniversarioWhatsAppRepository.findByWaMessageId(waMessageId).ifPresent(aniv -> {
                     aniv.setStatus(parsedStatus.name());
                     aniversarioWhatsAppRepository.save(aniv);
+                });
+            }
+            String cobrancaStatus = CobrancaWhatsAppService.mapWebhookStatus(newStatus);
+            if (cobrancaStatus != null) {
+                cobrancaWhatsAppRepository.findByWaMessageId(waMessageId).ifPresent(c -> {
+                    c.setStatus(cobrancaStatus);
+                    cobrancaWhatsAppRepository.save(c);
                 });
             }
         } catch (Exception e) {
@@ -465,6 +555,24 @@ public class WhatsAppService {
         }
 
         return digits;
+    }
+
+    public static String formatPhoneDisplay(String phone) {
+        if (!StringUtils.hasText(phone)) {
+            return "";
+        }
+        String digits = phone.replaceAll("\\D", "");
+        if (digits.startsWith("55") && digits.length() >= 12) {
+            String ddd = digits.substring(2, 4);
+            String rest = digits.substring(4);
+            if (rest.length() == 9) {
+                return "(%s) %s-%s".formatted(ddd, rest.substring(0, 5), rest.substring(5));
+            }
+            if (rest.length() == 8) {
+                return "(%s) %s-%s".formatted(ddd, rest.substring(0, 4), rest.substring(4));
+            }
+        }
+        return phone;
     }
 
     private static String maskPhoneNumber(String digits) {

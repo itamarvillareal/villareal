@@ -134,4 +134,18 @@ public interface PagamentoRepository extends JpaRepository<PagamentoEntity, Long
             ORDER BY p.dataVencimento ASC, p.id ASC
             """)
     List<PagamentoEntity> findCondominioRecorrenteAbertoParaConciliar(@Param("mesReferencia") String mesReferencia);
+
+    @Query(
+            """
+            SELECT p FROM PagamentoEntity p
+            WHERE p.tipo = 'RECEBER'
+              AND p.status IN ('EMITIDO', 'VENCIDO')
+              AND (
+                  p.imovel.id = :imovelId
+                  OR (p.cliente.id = :clienteId AND (p.imovel IS NULL OR p.imovel.id = :imovelId))
+              )
+            ORDER BY p.dataVencimento ASC, p.id ASC
+            """)
+    List<PagamentoEntity> findReceberAbertosPorImovelOuCliente(
+            @Param("imovelId") Long imovelId, @Param("clienteId") Long clienteId);
 }

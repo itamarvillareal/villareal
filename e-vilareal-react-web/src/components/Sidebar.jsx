@@ -21,6 +21,7 @@ import { SeloAssistenteIa } from './ui/AutorUsuarioExibicao.jsx';
 import { registrarAuditoria } from '../services/auditoriaCliente.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { featureFlags } from '../config/featureFlags.js';
+import { useWhatsAppNotificationContext } from './whatsapp/WhatsAppNotificationProvider.jsx';
 
 function itemMenuPermitido(item, podeFn) {
   if (Array.isArray(item.children) && item.children.length > 0) {
@@ -59,6 +60,8 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
   const location = useLocation();
   const navigate = useNavigate();
   const { isAuthenticated, logout } = useAuth();
+  const whatsAppNotifications = useWhatsAppNotificationContext();
+  const whatsAppUnread = whatsAppNotifications?.unreadCount ?? 0;
   const [gruposAbertos, setGruposAbertos] = useState(() => new Set());
 
   useEffect(() => {
@@ -240,6 +243,14 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
                 >
                   <SidebarMenuIcon id={item.id} className="w-4 h-4 shrink-0" />
                   <span className="flex-1 min-w-0 leading-snug">{item.label}</span>
+                  {item.id === 'whatsapp-grupo' && whatsAppUnread > 0 ? (
+                    <span
+                      className="notification-badge ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white"
+                      title={`${whatsAppUnread} mensagem(ns) recente(s)`}
+                    >
+                      {whatsAppUnread > 99 ? '99+' : whatsAppUnread}
+                    </span>
+                  ) : null}
                   {aberto ? (
                     <ChevronDown className="w-3.5 h-3.5 shrink-0 text-gray-500" aria-hidden />
                   ) : (

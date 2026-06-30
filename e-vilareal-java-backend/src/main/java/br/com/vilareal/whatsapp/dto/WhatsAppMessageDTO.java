@@ -14,4 +14,8 @@ public record WhatsAppMessageDTO(
         String status,
         Long clienteId,
         Long processoId,
+        String mediaId,
+        String mediaMimeType,
+        String mediaFilename,
+        String mediaDriveUrl,
         Instant createdAt) {}

@@ -64,13 +64,7 @@ public class WhatsAppAniversarioController {
     @PostMapping("/enviar-manual/{pessoaId}")
     @Operation(summary = "Enviar felicitação manualmente")
     public ResponseEntity<AniversarioDTO> enviarManual(@PathVariable Long pessoaId) {
-        try {
-            return ResponseEntity.ok(aniversarioWhatsAppService.enviarManual(pessoaId));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().build();
-        } catch (IllegalStateException e) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).build();
-        }
+        return ResponseEntity.ok(aniversarioWhatsAppService.enviarManual(pessoaId));
     }
 
     @PostMapping("/garantir-template")

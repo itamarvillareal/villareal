@@ -95,6 +95,7 @@ export const navItems = [
       { id: 'whatsapp/agendamentos', label: 'Agendamentos', icon: 'CalendarClock' },
       { id: 'whatsapp/templates', label: 'Templates', icon: 'FileText' },
       { id: 'whatsapp/aniversarios', label: 'Aniversários', icon: 'Cake' },
+      { id: 'whatsapp/cobrancas', label: 'Cobranças', icon: 'Banknote' },
     ],
   },
   {

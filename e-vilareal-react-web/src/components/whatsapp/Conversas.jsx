@@ -4,6 +4,7 @@ import { Loader2, MessageCircle, Search, Send } from 'lucide-react';
 import { ChatBubble } from './components/ChatBubble.jsx';
 import { useWhatsApp } from './hooks/useWhatsApp.js';
 import { useWhatsAppToast } from './WhatsAppToast.jsx';
+import { useWhatsAppNotificationContext } from './WhatsAppNotificationProvider.jsx';
 import { formatPhoneDisplay, formatTimeBR, isValidBrazilPhone, normalizePhoneForApi } from '../../utils/whatsappFormat.js';
 import { FREE_TEXT_DELIVERY_ERROR, FREE_TEXT_WINDOW_HINT } from '../../utils/whatsappTemplateUtils.js';
 
@@ -19,6 +20,11 @@ const chatComposeBtnClass =
   'inline-flex shrink-0 flex-none items-center justify-center px-3 py-2.5 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-emerald-700 to-green-800 hover:from-emerald-600 hover:to-green-700 shadow-md shadow-emerald-500/25 ring-1 ring-white/15 transition-all duration-150 disabled:opacity-50 disabled:pointer-events-none';
 
 function previewText(conv) {
+  const type = String(conv?.lastMessageType ?? '').toUpperCase();
+  if (type === 'IMAGE') return '📷 Imagem';
+  if (type === 'DOCUMENT') return '📎 Documento';
+  if (type === 'AUDIO') return '🎤 Áudio';
+  if (type === 'VIDEO') return '🎬 Vídeo';
   const raw = String(conv?.lastMessagePreview ?? '').trim();
   if (raw) return raw;
   return conv?.lastMessageDirection === 'INBOUND' ? 'Mensagem recebida' : 'Mensagem enviada';
@@ -33,6 +39,7 @@ function tituloContato(nome, telefone) {
 export function WhatsAppConversas() {
   const { getConversations, getMessages, sendText } = useWhatsApp();
   const toast = useWhatsAppToast();
+  const { clearNotifications, latestInbound } = useWhatsAppNotificationContext() ?? {};
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState('');
   const [conversations, setConversations] = useState([]);
@@ -160,8 +167,30 @@ export function WhatsAppConversas() {
   useEffect(() => {
     loadConversations();
     const interval = window.setInterval(loadConversations, CONVERSATIONS_REFRESH_MS);
+    clearNotifications?.();
     return () => window.clearInterval(interval);
-  }, [loadConversations]);
+  }, [loadConversations, clearNotifications]);
+
+  useEffect(() => {
+    if (!latestInbound || !activePhone) return;
+    if (normalizePhoneForApi(latestInbound.phoneNumber) !== activePhone) return;
+    setMessages((prev) => {
+      if (prev.some((m) => m.id === latestInbound.messageId)) return prev;
+      return [
+        ...prev,
+        {
+          id: latestInbound.messageId,
+          phoneNumber: latestInbound.phoneNumber,
+          contactName: latestInbound.contactName,
+          direction: 'INBOUND',
+          messageType: latestInbound.messageType,
+          content: latestInbound.content,
+          createdAt: latestInbound.createdAt,
+        },
+      ];
+    });
+    loadConversations();
+  }, [latestInbound, activePhone, loadConversations]);
 
   useEffect(() => {
     if (openedFromUrl.current) return;

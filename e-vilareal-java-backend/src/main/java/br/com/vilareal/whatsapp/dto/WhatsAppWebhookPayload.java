@@ -75,7 +75,11 @@ public record WhatsAppWebhookPayload(
             @JsonProperty("id") String id,
             @JsonProperty("timestamp") String timestamp,
             @JsonProperty("type") String type,
-            @JsonProperty("text") TextContent text) {}
+            @JsonProperty("text") TextContent text,
+            @JsonProperty("image") MediaContent image,
+            @JsonProperty("document") MediaContent document,
+            @JsonProperty("audio") MediaContent audio,
+            @JsonProperty("video") MediaContent video) {}
 
     /**
      * Conteúdo textual de uma mensagem recebida.
@@ -83,6 +87,18 @@ public record WhatsAppWebhookPayload(
     @JsonIgnoreProperties(ignoreUnknown = true)
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record TextContent(@JsonProperty("body") String body) {}
+
+    /**
+     * Metadados de mídia recebida (imagem, documento, áudio ou vídeo).
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record MediaContent(
+            @JsonProperty("id") String mediaId,
+            @JsonProperty("mime_type") String mimeType,
+            @JsonProperty("sha256") String sha256,
+            @JsonProperty("filename") String filename,
+            @JsonProperty("caption") String caption) {}
 
     /**
      * Atualização de status de entrega/leitura de mensagem enviada.

@@ -22,6 +22,11 @@ export function isValidTemplateName(name) {
   return /^[a-z0-9_]+$/.test(String(name ?? '').trim());
 }
 
+/** Templates padrão da Meta que não podem ser excluídos. */
+export function isProtectedWhatsAppTemplate(name) {
+  return String(name ?? '').trim().toLowerCase() === 'hello_world';
+}
+
 /** Converte DTO da API para formato usado nos selects locais. */
 export function mapApiTemplateToLocal(dto) {
   const count = Number(dto?.parameterCount ?? 0);

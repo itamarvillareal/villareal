@@ -17,9 +17,62 @@ function MessageStatusIcon({ status }) {
   return null;
 }
 
+const MEDIA_TYPES = ['IMAGE', 'DOCUMENT', 'AUDIO', 'VIDEO'];
+
+function MediaBubbleContent({ message, isOutbound }) {
+  const type = String(message.messageType ?? '').toUpperCase();
+  const driveUrl = message.mediaDriveUrl;
+  const linkClass = isOutbound
+    ? 'text-white underline underline-offset-2 hover:text-white/90'
+    : 'text-emerald-700 dark:text-emerald-300 underline underline-offset-2 hover:opacity-90';
+
+  if (type === 'IMAGE' && driveUrl) {
+    return (
+      <a href={driveUrl} target="_blank" rel="noopener noreferrer" className={`chat-media-link ${linkClass}`}>
+        📷 Ver imagem no Drive
+      </a>
+    );
+  }
+  if (type === 'DOCUMENT') {
+    if (driveUrl) {
+      return (
+        <a href={driveUrl} target="_blank" rel="noopener noreferrer" className={`chat-media-link ${linkClass}`}>
+          📎 {message.mediaFilename || 'Documento'}
+        </a>
+      );
+    }
+  }
+  if (type === 'AUDIO' && driveUrl) {
+    return (
+      <a href={driveUrl} target="_blank" rel="noopener noreferrer" className={`chat-media-link ${linkClass}`}>
+        🎤 Ouvir áudio no Drive
+      </a>
+    );
+  }
+  if (type === 'VIDEO' && driveUrl) {
+    return (
+      <a href={driveUrl} target="_blank" rel="noopener noreferrer" className={`chat-media-link ${linkClass}`}>
+        🎬 Ver vídeo no Drive
+      </a>
+    );
+  }
+  if (MEDIA_TYPES.includes(type) && !driveUrl) {
+    return (
+      <div className="chat-media chat-media-pending">
+        <span>{message.content || 'Mídia recebida'}</span>
+        <span className="block text-xs opacity-75 mt-1">⏳ Salvando no Drive...</span>
+      </div>
+    );
+  }
+  return null;
+}
+
 export function ChatBubble({ message }) {
   const isOutbound = String(message.direction ?? '').toUpperCase() === 'OUTBOUND';
   const hasTemplate = Boolean(message.templateName);
+  const type = String(message.messageType ?? '').toUpperCase();
+  const isMedia = MEDIA_TYPES.includes(type);
+  const mediaContent = isMedia ? <MediaBubbleContent message={message} isOutbound={isOutbound} /> : null;
 
   return (
     <div className={`flex ${isOutbound ? 'justify-end' : 'justify-start'}`}>
@@ -28,7 +81,7 @@ export function ChatBubble({ message }) {
           isOutbound
             ? 'bg-[#25D366] text-white rounded-br-md'
             : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-bl-md'
-        }`}
+        } ${isMedia ? 'bg-opacity-95' : ''}`}
       >
         {hasTemplate ? (
           <span
@@ -39,7 +92,9 @@ export function ChatBubble({ message }) {
             Template: {message.templateName}
           </span>
         ) : null}
-        <p className="text-sm whitespace-pre-wrap break-words">{message.content || '—'}</p>
+        {mediaContent ?? (
+          <p className="text-sm whitespace-pre-wrap break-words">{message.content || '—'}</p>
+        )}
         <div className={`flex items-center justify-end gap-1 mt-1 ${isOutbound ? 'text-white/80' : 'text-slate-500'}`}>
           <span className="text-[11px]">{formatTimeBR(message.createdAt)}</span>
           {isOutbound ? <MessageStatusIcon status={message.status} /> : null}

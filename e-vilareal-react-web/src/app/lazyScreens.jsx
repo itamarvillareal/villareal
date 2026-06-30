@@ -210,6 +210,10 @@ export const LazyWhatsAppAniversarios = fromNamed(
   () => import('../components/whatsapp/Aniversarios.jsx'),
   'WhatsAppAniversarios',
 );
+export const LazyWhatsAppCobrancas = fromNamed(
+  () => import('../components/whatsapp/Cobrancas.jsx'),
+  'WhatsAppCobrancas',
+);
 export const LazyPoliticaPrivacidade = fromNamed(
   () => import('../pages/PoliticaPrivacidade.jsx'),
   'PoliticaPrivacidade',

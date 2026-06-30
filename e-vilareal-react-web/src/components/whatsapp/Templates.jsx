@@ -11,6 +11,7 @@ import {
 import {
   detectTemplateParameters,
   fillTemplatePreview,
+  isProtectedWhatsAppTemplate,
   isValidTemplateName,
 } from '../../utils/whatsappTemplateUtils.js';
 import { processosBtnPrimary, processosBtnSecondary, processosInputClass } from '../processos/ProcessosAdminLayout.jsx';
@@ -50,6 +51,7 @@ function TemplateCard({ template, onUse, onDelete }) {
   const status = String(template.status ?? '').toUpperCase();
   const isRejected = status === 'REJECTED';
   const isApproved = status === 'APPROVED';
+  const protegido = isProtectedWhatsAppTemplate(template.value);
 
   return (
     <article
@@ -89,8 +91,14 @@ function TemplateCard({ template, onUse, onDelete }) {
           ) : null}
           <button
             type="button"
-            onClick={() => onDelete(template.value)}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900/50 dark:text-red-300 dark:hover:bg-red-950/30"
+            onClick={() => onDelete({ name: template.value, id: template.id })}
+            disabled={protegido}
+            title={
+              protegido
+                ? 'Template padrão da Meta — não pode ser excluído'
+                : 'Excluir template na Meta'
+            }
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed dark:border-red-900/50 dark:text-red-300 dark:hover:bg-red-950/30"
           >
             <Trash2 className="w-3.5 h-3.5" aria-hidden />
             Deletar
@@ -274,7 +282,7 @@ export function WhatsAppTemplates() {
   const toast = useWhatsAppToast();
   const { allTemplates, loading, error, reload } = useWhatsAppTemplates({ autoRefreshMs: REFRESH_MS });
   const [modalOpen, setModalOpen] = useState(false);
-  const [deleteName, setDeleteName] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -303,12 +311,12 @@ export function WhatsAppTemplates() {
   };
 
   const handleDelete = async () => {
-    if (!deleteName) return;
+    if (!deleteTarget?.name) return;
     setDeleting(true);
     try {
-      await deleteWhatsAppTemplate(deleteName);
+      await deleteWhatsAppTemplate(deleteTarget.name, deleteTarget.id);
       toast.success('Template deletado.');
-      setDeleteName('');
+      setDeleteTarget(null);
       await reload();
     } catch (err) {
       toast.error(err?.message || 'Falha ao deletar template.');
@@ -328,7 +336,7 @@ export function WhatsAppTemplates() {
               key={t.id || t.value}
               template={t}
               onUse={(name) => navigate('/whatsapp/enviar', { state: { templateName: name } })}
-              onDelete={setDeleteName}
+              onDelete={setDeleteTarget}
             />
           ))}
         </div>
@@ -395,13 +403,13 @@ export function WhatsAppTemplates() {
       />
 
       <ConfirmDialog
-        open={Boolean(deleteName)}
+        open={Boolean(deleteTarget?.name)}
         title="Deletar template"
-        message={`Remover o template "${deleteName}" da Meta? Esta ação não pode ser desfeita.`}
+        message={`Remover o template "${deleteTarget?.name}" da Meta? Esta ação não pode ser desfeita.`}
         confirmLabel={deleting ? 'Deletando…' : 'Deletar'}
         danger
         onConfirm={handleDelete}
-        onCancel={() => !deleting && setDeleteName('')}
+        onCancel={() => !deleting && setDeleteTarget(null)}
       />
     </div>
   );

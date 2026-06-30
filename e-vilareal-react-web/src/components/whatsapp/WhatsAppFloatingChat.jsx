@@ -1,0 +1,343 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Loader2, MessageCircle, Search, Send, X } from 'lucide-react';
+import { useWhatsAppNotificationContext } from './WhatsAppNotificationProvider.jsx';
+import { ChatBubble } from './components/ChatBubble.jsx';
+import {
+  getWhatsAppMessages,
+  getWhatsAppRecentConversations,
+  sendWhatsAppText,
+} from '../../repositories/whatsappRepository.js';
+import { formatPhoneDisplay, formatTimeBR } from '../../utils/whatsappFormat.js';
+import { FREE_TEXT_DELIVERY_ERROR } from '../../utils/whatsappTemplateUtils.js';
+
+function previewConversa(conv) {
+  const type = String(conv?.lastMessageType ?? '').toUpperCase();
+  if (type === 'IMAGE') return '📷 Imagem';
+  if (type === 'DOCUMENT') return '📎 Documento';
+  if (type === 'AUDIO') return '🎤 Áudio';
+  if (type === 'VIDEO') return '🎬 Vídeo';
+  return conv?.lastMessageContent || '—';
+}
+
+function FloatingConversationList({ conversations, loading, query, onQueryChange, onSelect, onClose }) {
+  const filtered = conversations.filter((c) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    const nome = String(c.contactName ?? '').toLowerCase();
+    const tel = String(c.phoneNumberFormatted ?? c.phoneNumber ?? '').toLowerCase();
+    return nome.includes(q) || tel.includes(q);
+  });
+
+  return (
+    <>
+      <div className="flex items-center justify-between px-3 py-2.5 bg-[#075E54] text-white shrink-0">
+        <div className="flex items-center gap-2 font-semibold text-sm">
+          <MessageCircle className="h-4 w-4" />
+          WhatsApp
+        </div>
+        <button type="button" onClick={onClose} className="rounded p-1 hover:bg-white/10" aria-label="Fechar">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="px-3 py-2 border-b border-slate-200 dark:border-slate-700 shrink-0">
+        <div className="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-600 px-2 py-1.5 bg-slate-50 dark:bg-slate-800">
+          <Search className="h-4 w-4 text-slate-400 shrink-0" />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => onQueryChange(e.target.value)}
+            placeholder="Buscar conversa..."
+            className="flex-1 min-w-0 bg-transparent text-sm outline-none text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
+          />
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {loading ? (
+          <div className="flex items-center justify-center py-8 text-slate-500">
+            <Loader2 className="h-5 w-5 animate-spin" />
+          </div>
+        ) : filtered.length === 0 ? (
+          <p className="text-sm text-slate-500 text-center py-8 px-4">Nenhuma conversa recente.</p>
+        ) : (
+          filtered.map((conv) => (
+            <button
+              key={conv.phoneNumber}
+              type="button"
+              onClick={() => onSelect(conv)}
+              className="w-full text-left px-3 py-2.5 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                  {tituloFromNomeTelefone(conv.contactName, conv.phoneNumber)}
+                </span>
+                <span className="text-[10px] text-slate-400 shrink-0">{formatTimeBR(conv.lastMessageAt)}</span>
+              </div>
+              <p className="text-xs text-slate-500 truncate mt-0.5">{previewConversa(conv)}</p>
+            </button>
+          ))
+        )}
+      </div>
+      <div className="px-3 py-2 border-t border-slate-200 dark:border-slate-700 shrink-0">
+        <Link
+          to="/whatsapp/conversas"
+          onClick={onClose}
+          className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 dark:text-emerald-400"
+        >
+          Ver todas →
+        </Link>
+      </div>
+    </>
+  );
+}
+
+function FloatingChatView({ conversation, onBack, onClose, latestInbound }) {
+  const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [draft, setDraft] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
+  const bottomRef = useRef(null);
+  const phone = conversation.phoneNumber;
+
+  const loadMessages = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await getWhatsAppMessages(phone, 0, 30);
+      const chunk = Array.isArray(res?.content) ? [...res.content].reverse() : [];
+      setMessages(chunk);
+    } catch {
+      setMessages([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [phone]);
+
+  useEffect(() => {
+    void loadMessages();
+  }, [loadMessages]);
+
+  useEffect(() => {
+    if (!latestInbound || latestInbound.phoneNumber !== phone) return;
+    setMessages((prev) => {
+      if (prev.some((m) => m.messageId === latestInbound.messageId || m.id === latestInbound.messageId)) {
+        return prev;
+      }
+      return [
+        ...prev,
+        {
+          id: latestInbound.messageId,
+          phoneNumber: latestInbound.phoneNumber,
+          contactName: latestInbound.contactName,
+          direction: 'INBOUND',
+          messageType: latestInbound.messageType,
+          content: latestInbound.content,
+          createdAt: latestInbound.createdAt,
+        },
+      ];
+    });
+  }, [latestInbound, phone]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const handleSend = async () => {
+    const text = draft.trim();
+    if (!text || sending) return;
+    setSending(true);
+    setError('');
+    try {
+      await sendWhatsAppText(phone, text);
+      setDraft('');
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `local-${Date.now()}`,
+          phoneNumber: phone,
+          direction: 'OUTBOUND',
+          messageType: 'TEXT',
+          content: text,
+          status: 'SENT',
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+    } catch (err) {
+      const msg = String(err?.message ?? '');
+      setError(msg.includes('24') || msg.includes('janela') ? FREE_TEXT_DELIVERY_ERROR : msg || 'Falha ao enviar.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="flex items-center gap-2 px-3 py-2.5 bg-[#075E54] text-white shrink-0">
+        <button type="button" onClick={onBack} className="rounded p-1 hover:bg-white/10 text-sm" aria-label="Voltar">
+          ←
+        </button>
+        <span className="flex-1 min-w-0 truncate text-sm font-semibold">
+          {tituloFromNomeTelefone(conversation.contactName, conversation.phoneNumber)}
+        </span>
+        <button type="button" onClick={onClose} className="rounded p-1 hover:bg-white/10" aria-label="Fechar">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto min-h-0 p-3 space-y-2 bg-[#ECE5DD] dark:bg-slate-900">
+        {loading ? (
+          <div className="flex justify-center py-6">
+            <Loader2 className="h-5 w-5 animate-spin text-slate-500" />
+          </div>
+        ) : (
+          messages.map((m) => <ChatBubble key={m.id ?? m.waMessageId} message={m} />)
+        )}
+        <div ref={bottomRef} />
+      </div>
+      {error ? <p className="px-3 text-xs text-red-600 shrink-0">{error}</p> : null}
+      <div className="flex items-center gap-2 px-3 py-2 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shrink-0">
+        <input
+          type="text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              void handleSend();
+            }
+          }}
+          placeholder="Digite uma mensagem..."
+          className="flex-1 min-w-0 rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-emerald-400"
+        />
+        <button
+          type="button"
+          onClick={() => void handleSend()}
+          disabled={sending || !draft.trim()}
+          className="shrink-0 rounded-lg bg-[#25D366] p-2 text-white disabled:opacity-50"
+          aria-label="Enviar"
+        >
+          {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+        </button>
+      </div>
+    </>
+  );
+}
+
+export function WhatsAppFloatingChat() {
+  const ctx = useWhatsAppNotificationContext();
+  const [isOpen, setIsOpen] = useState(false);
+  const [selectedConversation, setSelectedConversation] = useState(null);
+  const [conversations, setConversations] = useState([]);
+  const [loadingConversations, setLoadingConversations] = useState(false);
+  const [query, setQuery] = useState('');
+
+  const unreadCount = ctx?.unreadCount ?? 0;
+  const latestInbound = ctx?.latestInbound ?? null;
+
+  const loadConversations = useCallback(async () => {
+    setLoadingConversations(true);
+    try {
+      const rows = await getWhatsAppRecentConversations(10);
+      setConversations(Array.isArray(rows) ? rows : []);
+    } catch {
+      setConversations([]);
+    } finally {
+      setLoadingConversations(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isOpen && !selectedConversation) {
+      void loadConversations();
+    }
+  }, [isOpen, selectedConversation, loadConversations]);
+
+  useEffect(() => {
+    if (isOpen && latestInbound) {
+      setConversations((prev) => {
+        const exists = prev.some((c) => c.phoneNumber === latestInbound.phoneNumber);
+        if (exists) {
+          return prev.map((c) =>
+            c.phoneNumber === latestInbound.phoneNumber
+              ? {
+                  ...c,
+                  lastMessageContent: latestInbound.content,
+                  lastMessageType: latestInbound.messageType,
+                  lastMessageAt: latestInbound.createdAt,
+                }
+              : c,
+          );
+        }
+        return [
+          {
+            phoneNumber: latestInbound.phoneNumber,
+            phoneNumberFormatted: latestInbound.phoneNumberFormatted,
+            contactName: latestInbound.contactName,
+            lastMessageContent: latestInbound.content,
+            lastMessageType: latestInbound.messageType,
+            lastMessageAt: latestInbound.createdAt,
+          },
+          ...prev,
+        ].slice(0, 10);
+      });
+    }
+  }, [isOpen, latestInbound]);
+
+  const openPanel = () => {
+    ctx?.clearNotifications();
+    setIsOpen(true);
+  };
+
+  const closePanel = () => {
+    setIsOpen(false);
+    setSelectedConversation(null);
+    setQuery('');
+  };
+
+  if (!ctx) return null;
+
+  return (
+    <div className="whatsapp-floating-container fixed bottom-6 right-6 z-[9999] max-sm:bottom-0 max-sm:right-0">
+      {!isOpen ? (
+        <button
+          type="button"
+          onClick={openPanel}
+          className="whatsapp-floating-button relative flex h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-lg transition hover:scale-105"
+          aria-label="Abrir WhatsApp"
+        >
+          <MessageCircle className="h-7 w-7" />
+          {unreadCount > 0 ? (
+            <span className="floating-badge absolute -top-1 -right-1 flex min-w-5 h-5 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold text-white">
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
+          ) : null}
+        </button>
+      ) : (
+        <div className="whatsapp-floating-panel flex h-[500px] w-[380px] max-sm:h-dvh max-sm:w-screen flex-col overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-slate-900 max-sm:rounded-none">
+          {selectedConversation ? (
+            <FloatingChatView
+              conversation={selectedConversation}
+              onBack={() => setSelectedConversation(null)}
+              onClose={closePanel}
+              latestInbound={latestInbound}
+            />
+          ) : (
+            <FloatingConversationList
+              conversations={conversations}
+              loading={loadingConversations}
+              query={query}
+              onQueryChange={setQuery}
+              onSelect={setSelectedConversation}
+              onClose={closePanel}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function tituloFromNomeTelefone(nome, telefone) {
+  const nomeLimpo = String(nome ?? '').trim();
+  if (nomeLimpo) return nomeLimpo;
+  return formatPhoneDisplay(telefone);
+}
