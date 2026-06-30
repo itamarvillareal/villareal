@@ -79,7 +79,8 @@ public record WhatsAppWebhookPayload(
             @JsonProperty("image") MediaContent image,
             @JsonProperty("document") MediaContent document,
             @JsonProperty("audio") MediaContent audio,
-            @JsonProperty("video") MediaContent video) {}
+            @JsonProperty("video") MediaContent video,
+            @JsonProperty("sticker") MediaContent sticker) {}
 
     /**
      * Conteúdo textual de uma mensagem recebida.

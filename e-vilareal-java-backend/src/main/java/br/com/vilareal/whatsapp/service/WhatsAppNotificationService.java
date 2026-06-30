@@ -44,6 +44,18 @@ public class WhatsAppNotificationService {
         broadcast("whatsapp-status", Map.of("waMessageId", waMessageId, "status", newStatus));
     }
 
+    public void notifyMediaReady(
+            Long messageId, String phoneNumber, String waMessageId, String mediaDriveUrl, String mediaFilename) {
+        broadcast(
+                "whatsapp-media-ready",
+                Map.of(
+                        "messageId", messageId,
+                        "phoneNumber", phoneNumber != null ? phoneNumber : "",
+                        "waMessageId", waMessageId != null ? waMessageId : "",
+                        "mediaDriveUrl", mediaDriveUrl != null ? mediaDriveUrl : "",
+                        "mediaFilename", mediaFilename != null ? mediaFilename : ""));
+    }
+
     private void broadcast(String eventName, Object data) {
         List<SseEmitter> deadEmitters = new ArrayList<>();
 

@@ -65,6 +65,7 @@ export function useWhatsAppNotifications({ enabled = true } = {}) {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [latestInbound, setLatestInbound] = useState(null);
+  const [latestMediaReady, setLatestMediaReady] = useState(null);
   const abortRef = useRef(null);
   const reconnectTimerRef = useRef(null);
 
@@ -137,6 +138,7 @@ export function useWhatsAppNotifications({ enabled = true } = {}) {
           buffer += decoder.decode(value, { stream: true });
           buffer = parseSseBlocks(buffer, (eventName, data) => {
             if (eventName === 'whatsapp-message') handleInbound(data);
+            else if (eventName === 'whatsapp-media-ready') setLatestMediaReady(data);
           });
         }
       } catch (err) {
@@ -171,6 +173,7 @@ export function useWhatsAppNotifications({ enabled = true } = {}) {
     notifications,
     unreadCount,
     latestInbound,
+    latestMediaReady,
     clearNotifications,
     dismissNotification,
     refreshUnreadCount: fetchUnreadCount,

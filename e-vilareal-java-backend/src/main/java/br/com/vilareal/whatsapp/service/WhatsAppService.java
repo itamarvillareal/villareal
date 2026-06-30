@@ -243,6 +243,12 @@ public class WhatsAppService {
                     whatsAppMessageRepository.findByWaMessageId(waMessageId).ifPresent(m -> {
                         m.setMediaDriveUrl(driveUrl);
                         whatsAppMessageRepository.save(m);
+                        try {
+                            whatsAppNotificationService.notifyMediaReady(
+                                    m.getId(), from, waMessageId, driveUrl, m.getMediaFilename());
+                        } catch (Exception e) {
+                            log.warn("Falha ao notificar mídia pronta via SSE: {}", e.getMessage());
+                        }
                     });
                 }
             });
@@ -488,6 +494,7 @@ public class WhatsAppService {
             case "document" -> WhatsAppMessageType.DOCUMENT;
             case "audio" -> WhatsAppMessageType.AUDIO;
             case "video" -> WhatsAppMessageType.VIDEO;
+            case "sticker" -> WhatsAppMessageType.IMAGE;
             case "interactive" -> WhatsAppMessageType.INTERACTIVE;
             case "button" -> WhatsAppMessageType.BUTTON;
             default -> WhatsAppMessageType.UNKNOWN;

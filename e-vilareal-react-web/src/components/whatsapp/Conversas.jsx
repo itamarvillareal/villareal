@@ -7,6 +7,7 @@ import { useWhatsAppToast } from './WhatsAppToast.jsx';
 import { useWhatsAppNotificationContext } from './WhatsAppNotificationProvider.jsx';
 import { formatPhoneDisplay, formatTimeBR, isValidBrazilPhone, normalizePhoneForApi } from '../../utils/whatsappFormat.js';
 import { FREE_TEXT_DELIVERY_ERROR, FREE_TEXT_WINDOW_HINT } from '../../utils/whatsappTemplateUtils.js';
+import { isWhatsAppMediaPending, mergeMediaReady } from './utils/whatsappMediaUtils.js';
 
 const PAGE_SIZE = 20;
 const CONVERSATIONS_REFRESH_MS = 30_000;
@@ -39,7 +40,7 @@ function tituloContato(nome, telefone) {
 export function WhatsAppConversas() {
   const { getConversations, getMessages, sendText } = useWhatsApp();
   const toast = useWhatsAppToast();
-  const { clearNotifications, latestInbound } = useWhatsAppNotificationContext() ?? {};
+  const { clearNotifications, latestInbound, latestMediaReady } = useWhatsAppNotificationContext() ?? {};
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState('');
   const [conversations, setConversations] = useState([]);
@@ -191,6 +192,27 @@ export function WhatsAppConversas() {
     });
     loadConversations();
   }, [latestInbound, activePhone, loadConversations]);
+
+  useEffect(() => {
+    if (!latestMediaReady?.mediaDriveUrl || !activePhone) return;
+    if (latestMediaReady.phoneNumber && normalizePhoneForApi(latestMediaReady.phoneNumber) !== activePhone) return;
+    setMessages((prev) => mergeMediaReady(prev, latestMediaReady));
+  }, [latestMediaReady, activePhone]);
+
+  useEffect(() => {
+    if (!activePhone || !messages.some(isWhatsAppMediaPending)) return undefined;
+    const reload = async () => {
+      try {
+        await fetchPage(activePhone, 0, false);
+      } catch {
+        // silencioso
+      }
+    };
+    const timer = window.setInterval(() => {
+      void reload();
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [activePhone, messages, fetchPage]);
 
   useEffect(() => {
     if (openedFromUrl.current) return;

@@ -60,7 +60,16 @@ function MediaBubbleContent({ message, isOutbound }) {
     return (
       <div className="chat-media chat-media-pending">
         <span>{message.content || 'Mídia recebida'}</span>
-        <span className="block text-xs opacity-75 mt-1">⏳ Salvando no Drive...</span>
+        <span className="block text-xs opacity-75 mt-1">⏳ Salvando no Drive…</span>
+        <span className="block text-[10px] opacity-60 mt-0.5">O link aparecerá aqui em instantes</span>
+      </div>
+    );
+  }
+  if (Boolean(message.mediaId) && !driveUrl) {
+    return (
+      <div className="chat-media chat-media-pending">
+        <span>{message.content || 'Mídia recebida'}</span>
+        <span className="block text-xs opacity-75 mt-1">⏳ Salvando no Drive…</span>
       </div>
     );
   }
@@ -71,7 +80,7 @@ export function ChatBubble({ message }) {
   const isOutbound = String(message.direction ?? '').toUpperCase() === 'OUTBOUND';
   const hasTemplate = Boolean(message.templateName);
   const type = String(message.messageType ?? '').toUpperCase();
-  const isMedia = MEDIA_TYPES.includes(type);
+  const isMedia = MEDIA_TYPES.includes(type) || Boolean(message.mediaId);
   const mediaContent = isMedia ? <MediaBubbleContent message={message} isOutbound={isOutbound} /> : null;
 
   return (

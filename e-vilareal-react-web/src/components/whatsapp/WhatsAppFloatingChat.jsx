@@ -10,6 +10,7 @@ import {
 } from '../../repositories/whatsappRepository.js';
 import { formatPhoneDisplay, formatTimeBR } from '../../utils/whatsappFormat.js';
 import { FREE_TEXT_DELIVERY_ERROR } from '../../utils/whatsappTemplateUtils.js';
+import { isWhatsAppMediaPending, mergeMediaReady } from './utils/whatsappMediaUtils.js';
 
 function previewConversa(conv) {
   const type = String(conv?.lastMessageType ?? '').toUpperCase();
@@ -91,7 +92,7 @@ function FloatingConversationList({ conversations, loading, query, onQueryChange
   );
 }
 
-function FloatingChatView({ conversation, onBack, onClose, latestInbound }) {
+function FloatingChatView({ conversation, onBack, onClose, latestInbound, latestMediaReady }) {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState('');
@@ -100,16 +101,16 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound }) {
   const bottomRef = useRef(null);
   const phone = conversation.phoneNumber;
 
-  const loadMessages = useCallback(async () => {
-    setLoading(true);
+  const loadMessages = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const res = await getWhatsAppMessages(phone, 0, 30);
       const chunk = Array.isArray(res?.content) ? [...res.content].reverse() : [];
       setMessages(chunk);
     } catch {
-      setMessages([]);
+      if (!silent) setMessages([]);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [phone]);
 
@@ -137,6 +138,20 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound }) {
       ];
     });
   }, [latestInbound, phone]);
+
+  useEffect(() => {
+    if (!latestMediaReady?.mediaDriveUrl) return;
+    if (latestMediaReady.phoneNumber && latestMediaReady.phoneNumber !== phone) return;
+    setMessages((prev) => mergeMediaReady(prev, latestMediaReady));
+  }, [latestMediaReady, phone]);
+
+  useEffect(() => {
+    if (!messages.some(isWhatsAppMediaPending)) return undefined;
+    const timer = window.setInterval(() => {
+      void loadMessages(true);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [messages, loadMessages]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -232,6 +247,7 @@ export function WhatsAppFloatingChat() {
 
   const unreadCount = ctx?.unreadCount ?? 0;
   const latestInbound = ctx?.latestInbound ?? null;
+  const latestMediaReady = ctx?.latestMediaReady ?? null;
 
   const loadConversations = useCallback(async () => {
     setLoadingConversations(true);
@@ -319,6 +335,7 @@ export function WhatsAppFloatingChat() {
               onBack={() => setSelectedConversation(null)}
               onClose={closePanel}
               latestInbound={latestInbound}
+              latestMediaReady={latestMediaReady}
             />
           ) : (
             <FloatingConversationList

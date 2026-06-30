@@ -176,6 +176,13 @@ public class WhatsAppWebhookController {
                         }
                     }
                 }
+                case "sticker" -> {
+                    if (message.sticker() != null) {
+                        mediaId = message.sticker().mediaId();
+                        mimeType = message.sticker().mimeType();
+                        filename = "sticker." + WhatsAppMediaService.extensaoFromMime(mimeType);
+                    }
+                }
                 default -> { }
             }
 
