@@ -1,11 +1,42 @@
 package br.com.vilareal.common.util;
 
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /** Normalização de telefones brasileiros (armazenamento e comparação). */
 public final class TelefoneBrasilUtil {
 
+    private static final Pattern BLOCO_DIGITOS = Pattern.compile("\\d[\\d\\s().\\-/]*\\d");
+
     private TelefoneBrasilUtil() {}
+
+    /**
+     * Tenta extrair o primeiro telefone BR válido de texto livre (ex.: {@code "6199999 / 618888"}).
+     */
+    public static Optional<String> extrairPrimeiroValido(String texto) {
+        if (texto == null || texto.isBlank()) {
+            return Optional.empty();
+        }
+        Optional<String> direto = normalizarParaArmazenamento(texto);
+        if (direto.isPresent()) {
+            return direto;
+        }
+        for (String parte : texto.split("[/;,|]|\\s+ou\\s+|\\s+e\\s+", -1)) {
+            Optional<String> norm = normalizarParaArmazenamento(parte.trim());
+            if (norm.isPresent()) {
+                return norm;
+            }
+        }
+        Matcher matcher = BLOCO_DIGITOS.matcher(texto);
+        while (matcher.find()) {
+            Optional<String> norm = normalizarParaArmazenamento(matcher.group());
+            if (norm.isPresent()) {
+                return norm;
+            }
+        }
+        return Optional.empty();
+    }
 
     /**
      * Retorna somente dígitos com prefixo {@code 55}, ou vazio se inválido.

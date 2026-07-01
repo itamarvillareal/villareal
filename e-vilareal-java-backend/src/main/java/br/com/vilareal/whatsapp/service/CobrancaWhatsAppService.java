@@ -16,6 +16,7 @@ import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoParteEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoParteRepository;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
+import br.com.vilareal.pessoa.application.TelefoneCadastroNormalizacaoService;
 import br.com.vilareal.processo.application.CodigoClienteUtil;
 import br.com.vilareal.whatsapp.WhatsAppApiException;
 import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.AgendarCobrancaResultDTO;
@@ -53,6 +54,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -86,6 +88,7 @@ public class CobrancaWhatsAppService {
     private final PessoaRepository pessoaRepository;
     private final WhatsAppService whatsAppService;
     private final WhatsAppTemplateService whatsAppTemplateService;
+    private final TelefoneCadastroNormalizacaoService telefoneCadastroNormalizacaoService;
 
     public CobrancaWhatsAppService(
             CobrancaWhatsAppRepository cobrancaRepository,
@@ -98,7 +101,8 @@ public class CobrancaWhatsAppService {
             PessoaContatoRepository pessoaContatoRepository,
             PessoaRepository pessoaRepository,
             WhatsAppService whatsAppService,
-            WhatsAppTemplateService whatsAppTemplateService) {
+            WhatsAppTemplateService whatsAppTemplateService,
+            TelefoneCadastroNormalizacaoService telefoneCadastroNormalizacaoService) {
         this.cobrancaRepository = cobrancaRepository;
         this.imovelRepository = imovelRepository;
         this.pagamentoRepository = pagamentoRepository;
@@ -110,6 +114,7 @@ public class CobrancaWhatsAppService {
         this.pessoaRepository = pessoaRepository;
         this.whatsAppService = whatsAppService;
         this.whatsAppTemplateService = whatsAppTemplateService;
+        this.telefoneCadastroNormalizacaoService = telefoneCadastroNormalizacaoService;
     }
 
     public List<CondominioResumoDTO> listarCondominios() {
@@ -310,7 +315,8 @@ public class CobrancaWhatsAppService {
             }
 
             try {
-                String phone = WhatsAppService.formatPhoneNumber(item.telefone());
+                String phone = resolverTelefoneNormalizado(item)
+                        .orElseThrow(() -> new IllegalArgumentException("Telefone inválido"));
                 String primeiroNome = extrairPrimeiroNome(item.pessoaNome());
                 WhatsAppSendResponse response = whatsAppService.sendTemplateMessage(
                         phone,
@@ -332,7 +338,7 @@ public class CobrancaWhatsAppService {
                 String msg = e instanceof WhatsAppApiException wae
                         ? wae.getMessage()
                         : (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
-                salvarFalha(loteId, loteDescricao, item, createdBy, msg, item.telefone());
+                salvarFalha(loteId, loteDescricao, item, createdBy, msg, item.telefone(), item.pessoaId(), item.clienteId());
                 log.warn(
                         "Falha ao enviar cobrança WhatsApp imóvel {}: {}",
                         item.imovelId(),
@@ -374,15 +380,15 @@ public class CobrancaWhatsAppService {
                 salvarAgendamentoFalha(loteId, loteDescricao, item, createdBy, scheduledAt, "Sem telefone cadastrado", null);
                 continue;
             }
-            CobrancaWhatsAppEntity cobranca = montarEntidade(loteId, loteDescricao, item, createdBy);
-            try {
-                cobranca.setPhoneNumber(WhatsAppService.formatPhoneNumber(item.telefone()));
-            } catch (Exception e) {
+            Optional<String> phoneOpt = resolverTelefoneNormalizado(item);
+            if (phoneOpt.isEmpty()) {
                 semTelefone++;
                 salvarAgendamentoFalha(
-                        loteId, loteDescricao, item, createdBy, scheduledAt, "Telefone inválido", item.telefone());
+                        loteId, loteDescricao, item, createdBy, scheduledAt, "Telefone inválido", item.telefone(), item.pessoaId(), item.clienteId());
                 continue;
             }
+            CobrancaWhatsAppEntity cobranca = montarEntidade(loteId, loteDescricao, item, createdBy);
+            cobranca.setPhoneNumber(phoneOpt.get());
             cobranca.setStatus("AGENDADO");
             cobranca.setScheduledAt(scheduledAt);
             cobrancaRepository.save(cobranca);
@@ -586,16 +592,20 @@ public class CobrancaWhatsAppService {
             String createdBy,
             String error,
             String telefoneRaw) {
+        salvarFalha(loteId, loteDescricao, item, createdBy, error, telefoneRaw, item.pessoaId(), item.clienteId());
+    }
+
+    private void salvarFalha(
+            String loteId,
+            String loteDescricao,
+            CobrancaItemDTO item,
+            String createdBy,
+            String error,
+            String telefoneRaw,
+            Long pessoaId,
+            Long clienteId) {
         CobrancaWhatsAppEntity cobranca = montarEntidade(loteId, loteDescricao, item, createdBy);
-        if (StringUtils.hasText(telefoneRaw)) {
-            try {
-                cobranca.setPhoneNumber(WhatsAppService.formatPhoneNumber(telefoneRaw));
-            } catch (Exception e) {
-                cobranca.setPhoneNumber(telefoneRaw);
-            }
-        } else {
-            cobranca.setPhoneNumber("00000000000");
-        }
+        cobranca.setPhoneNumber(telefoneSeguroParaRegistro(telefoneRaw, pessoaId, clienteId));
         cobranca.setStatus("FALHOU");
         cobranca.setErrorMessage(error);
         cobrancaRepository.save(cobranca);
@@ -609,20 +619,37 @@ public class CobrancaWhatsAppService {
             Instant scheduledAt,
             String error,
             String telefoneRaw) {
+        salvarAgendamentoFalha(
+                loteId, loteDescricao, item, createdBy, scheduledAt, error, telefoneRaw, item.pessoaId(), item.clienteId());
+    }
+
+    private void salvarAgendamentoFalha(
+            String loteId,
+            String loteDescricao,
+            CobrancaItemDTO item,
+            String createdBy,
+            Instant scheduledAt,
+            String error,
+            String telefoneRaw,
+            Long pessoaId,
+            Long clienteId) {
         CobrancaWhatsAppEntity cobranca = montarEntidade(loteId, loteDescricao, item, createdBy);
         cobranca.setScheduledAt(scheduledAt);
         cobranca.setStatus("FALHOU");
         cobranca.setErrorMessage(error);
-        if (StringUtils.hasText(telefoneRaw)) {
-            try {
-                cobranca.setPhoneNumber(WhatsAppService.formatPhoneNumber(telefoneRaw));
-            } catch (Exception e) {
-                cobranca.setPhoneNumber(telefoneRaw);
-            }
-        } else {
-            cobranca.setPhoneNumber("00000000000");
-        }
+        cobranca.setPhoneNumber(telefoneSeguroParaRegistro(telefoneRaw, pessoaId, clienteId));
         cobrancaRepository.save(cobranca);
+    }
+
+    private Optional<String> resolverTelefoneNormalizado(CobrancaItemDTO item) {
+        return telefoneCadastroNormalizacaoService.normalizarParaWhatsAppEPersistir(
+                item.pessoaId(), item.clienteId(), item.telefone());
+    }
+
+    private String telefoneSeguroParaRegistro(String telefoneRaw, Long pessoaId, Long clienteId) {
+        return telefoneCadastroNormalizacaoService
+                .normalizarParaWhatsAppEPersistir(pessoaId, clienteId, telefoneRaw)
+                .orElse("00000000000");
     }
 
     private CobrancaWhatsAppEntity montarEntidade(
