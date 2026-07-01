@@ -1,4 +1,12 @@
-import { formatTimeBR } from '../../../utils/whatsappFormat.js';
+import { Link } from 'react-router-dom';
+import { UserRound } from 'lucide-react';
+import { formatTimeBR, formatPhoneDisplay } from '../../../utils/whatsappFormat.js';
+import {
+  parseContactCardContent,
+  resumoContactCardContent,
+  telefoneCartaoParaApi,
+  tituloContatoCartao,
+} from '../utils/whatsappContactCard.js';
 
 function MessageStatusIcon({ status }) {
   const s = String(status ?? '').toUpperCase();
@@ -76,6 +84,65 @@ function MediaBubbleContent({ message, isOutbound }) {
   return null;
 }
 
+function ContactBubbleContent({ message, isOutbound }) {
+  const contatos = parseContactCardContent(message.content);
+  const btnClass = isOutbound
+    ? 'inline-flex items-center rounded-md bg-white/20 px-2 py-1 text-[11px] font-semibold text-white hover:bg-white/30'
+    : 'inline-flex items-center rounded-md bg-emerald-700 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-600';
+
+  if (!contatos?.length) {
+    return (
+      <div className="text-sm">
+        <span className="inline-flex items-center gap-1.5 font-medium">
+          <UserRound className="h-4 w-4 shrink-0" />
+          {resumoContactCardContent(message.content)}
+        </span>
+        <p className="text-xs opacity-75 mt-1">Cartão de contato recebido antes da atualização do sistema.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {contatos.map((contato, idx) => (
+        <div
+          key={`${contato.nome ?? 'contato'}-${idx}`}
+          className={`rounded-lg border px-2.5 py-2 ${
+            isOutbound ? 'border-white/25 bg-white/10' : 'border-slate-200 dark:border-slate-600 bg-slate-50/80 dark:bg-slate-900/40'
+          }`}
+        >
+          <p className="inline-flex items-center gap-1.5 text-sm font-semibold">
+            <UserRound className="h-4 w-4 shrink-0" />
+            {tituloContatoCartao(contato)}
+          </p>
+          {(contato.telefones ?? []).map((tel, telIdx) => {
+            const apiPhone = telefoneCartaoParaApi(tel);
+            const exibicao = tel.numero || (apiPhone ? formatPhoneDisplay(apiPhone) : '—');
+            return (
+              <div key={`${exibicao}-${telIdx}`} className="mt-1.5 flex flex-wrap items-center gap-2">
+                <span className="text-xs tabular-nums">{exibicao}</span>
+                {apiPhone ? (
+                  <Link
+                    to={`/whatsapp/conversas?telefone=${encodeURIComponent(apiPhone)}`}
+                    className={btnClass}
+                  >
+                    Conversar
+                  </Link>
+                ) : null}
+              </div>
+            );
+          })}
+          {(contato.emails ?? []).map((email) => (
+            <p key={email} className="mt-1 text-xs break-all opacity-90">
+              {email}
+            </p>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function formatTemplateContent(message) {
   const template = String(message.templateName ?? '').toLowerCase();
   const raw = String(message.content ?? '').trim();
@@ -95,8 +162,10 @@ export function ChatBubble({ message }) {
   const isOutbound = String(message.direction ?? '').toUpperCase() === 'OUTBOUND';
   const hasTemplate = Boolean(message.templateName);
   const type = String(message.messageType ?? '').toUpperCase();
-  const isMedia = MEDIA_TYPES.includes(type) || Boolean(message.mediaId);
+  const isContact = type === 'CONTACT';
+  const isMedia = !isContact && (MEDIA_TYPES.includes(type) || Boolean(message.mediaId));
   const mediaContent = isMedia ? <MediaBubbleContent message={message} isOutbound={isOutbound} /> : null;
+  const contactContent = isContact ? <ContactBubbleContent message={message} isOutbound={isOutbound} /> : null;
 
   return (
     <div className={`flex ${isOutbound ? 'justify-end' : 'justify-start'}`}>
@@ -116,7 +185,7 @@ export function ChatBubble({ message }) {
             Template: {message.templateName}
           </span>
         ) : null}
-        {mediaContent ?? (
+        {contactContent ?? mediaContent ?? (
           <p className="text-sm whitespace-pre-wrap break-words">{formatTemplateContent(message)}</p>
         )}
         <div className={`flex items-center justify-end gap-1 mt-1 ${isOutbound ? 'text-white/80' : 'text-slate-500'}`}>

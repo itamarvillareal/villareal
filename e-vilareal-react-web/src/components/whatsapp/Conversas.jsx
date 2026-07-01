@@ -10,6 +10,7 @@ import { getWhatsAppConversationContext } from '../../repositories/whatsappRepos
 import { formatPhoneDisplay, formatTimeBR, isValidBrazilPhone, normalizePhoneForApi } from '../../utils/whatsappFormat.js';
 import { FREE_TEXT_DELIVERY_ERROR, FREE_TEXT_WINDOW_HINT } from '../../utils/whatsappTemplateUtils.js';
 import { isWhatsAppMediaPending, mergeMediaReady } from './utils/whatsappMediaUtils.js';
+import { resumoContactCardContent } from './utils/whatsappContactCard.js';
 
 const PAGE_SIZE = 20;
 const CONVERSATIONS_REFRESH_MS = 30_000;
@@ -28,6 +29,7 @@ function previewText(conv) {
   if (type === 'DOCUMENT') return '📎 Documento';
   if (type === 'AUDIO') return '🎤 Áudio';
   if (type === 'VIDEO') return '🎬 Vídeo';
+  if (type === 'CONTACT') return `👤 ${resumoContactCardContent(conv?.lastMessagePreview)}`;
   const raw = String(conv?.lastMessagePreview ?? '').trim();
   if (raw) return raw;
   return conv?.lastMessageDirection === 'INBOUND' ? 'Mensagem recebida' : 'Mensagem enviada';

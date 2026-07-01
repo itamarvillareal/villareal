@@ -183,6 +183,7 @@ public class WhatsAppWebhookController {
                         filename = "sticker." + WhatsAppMediaService.extensaoFromMime(mimeType);
                     }
                 }
+                case "contacts" -> body = WhatsAppContactCardSupport.toContentJson(message.contacts());
                 default -> { }
             }
 

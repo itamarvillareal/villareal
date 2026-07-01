@@ -279,14 +279,15 @@ public class WhatsAppService {
         }
 
         boolean hasText = body != null && !body.isBlank();
-        if ((hasText || StringUtils.hasText(mediaId)) && whatsAppIAConfigService.isIaHabilitada()) {
+        boolean acionarIa = messageType != WhatsAppMessageType.CONTACT && (hasText || StringUtils.hasText(mediaId));
+        if (acionarIa && whatsAppIAConfigService.isIaHabilitada()) {
             try {
                 String aiInput = hasText ? body : content;
                 whatsAppAIService.handleIncomingMessage(from, aiInput, contactName);
             } catch (Exception e) {
                 log.error("Falha ao processar mensagem inbound com IA: {}", e.getMessage(), e);
             }
-        } else if (hasText || StringUtils.hasText(mediaId)) {
+        } else if (acionarIa) {
             log.debug("Resposta automática WhatsApp IA desligada — mensagem de {} registrada sem IA", from);
         }
     }
@@ -307,6 +308,9 @@ public class WhatsAppService {
             case DOCUMENT -> "📎 Documento recebido" + suffixFilename(filename);
             case AUDIO -> "🎤 Áudio recebido";
             case VIDEO -> "🎬 Vídeo recebido" + suffixFilename(filename);
+            case CONTACT -> body != null && !body.isBlank()
+                    ? body
+                    : "👤 Cartão de contato";
             default -> "📩 Mídia recebida";
         };
     }
@@ -565,6 +569,7 @@ public class WhatsAppService {
             case "document" -> WhatsAppMessageType.DOCUMENT;
             case "audio" -> WhatsAppMessageType.AUDIO;
             case "video" -> WhatsAppMessageType.VIDEO;
+            case "contacts" -> WhatsAppMessageType.CONTACT;
             case "sticker" -> WhatsAppMessageType.IMAGE;
             case "interactive" -> WhatsAppMessageType.INTERACTIVE;
             case "button" -> WhatsAppMessageType.BUTTON;

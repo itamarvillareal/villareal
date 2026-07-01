@@ -3,6 +3,7 @@ package br.com.vilareal.whatsapp.api;
 import br.com.vilareal.config.WhatsAppConfig;
 import br.com.vilareal.whatsapp.ScheduledMessageStatus;
 import br.com.vilareal.whatsapp.WhatsAppApiException;
+import br.com.vilareal.whatsapp.WhatsAppContactCardSupport;
 import br.com.vilareal.whatsapp.WhatsAppMessageDirection;
 import br.com.vilareal.whatsapp.WhatsAppMessageStatus;
 import br.com.vilareal.whatsapp.dto.CreateTemplateRequest;
@@ -402,6 +403,7 @@ public class WhatsAppController {
                 case "DOCUMENT" -> "📎 Documento";
                 case "AUDIO" -> "🎤 Áudio";
                 case "VIDEO" -> "🎬 Vídeo";
+                case "CONTACT" -> previewContato(row.getLastMessageContent());
                 default -> row.getLastMessageContent();
             };
         }
@@ -437,10 +439,15 @@ public class WhatsAppController {
                 case "DOCUMENT" -> "📎 Documento";
                 case "AUDIO" -> "🎤 Áudio";
                 case "VIDEO" -> "🎬 Vídeo";
+                case "CONTACT" -> previewContato(row.getLastMessageContent());
                 default -> row.getLastMessageContent();
             };
         }
         return row.getLastMessageContent();
+    }
+
+    private static String previewContato(String content) {
+        return "👤 " + WhatsAppContactCardSupport.resumoLegivel(content);
     }
 
     private WhatsAppMessageDTO toMessageDto(WhatsAppMessageEntity entity) {

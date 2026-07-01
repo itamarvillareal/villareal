@@ -80,7 +80,8 @@ public record WhatsAppWebhookPayload(
             @JsonProperty("document") MediaContent document,
             @JsonProperty("audio") MediaContent audio,
             @JsonProperty("video") MediaContent video,
-            @JsonProperty("sticker") MediaContent sticker) {}
+            @JsonProperty("sticker") MediaContent sticker,
+            @JsonProperty("contacts") List<SharedContact> contacts) {}
 
     /**
      * Conteúdo textual de uma mensagem recebida.
@@ -100,6 +101,34 @@ public record WhatsAppWebhookPayload(
             @JsonProperty("sha256") String sha256,
             @JsonProperty("filename") String filename,
             @JsonProperty("caption") String caption) {}
+
+    /**
+     * Cartão de contato compartilhado na conversa.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record SharedContact(
+            @JsonProperty("name") SharedContactName name,
+            @JsonProperty("phones") List<SharedContactPhone> phones,
+            @JsonProperty("emails") List<SharedContactEmail> emails) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record SharedContactName(
+            @JsonProperty("formatted_name") String formattedName,
+            @JsonProperty("first_name") String firstName,
+            @JsonProperty("last_name") String lastName) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record SharedContactPhone(
+            @JsonProperty("phone") String phone,
+            @JsonProperty("wa_id") String waId,
+            @JsonProperty("type") String type) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record SharedContactEmail(@JsonProperty("email") String email, @JsonProperty("type") String type) {}
 
     /**
      * Atualização de status de entrega/leitura de mensagem enviada.
