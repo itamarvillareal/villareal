@@ -1073,27 +1073,28 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
 
   const cancelarForm = useCallback(async () => {
     if (isEmbedded && typeof onFecharEmbed === 'function') {
-      if (
-        !formRef.current.edicaoDesabilitada &&
-        (enderecosAlteradosPeloUsuarioRef.current || contatosAlteradosPeloUsuarioRef.current)
-      ) {
+      if (!formRef.current.edicaoDesabilitada) {
         try {
           setSalvando(true);
-          const id = Number(editIdRef.current);
-          if (Number.isFinite(id) && id >= 1 && featureFlags.useApiPessoasComplementares) {
-            await salvarEnderecosPessoa(id, enderecosRef.current);
-            if (contatosAlteradosPeloUsuarioRef.current) {
-              const { usuarioNome } = getContextoAuditoriaUsuario();
-              await salvarContatosPessoa(id, contatosRef.current, usuarioNome);
-            }
-            enderecosAlteradosPeloUsuarioRef.current = false;
-            contatosAlteradosPeloUsuarioRef.current = false;
-          } else {
-            await persistirCadastroRef.current?.({ forcar: true });
+          if (autosaveTimerRef.current) {
+            clearTimeout(autosaveTimerRef.current);
+            autosaveTimerRef.current = null;
+          }
+          const snap = buildSnapshotCadastro(
+            formRef.current,
+            enderecosRef.current,
+            contatosRef.current
+          );
+          const temPendente =
+            ultimoSnapshotSalvoRef.current !== snap ||
+            enderecosAlteradosPeloUsuarioRef.current ||
+            contatosAlteradosPeloUsuarioRef.current;
+          if (temPendente) {
+            const ok = await persistirCadastroRef.current?.({ forcar: true });
+            if (ok === false) return;
           }
         } catch (e) {
           setError(e?.message || 'Falha ao salvar antes de fechar.');
-          setSalvando(false);
           return;
         } finally {
           setSalvando(false);
@@ -1549,6 +1550,18 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
 
   persistirCadastroRef.current = persistirCadastro;
 
+  const flushCadastroPendente = useCallback(async () => {
+    if (formRef.current.edicaoDesabilitada) return true;
+    if (modoRef.current !== 'criar' && modoRef.current !== 'editar') return true;
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+    const snap = buildSnapshotCadastro(formRef.current, enderecosRef.current, contatosRef.current);
+    if (ultimoSnapshotSalvoRef.current === snap) return true;
+    return (await persistirCadastro({ forcar: true })) !== false;
+  }, [persistirCadastro]);
+
   useEffect(() => {
     if (form.edicaoDesabilitada) return undefined;
     if (modo !== 'criar' && modo !== 'editar') return undefined;
@@ -1597,20 +1610,10 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
   const agendarPersistenciaCadastro = useCallback(() => {
     if (formRef.current.edicaoDesabilitada) return;
     if (modoRef.current !== 'criar' && modoRef.current !== 'editar') return;
-    if (enderecosAlteradosPeloUsuarioRef.current) {
-      void persistirEnderecosAgora().catch((e) => {
-        setError(e?.message || 'Falha ao salvar endereços.');
-      });
-      return;
-    }
-    if (autosaveTimerRef.current) {
-      clearTimeout(autosaveTimerRef.current);
-      autosaveTimerRef.current = null;
-    }
-    const snap = buildSnapshotCadastro(formRef.current, enderecosRef.current, contatosRef.current);
-    if (ultimoSnapshotSalvoRef.current === snap) return;
-    void persistirCadastro({ snapshotEsperado: snap, forcar: true });
-  }, [persistirCadastro, persistirEnderecosAgora]);
+    void flushCadastroPendente().catch((e) => {
+      setError(e?.message || 'Falha ao salvar alterações.');
+    });
+  }, [flushCadastroPendente]);
 
   useEffect(() => {
     if (ultimoSnapshotSalvoRef.current !== null) return;
