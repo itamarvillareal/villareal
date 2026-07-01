@@ -14,6 +14,7 @@ import {
 } from '../data/calculosRodadasStorage';
 import {
   calcularResumoTitulosGrade,
+  calcularTotalLinhaTitulo,
   garantirArrayTitulosTamanho,
   mesclarTitulosPaginaNoArray,
   montarTitulosDimensaoParaResumo,
@@ -1022,16 +1023,18 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     void (async () => {
       let autor = '';
       let reu = '';
+      let unidade = '';
       try {
         const partes = await resolverTextosPartesCabecalhoCalculo(cod8, procN);
         if (cancelled) return;
         autor = String(partes.parteCliente ?? '').trim();
         reu = String(partes.parteOposta ?? '').trim();
+        unidade = String(partes.unidade ?? '').trim();
       } catch {
         /* rede / storage: mantém cabecalho já persistido */
       }
       if (cancelled) return;
-      if (!autor && !reu) return;
+      if (!autor && !reu && !unidade) return;
 
       setRodadasState((prev) => {
         const cur = prev[key];
@@ -1039,12 +1042,14 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
         const cab = cur.cabecalho && typeof cur.cabecalho === 'object' ? cur.cabecalho : {};
         const keepAutor = String(cab.autor ?? '').trim();
         const keepReu = String(cab.reu ?? '').trim();
+        const keepUnidade = String(cab.unidade ?? '').trim();
         const nextAutor = keepAutor || autor;
         const nextReu = keepReu || reu;
-        if (nextAutor === keepAutor && nextReu === keepReu) return prev;
+        const nextUnidade = keepUnidade || unidade;
+        if (nextAutor === keepAutor && nextReu === keepReu && nextUnidade === keepUnidade) return prev;
         return {
           ...prev,
-          [key]: { ...cur, cabecalho: { autor: nextAutor, reu: nextReu } },
+          [key]: { ...cur, cabecalho: { autor: nextAutor, reu: nextReu, unidade: nextUnidade } },
         };
       });
     })();
@@ -1284,14 +1289,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     return `Calculo_Processo_${codigoClienteNorm}_${yyyy}${mm}${dd}.pdf`;
   }
 
-  async function gerarPdfCalculo({ forcar = false } = {}) {
-    // `forcar` é usado quando o PDF de cálculos acompanha a petição de execução,
-    // onde o cálculo pode não estar "aceito" (ex.: gerado para hoje).
-    if (!forcar && !aceitarPagamento) {
-      window.alert('Para salvar em PDF, é necessário aceitar o pagamento.');
-      return;
-    }
-
+  async function gerarPdfCalculo() {
     let titulosPdf = titulosDimensao;
     let resumoPdf = resumoGeral;
 
@@ -1313,10 +1311,22 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       }
     }
 
+    let cabPdf = rodadaAtual?.cabecalho || {};
+    if (!String(cabPdf.unidade ?? '').trim()) {
+      try {
+        const partes = await resolverTextosPartesCabecalhoCalculo(codigoClienteNorm, procNorm);
+        if (String(partes.unidade ?? '').trim()) {
+          cabPdf = { ...cabPdf, unidade: partes.unidade };
+        }
+      } catch {
+        /* mantém cabecalho local */
+      }
+    }
+
     const doc = construirRelatorioCalculoPdf({
       titulos: titulosPdf,
       resumo: resumoPdf,
-      cabecalho: rodadaAtual?.cabecalho || {},
+      cabecalho: cabPdf,
       codigoCliente: codigoClienteNorm,
       proc: procNorm,
       dataCalculo,
@@ -1413,10 +1423,14 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     });
 
     try {
+      const linhaUnidade = String(cab.unidade ?? '').trim()
+        ? `Unidade: ${String(cab.unidade).trim()}`
+        : '';
       const blob = await gerarDocumentoListaDebitosWord({
         tituloPrincipal: `Lista de Débitos - Cálculo atualizado até ${dataBaseStr}`,
         linhaCliente: `Cliente (código): ${codigoClienteNorm}`,
         linhaProcesso: `Processo: ${procNorm}`,
+        linhaUnidade,
         linhaMeta: `Data-base do cálculo: ${dataBaseStr}   |   Índice monetário: ${indiceDoc}`,
         colunaAtualizacaoTitulo: `Atualização Monetária\n(${indiceDoc})`,
         linhas: linhasWord,
@@ -1959,12 +1973,17 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
         if (i !== indexGlobal) return r;
         return { ...r, ...patch };
       });
-      // Se o cálculo estiver travado (Aceitar Pagamento), em Modo de Alteração o usuário pode editar manualmente
-      // sem que a rotina de recálculo sobrescreva os valores digitados.
-      const next =
-        calculoAceito
-          ? titulosAtualizados
-          : recalcularTitulos(titulosAtualizados, indicesMensaisINPC, indicesMensaisIPCA).next;
+      const patchSoTotal =
+        Object.keys(patch).length === 1 && Object.prototype.hasOwnProperty.call(patch, 'total');
+      const aplicarTotalManual = (lista) =>
+        lista.map((row, i) => {
+          if (i !== indexGlobal || patchSoTotal) return row;
+          return calcularTotalLinhaTitulo(row);
+        });
+      // Travado + Modo de Alteração: preserva componentes editados manualmente, mas atualiza Total e rodapé.
+      const next = calculoAceito
+        ? aplicarTotalManual(titulosAtualizados)
+        : recalcularTitulos(titulosAtualizados, indicesMensaisINPC, indicesMensaisIPCA).next;
       isDirtyRodadaRef.current = true;
       paginasRodadaCacheRef.current.delete(`${rodadaKey}:page:${pagina}`);
       return {

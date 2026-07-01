@@ -89,6 +89,7 @@ export async function gerarDocumentoListaDebitosWord(params) {
     tituloPrincipal,
     linhaCliente,
     linhaProcesso,
+    linhaUnidade,
     linhaMeta,
     colunaAtualizacaoTitulo,
     linhas,
@@ -161,6 +162,14 @@ export async function gerarDocumentoListaDebitosWord(params) {
             spacing: { after: 120 },
             children: [new TextRun({ text: linhaProcesso, size: 20, font: 'Calibri' })],
           }),
+          ...(String(linhaUnidade ?? '').trim()
+            ? [
+                new Paragraph({
+                  spacing: { after: 120 },
+                  children: [new TextRun({ text: linhaUnidade, size: 20, font: 'Calibri' })],
+                }),
+              ]
+            : []),
           new Paragraph({
             spacing: { after: 240 },
             children: [new TextRun({ text: linhaMeta, size: 20, font: 'Calibri' })],

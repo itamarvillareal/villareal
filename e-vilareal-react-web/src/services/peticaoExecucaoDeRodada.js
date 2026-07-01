@@ -9,6 +9,7 @@
 
 import { fetchCalculoRodada } from '../repositories/calculosRepository.js';
 import { resolverProcessoId } from '../repositories/processosRepository.js';
+import { resolverTextosPartesCabecalhoCalculo } from '../data/processosDadosRelatorio.js';
 import { gerarPeticaoExecucao, downloadPdfBlob } from '../repositories/documentosRepository.js';
 import {
   loadConfigCalculoCliente,
@@ -125,10 +126,21 @@ export async function gerarPeticaoExecucaoDeCalculoSalvo({
 
   // Junto com a petição, entrega também o PDF do relatório de cálculos (memória de cálculo).
   try {
+    let cabPdf = dados.cabecalho || {};
+    if (!String(cabPdf.unidade ?? '').trim()) {
+      try {
+        const partes = await resolverTextosPartesCabecalhoCalculo(cod8, proc);
+        if (String(partes.unidade ?? '').trim()) {
+          cabPdf = { ...cabPdf, unidade: partes.unidade };
+        }
+      } catch {
+        /* mantém cabecalho salvo */
+      }
+    }
     const doc = construirRelatorioCalculoPdf({
       titulos: dados.titulos,
       resumo: dados.resumo,
-      cabecalho: dados.cabecalho,
+      cabecalho: cabPdf,
       codigoCliente: cod8,
       proc,
       dataCalculo: dados.dataCalculo || dataIso,

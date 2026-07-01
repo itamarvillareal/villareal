@@ -162,9 +162,11 @@ public class WhatsAppConversationContextService {
     private static WhatsAppProcessoContextItemDTO toItem(
             CobrancaWhatsAppEntity c, Map<Long, ProcessoEntity> processos, Map<Long, ClienteEntity> clientes) {
         ProcessoEntity proc = c.getProcessoId() != null ? processos.get(c.getProcessoId()) : null;
-        ClienteEntity cliente = c.getClienteId() != null ? clientes.get(c.getClienteId()) : null;
-        if (cliente == null && proc != null) {
+        ClienteEntity cliente = null;
+        if (proc != null && proc.getCliente() != null) {
             cliente = proc.getCliente();
+        } else if (c.getClienteId() != null) {
+            cliente = clientes.get(c.getClienteId());
         }
 
         Integer numeroInterno = proc != null ? proc.getNumeroInterno() : null;
@@ -187,11 +189,13 @@ public class WhatsAppConversationContextService {
             quando = c.getCreatedAt();
         }
 
+        Long clienteIdContexto = cliente != null ? cliente.getId() : c.getClienteId();
+
         return new WhatsAppProcessoContextItemDTO(
                 c.getId(),
                 c.getProcessoId(),
                 numeroInterno,
-                c.getClienteId(),
+                clienteIdContexto,
                 codigo,
                 nomeEscritorio,
                 c.getUnidadeDescricao(),

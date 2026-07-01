@@ -269,19 +269,7 @@ const TitulosGrid = memo(function TitulosGrid({
                     )}
                   </td>
                   <td className={`border border-slate-200 px-2 py-1 font-medium ${modoAlteracao ? 'text-red-600' : ''}`}>
-                    {podeEditarLinha && modoAlteracao ? (
-                      <input
-                        type="text"
-                        value={row.total}
-                        onChange={(e) => onTituloFieldChange(globalIdx, { total: e.target.value })}
-                        onBlur={(e) =>
-                          onTituloFieldChange(globalIdx, { total: formatBRL(parseBRL(e.target.value)) })
-                        }
-                        className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm font-medium"
-                      />
-                    ) : (
-                      row.total
-                    )}
+                    {row.total}
                   </td>
                 </tr>
               );

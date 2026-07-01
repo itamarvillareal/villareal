@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   calcularResumoTitulosGrade,
+  calcularTotalLinhaTitulo,
   garantirArrayTitulosTamanho,
   mesclarTitulosPaginaNoArray,
   montarTitulosDimensaoParaResumo,
@@ -18,6 +19,18 @@ describe('calculosRodadaTitulosPaginacao', () => {
     );
     expect(merged[20].valorInicial).toBe('R$ 1,00');
     expect(merged[0].valorInicial).toBe('');
+  });
+
+  it('calcularTotalLinhaTitulo soma componentes da linha', () => {
+    const row = calcularTotalLinhaTitulo({
+      valorInicial: 'R$ 359,00',
+      atualizacaoMonetaria: 'R$ 13,47',
+      juros: 'R$ 33,56',
+      multa: 'R$ 6,04',
+      honorarios: 'R$ 0,00',
+      total: 'R$ 443,79',
+    });
+    expect(row.total).toBe('R$ 412,07');
   });
 
   it('calcularResumoTitulosGrade soma componentes (Somar_Taxas) e ignora linhas vazias', () => {

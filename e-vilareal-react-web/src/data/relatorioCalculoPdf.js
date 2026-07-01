@@ -22,7 +22,7 @@ export function nomeArquivoRelatorioCalculoPdf(codigoCliente) {
  * @param {object} params
  * @param {Array<object>} params.titulos — títulos com valores já calculados
  * @param {object} params.resumo — saída de `calcularResumoTitulosGrade`
- * @param {object} params.cabecalho — `{ autor, reu }`
+ * @param {object} params.cabecalho — `{ autor, reu, unidade? }`
  * @returns {import('jspdf').jsPDF}
  */
 export function construirRelatorioCalculoPdf({
@@ -52,17 +52,34 @@ export function construirRelatorioCalculoPdf({
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
-  doc.text(`Cliente (código): ${codigoCliente}`, margemX, 20);
-  doc.text(`Processo: ${proc}`, margemX, 25);
-  doc.text(`Parte Cliente: ${cab?.autor || '—'}`, margemX, 30);
-  doc.text(`Parte Oposta: ${cab?.reu || '—'}`, margemX, 35);
-  doc.text(`Data do cálculo: ${dataCalculo}`, margemX, 40);
+  const linhasCabecalho = [
+    `Cliente (código): ${codigoCliente}`,
+    `Processo: ${proc}`,
+  ];
+  const unidade = String(cab?.unidade ?? '').trim();
+  if (unidade) {
+    linhasCabecalho.push(`Unidade: ${unidade}`);
+  }
+  linhasCabecalho.push(
+    `Parte Cliente: ${cab?.autor || '—'}`,
+    `Parte Oposta: ${cab?.reu || '—'}`,
+    `Data do cálculo: ${dataCalculo}`,
+  );
 
+  let yCab = 20;
+  for (const linha of linhasCabecalho) {
+    doc.text(linha, margemX, yCab);
+    yCab += 5;
+  }
+
+  const yParametros = yCab + 3;
   doc.setFont('helvetica', 'bold');
-  doc.text('Parâmetros do cálculo', margemX, 48);
+  doc.text('Parâmetros do cálculo', margemX, yParametros);
   doc.setFont('helvetica', 'normal');
-  doc.text(`Juros: ${juros}   |   Multa: ${multa}`, margemX, 53);
-  doc.text(`Honorários: ${honorariosTipo} (${honorariosValor})   |   Índice: ${indice}`, margemX, 58);
+  doc.text(`Juros: ${juros}   |   Multa: ${multa}`, margemX, yParametros + 5);
+  doc.text(`Honorários: ${honorariosTipo} (${honorariosValor})   |   Índice: ${indice}`, margemX, yParametros + 10);
+
+  const startYTable = yParametros + 15;
 
   const linhasTitulos = lista
     .map((t, idx) => ({
@@ -79,7 +96,7 @@ export function construirRelatorioCalculoPdf({
     .filter((t) => String(t?.valorInicial ?? '').trim() !== '');
 
   autoTable(doc, {
-    startY: 63,
+    startY: startYTable,
     head: [['Nº', 'Vencimento', 'Valor Inicial', 'Atualização', 'Dias', 'Juros', 'Multa', 'Honorários', 'Total']],
     body: linhasTitulos.map((l) => [
       l.n,
@@ -92,8 +109,21 @@ export function construirRelatorioCalculoPdf({
       l.honorarios,
       l.total,
     ]),
+    foot: [
+      [
+        { content: res.qtd || 'Total', colSpan: 2, styles: { halign: 'left' } },
+        res.valorInicial || '',
+        res.atualizacao || '',
+        res.diasAtraso || '',
+        res.juros || '',
+        res.multa || '',
+        res.honorarios || '',
+        res.total || '',
+      ],
+    ],
     styles: { fontSize: 8, cellPadding: 1.5, overflow: 'linebreak' },
     headStyles: { fillColor: [30, 41, 59], textColor: 255 },
+    footStyles: { fillColor: [241, 245, 249], textColor: [30, 41, 59], fontStyle: 'bold' },
     columnStyles: {
       0: { halign: 'center', cellWidth: 10 },
       1: { halign: 'center', cellWidth: 20 },
@@ -109,7 +139,7 @@ export function construirRelatorioCalculoPdf({
     },
   });
 
-  const yResumo = (doc.lastAutoTable?.finalY || 63) + 6;
+  const yResumo = (doc.lastAutoTable?.finalY || startYTable) + 6;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.text('Resumo financeiro (todos os títulos da dimensão)', margemX, yResumo);

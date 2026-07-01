@@ -233,6 +233,7 @@ function textosPartesFromRegistroLocal(cod, proc) {
   return {
     parteCliente: String(reg?.parteCliente ?? reg?.cliente ?? '').trim(),
     parteOposta: String(reg?.parteOposta ?? reg?.reu ?? '').trim(),
+    unidade: String(reg?.unidade ?? reg?.unidadeEndereco ?? '').trim(),
   };
 }
 
@@ -243,7 +244,7 @@ export async function resolverTextosPartesCabecalhoCalculo(codigoClienteRaw, pro
   const cod = padCliente(codigoClienteRaw);
   const proc = Number(normalizarProcesso(procRaw));
   if (!Number.isFinite(proc) || proc < 1) {
-    return { parteCliente: '', parteOposta: '' };
+    return { parteCliente: '', parteOposta: '', unidade: '' };
   }
 
   if (!featureFlags.useApiProcessos) {
@@ -259,8 +260,15 @@ export async function resolverTextosPartesCabecalhoCalculo(codigoClienteRaw, pro
         partes,
         reg?.papelParte ?? 'requerente'
       );
-      if (parteCliente || parteOposta) {
-        return { parteCliente, parteOposta };
+      let unidade = textosPartesFromRegistroLocal(cod, proc).unidade;
+      try {
+        const ui = await obterCamposProcessoApiFirst({ processoId, codigoCliente: cod, numeroInterno: proc });
+        unidade = String(ui?.unidade ?? unidade ?? '').trim();
+      } catch {
+        /* mantém unidade local */
+      }
+      if (parteCliente || parteOposta || unidade) {
+        return { parteCliente, parteOposta, unidade };
       }
     } catch {
       /* listagem / local abaixo */
@@ -277,6 +285,7 @@ export async function resolverTextosPartesCabecalhoCalculo(codigoClienteRaw, pro
       return {
         parteCliente: local.parteCliente,
         parteOposta: parteOposta || local.parteOposta,
+        unidade: String(u.unidade ?? local.unidade ?? '').trim(),
       };
     }
   } catch {

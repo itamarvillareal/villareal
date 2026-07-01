@@ -192,9 +192,12 @@ public class CobrancaWhatsAppService {
             BigDecimal valorPendente = BigDecimal.ZERO;
             boolean jaCobrado = cobrancaRepository.existsCobrancaNoMesPorProcesso(processo.getId(), inicioMes, fimMes);
 
+            ClienteEntity clienteEscritorio = processo.getCliente();
+            Long clienteEscritorioId = clienteEscritorio != null ? clienteEscritorio.getId() : null;
+
             previews.add(new CobrancaPreviewDTO(
                     null,
-                    devedorClienteId,
+                    clienteEscritorioId,
                     pessoaId,
                     pessoaNome,
                     telefone,
@@ -318,12 +321,13 @@ public class CobrancaWhatsAppService {
                 String phone = resolverTelefoneNormalizado(item)
                         .orElseThrow(() -> new IllegalArgumentException("Telefone inválido"));
                 String primeiroNome = extrairPrimeiroNome(item.pessoaNome());
+                Long clienteVinculoId = resolverClienteIdVinculo(item);
                 WhatsAppSendResponse response = whatsAppService.sendTemplateMessage(
                         phone,
                         TEMPLATE_COBRANCA,
                         "pt_BR",
                         List.of(primeiroNome, item.unidadeDescricao(), item.condominioNome()),
-                        item.clienteId(),
+                        clienteVinculoId,
                         item.processoId());
 
                 CobrancaWhatsAppEntity cobranca = montarEntidade(loteId, loteDescricao, item, createdBy);
@@ -658,7 +662,7 @@ public class CobrancaWhatsAppService {
         cobranca.setLoteId(loteId);
         cobranca.setLoteDescricao(loteDescricao);
         cobranca.setPessoaId(item.pessoaId());
-        cobranca.setClienteId(item.clienteId());
+        cobranca.setClienteId(resolverClienteIdVinculo(item));
         cobranca.setPessoaNome(item.pessoaNome());
         cobranca.setImovelId(item.imovelId());
         cobranca.setCondominioNome(item.condominioNome());
@@ -667,6 +671,21 @@ public class CobrancaWhatsAppService {
         cobranca.setValorPendente(item.valorPendente());
         cobranca.setCreatedBy(createdBy);
         return cobranca;
+    }
+
+    /**
+     * Cliente do escritório (cod+proc) vinculado ao processo; fallback para {@code item.clienteId()}.
+     */
+    private Long resolverClienteIdVinculo(CobrancaItemDTO item) {
+        if (item == null || item.processoId() == null) {
+            return item != null ? item.clienteId() : null;
+        }
+        return processoRepository
+                .findById(item.processoId())
+                .map(ProcessoEntity::getCliente)
+                .filter(Objects::nonNull)
+                .map(ClienteEntity::getId)
+                .orElse(item.clienteId());
     }
 
     private String resolverTelefoneCliente(Long clienteId) {

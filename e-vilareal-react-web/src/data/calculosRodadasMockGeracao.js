@@ -7,7 +7,7 @@ import { padCliente, normalizarProcesso } from './processosDadosRelatorio.js';
 export const PARCELAS_POR_PAGINA_MOCK = 20;
 
 export function gerarCabecalhoMock() {
-  return { autor: '', reu: '' };
+  return { autor: '', reu: '', unidade: '' };
 }
 
 export function gerarTitulosMock() {

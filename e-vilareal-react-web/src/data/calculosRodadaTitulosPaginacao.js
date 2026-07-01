@@ -63,6 +63,27 @@ export function mesclarTitulosPaginaNoArray(titulosBase, titulosPagina, page, li
  * Considera apenas linhas com {@code valorInicial} preenchido.
  * @param {Array<Record<string, unknown>> | undefined} lista
  */
+export function calcularTotalLinhaTitulo(row) {
+  const base = row && typeof row === 'object' ? { ...row } : linhaTituloVaziaCalculos();
+  const principalStr = String(base.valorInicial ?? '').trim();
+  if (principalStr === '') {
+    return { ...base, total: '' };
+  }
+  const total = trunc2(
+    parseBRL(base.valorInicial) +
+      parseBRL(base.atualizacaoMonetaria) +
+      parseBRL(base.juros) +
+      parseBRL(base.multa) +
+      parseBRL(base.honorarios)
+  );
+  return { ...base, total: formatBRL(total) };
+}
+
+/**
+ * Soma colunas da grade de títulos (paridade Excel Somar_Taxas / {@code Calculos.jsx}).
+ * Considera apenas linhas com {@code valorInicial} preenchido.
+ * @param {Array<Record<string, unknown>> | undefined} lista
+ */
 export function calcularResumoTitulosGrade(lista) {
   const valid = (lista || []).filter((r) => String(r?.valorInicial ?? '').trim() !== '');
   const qtd = valid.length;

@@ -82,6 +82,42 @@ class WhatsAppConversationContextServiceTest {
     }
 
     @Test
+    void resolverContextos_priorizaClienteDoProcessoQuandoClienteIdDaCobrancaEDoDevedor() {
+        CobrancaWhatsAppEntity cobranca = new CobrancaWhatsAppEntity();
+        cobranca.setId(11L);
+        cobranca.setPhoneNumber(PHONE);
+        cobranca.setProcessoId(5L);
+        cobranca.setClienteId(99L);
+        cobranca.setUnidadeDescricao("QD08-LT16");
+        cobranca.setStatus("AGENDADO");
+        cobranca.setScheduledAt(Instant.parse("2026-06-15T10:00:00Z"));
+
+        ProcessoEntity processo = new ProcessoEntity();
+        processo.setId(5L);
+        processo.setNumeroInterno(244);
+        ClienteEntity clienteEscritorio = new ClienteEntity();
+        clienteEscritorio.setId(20L);
+        clienteEscritorio.setCodigoCliente("00000928");
+        processo.setCliente(clienteEscritorio);
+
+        ClienteEntity clienteDevedor = new ClienteEntity();
+        clienteDevedor.setId(99L);
+        clienteDevedor.setCodigoCliente("00001234");
+
+        when(cobrancaRepository.findRecentesPorSufixoTelefone(any(), anyCollection())).thenReturn(List.of(cobranca));
+        when(processoRepository.findByIdInWithClienteAndPessoa(anyCollection())).thenReturn(List.of(processo));
+        when(clienteRepository.findById(99L)).thenReturn(Optional.of(clienteDevedor));
+
+        WhatsAppProcessoContextItemDTO item = service.resolverContextoMaisRecente(PHONE);
+
+        assertThat(item).isNotNull();
+        assertThat(item.clienteId()).isEqualTo(20L);
+        assertThat(item.codigoCliente()).isEqualTo("00000928");
+        assertThat(item.processoNumeroInterno()).isEqualTo(244);
+        assertThat(item.unidadeDescricao()).isEqualTo("QD08-LT16");
+    }
+
+    @Test
     void sufixo11_extraiUltimosOnzeDigitos() {
         assertThat(WhatsAppConversationContextService.sufixo11("5511999887766")).isEqualTo("11999887766");
         assertThat(WhatsAppConversationContextService.sufixo11("(11) 99988-7766")).isEqualTo("11999887766");
