@@ -24,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -112,9 +113,9 @@ public class PessoaApplicationService {
                 cpf,
                 codigo,
                 cpfAdicional);
-        String telDigits = normalizarTelefoneBusca(telefone);
+        String telDigits = TelefoneBuscaSupport.normalizar(telefone);
         if (telDigits != null) {
-            List<Long> ids = pessoaRepository.findIdsByTelefoneDigitosContendo(telDigits);
+            List<Long> ids = buscarIdsPorTelefone(telDigits);
             if (ids.isEmpty()) {
                 return (root, query, cb) -> cb.disjunction();
             }
@@ -123,16 +124,13 @@ public class PessoaApplicationService {
         return spec;
     }
 
-    /** Dígitos do telefone para busca (mín. 4). */
-    static String normalizarTelefoneBusca(String telefone) {
-        if (telefone == null) {
-            return null;
+    private List<Long> buscarIdsPorTelefone(String telDigits) {
+        LinkedHashSet<Long> ids = new LinkedHashSet<>();
+        String sufixoLocal = TelefoneBuscaSupport.sufixoLocal(telDigits);
+        for (String variant : TelefoneBuscaSupport.variantes(telDigits)) {
+            ids.addAll(pessoaRepository.findIdsByTelefoneDigitosContendo(variant, sufixoLocal));
         }
-        String digits = telefone.replaceAll("\\D", "");
-        if (digits.length() < 4) {
-            return null;
-        }
-        return digits;
+        return new ArrayList<>(ids);
     }
 
     @Transactional(readOnly = true)

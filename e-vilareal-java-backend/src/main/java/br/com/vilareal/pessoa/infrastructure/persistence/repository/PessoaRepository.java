@@ -22,10 +22,18 @@ public interface PessoaRepository extends JpaRepository<PessoaEntity, Long>, Jpa
                     LEFT JOIN pessoa_contato pc ON pc.pessoa_id = p.id AND LOWER(pc.tipo) = 'telefone'
                     WHERE REGEXP_REPLACE(IFNULL(p.telefone, ''), '[^0-9]', '') LIKE CONCAT('%', :digits, '%')
                        OR REGEXP_REPLACE(IFNULL(pc.valor, ''), '[^0-9]', '') LIKE CONCAT('%', :digits, '%')
+                       OR (
+                         :sufixoLocal <> ''
+                         AND (
+                           RIGHT(REGEXP_REPLACE(IFNULL(p.telefone, ''), '[^0-9]', ''), 8) = :sufixoLocal
+                           OR RIGHT(REGEXP_REPLACE(IFNULL(pc.valor, ''), '[^0-9]', ''), 8) = :sufixoLocal
+                         )
+                       )
                     ORDER BY p.id
                     """,
             nativeQuery = true)
-    List<Long> findIdsByTelefoneDigitosContendo(@Param("digits") String digits);
+    List<Long> findIdsByTelefoneDigitosContendo(
+            @Param("digits") String digits, @Param("sufixoLocal") String sufixoLocal);
 
     @EntityGraph(attributePaths = "responsavel")
     @Query("SELECT p FROM PessoaEntity p WHERE p.id = :id")
