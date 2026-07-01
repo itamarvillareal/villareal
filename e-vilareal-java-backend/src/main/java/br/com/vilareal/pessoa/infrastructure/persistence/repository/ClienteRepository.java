@@ -46,4 +46,7 @@ public interface ClienteRepository extends JpaRepository<ClienteEntity, Long> {
             @Param("termo") String termo, @Param("digitsOnly") boolean digitsOnly, Pageable pageable);
 
     List<ClienteEntity> findByPessoa_IdOrderByCodigoClienteAsc(Long pessoaId);
+
+    @Query("SELECT c.pessoa.id FROM ClienteEntity c WHERE c.id = :clienteId")
+    Optional<Long> findPessoaIdById(@Param("clienteId") Long clienteId);
 }

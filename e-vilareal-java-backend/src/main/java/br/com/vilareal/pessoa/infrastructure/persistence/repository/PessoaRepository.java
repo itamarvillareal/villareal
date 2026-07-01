@@ -15,6 +15,9 @@ public interface PessoaRepository extends JpaRepository<PessoaEntity, Long>, Jpa
     @Query("SELECT p FROM PessoaEntity p WHERE p.id = :id")
     Optional<PessoaEntity> findDetailById(@Param("id") Long id);
 
+    @Query("SELECT p.telefone FROM PessoaEntity p WHERE p.id = :id")
+    Optional<String> findTelefoneById(@Param("id") Long id);
+
     boolean existsByCpfAndIdNot(String cpf, Long id);
 
     boolean existsByCpf(String cpf);

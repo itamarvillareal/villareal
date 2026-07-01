@@ -11,6 +11,7 @@ import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteWhatsAppRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaContatoRepository;
+import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoParteEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoParteRepository;
@@ -75,6 +76,7 @@ public class CobrancaWhatsAppService {
     private final ClienteRepository clienteRepository;
     private final ClienteWhatsAppRepository clienteWhatsAppRepository;
     private final PessoaContatoRepository pessoaContatoRepository;
+    private final PessoaRepository pessoaRepository;
     private final WhatsAppService whatsAppService;
     private final WhatsAppTemplateService whatsAppTemplateService;
 
@@ -87,6 +89,7 @@ public class CobrancaWhatsAppService {
             ClienteRepository clienteRepository,
             ClienteWhatsAppRepository clienteWhatsAppRepository,
             PessoaContatoRepository pessoaContatoRepository,
+            PessoaRepository pessoaRepository,
             WhatsAppService whatsAppService,
             WhatsAppTemplateService whatsAppTemplateService) {
         this.cobrancaRepository = cobrancaRepository;
@@ -97,6 +100,7 @@ public class CobrancaWhatsAppService {
         this.clienteRepository = clienteRepository;
         this.clienteWhatsAppRepository = clienteWhatsAppRepository;
         this.pessoaContatoRepository = pessoaContatoRepository;
+        this.pessoaRepository = pessoaRepository;
         this.whatsAppService = whatsAppService;
         this.whatsAppTemplateService = whatsAppTemplateService;
     }
@@ -134,6 +138,7 @@ public class CobrancaWhatsAppService {
      * Unidades vinculadas a processos do cliente do escritório (ex.: condomínio 299), com réu e telefone.
      * Não exige pendência financeira — template {@link #TEMPLATE_COBRANCA} não inclui valor.
      */
+    @Transactional(readOnly = true)
     public List<CobrancaPreviewDTO> buscarProcessosParaCobranca(String codigoClienteRaw) {
         String cod8 = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(codigoClienteRaw);
         List<ProcessoEntity> processos = processoRepository.findAtivosComUnidadeByClienteCodigo(cod8);
@@ -168,7 +173,7 @@ public class CobrancaWhatsAppService {
                             .map(ClienteEntity::getId)
                             .orElse(null)
                     : null;
-            String telefone = pessoa != null ? resolverTelefonePessoa(pessoa, devedorClienteId) : null;
+            String telefone = pessoaId != null ? resolverTelefonePessoa(pessoaId, devedorClienteId) : null;
             boolean temTelefone = StringUtils.hasText(telefone);
             String telefoneFormatado = temTelefone ? WhatsAppService.formatPhoneDisplay(telefone) : null;
             String unidadeDescricao = montarUnidadeDescricao(processo.getUnidade());
@@ -209,6 +214,7 @@ public class CobrancaWhatsAppService {
         return reus.getFirst();
     }
 
+    @Transactional(readOnly = true)
     public List<CobrancaPreviewDTO> buscarImoveisParaCobranca(String condominioNome, Long clienteId) {
         String condominioFiltro = StringUtils.hasText(condominioNome) ? condominioNome.trim() : null;
         List<ImovelEntity> imoveis = imovelRepository.findForCobrancaPreview(condominioFiltro, clienteId);
@@ -240,7 +246,7 @@ public class CobrancaWhatsAppService {
                     ? pessoa.getNome().trim()
                     : "Cliente";
             Long pessoaId = pessoa != null ? pessoa.getId() : null;
-            String telefone = resolverTelefoneCliente(cliente);
+            String telefone = resolverTelefoneCliente(cliente.getId());
             boolean temTelefone = StringUtils.hasText(telefone);
             String telefoneFormatado = temTelefone ? WhatsAppService.formatPhoneDisplay(telefone) : null;
             String condominio = StringUtils.hasText(imovel.getCondominio()) ? imovel.getCondominio().trim() : "";
@@ -597,53 +603,46 @@ public class CobrancaWhatsAppService {
         return cobranca;
     }
 
-    private String resolverTelefoneCliente(ClienteEntity cliente) {
+    private String resolverTelefoneCliente(Long clienteId) {
+        if (clienteId == null) {
+            return null;
+        }
         List<ClienteWhatsAppEntity> whatsappCadastro =
-                clienteWhatsAppRepository.findByCliente_IdAndAtivoTrueOrderByPrincipalDescIdAsc(cliente.getId());
+                clienteWhatsAppRepository.findByCliente_IdAndAtivoTrueOrderByPrincipalDescIdAsc(clienteId);
         for (ClienteWhatsAppEntity w : whatsappCadastro) {
             if (StringUtils.hasText(w.getNumero())) {
                 return w.getNumero().trim();
             }
         }
-        PessoaEntity pessoa = cliente.getPessoa();
-        if (pessoa == null) {
-            return null;
-        }
-        List<PessoaContatoEntity> contatos = pessoaContatoRepository.findByPessoa_IdOrderByIdAsc(pessoa.getId());
-        for (PessoaContatoEntity c : contatos) {
-            if (c.getTipo() != null
-                    && "telefone".equalsIgnoreCase(c.getTipo().trim())
-                    && StringUtils.hasText(c.getValor())) {
-                return c.getValor().trim();
-            }
-        }
-        if (StringUtils.hasText(pessoa.getTelefone())) {
-            return pessoa.getTelefone().trim();
-        }
-        return null;
+        Long pessoaId = clienteRepository.findPessoaIdById(clienteId).orElse(null);
+        return resolverTelefoneContatosPessoa(pessoaId);
     }
 
-    private String resolverTelefonePessoa(PessoaEntity pessoa, Long clienteIdHint) {
+    private String resolverTelefonePessoa(Long pessoaId, Long clienteIdHint) {
         if (clienteIdHint != null) {
-            ClienteEntity cliente = clienteRepository.findById(clienteIdHint).orElse(null);
-            if (cliente != null) {
-                String tel = resolverTelefoneCliente(cliente);
-                if (StringUtils.hasText(tel)) {
-                    return tel;
-                }
-            }
-        }
-        if (pessoa == null) {
-            return null;
-        }
-        List<ClienteEntity> clientes = clienteRepository.findByPessoa_IdOrderByCodigoClienteAsc(pessoa.getId());
-        for (ClienteEntity c : clientes) {
-            String tel = resolverTelefoneCliente(c);
+            String tel = resolverTelefoneCliente(clienteIdHint);
             if (StringUtils.hasText(tel)) {
                 return tel;
             }
         }
-        List<PessoaContatoEntity> contatos = pessoaContatoRepository.findByPessoa_IdOrderByIdAsc(pessoa.getId());
+        if (pessoaId == null) {
+            return null;
+        }
+        List<ClienteEntity> clientes = clienteRepository.findByPessoa_IdOrderByCodigoClienteAsc(pessoaId);
+        for (ClienteEntity c : clientes) {
+            String tel = resolverTelefoneCliente(c.getId());
+            if (StringUtils.hasText(tel)) {
+                return tel;
+            }
+        }
+        return resolverTelefoneContatosPessoa(pessoaId);
+    }
+
+    private String resolverTelefoneContatosPessoa(Long pessoaId) {
+        if (pessoaId == null) {
+            return null;
+        }
+        List<PessoaContatoEntity> contatos = pessoaContatoRepository.findByPessoa_IdOrderByIdAsc(pessoaId);
         for (PessoaContatoEntity c : contatos) {
             if (c.getTipo() != null
                     && "telefone".equalsIgnoreCase(c.getTipo().trim())
@@ -651,10 +650,7 @@ public class CobrancaWhatsAppService {
                 return c.getValor().trim();
             }
         }
-        if (StringUtils.hasText(pessoa.getTelefone())) {
-            return pessoa.getTelefone().trim();
-        }
-        return null;
+        return pessoaRepository.findTelefoneById(pessoaId).filter(StringUtils::hasText).map(String::trim).orElse(null);
     }
 
     static String montarUnidadeDescricao(String unidade) {
