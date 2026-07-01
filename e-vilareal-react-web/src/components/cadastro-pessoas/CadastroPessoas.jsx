@@ -160,7 +160,7 @@ const emptyPessoa = {
  * @param {() => void} [props.onFecharEmbed]
  * @param {(pessoa: { id: number, nome?: string, cpf?: string }) => void} [props.onPessoaSalva]
  */
-export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFecharEmbed, onPessoaSalva } = {}) {
+export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFecharEmbed, onPessoaSalva, closeRequestId = 0 } = {}) {
   const location = useLocation();
   const navigate = useNavigate();
   const isEmbedded = embedIntent !== undefined && embedIntent !== null;
@@ -1071,8 +1071,34 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
     });
   }
 
-  const cancelarForm = () => {
+  const cancelarForm = useCallback(async () => {
     if (isEmbedded && typeof onFecharEmbed === 'function') {
+      if (
+        !formRef.current.edicaoDesabilitada &&
+        (enderecosAlteradosPeloUsuarioRef.current || contatosAlteradosPeloUsuarioRef.current)
+      ) {
+        try {
+          setSalvando(true);
+          const id = Number(editIdRef.current);
+          if (Number.isFinite(id) && id >= 1 && featureFlags.useApiPessoasComplementares) {
+            await salvarEnderecosPessoa(id, enderecosRef.current);
+            if (contatosAlteradosPeloUsuarioRef.current) {
+              const { usuarioNome } = getContextoAuditoriaUsuario();
+              await salvarContatosPessoa(id, contatosRef.current, usuarioNome);
+            }
+            enderecosAlteradosPeloUsuarioRef.current = false;
+            contatosAlteradosPeloUsuarioRef.current = false;
+          } else {
+            await persistirCadastroRef.current?.({ forcar: true });
+          }
+        } catch (e) {
+          setError(e?.message || 'Falha ao salvar antes de fechar.');
+          setSalvando(false);
+          return;
+        } finally {
+          setSalvando(false);
+        }
+      }
       onFecharEmbed();
       return;
     }
@@ -1093,7 +1119,14 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
     if (pathPessoasNorm === '/clientes/nova' || /^\/clientes\/editar\/\d+$/.test(pathPessoasNorm)) {
       navigate('/clientes/lista', { replace: true });
     }
-  };
+  }, [isEmbedded, onFecharEmbed, navigate, pathPessoasNorm]);
+
+  const lastCloseRequestIdRef = useRef(0);
+  useEffect(() => {
+    if (!closeRequestId || closeRequestId <= lastCloseRequestIdRef.current) return;
+    lastCloseRequestIdRef.current = closeRequestId;
+    void cancelarForm();
+  }, [closeRequestId, cancelarForm]);
 
   useEffect(() => {
     if (isEmbedded) return;
@@ -1278,6 +1311,38 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
     ignorarProximoFocusContatoRef.current = true;
     setModalContatos(false);
   }, []);
+
+  const persistirEnderecosAgora = useCallback(async () => {
+    const id = Number(editIdRef.current);
+    if (!Number.isFinite(id) || id < 1 || !featureFlags.useApiPessoasComplementares) return;
+    if (!enderecosAlteradosPeloUsuarioRef.current) return;
+    await salvarEnderecosPessoa(id, enderecosRef.current);
+    const recarregados = await carregarEnderecosPessoa(id);
+    const normalizados = enderecosApiParaUi(recarregados || []);
+    enderecosRef.current = normalizados;
+    setEnderecos(normalizados);
+    enderecosAlteradosPeloUsuarioRef.current = false;
+    ultimoSnapshotSalvoRef.current = buildSnapshotCadastro(
+      formRef.current,
+      enderecosRef.current,
+      contatosRef.current
+    );
+  }, []);
+
+  const fecharModalEnderecos = useCallback(async () => {
+    if (enderecosAlteradosPeloUsuarioRef.current) {
+      try {
+        setSalvando(true);
+        await persistirEnderecosAgora();
+      } catch (e) {
+        setError(e?.message || 'Falha ao salvar endereços.');
+        return;
+      } finally {
+        setSalvando(false);
+      }
+    }
+    setModalEnderecos(false);
+  }, [persistirEnderecosAgora]);
 
   const abrirModalContatosDesdeContato = useCallback(() => {
     if (form.edicaoDesabilitada) return;
@@ -1532,6 +1597,12 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
   const agendarPersistenciaCadastro = useCallback(() => {
     if (formRef.current.edicaoDesabilitada) return;
     if (modoRef.current !== 'criar' && modoRef.current !== 'editar') return;
+    if (enderecosAlteradosPeloUsuarioRef.current) {
+      void persistirEnderecosAgora().catch((e) => {
+        setError(e?.message || 'Falha ao salvar endereços.');
+      });
+      return;
+    }
     if (autosaveTimerRef.current) {
       clearTimeout(autosaveTimerRef.current);
       autosaveTimerRef.current = null;
@@ -1539,7 +1610,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
     const snap = buildSnapshotCadastro(formRef.current, enderecosRef.current, contatosRef.current);
     if (ultimoSnapshotSalvoRef.current === snap) return;
     void persistirCadastro({ snapshotEsperado: snap, forcar: true });
-  }, [persistirCadastro]);
+  }, [persistirCadastro, persistirEnderecosAgora]);
 
   useEffect(() => {
     if (ultimoSnapshotSalvoRef.current !== null) return;
@@ -1951,9 +2022,13 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                       <span className="text-xs font-medium text-slate-500">Edição</span>
                       <ChaveEdicaoOnOff
                         edicaoHabilitada={!form.edicaoDesabilitada}
-                        onChange={(habilitada) =>
-                          setForm((f) => ({ ...f, edicaoDesabilitada: !habilitada }))
-                        }
+                        onChange={(habilitada) => {
+                          setForm((f) => ({ ...f, edicaoDesabilitada: !habilitada }));
+                          if (habilitada && modoRef.current === 'editar') {
+                            autosaveAtivoRef.current = true;
+                            setFichaProntaAutosave(true);
+                          }
+                        }}
                       />
                       <span className="text-[11px] text-slate-400">
                         {form.edicaoDesabilitada ? 'Somente leitura' : 'Campos liberados'}
@@ -2555,8 +2630,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
       <ModalEnderecos
         open={modalEnderecos}
         onClose={() => {
-          setModalEnderecos(false);
-          agendarPersistenciaCadastro();
+          void fecharModalEnderecos();
         }}
         nomePessoa={form.nome}
         codigoPessoa={form.codigo}

@@ -1,4 +1,4 @@
-import { Suspense, useMemo } from 'react';
+import { Suspense, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 import { X } from 'lucide-react';
@@ -15,7 +15,11 @@ import { LazyCadastroPessoas } from '../app/lazyScreens.jsx';
  * }} props
  */
 export function PessoaEmbedModal({ embed, onFechar, titulo, onPessoaSalva, overlayClassName = 'z-[80]' }) {
-  useCloseOnEscape(!!embed, onFechar);
+  const [closeRequestId, setCloseRequestId] = useState(0);
+
+  const solicitarFechar = () => setCloseRequestId((n) => n + 1);
+
+  useCloseOnEscape(!!embed, solicitarFechar);
 
   const embedIntent = useMemo(() => {
     if (!embed) return null;
@@ -39,7 +43,7 @@ export function PessoaEmbedModal({ embed, onFechar, titulo, onPessoaSalva, overl
       aria-modal="true"
       aria-labelledby="pessoa-embed-modal-title"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onFechar();
+        if (e.target === e.currentTarget) solicitarFechar();
       }}
     >
       <div
@@ -52,7 +56,7 @@ export function PessoaEmbedModal({ embed, onFechar, titulo, onPessoaSalva, overl
           </h2>
           <button
             type="button"
-            onClick={onFechar}
+            onClick={solicitarFechar}
             className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-white/10 shrink-0"
             aria-label="Fechar cadastro de pessoa"
             title="Fechar (Esc)"
@@ -72,6 +76,7 @@ export function PessoaEmbedModal({ embed, onFechar, titulo, onPessoaSalva, overl
               key={embed.revision}
               embedIntent={embedIntent}
               embedIntentRevision={embed.revision}
+              closeRequestId={closeRequestId}
               onFecharEmbed={onFechar}
               onPessoaSalva={onPessoaSalva}
             />
