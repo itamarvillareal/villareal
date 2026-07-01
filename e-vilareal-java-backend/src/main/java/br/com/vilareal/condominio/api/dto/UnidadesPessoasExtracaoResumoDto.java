@@ -10,4 +10,6 @@ public record UnidadesPessoasExtracaoResumoDto(
         int pessoasProprietarioJaCadastradas,
         int pessoasProprietarioNovasEstimadas,
         int pessoasInquilinoJaCadastradas,
-        int pessoasInquilinoNovasEstimadas) {}
+        int pessoasInquilinoNovasEstimadas,
+        int unidadesComCoproprietariosAdicionais,
+        String formatoPlanilha) {}

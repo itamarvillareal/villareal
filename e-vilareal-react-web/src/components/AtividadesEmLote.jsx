@@ -956,9 +956,9 @@ export function AtividadesEmLote() {
 
               <div className="space-y-4 border-t border-slate-200 pt-4 dark:border-slate-700">
                 <p className="text-sm text-slate-600 dark:text-slate-400">
-                  <span className="font-medium text-slate-800 dark:text-slate-200">Passo 4 — Planilha de proprietários</span>
-                  : envie o ficheiro <strong>.xls</strong> ou <strong>.xlsx</strong> do cadastro de unidades (mesmo
-                  condomínio:{' '}
+                  <span className="font-medium text-slate-800 dark:text-slate-200">Passo 4 — Cadastro de condôminos</span>
+                  : envie a planilha <strong>.xls</strong> ou <strong>.xlsx</strong> do cadastro de unidades (layout legado
+                  ou Condo Id «Condôminos por unidade» — mesmo condomínio:{' '}
                   <span className="tabular-nums text-slate-500">{extracao.clienteCodigo}</span>
                   {extracao.clienteNome ? ` — ${extracao.clienteNome}` : ''}). Os processos criados acima serão usados
                   para vincular o proprietário (RÉU) por unidade.
@@ -1046,9 +1046,19 @@ export function AtividadesEmLote() {
                     {extracaoXls.resumo?.linhasLidas ?? 0} linhas · {extracaoXls.resumo?.unidadesDistintas ?? 0}{' '}
                     unidades · prop. novos (estim.):{' '}
                     {extracaoXls.resumo?.pessoasProprietarioNovasEstimadas ?? 0}
+                    {extracaoXls.resumo?.formatoPlanilha === 'CONDO_ID' ? (
+                      <span className="ml-1 text-xs text-slate-500">(Condo Id)</span>
+                    ) : null}
                   </dd>
                 </div>
               </dl>
+              {(extracaoXls.resumo?.unidadesComCoproprietariosAdicionais ?? 0) > 0 && (
+                <div className="rounded border border-amber-200 bg-amber-50/90 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-100">
+                  {extracaoXls.resumo.unidadesComCoproprietariosAdicionais} unidade(s) com mais de um condômino na
+                  planilha — importamos o <strong>primeiro com CPF</strong> como proprietário (RÉU). Revise
+                  co-proprietários manualmente se necessário.
+                </div>
+              )}
               <div className="max-h-80 overflow-x-auto overflow-y-auto rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950">
                 <table className="min-w-full text-xs">
                   <thead className="bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-400">

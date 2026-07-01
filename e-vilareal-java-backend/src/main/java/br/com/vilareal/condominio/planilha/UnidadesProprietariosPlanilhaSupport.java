@@ -100,17 +100,50 @@ public final class UnidadesProprietariosPlanilhaSupport {
     public static List<String> splitTelefonesOuVazio(String... celulas) {
         List<String> out = new ArrayList<>();
         for (String celula : celulas) {
-            if (celula == null || celula.isBlank()) {
+            out.addAll(splitTelefonesEspacoOuSeparador(celula));
+        }
+        return out;
+    }
+
+    /** Condo Id costuma trazer vários telefones na mesma célula separados por espaço ou ponto-e-vírgula. */
+    public static List<String> splitTelefonesEspacoOuSeparador(String celula) {
+        if (celula == null || celula.isBlank()) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (String part : celula.split("[;\\s]+")) {
+            String t = CadastroPessoasPlanilhaImportSupport.truncate(part.trim(), 40);
+            if (t.isBlank()) {
                 continue;
             }
-            for (String part : celula.split(";")) {
-                String t = CadastroPessoasPlanilhaImportSupport.truncate(part.trim(), 40);
-                if (!t.isBlank()) {
-                    out.add(t);
-                }
+            String digitos = t.replaceAll("\\D", "");
+            if (digitos.length() >= 8) {
+                out.add(t);
             }
         }
         return out;
+    }
+
+    /** Endereço em texto livre (ex.: «Rua X Bairro Cidade - GO») exportado pelo Condo Id. */
+    public static PlanilhaEnderecoDto parseEnderecoTextoLivre(String bruto) {
+        String t = safe(bruto);
+        if (t.isEmpty()) {
+            return montarEndereco("", "", "", "", "", "");
+        }
+        Matcher mu = TRAIL_UF.matcher(t);
+        if (mu.find()) {
+            String uf = mu.group(1).toUpperCase(Locale.ROOT);
+            String antes = t.substring(0, mu.start()).trim();
+            String cidade = "";
+            String log = antes;
+            int lastSpace = antes.lastIndexOf(' ');
+            if (lastSpace > 0) {
+                cidade = antes.substring(lastSpace + 1).trim();
+                log = antes.substring(0, lastSpace).trim();
+            }
+            return montarEndereco("", log, "", "", "", cidade + " - " + uf);
+        }
+        return montarEndereco("", t, "", "", "", "");
     }
 
     private static String safe(String s) {

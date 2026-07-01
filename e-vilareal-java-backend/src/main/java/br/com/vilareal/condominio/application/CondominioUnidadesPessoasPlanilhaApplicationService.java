@@ -10,8 +10,8 @@ import br.com.vilareal.condominio.api.dto.UnidadesPessoasExtracaoResponse;
 import br.com.vilareal.condominio.api.dto.UnidadesPessoasImportErroDto;
 import br.com.vilareal.condominio.api.dto.UnidadesPessoasImportRequest;
 import br.com.vilareal.condominio.api.dto.UnidadesPessoasImportResponse;
+import br.com.vilareal.condominio.planilha.UnidadesProprietariosPlanilhaReader;
 import br.com.vilareal.condominio.planilha.UnidadesProprietariosPlanilhaSupport;
-import br.com.vilareal.condominio.planilha.UnidadesProprietariosXlsReader;
 import br.com.vilareal.pessoa.application.PessoaMergeService;
 import br.com.vilareal.pessoa.application.PessoaMergeService.ContatoPar;
 import br.com.vilareal.pessoa.application.PessoaMergeService.EnderecoMergeLinha;
@@ -83,11 +83,16 @@ public class CondominioUnidadesPessoasPlanilhaApplicationService {
                         "Cliente não encontrado para o código: " + cod8));
         String nomeCliente = Utf8MojibakeUtil.corrigir(cliente.getPessoa().getNome());
 
-        List<UnidadePlanilhaLinhaDto> linhas;
+        UnidadesProprietariosPlanilhaReader.LeituraResult leitura;
         try {
-            linhas = UnidadesProprietariosXlsReader.lerLinhas(arquivo.getInputStream());
+            leitura = UnidadesProprietariosPlanilhaReader.ler(arquivo.getInputStream());
         } catch (IOException e) {
             throw new BusinessRuleException("Não foi possível ler a planilha: " + e.getMessage());
+        }
+        List<UnidadePlanilhaLinhaDto> linhas = leitura.linhas();
+        if (linhas.isEmpty()) {
+            throw new BusinessRuleException(
+                    "Nenhuma unidade com proprietário encontrada na planilha. Verifique o layout (Condo Id ou planilha legada).");
         }
 
         List<UnidadePlanilhaLinhaDto> enriquecidas = new ArrayList<>();
@@ -142,7 +147,9 @@ public class CondominioUnidadesPessoasPlanilhaApplicationService {
                 propExiste,
                 propNovo,
                 inqExiste,
-                inqNovo);
+                inqNovo,
+                leitura.unidadesComCoproprietariosAdicionais(),
+                leitura.formatoDetectado());
 
         return new UnidadesPessoasExtracaoResponse(cod8, nomeCliente, resumo, enriquecidas);
     }
