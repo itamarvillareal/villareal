@@ -30,14 +30,15 @@ public class CadastroPessoasController {
     }
 
     @GetMapping
-    @Operation(summary = "Listar pessoas", description = "Filtros opcionais: nome (contém), cpf (dígitos), codigo (id exato), apenasAtivos")
+    @Operation(summary = "Listar pessoas", description = "Filtros opcionais: nome (contém), cpf (dígitos), codigo (id exato), telefone (dígitos), apenasAtivos")
     public List<PessoaCadastroResponse> listar(
             @RequestParam(required = false, defaultValue = "false") boolean apenasAtivos,
             @RequestParam(required = false) String nome,
             @RequestParam(required = false) String cpf,
             @RequestParam(required = false) Long codigo,
-            @RequestParam(required = false) String cpfAdicional) {
-        return pessoaService.listar(apenasAtivos, nome, cpf, codigo, cpfAdicional);
+            @RequestParam(required = false) String cpfAdicional,
+            @RequestParam(required = false) String telefone) {
+        return pessoaService.listar(apenasAtivos, nome, cpf, codigo, cpfAdicional, telefone);
     }
 
     @GetMapping("/paginada")
@@ -48,8 +49,9 @@ public class CadastroPessoasController {
             @RequestParam(required = false) String cpf,
             @RequestParam(required = false) Long codigo,
             @RequestParam(required = false) String cpfAdicional,
+            @RequestParam(required = false) String telefone,
             @PageableDefault(size = 20, sort = "id", direction = Sort.Direction.ASC) Pageable pageable) {
-        return pessoaService.listarPaginado(apenasAtivos, nome, cpf, codigo, cpfAdicional, pageable);
+        return pessoaService.listarPaginado(apenasAtivos, nome, cpf, codigo, cpfAdicional, telefone, pageable);
     }
 
     @GetMapping("/proximo-id")

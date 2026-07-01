@@ -40,7 +40,7 @@ export function clampCadastroPessoasPageSize(size) {
 
 /**
  * Monta filtros alinhados ao relatório (nome contém, id exato, CPF/CNPJ contém nos dígitos, campo extra CPF/CNPJ em AND).
- * @param {{ apenasAtivos?: boolean, nome?: string, cpf?: string, codigo?: number, cpfAdicional?: string, page?: number, size?: number, sort?: string }} p
+ * @param {{ apenasAtivos?: boolean, nome?: string, cpf?: string, codigo?: number, cpfAdicional?: string, telefone?: string, page?: number, size?: number, sort?: string }} p
  */
 export async function listarClientesPaginados(p = {}) {
   const {
@@ -49,6 +49,7 @@ export async function listarClientesPaginados(p = {}) {
     cpf,
     codigo,
     cpfAdicional,
+    telefone,
     page = 0,
     size = 20,
     sort = 'id,asc',
@@ -63,11 +64,32 @@ export async function listarClientesPaginados(p = {}) {
   if (cpfAdicional != null && String(cpfAdicional).replace(/\D/g, '')) {
     qs.set('cpfAdicional', String(cpfAdicional).replace(/\D/g, ''));
   }
+  if (telefone != null && String(telefone).replace(/\D/g, '').length >= 4) {
+    qs.set('telefone', String(telefone).replace(/\D/g, ''));
+  }
   if (codigo != null && Number.isFinite(Number(codigo)) && Number(codigo) >= 1) {
     qs.set('codigo', String(Math.floor(Number(codigo))));
   }
   const res = await fetch(`${BASE}/paginada?${qs.toString()}`, getOptions('GET'));
   return handleResponse(res);
+}
+
+/**
+ * Busca pessoas por telefone (campo contato ou telefone legado da ficha).
+ * @param {string} termo — número com ou sem máscara (mín. 4 dígitos)
+ * @param {{ apenasAtivos?: boolean, limite?: number }} [opts]
+ */
+export async function pesquisarCadastroPessoasPorTelefone(termo, { apenasAtivos = false, limite } = {}) {
+  const digits = String(termo ?? '').replace(/\D/g, '');
+  if (digits.length < 4) return [];
+  const qs = new URLSearchParams();
+  qs.set('telefone', digits);
+  if (apenasAtivos) qs.set('apenasAtivos', 'true');
+  const res = await fetch(`${BASE}?${qs.toString()}`, getOptions('GET'));
+  const data = await handleResponse(res);
+  const arr = Array.isArray(data) ? data : [];
+  const norm = arr.map((row) => normalizarPessoaApiResponse(row));
+  return typeof limite === 'number' && limite > 0 ? norm.slice(0, limite) : norm;
 }
 
 /**

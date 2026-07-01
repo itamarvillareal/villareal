@@ -7,9 +7,25 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface PessoaRepository extends JpaRepository<PessoaEntity, Long>, JpaSpecificationExecutor<PessoaEntity> {
+
+    /**
+     * Pessoas cujo telefone legado ({@code pessoa.telefone}) ou contato tipo telefone contém os dígitos informados.
+     */
+    @Query(
+            value =
+                    """
+                    SELECT DISTINCT p.id FROM pessoa p
+                    LEFT JOIN pessoa_contato pc ON pc.pessoa_id = p.id AND LOWER(pc.tipo) = 'telefone'
+                    WHERE REGEXP_REPLACE(IFNULL(p.telefone, ''), '[^0-9]', '') LIKE CONCAT('%', :digits, '%')
+                       OR REGEXP_REPLACE(IFNULL(pc.valor, ''), '[^0-9]', '') LIKE CONCAT('%', :digits, '%')
+                    ORDER BY p.id
+                    """,
+            nativeQuery = true)
+    List<Long> findIdsByTelefoneDigitosContendo(@Param("digits") String digits);
 
     @EntityGraph(attributePaths = "responsavel")
     @Query("SELECT p FROM PessoaEntity p WHERE p.id = :id")

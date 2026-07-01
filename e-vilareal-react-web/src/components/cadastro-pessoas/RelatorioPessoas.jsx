@@ -28,6 +28,7 @@ const CRITERIOS_BUSCA = [
   { value: 'nome', label: 'Nome' },
   { value: 'codigo', label: 'Código' },
   { value: 'cpf', label: 'CPF/CNPJ' },
+  { value: 'telefone', label: 'Telefone' },
 ];
 
 const LS_PAGE_SIZE = 'vilareal:pageSize:relatorio-pessoas';
@@ -48,6 +49,7 @@ function buildFiltrosApi({ criterioBusca, valorBusca, valorBuscaCpf }) {
   let nome;
   let cpf;
   let codigo;
+  let telefone;
   if (criterioBusca === 'nome' && v) nome = v;
   if (criterioBusca === 'codigo' && v) {
     const n = parseInt(v, 10);
@@ -57,7 +59,11 @@ function buildFiltrosApi({ criterioBusca, valorBusca, valorBuscaCpf }) {
     const d = v.replace(/\D/g, '');
     if (d) cpf = d;
   }
-  return { nome, cpf, codigo, cpfAdicional: cpfExtra };
+  if (criterioBusca === 'telefone' && v) {
+    const d = v.replace(/\D/g, '');
+    if (d.length >= 4) telefone = d;
+  }
+  return { nome, cpf, codigo, cpfAdicional: cpfExtra, telefone };
 }
 
 export function RelatorioPessoas() {
@@ -143,6 +149,12 @@ export function RelatorioPessoas() {
     if (sp.get('export') === '1') {
       setModalExportar(true);
       navigate({ pathname: location.pathname, search: '' }, { replace: true });
+      return;
+    }
+    const tel = sp.get('telefone');
+    if (tel && String(tel).replace(/\D/g, '').length >= 4) {
+      setCriterioBusca('telefone');
+      setValorBusca(tel);
     }
   }, [location.search, location.pathname, navigate]);
 
@@ -153,7 +165,7 @@ export function RelatorioPessoas() {
   }, [debouncedFiltros, exportAplicarFiltrosBusca]);
 
   const carregarApi = useCallback(async () => {
-    const { nome, cpf, codigo, cpfAdicional } = buildFiltrosApi(debouncedFiltros);
+    const { nome, cpf, codigo, cpfAdicional, telefone } = buildFiltrosApi(debouncedFiltros);
     const res = await listarClientesPaginados({
       page,
       size: pageSize,
@@ -162,6 +174,7 @@ export function RelatorioPessoas() {
       cpf,
       codigo,
       cpfAdicional,
+      telefone,
     });
     setPageData(res);
   }, [page, pageSize, debouncedFiltros]);
@@ -399,7 +412,15 @@ export function RelatorioPessoas() {
                 type="text"
                 value={valorBusca}
                 onChange={(e) => setValorBusca(e.target.value)}
-                placeholder={criterioBusca === 'cpf' ? 'CPF' : criterioBusca === 'codigo' ? 'Código' : 'Nome'}
+                placeholder={
+                  criterioBusca === 'cpf'
+                    ? 'CPF/CNPJ'
+                    : criterioBusca === 'codigo'
+                      ? 'Código'
+                      : criterioBusca === 'telefone'
+                        ? '(62) 99999-9999'
+                        : 'Nome'
+                }
                 className="w-48 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-indigo-500"
               />
             </div>

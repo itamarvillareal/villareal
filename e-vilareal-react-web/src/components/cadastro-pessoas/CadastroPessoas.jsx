@@ -23,6 +23,7 @@ import {
   atualizarCliente,
   excluirCliente,
   obterProximoIdCadastroPessoas,
+  pesquisarCadastroPessoasPorTelefone,
 } from '../../api/clientesService';
 import { analisarDocumentoPessoa } from '../../services/personAutoFillService.js';
 import { listarPessoasComDocumento, salvarDocumentoPessoa } from '../../services/pessoaDocumentoService.js';
@@ -213,6 +214,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
   /** Enquanto true, o campo Nacionalidade fica em vermelho até o usuário entrar e sair (blur), validando a sugestão. */
   const [nacionalidadeSugestaoNaoValidada, setNacionalidadeSugestaoNaoValidada] = useState(false);
   const [numeroPessoa, setNumeroPessoa] = useState('');
+  const [telefoneBusca, setTelefoneBusca] = useState('');
   const [listaClientesCodigo, setListaClientesCodigo] = useState([]);
   const [, setPessoasComDocumento] = useState([]);
   const [docPreview, setDocPreview] = useState(null);
@@ -672,6 +674,32 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
     // Garante índice dentro dos limites quando a lista é filtrada.
     setIndiceAtual((i) => Math.min(i, Math.max(0, listaExibida.length - 1)));
   }, [modo, listaExibida.length]);
+
+  async function localizarPorTelefone() {
+    const digits = String(telefoneBusca ?? '').replace(/\D/g, '');
+    if (digits.length < 4) {
+      setError('Digite ao menos 4 dígitos do telefone.');
+      return;
+    }
+    setError(null);
+    try {
+      setCarregandoFicha(true);
+      const arr = await pesquisarCadastroPessoasPorTelefone(digits, { limite: 25 });
+      if (!arr.length) {
+        setError('Nenhuma pessoa encontrada com esse telefone.');
+        return;
+      }
+      if (arr.length === 1) {
+        await abrirPessoaPorCodigo(arr[0].id);
+        return;
+      }
+      navigate(`/clientes/relatorio?telefone=${encodeURIComponent(digits)}`);
+    } catch (err) {
+      setError(err?.message || 'Erro ao buscar por telefone.');
+    } finally {
+      setCarregandoFicha(false);
+    }
+  }
 
   async function abrirPessoaPorCodigo(codigoRaw) {
     const n = String(codigoRaw ?? '').trim();
@@ -1821,6 +1849,38 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                     </button>
                   </div>
                   <p className="text-xs text-slate-500 mt-1">Abre a ficha pelo código (sem carregar o relatório completo).</p>
+                </div>
+                <div>
+                  <label htmlFor="telefone-pessoa-busca" className="block text-sm font-medium text-slate-700 mb-1">
+                    Telefone
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="telefone-pessoa-busca"
+                      type="tel"
+                      inputMode="tel"
+                      value={telefoneBusca}
+                      onChange={(e) => setTelefoneBusca(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          void localizarPorTelefone();
+                        }
+                      }}
+                      placeholder="(62) 99999-9999"
+                      className="w-40 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void localizarPorTelefone()}
+                      disabled={carregandoFicha}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 text-white text-sm font-medium hover:bg-slate-900 disabled:opacity-50 focus:ring-2 focus:ring-slate-500 focus:ring-offset-1"
+                    >
+                      <Search className="w-4 h-4" />
+                      Localizar
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">Busca no telefone da ficha e nos contatos cadastrados.</p>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2 ml-auto">

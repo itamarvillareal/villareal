@@ -78,13 +78,9 @@ public class PessoaApplicationService {
             String nome,
             String cpf,
             Long codigo,
-            String cpfAdicional) {
-        Specification<PessoaEntity> spec = PessoaSpecifications.comFiltros(
-                apenasAtivos ? true : null,
-                nome,
-                cpf,
-                codigo,
-                cpfAdicional);
+            String cpfAdicional,
+            String telefone) {
+        Specification<PessoaEntity> spec = montarSpecificationListagem(apenasAtivos, nome, cpf, codigo, cpfAdicional, telefone);
         return pessoaRepository.findAll(spec).stream()
                 .map(this::toResponseBasico)
                 .collect(Collectors.toList());
@@ -97,14 +93,46 @@ public class PessoaApplicationService {
             String cpf,
             Long codigo,
             String cpfAdicional,
+            String telefone,
             Pageable pageable) {
+        Specification<PessoaEntity> spec = montarSpecificationListagem(apenasAtivos, nome, cpf, codigo, cpfAdicional, telefone);
+        return pessoaRepository.findAll(spec, pageable).map(this::toResponseBasico);
+    }
+
+    private Specification<PessoaEntity> montarSpecificationListagem(
+            boolean apenasAtivos,
+            String nome,
+            String cpf,
+            Long codigo,
+            String cpfAdicional,
+            String telefone) {
         Specification<PessoaEntity> spec = PessoaSpecifications.comFiltros(
                 apenasAtivos ? true : null,
                 nome,
                 cpf,
                 codigo,
                 cpfAdicional);
-        return pessoaRepository.findAll(spec, pageable).map(this::toResponseBasico);
+        String telDigits = normalizarTelefoneBusca(telefone);
+        if (telDigits != null) {
+            List<Long> ids = pessoaRepository.findIdsByTelefoneDigitosContendo(telDigits);
+            if (ids.isEmpty()) {
+                return (root, query, cb) -> cb.disjunction();
+            }
+            spec = spec.and((root, query, cb) -> root.get("id").in(ids));
+        }
+        return spec;
+    }
+
+    /** Dígitos do telefone para busca (mín. 4). */
+    static String normalizarTelefoneBusca(String telefone) {
+        if (telefone == null) {
+            return null;
+        }
+        String digits = telefone.replaceAll("\\D", "");
+        if (digits.length() < 4) {
+            return null;
+        }
+        return digits;
     }
 
     @Transactional(readOnly = true)
