@@ -23,6 +23,30 @@ export function labelRegraInicio(regraDias) {
   return 'Importar tudo';
 }
 
+/** Texto curto para «Importar tudo». */
+export const DESCRICAO_REGRA_IMPORTAR_TUDO =
+  'Importa toda unidade da planilha que tenha pelo menos uma taxa vencida (1 dia ou mais de atraso).';
+
+/**
+ * Explicação da regra 60+1 condicional (importação .xls).
+ * Alinhada a CobrancaRegraInicioCobrancaService no backend.
+ * @type {string[]}
+ */
+export const LINHAS_DESCRICAO_REGRA_CONDICIONAL_60_MAIS_1 = [
+  'Regra em duas situações:',
+  'Se a unidade já tem débito cadastrado em Cálculos (parcelamento não aceito) com mais de 60 dias de atraso → importa todas as taxas em aberto da planilha dessa unidade.',
+  'Caso contrário → a unidade só entra se a planilha tiver alguma taxa com 61 dias ou mais de atraso (vencimento há mais de 60 dias).',
+];
+
+export const DESCRICAO_REGRA_CONDICIONAL_60_MAIS_1 = LINHAS_DESCRICAO_REGRA_CONDICIONAL_60_MAIS_1.join(' ');
+
+/** @param {1 | 61 | number} regraDias @returns {string | string[]} */
+export function descricaoRegraInicio(regraDias) {
+  const r = normalizarRegraInicioCobrancaDias(regraDias);
+  if (r === 61) return LINHAS_DESCRICAO_REGRA_CONDICIONAL_60_MAIS_1;
+  return DESCRICAO_REGRA_IMPORTAR_TUDO;
+}
+
 /**
  * @param {string | null | undefined} texto dd/MM/yyyy
  * @returns {Date | null} meia-noite no fuso local

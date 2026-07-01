@@ -404,4 +404,31 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
             ORDER BY p.id ASC
             """)
     List<ProcessoEntity> findAllComFasePreenchidaOrderByIdAsc();
+
+    @Query(
+            """
+            SELECT p FROM ProcessoEntity p
+            JOIN FETCH p.cliente cc
+            JOIN FETCH cc.pessoa cp
+            WHERE cc.codigoCliente = :codigoCliente
+              AND p.ativo = TRUE
+              AND p.unidade IS NOT NULL
+              AND TRIM(p.unidade) <> ''
+            ORDER BY p.numeroInterno ASC, p.id ASC
+            """)
+    List<ProcessoEntity> findAtivosComUnidadeByClienteCodigo(@Param("codigoCliente") String codigoCliente);
+
+    @Query(
+            """
+            SELECT cc.codigoCliente, cp.nome, COUNT(p.id)
+            FROM ProcessoEntity p
+            JOIN p.cliente cc
+            JOIN cc.pessoa cp
+            WHERE p.ativo = TRUE
+              AND p.unidade IS NOT NULL
+              AND TRIM(p.unidade) <> ''
+            GROUP BY cc.codigoCliente, cp.nome, cc.id
+            ORDER BY cp.nome ASC
+            """)
+    List<Object[]> findClientesEscritorioComProcessosUnidade();
 }

@@ -8,10 +8,17 @@ import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteWhatsAppEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaContatoEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
+import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteWhatsAppRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaContatoRepository;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
+import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoParteEntity;
+import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoParteRepository;
+import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
+import br.com.vilareal.processo.application.CodigoClienteUtil;
 import br.com.vilareal.whatsapp.WhatsAppApiException;
+import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.AgendarCobrancaResultDTO;
+import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.ClienteEscritorioCobrancaDTO;
 import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.CobrancaDTO;
 import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.CobrancaItemDTO;
 import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.CobrancaLoteResultDTO;
@@ -27,6 +34,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -54,6 +62,9 @@ public class CobrancaWhatsAppService {
     private final CobrancaWhatsAppRepository cobrancaRepository;
     private final ImovelRepository imovelRepository;
     private final PagamentoRepository pagamentoRepository;
+    private final ProcessoRepository processoRepository;
+    private final ProcessoParteRepository processoParteRepository;
+    private final ClienteRepository clienteRepository;
     private final ClienteWhatsAppRepository clienteWhatsAppRepository;
     private final PessoaContatoRepository pessoaContatoRepository;
     private final WhatsAppService whatsAppService;
@@ -63,6 +74,9 @@ public class CobrancaWhatsAppService {
             CobrancaWhatsAppRepository cobrancaRepository,
             ImovelRepository imovelRepository,
             PagamentoRepository pagamentoRepository,
+            ProcessoRepository processoRepository,
+            ProcessoParteRepository processoParteRepository,
+            ClienteRepository clienteRepository,
             ClienteWhatsAppRepository clienteWhatsAppRepository,
             PessoaContatoRepository pessoaContatoRepository,
             WhatsAppService whatsAppService,
@@ -70,6 +84,9 @@ public class CobrancaWhatsAppService {
         this.cobrancaRepository = cobrancaRepository;
         this.imovelRepository = imovelRepository;
         this.pagamentoRepository = pagamentoRepository;
+        this.processoRepository = processoRepository;
+        this.processoParteRepository = processoParteRepository;
+        this.clienteRepository = clienteRepository;
         this.clienteWhatsAppRepository = clienteWhatsAppRepository;
         this.pessoaContatoRepository = pessoaContatoRepository;
         this.whatsAppService = whatsAppService;
@@ -89,6 +106,97 @@ public class CobrancaWhatsAppService {
             out.add(new CondominioResumoDTO(seq++, nome, total));
         }
         return out;
+    }
+
+    public List<ClienteEscritorioCobrancaDTO> listarClientesEscritorioCobranca() {
+        List<ClienteEscritorioCobrancaDTO> out = new ArrayList<>();
+        for (Object[] row : processoRepository.findClientesEscritorioComProcessosUnidade()) {
+            String cod = row[0] != null ? row[0].toString().trim() : "";
+            String nome = row[1] != null ? row[1].toString().trim() : "";
+            long total = row[2] instanceof Number n ? n.longValue() : 0L;
+            if (!StringUtils.hasText(cod)) {
+                continue;
+            }
+            out.add(new ClienteEscritorioCobrancaDTO(cod, nome, total));
+        }
+        return out;
+    }
+
+    /**
+     * Unidades vinculadas a processos do cliente do escritório (ex.: condomínio 299), com réu e telefone.
+     * Não exige pendência financeira — template {@link #TEMPLATE_COBRANCA} não inclui valor.
+     */
+    public List<CobrancaPreviewDTO> buscarProcessosParaCobranca(String codigoClienteRaw) {
+        String cod8 = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(codigoClienteRaw);
+        List<ProcessoEntity> processos = processoRepository.findAtivosComUnidadeByClienteCodigo(cod8);
+        LocalDate hoje = LocalDate.now(ZONE_BRASILIA);
+        int ano = hoje.getYear();
+        int mes = hoje.getMonthValue();
+        String nomeEscritorio = processos.stream()
+                .map(ProcessoEntity::getCliente)
+                .filter(c -> c != null && c.getPessoa() != null && StringUtils.hasText(c.getPessoa().getNome()))
+                .map(c -> c.getPessoa().getNome().trim())
+                .findFirst()
+                .orElse("Condomínio");
+
+        List<CobrancaPreviewDTO> previews = new ArrayList<>();
+        for (ProcessoEntity processo : processos) {
+            List<ProcessoParteEntity> reus =
+                    processoParteRepository.findByProcesso_IdAndPoloReuOrderByOrdemAscIdAsc(processo.getId());
+            ProcessoParteEntity reuParte = escolherReuParaCobranca(reus);
+            if (reuParte == null) {
+                continue;
+            }
+            PessoaEntity pessoa = reuParte.getPessoa();
+            String pessoaNome = pessoa != null && StringUtils.hasText(pessoa.getNome())
+                    ? pessoa.getNome().trim()
+                    : StringUtils.hasText(reuParte.getNomeLivre()) ? reuParte.getNomeLivre().trim() : "Cliente";
+            Long pessoaId = pessoa != null ? pessoa.getId() : null;
+            Long devedorClienteId = pessoa != null
+                    ? clienteRepository.findByPessoa_IdOrderByCodigoClienteAsc(pessoa.getId()).stream()
+                            .findFirst()
+                            .map(ClienteEntity::getId)
+                            .orElse(null)
+                    : null;
+            String telefone = pessoa != null ? resolverTelefonePessoa(pessoa, devedorClienteId) : null;
+            boolean temTelefone = StringUtils.hasText(telefone);
+            String telefoneFormatado = temTelefone ? WhatsAppService.formatPhoneDisplay(telefone) : null;
+            String unidadeDescricao = montarUnidadeDescricao(processo.getUnidade());
+            BigDecimal valorPendente = BigDecimal.ZERO;
+            boolean jaCobrado = cobrancaRepository.existsCobrancaNoMesPorProcesso(processo.getId(), ano, mes);
+
+            previews.add(new CobrancaPreviewDTO(
+                    null,
+                    devedorClienteId,
+                    pessoaId,
+                    pessoaNome,
+                    telefone,
+                    telefoneFormatado,
+                    temTelefone,
+                    nomeEscritorio,
+                    unidadeDescricao,
+                    processo.getId(),
+                    valorPendente,
+                    MOEDA_BR.format(valorPendente),
+                    jaCobrado,
+                    "PROCESSO",
+                    processo.getNumeroInterno(),
+                    cod8,
+                    nomeEscritorio));
+        }
+        return previews;
+    }
+
+    private static ProcessoParteEntity escolherReuParaCobranca(List<ProcessoParteEntity> reus) {
+        if (reus == null || reus.isEmpty()) {
+            return null;
+        }
+        for (ProcessoParteEntity p : reus) {
+            if (p.getPessoa() != null && StringUtils.hasText(p.getPessoa().getNome())) {
+                return p;
+            }
+        }
+        return reus.getFirst();
     }
 
     public List<CobrancaPreviewDTO> buscarImoveisParaCobranca(String condominioNome, Long clienteId) {
@@ -142,7 +250,11 @@ public class CobrancaWhatsAppService {
                     processoId,
                     valorPendente,
                     MOEDA_BR.format(valorPendente),
-                    jaCobrado));
+                    jaCobrado,
+                    "IMOVEL",
+                    processo != null ? processo.getNumeroInterno() : null,
+                    null,
+                    null));
         }
         return previews;
     }
@@ -207,6 +319,112 @@ public class CobrancaWhatsAppService {
         }
 
         return new CobrancaLoteResultDTO(loteId, itens.size(), enviados, falhos, semTelefone, jaCobrados);
+    }
+
+    @Transactional
+    public AgendarCobrancaResultDTO agendarLote(
+            List<CobrancaItemDTO> itens, String loteDescricao, Instant scheduledAt, String createdBy) {
+        validarTemplateCobrancaAprovado();
+        if (itens == null || itens.isEmpty()) {
+            throw new IllegalArgumentException("Selecione ao menos uma unidade para cobrança.");
+        }
+        if (scheduledAt == null || !scheduledAt.isAfter(Instant.now())) {
+            throw new IllegalArgumentException("Informe data e hora de envio no futuro.");
+        }
+
+        String loteId = UUID.randomUUID().toString();
+        int agendados = 0;
+        int semTelefone = 0;
+
+        for (CobrancaItemDTO item : itens) {
+            if (item == null) {
+                continue;
+            }
+            if (!StringUtils.hasText(item.telefone())) {
+                semTelefone++;
+                salvarAgendamentoFalha(loteId, loteDescricao, item, createdBy, scheduledAt, "Sem telefone cadastrado", null);
+                continue;
+            }
+            CobrancaWhatsAppEntity cobranca = montarEntidade(loteId, loteDescricao, item, createdBy);
+            try {
+                cobranca.setPhoneNumber(WhatsAppService.formatPhoneNumber(item.telefone()));
+            } catch (Exception e) {
+                semTelefone++;
+                salvarAgendamentoFalha(
+                        loteId, loteDescricao, item, createdBy, scheduledAt, "Telefone inválido", item.telefone());
+                continue;
+            }
+            cobranca.setStatus("AGENDADO");
+            cobranca.setScheduledAt(scheduledAt);
+            cobrancaRepository.save(cobranca);
+            agendados++;
+        }
+
+        return new AgendarCobrancaResultDTO(loteId, itens.size(), agendados, semTelefone, scheduledAt);
+    }
+
+    @Transactional
+    public int cancelarLoteAgendado(String loteId) {
+        List<CobrancaWhatsAppEntity> rows = cobrancaRepository.findByLoteIdAndStatus(loteId, "AGENDADO");
+        int n = 0;
+        for (CobrancaWhatsAppEntity c : rows) {
+            c.setStatus("CANCELADO");
+            cobrancaRepository.save(c);
+            n++;
+        }
+        return n;
+    }
+
+    @Scheduled(fixedRate = 60_000)
+    public void processarCobrancasAgendadasTick() {
+        try {
+            processarCobrancasAgendadas();
+        } catch (Exception e) {
+            log.warn("Falha ao processar cobranças agendadas: {}", e.getMessage());
+        }
+    }
+
+    @Transactional
+    public void processarCobrancasAgendadas() {
+        List<CobrancaWhatsAppEntity> due =
+                cobrancaRepository.findByStatusAndScheduledAtLessThanEqualOrderByScheduledAtAsc(
+                        "AGENDADO", Instant.now());
+        if (due.isEmpty()) {
+            return;
+        }
+        validarTemplateCobrancaAprovado();
+        for (CobrancaWhatsAppEntity cobranca : due) {
+            enviarCobrancaAgendada(cobranca);
+        }
+    }
+
+    private void enviarCobrancaAgendada(CobrancaWhatsAppEntity cobranca) {
+        try {
+            String primeiroNome = extrairPrimeiroNome(cobranca.getPessoaNome());
+            WhatsAppSendResponse response = whatsAppService.sendTemplateMessage(
+                    cobranca.getPhoneNumber(),
+                    TEMPLATE_COBRANCA,
+                    "pt_BR",
+                    List.of(primeiroNome, cobranca.getUnidadeDescricao(), cobranca.getCondominioNome()));
+            cobranca.setStatus("ENVIADO");
+            cobranca.setWaMessageId(extractMessageId(response));
+            cobranca.setErrorMessage(null);
+            cobranca.setEnviadoAt(Instant.now());
+            cobrancaRepository.save(cobranca);
+        } catch (Exception e) {
+            cobranca.setStatus("FALHOU");
+            cobranca.setErrorMessage(
+                    e instanceof WhatsAppApiException wae
+                            ? wae.getMessage()
+                            : (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()));
+            cobrancaRepository.save(cobranca);
+            log.warn("Falha ao enviar cobrança agendada id={}: {}", cobranca.getId(), cobranca.getErrorMessage());
+        }
+        try {
+            Thread.sleep(DELAY_ENTRE_ENVIOS_MS);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     @Transactional
@@ -313,6 +531,30 @@ public class CobrancaWhatsAppService {
         cobrancaRepository.save(cobranca);
     }
 
+    private void salvarAgendamentoFalha(
+            String loteId,
+            String loteDescricao,
+            CobrancaItemDTO item,
+            String createdBy,
+            Instant scheduledAt,
+            String error,
+            String telefoneRaw) {
+        CobrancaWhatsAppEntity cobranca = montarEntidade(loteId, loteDescricao, item, createdBy);
+        cobranca.setScheduledAt(scheduledAt);
+        cobranca.setStatus("FALHOU");
+        cobranca.setErrorMessage(error);
+        if (StringUtils.hasText(telefoneRaw)) {
+            try {
+                cobranca.setPhoneNumber(WhatsAppService.formatPhoneNumber(telefoneRaw));
+            } catch (Exception e) {
+                cobranca.setPhoneNumber(telefoneRaw);
+            }
+        } else {
+            cobranca.setPhoneNumber("00000000000");
+        }
+        cobrancaRepository.save(cobranca);
+    }
+
     private CobrancaWhatsAppEntity montarEntidade(
             String loteId, String loteDescricao, CobrancaItemDTO item, String createdBy) {
         CobrancaWhatsAppEntity cobranca = new CobrancaWhatsAppEntity();
@@ -341,6 +583,40 @@ public class CobrancaWhatsAppService {
         PessoaEntity pessoa = cliente.getPessoa();
         if (pessoa == null) {
             return null;
+        }
+        List<PessoaContatoEntity> contatos = pessoaContatoRepository.findByPessoa_IdOrderByIdAsc(pessoa.getId());
+        for (PessoaContatoEntity c : contatos) {
+            if (c.getTipo() != null
+                    && "telefone".equalsIgnoreCase(c.getTipo().trim())
+                    && StringUtils.hasText(c.getValor())) {
+                return c.getValor().trim();
+            }
+        }
+        if (StringUtils.hasText(pessoa.getTelefone())) {
+            return pessoa.getTelefone().trim();
+        }
+        return null;
+    }
+
+    private String resolverTelefonePessoa(PessoaEntity pessoa, Long clienteIdHint) {
+        if (clienteIdHint != null) {
+            ClienteEntity cliente = clienteRepository.findById(clienteIdHint).orElse(null);
+            if (cliente != null) {
+                String tel = resolverTelefoneCliente(cliente);
+                if (StringUtils.hasText(tel)) {
+                    return tel;
+                }
+            }
+        }
+        if (pessoa == null) {
+            return null;
+        }
+        List<ClienteEntity> clientes = clienteRepository.findByPessoa_IdOrderByCodigoClienteAsc(pessoa.getId());
+        for (ClienteEntity c : clientes) {
+            String tel = resolverTelefoneCliente(c);
+            if (StringUtils.hasText(tel)) {
+                return tel;
+            }
         }
         List<PessoaContatoEntity> contatos = pessoaContatoRepository.findByPessoa_IdOrderByIdAsc(pessoa.getId());
         for (PessoaContatoEntity c : contatos) {

@@ -43,7 +43,7 @@ public interface CobrancaWhatsAppRepository extends JpaRepository<CobrancaWhatsA
                            COUNT(c.id) AS total,
                            SUM(CASE WHEN c.status IN ('ENVIADO', 'ENTREGUE', 'LIDO') THEN 1 ELSE 0 END) AS enviados,
                            SUM(CASE WHEN c.status = 'FALHOU' THEN 1 ELSE 0 END) AS falhos,
-                           SUM(CASE WHEN c.status = 'PENDENTE' THEN 1 ELSE 0 END) AS pendentes
+                           SUM(CASE WHEN c.status IN ('PENDENTE', 'AGENDADO') THEN 1 ELSE 0 END) AS pendentes
                     FROM whatsapp_cobrancas c
                     GROUP BY c.lote_id, c.lote_descricao, c.created_by
                     ORDER BY MIN(c.created_at) DESC
@@ -68,6 +68,20 @@ public interface CobrancaWhatsAppRepository extends JpaRepository<CobrancaWhatsA
     Optional<CobrancaWhatsAppEntity> findByWaMessageId(String waMessageId);
 
     List<CobrancaWhatsAppEntity> findByLoteIdAndStatus(String loteId, String status);
+
+    List<CobrancaWhatsAppEntity> findByStatusAndScheduledAtLessThanEqualOrderByScheduledAtAsc(
+            String status, Instant scheduledAt);
+
+    @Query(
+            """
+            SELECT COUNT(c) > 0 FROM CobrancaWhatsAppEntity c
+            WHERE c.processoId = :processoId
+              AND c.status <> 'CANCELADO'
+              AND YEAR(c.createdAt) = :ano
+              AND MONTH(c.createdAt) = :mes
+            """)
+    boolean existsCobrancaNoMesPorProcesso(
+            @Param("processoId") Long processoId, @Param("ano") int ano, @Param("mes") int mes);
 
     @Query(
             """

@@ -68,6 +68,10 @@ public class CobrancaWhatsAppEntity {
     @Column(name = "enviado_at")
     private Instant enviadoAt;
 
+    /** Horário programado para envio (lotes com status AGENDADO). */
+    @Column(name = "scheduled_at")
+    private Instant scheduledAt;
+
     @Column(name = "created_by", length = 100)
     private String createdBy;
 

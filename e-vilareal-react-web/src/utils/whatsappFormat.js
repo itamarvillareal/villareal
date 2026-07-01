@@ -61,6 +61,15 @@ export function isFutureDatetimeLocal(localValue) {
   return Number.isFinite(t) && t > Date.now();
 }
 
+/** Valor inicial para `datetime-local`: amanhã às HH:mm (horário local do navegador). */
+export function defaultDatetimeLocalTomorrowAt(hour = 8, minute = 0) {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  d.setHours(hour, minute, 0, 0);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export {
   formatarDataExtenso,
   templateLabel,

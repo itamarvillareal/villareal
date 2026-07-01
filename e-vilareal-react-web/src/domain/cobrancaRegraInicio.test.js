@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  descricaoRegraInicio,
   diasDesdeVencimento,
   labelRegraInicio,
   normalizarRegraInicioCobrancaDias,
@@ -49,6 +50,14 @@ describe('cobrancaRegraInicio', () => {
     expect(res.acionados).toBe(1);
     expect(res.descartados).toBe(2);
     expect(res.regraLabel).toBe('60+1 condicional');
+  });
+
+  it('descricaoRegraInicio', () => {
+    expect(descricaoRegraInicio(1)).toMatch(/1 dia ou mais/);
+    const cond = descricaoRegraInicio(61);
+    expect(Array.isArray(cond)).toBe(true);
+    expect(cond.join(' ')).toMatch(/débito cadastrado/);
+    expect(cond.join(' ')).toMatch(/61 dias/);
   });
 
   it('diasDesdeVencimento futuro retorna null', () => {

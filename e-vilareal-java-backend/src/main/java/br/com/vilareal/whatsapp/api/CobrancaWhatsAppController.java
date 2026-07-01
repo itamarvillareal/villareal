@@ -1,5 +1,8 @@
 package br.com.vilareal.whatsapp.api;
 
+import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.AgendarCobrancaRequest;
+import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.AgendarCobrancaResultDTO;
+import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.ClienteEscritorioCobrancaDTO;
 import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.CobrancaDTO;
 import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.CobrancaItemDTO;
 import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.CobrancaLoteResultDTO;
@@ -18,6 +21,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -46,12 +50,23 @@ public class CobrancaWhatsAppController {
         return ResponseEntity.ok(cobrancaWhatsAppService.listarCondominios());
     }
 
+    @GetMapping("/clientes-escritorio")
+    @Operation(summary = "Clientes do escritório com processos/unidades para cobrança")
+    public ResponseEntity<List<ClienteEscritorioCobrancaDTO>> clientesEscritorio() {
+        return ResponseEntity.ok(cobrancaWhatsAppService.listarClientesEscritorioCobranca());
+    }
+
     @GetMapping("/preview")
-    @Operation(summary = "Preview de unidades com pendência para cobrança")
+    @Operation(summary = "Preview de unidades para cobrança")
     public ResponseEntity<List<CobrancaPreviewDTO>> preview(
             @RequestParam(required = false) String condominio,
             @RequestParam(required = false) Long condominioId,
-            @RequestParam(required = false) Long clienteId) {
+            @RequestParam(required = false) Long clienteId,
+            @RequestParam(required = false) String clienteEscritorioCodigo) {
+        if (StringUtils.hasText(clienteEscritorioCodigo)) {
+            return ResponseEntity.ok(
+                    cobrancaWhatsAppService.buscarProcessosParaCobranca(clienteEscritorioCodigo.trim()));
+        }
         String condominioNome = resolverCondominioNome(condominio, condominioId);
         return ResponseEntity.ok(cobrancaWhatsAppService.buscarImoveisParaCobranca(condominioNome, clienteId));
     }
@@ -63,6 +78,22 @@ public class CobrancaWhatsAppController {
         CobrancaLoteResultDTO result = cobrancaWhatsAppService.dispararLote(
                 request.itens(), request.loteDescricao(), createdBy);
         return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/agendar")
+    @Operation(summary = "Agendar cobranças em lote para data/hora futura")
+    public ResponseEntity<AgendarCobrancaResultDTO> agendar(@Valid @RequestBody AgendarCobrancaRequest request) {
+        String createdBy = currentUsername();
+        AgendarCobrancaResultDTO result = cobrancaWhatsAppService.agendarLote(
+                request.itens(), request.loteDescricao(), request.scheduledAt(), createdBy);
+        return ResponseEntity.ok(result);
+    }
+
+    @DeleteMapping("/agendar/{loteId}")
+    @Operation(summary = "Cancelar lote de cobranças ainda agendadas")
+    public ResponseEntity<Map<String, Integer>> cancelarAgendado(@PathVariable String loteId) {
+        int cancelados = cobrancaWhatsAppService.cancelarLoteAgendado(loteId);
+        return ResponseEntity.ok(Map.of("cancelados", cancelados));
     }
 
     @GetMapping("/lotes")

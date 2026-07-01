@@ -110,11 +110,16 @@ export async function getCondominiosCobranca(signal) {
   return request('/api/whatsapp/cobrancas/condominios', { signal });
 }
 
-export async function getCobrancaPreview({ condominioId, condominio, clienteId } = {}, signal) {
+export async function getClientesEscritorioCobranca(signal) {
+  return request('/api/whatsapp/cobrancas/clientes-escritorio', { signal });
+}
+
+export async function getCobrancaPreview({ condominioId, condominio, clienteId, clienteEscritorioCodigo } = {}, signal) {
   const query = {};
   if (condominioId != null) query.condominioId = condominioId;
   if (condominio) query.condominio = condominio;
   if (clienteId != null) query.clienteId = clienteId;
+  if (clienteEscritorioCodigo) query.clienteEscritorioCodigo = clienteEscritorioCodigo;
   return request('/api/whatsapp/cobrancas/preview', { query, signal });
 }
 
@@ -123,6 +128,17 @@ export async function dispararCobrancas(itens, loteDescricao) {
     method: 'POST',
     body: { itens, loteDescricao },
   });
+}
+
+export async function agendarCobrancas(itens, loteDescricao, scheduledAt) {
+  return request('/api/whatsapp/cobrancas/agendar', {
+    method: 'POST',
+    body: { itens, loteDescricao, scheduledAt },
+  });
+}
+
+export async function cancelarCobrancasAgendadas(loteId) {
+  return request(`/api/whatsapp/cobrancas/agendar/${encodeURIComponent(loteId)}`, { method: 'DELETE' });
 }
 
 export async function getCobrancaLotes(page = 0, size = 20, signal) {

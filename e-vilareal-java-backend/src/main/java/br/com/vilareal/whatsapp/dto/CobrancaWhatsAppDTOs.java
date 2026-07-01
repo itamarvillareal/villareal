@@ -21,7 +21,11 @@ public final class CobrancaWhatsAppDTOs {
             Long processoId,
             BigDecimal valorPendente,
             String valorPendenteFormatado,
-            boolean jaCobradoEsteMes) {}
+            boolean jaCobradoEsteMes,
+            String origem,
+            Integer processoNumeroInterno,
+            String clienteEscritorioCodigo,
+            String clienteEscritorioNome) {}
 
     public record CobrancaItemDTO(
             Long imovelId,
@@ -36,8 +40,17 @@ public final class CobrancaWhatsAppDTOs {
 
     public record DispararCobrancaRequest(List<CobrancaItemDTO> itens, String loteDescricao) {}
 
+    public record AgendarCobrancaRequest(List<CobrancaItemDTO> itens, String loteDescricao, Instant scheduledAt) {}
+
     public record CobrancaLoteResultDTO(
             String loteId, int total, int enviados, int falhos, int semTelefone, int jaCobrados) {}
+
+    public record AgendarCobrancaResultDTO(
+            String loteId,
+            int total,
+            int agendados,
+            int semTelefone,
+            Instant scheduledAt) {}
 
     public record CobrancaLoteResumoDTO(
             String loteId,
@@ -66,4 +79,6 @@ public final class CobrancaWhatsAppDTOs {
             long enviadasEsteMes, long entreguesEsteMes, BigDecimal valorTotalCobradoMes, double taxaEntrega) {}
 
     public record CondominioResumoDTO(Long id, String nome, long totalUnidades) {}
+
+    public record ClienteEscritorioCobrancaDTO(String codigoCliente, String nome, long totalUnidades) {}
 }

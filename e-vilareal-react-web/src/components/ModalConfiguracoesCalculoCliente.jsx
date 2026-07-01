@@ -7,7 +7,7 @@ import {
   refreshConfigCalculoClienteFromApi,
   normalizarHonorariosValorFixo,
 } from '../data/clienteConfigCalculoStorage.js';
-import { normalizarRegraInicioCobrancaDias } from '../domain/cobrancaRegraInicio.js';
+import { normalizarRegraInicioCobrancaDias, descricaoRegraInicio } from '../domain/cobrancaRegraInicio.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { INDICES_CALCULO, PERIODICIDADE_OPCOES, MODELOS_LISTA_DEBITOS } from '../data/calculosIndices.js';
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
@@ -49,10 +49,6 @@ const REGRA_INICIO_OPCOES = [
     label: '60+1 dias (condicional)',
   },
 ];
-
-const REGRA_INICIO_TOOLTIP =
-  'Condicional: se a unidade já tem débito cadastrado com mais de 60 dias, importa todas as taxas da planilha; ' +
-  'caso contrário, só importa quando alguma taxa tiver mais de 60 dias de atraso.';
 
 /**
  * Modal "Configurações Personalizadas do Cliente" — padrões de cálculo por código de cliente.
@@ -113,6 +109,7 @@ export function ModalConfiguracoesCalculoCliente({
   if (!open) return null;
 
   const codPad = padCliente8Config(codigoCliente);
+  const textoRegraInicio = descricaoRegraInicio(regraInicioCobrancaDias);
 
   async function salvar() {
     if (inputsDesabilitados) return;
@@ -303,7 +300,6 @@ export function ModalConfiguracoesCalculoCliente({
                               ? 'bg-sky-50/80'
                               : ''
                           }`}
-                          title={REGRA_INICIO_TOOLTIP}
                         >
                           <input
                             type="radio"
@@ -316,6 +312,27 @@ export function ModalConfiguracoesCalculoCliente({
                           {op.label}
                         </label>
                       ))}
+                    </div>
+                    <div
+                      className={`mt-1.5 rounded-md border px-2 py-1.5 text-[10px] leading-snug ${
+                        regraInicioCobrancaDias === 61
+                          ? 'border-sky-200 bg-sky-50/90 text-sky-950'
+                          : 'border-slate-200 bg-white/80 text-slate-600'
+                      }`}
+                      role="note"
+                      aria-live="polite"
+                    >
+                      {Array.isArray(textoRegraInicio) ? (
+                        <ul className="list-disc space-y-1 pl-3.5">
+                          {textoRegraInicio.map((linha, i) => (
+                            <li key={i} className={i === 0 ? 'list-none -ml-3.5 font-medium' : ''}>
+                              {linha}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        textoRegraInicio
+                      )}
                     </div>
                   </fieldset>
                 </div>

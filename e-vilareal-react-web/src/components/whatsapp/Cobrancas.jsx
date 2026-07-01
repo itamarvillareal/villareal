@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Banknote, ChevronDown, ChevronUp, Loader2, RefreshCw, Rocket, Search } from 'lucide-react';
+import { Banknote, CalendarClock, ChevronDown, ChevronUp, Loader2, RefreshCw, Rocket, Search } from 'lucide-react';
 import { useWhatsAppToast } from './WhatsAppToast.jsx';
 import {
+  agendarCobrancas,
+  cancelarCobrancasAgendadas,
   dispararCobrancas,
+  getClientesEscritorioCobranca,
   getCobrancaLoteDetalhes,
   getCobrancaLotes,
   getCobrancaPreview,
@@ -10,31 +13,52 @@ import {
   getCondominiosCobranca,
   reenviarCobrancasFalhas,
 } from '../../repositories/whatsappRepository.js';
+import {
+  datetimeLocalToIso,
+  defaultDatetimeLocalTomorrowAt,
+  formatDateTimeBR,
+  isFutureDatetimeLocal,
+} from '../../utils/whatsappFormat.js';
 import { processosBtnPrimary, processosBtnSecondary, processosInputClass } from '../processos/ProcessosAdminLayout.jsx';
 
 const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+const TEMPLATE_COBRANCA = 'cobranca_pagamento';
 
 function statusBadgeClass(status) {
   const s = String(status ?? '').toUpperCase();
   if (s === 'ENTREGUE' || s === 'LIDO') return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200';
   if (s === 'ENVIADO') return 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200';
+  if (s === 'AGENDADO') return 'bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-200';
   if (s === 'FALHOU') return 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200';
+  if (s === 'CANCELADO') return 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400';
   return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300';
 }
 
 function itemKey(item) {
+  if (item.processoId != null) return `proc-${item.processoId}`;
   return String(item.imovelId ?? item.pessoaId ?? item.telefone);
+}
+
+function formatCodigoCliente(cod) {
+  const n = Number(String(cod ?? '').replace(/\D/g, ''));
+  if (!Number.isFinite(n) || n < 1) return String(cod ?? '');
+  return String(n);
 }
 
 export function WhatsAppCobrancas() {
   const toast = useWhatsAppToast();
   const [tab, setTab] = useState('nova');
   const [step, setStep] = useState(1);
+  const [modoOrigem, setModoOrigem] = useState('cliente');
   const [condominios, setCondominios] = useState([]);
+  const [clientesEscritorio, setClientesEscritorio] = useState([]);
   const [condominioId, setCondominioId] = useState('');
+  const [clienteEscritorioCodigo, setClienteEscritorioCodigo] = useState('');
   const [preview, setPreview] = useState([]);
   const [selected, setSelected] = useState(() => new Set());
   const [loteDescricao, setLoteDescricao] = useState('');
+  const [modoEnvio, setModoEnvio] = useState('agendar');
+  const [scheduledAtLocal, setScheduledAtLocal] = useState(() => defaultDatetimeLocalTomorrowAt(8, 0));
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [disparando, setDisparando] = useState(false);
   const [resultado, setResultado] = useState(null);
@@ -51,6 +75,21 @@ export function WhatsAppCobrancas() {
     () => condominios.find((c) => String(c.id) === String(condominioId)),
     [condominios, condominioId],
   );
+
+  const clienteEscritorioSelecionado = useMemo(
+    () => clientesEscritorio.find((c) => String(c.codigoCliente) === String(clienteEscritorioCodigo)),
+    [clientesEscritorio, clienteEscritorioCodigo],
+  );
+
+  const tituloOrigem = useMemo(() => {
+    if (modoOrigem === 'cliente' && clienteEscritorioSelecionado) {
+      return `${formatCodigoCliente(clienteEscritorioSelecionado.codigoCliente)} — ${clienteEscritorioSelecionado.nome}`;
+    }
+    if (modoOrigem === 'condominio' && condominioSelecionado) {
+      return condominioSelecionado.nome;
+    }
+    return 'Cobrança';
+  }, [modoOrigem, clienteEscritorioSelecionado, condominioSelecionado]);
 
   const selectedItems = useMemo(
     () => preview.filter((p) => selected.has(itemKey(p))),
@@ -92,6 +131,14 @@ export function WhatsAppCobrancas() {
     void getCondominiosCobranca()
       .then((rows) => setCondominios(Array.isArray(rows) ? rows : []))
       .catch(() => setCondominios([]));
+    void getClientesEscritorioCobranca()
+      .then((rows) => {
+        const list = Array.isArray(rows) ? rows : [];
+        setClientesEscritorio(list);
+        const piloto = list.find((c) => formatCodigoCliente(c.codigoCliente) === '299');
+        if (piloto) setClienteEscritorioCodigo(piloto.codigoCliente);
+      })
+      .catch(() => setClientesEscritorio([]));
     void loadStats();
   }, [loadStats]);
 
@@ -99,14 +146,34 @@ export function WhatsAppCobrancas() {
     if (tab === 'historico') void loadLotes(0, false);
   }, [tab, loadLotes]);
 
+  const montarItensPayload = () =>
+    selectedItems.map((p) => ({
+      imovelId: p.imovelId ?? null,
+      clienteId: p.clienteId ?? null,
+      pessoaId: p.pessoaId,
+      pessoaNome: p.pessoaNome,
+      telefone: p.telefone,
+      condominioNome: p.condominioNome,
+      unidadeDescricao: p.unidadeDescricao,
+      processoId: p.processoId,
+      valorPendente: p.valorPendente ?? 0,
+    }));
+
   const buscarPreview = async () => {
-    if (!condominioId) {
+    if (modoOrigem === 'condominio' && !condominioId) {
       toast.error('Selecione um condomínio.');
+      return;
+    }
+    if (modoOrigem === 'cliente' && !clienteEscritorioCodigo) {
+      toast.error('Selecione o cliente do escritório.');
       return;
     }
     setLoadingPreview(true);
     try {
-      const rows = await getCobrancaPreview({ condominioId: Number(condominioId) });
+      const rows =
+        modoOrigem === 'cliente'
+          ? await getCobrancaPreview({ clienteEscritorioCodigo })
+          : await getCobrancaPreview({ condominioId: Number(condominioId) });
       const list = Array.isArray(rows) ? rows : [];
       setPreview(list);
       const auto = new Set();
@@ -115,7 +182,7 @@ export function WhatsAppCobrancas() {
       }
       setSelected(auto);
       const now = new Date();
-      const mesAno = `${condominioSelecionado?.nome ?? 'Condomínio'} - ${MESES[now.getMonth()]}/${now.getFullYear()}`;
+      const mesAno = `${tituloOrigem} - ${MESES[now.getMonth()]}/${now.getFullYear()}`;
       setLoteDescricao(`Cobrança ${mesAno}`);
       setStep(2);
     } catch (err) {
@@ -136,31 +203,34 @@ export function WhatsAppCobrancas() {
     });
   };
 
-  const disparar = async () => {
+  const executarEnvio = async () => {
     if (selectedItems.length === 0) {
       toast.error('Selecione ao menos uma unidade.');
+      return;
+    }
+    if (modoEnvio === 'agendar' && !isFutureDatetimeLocal(scheduledAtLocal)) {
+      toast.error('Informe data e hora no futuro para o agendamento.');
       return;
     }
     setDisparando(true);
     setStep(3);
     try {
-      const itens = selectedItems.map((p) => ({
-        imovelId: p.imovelId,
-        clienteId: p.clienteId,
-        pessoaId: p.pessoaId,
-        pessoaNome: p.pessoaNome,
-        telefone: p.telefone,
-        condominioNome: p.condominioNome,
-        unidadeDescricao: p.unidadeDescricao,
-        processoId: p.processoId,
-        valorPendente: p.valorPendente,
-      }));
-      const res = await dispararCobrancas(itens, loteDescricao);
-      setResultado(res);
-      toast.success(`Lote enviado: ${res?.enviados ?? 0} ok, ${res?.falhos ?? 0} falhas.`);
+      const itens = montarItensPayload();
+      if (modoEnvio === 'agendar') {
+        const scheduledAt = datetimeLocalToIso(scheduledAtLocal);
+        const res = await agendarCobrancas(itens, loteDescricao, scheduledAt);
+        setResultado({ ...res, tipo: 'agendado' });
+        toast.success(
+          `${res?.agendados ?? 0} cobrança(s) agendadas para ${formatDateTimeBR(res?.scheduledAt)}.`,
+        );
+      } else {
+        const res = await dispararCobrancas(itens, loteDescricao);
+        setResultado({ ...res, tipo: 'imediato' });
+        toast.success(`Lote enviado: ${res?.enviados ?? 0} ok, ${res?.falhos ?? 0} falhas.`);
+      }
       void loadStats();
     } catch (err) {
-      toast.error(err?.message || 'Erro ao disparar cobranças.');
+      toast.error(err?.message || 'Erro ao processar cobranças.');
       setStep(2);
     } finally {
       setDisparando(false);
@@ -196,6 +266,20 @@ export function WhatsAppCobrancas() {
     }
   };
 
+  const handleCancelarAgendado = async (loteId) => {
+    if (!window.confirm('Cancelar todas as cobranças ainda agendadas deste lote?')) return;
+    try {
+      const res = await cancelarCobrancasAgendadas(loteId);
+      toast.success(`${res?.cancelados ?? 0} agendamento(s) cancelado(s).`);
+      if (expandedLote === loteId) void expandirLote(loteId);
+      void loadLotes(lotesPage, false);
+    } catch (err) {
+      toast.error(err?.message || 'Erro ao cancelar agendamento.');
+    }
+  };
+
+  const loteTemAgendados = (lote) => Number(lote?.pendentes ?? 0) > 0;
+
   return (
     <div className="max-w-5xl mx-auto space-y-4">
       <div className="flex flex-wrap gap-2">
@@ -224,20 +308,65 @@ export function WhatsAppCobrancas() {
                 <Banknote className="h-5 w-5 text-emerald-600" />
                 Nova Cobrança em Lote
               </h2>
-              <label className="block text-sm">
-                <span className="text-slate-600 dark:text-slate-400">Condomínio</span>
-                <select className={`${processosInputClass} mt-1 w-full`} value={condominioId} onChange={(e) => setCondominioId(e.target.value)}>
-                  <option value="">Selecione…</option>
-                  {condominios.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nome} ({c.totalUnidades} un.)
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <p className="text-xs text-slate-500">
+                Template: <strong className="text-slate-700">{TEMPLATE_COBRANCA}</strong> (nome, unidade, condomínio)
+              </p>
+
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium text-slate-700 dark:text-slate-300">Origem das unidades</legend>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="radio"
+                    name="origem-cobranca"
+                    checked={modoOrigem === 'cliente'}
+                    onChange={() => setModoOrigem('cliente')}
+                  />
+                  Cliente do escritório (processos com unidade)
+                </label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="radio"
+                    name="origem-cobranca"
+                    checked={modoOrigem === 'condominio'}
+                    onChange={() => setModoOrigem('condominio')}
+                  />
+                  Condomínio (imóveis com pendência financeira)
+                </label>
+              </fieldset>
+
+              {modoOrigem === 'cliente' ? (
+                <label className="block text-sm">
+                  <span className="text-slate-600 dark:text-slate-400">Cliente</span>
+                  <select
+                    className={`${processosInputClass} mt-1 w-full`}
+                    value={clienteEscritorioCodigo}
+                    onChange={(e) => setClienteEscritorioCodigo(e.target.value)}
+                  >
+                    <option value="">Selecione…</option>
+                    {clientesEscritorio.map((c) => (
+                      <option key={c.codigoCliente} value={c.codigoCliente}>
+                        {formatCodigoCliente(c.codigoCliente)} — {c.nome} ({c.totalUnidades} un.)
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <label className="block text-sm">
+                  <span className="text-slate-600 dark:text-slate-400">Condomínio</span>
+                  <select className={`${processosInputClass} mt-1 w-full`} value={condominioId} onChange={(e) => setCondominioId(e.target.value)}>
+                    <option value="">Selecione…</option>
+                    {condominios.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nome} ({c.totalUnidades} un.)
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
               <button type="button" className={processosBtnPrimary} disabled={loadingPreview} onClick={() => void buscarPreview()}>
                 {loadingPreview ? <Loader2 className="h-4 w-4 animate-spin inline mr-2" /> : <Search className="h-4 w-4 inline mr-2" />}
-                Buscar unidades com pendência
+                Buscar unidades
               </button>
             </div>
           ) : null}
@@ -246,7 +375,7 @@ export function WhatsAppCobrancas() {
             <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden">
               <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <h3 className="font-semibold">{condominioSelecionado?.nome} — {preview.length} unidade(s)</h3>
+                  <h3 className="font-semibold">{tituloOrigem} — {preview.length} unidade(s)</h3>
                   <button type="button" className="text-xs text-emerald-700 dark:text-emerald-400 mt-1" onClick={toggleAllComTelefone}>
                     Selecionar todas com telefone
                   </button>
@@ -260,9 +389,9 @@ export function WhatsAppCobrancas() {
                   <thead className="bg-slate-50 dark:bg-slate-800/60 text-left text-xs uppercase text-slate-500">
                     <tr>
                       <th className="p-2 w-8" />
-                      <th className="p-2">Cliente</th>
+                      <th className="p-2">Cliente / Réu</th>
                       <th className="p-2">Unidade</th>
-                      <th className="p-2">Valor</th>
+                      <th className="p-2">Proc.</th>
                       <th className="p-2">Telefone</th>
                     </tr>
                   </thead>
@@ -289,7 +418,7 @@ export function WhatsAppCobrancas() {
                           </td>
                           <td className="p-2">{p.pessoaNome}</td>
                           <td className="p-2">{p.unidadeDescricao}</td>
-                          <td className="p-2">{p.valorPendenteFormatado}</td>
+                          <td className="p-2 tabular-nums">{p.processoNumeroInterno ?? '—'}</td>
                           <td className="p-2">
                             {!p.temTelefone ? <span className="text-amber-600 text-xs">Sem tel</span> : null}
                             {p.jaCobradoEsteMes ? <span className="text-slate-500 text-xs ml-1">Já cobrado</span> : null}
@@ -303,17 +432,53 @@ export function WhatsAppCobrancas() {
               </div>
               <div className="p-4 border-t border-slate-200 dark:border-slate-700 space-y-3">
                 <p className="text-xs text-slate-500">
-                  Selecionados: {selectedItems.length} · Sem tel: {semTelefoneCount} · Já cobrados: {jaCobradosCount} · Total:{' '}
-                  {valorTotalSelecionado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  Selecionados: {selectedItems.length} · Sem tel: {semTelefoneCount} · Já cobrados: {jaCobradosCount}
+                  {modoOrigem === 'condominio' ? (
+                    <>
+                      {' '}
+                      · Total: {valorTotalSelecionado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </>
+                  ) : null}
                 </p>
                 <input className={`${processosInputClass} w-full`} value={loteDescricao} onChange={(e) => setLoteDescricao(e.target.value)} placeholder="Descrição do lote" />
+
+                <fieldset className="rounded-lg border border-slate-200 dark:border-slate-700 p-3 space-y-2">
+                  <legend className="text-xs font-semibold text-slate-600 px-1">Quando enviar</legend>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="radio" name="modo-envio" checked={modoEnvio === 'agendar'} onChange={() => setModoEnvio('agendar')} />
+                    Agendar envio
+                  </label>
+                  {modoEnvio === 'agendar' ? (
+                    <input
+                      type="datetime-local"
+                      className={`${processosInputClass} w-full max-w-xs`}
+                      value={scheduledAtLocal}
+                      onChange={(e) => setScheduledAtLocal(e.target.value)}
+                    />
+                  ) : null}
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="radio" name="modo-envio" checked={modoEnvio === 'agora'} onChange={() => setModoEnvio('agora')} />
+                    Disparar agora
+                  </label>
+                </fieldset>
+
                 {step === 2 ? (
-                  <button type="button" className={processosBtnPrimary} disabled={disparando} onClick={() => void disparar()}>
-                    <Rocket className="h-4 w-4 inline mr-2" />
-                    Disparar cobranças
+                  <button type="button" className={processosBtnPrimary} disabled={disparando} onClick={() => void executarEnvio()}>
+                    {modoEnvio === 'agendar' ? (
+                      <CalendarClock className="h-4 w-4 inline mr-2" />
+                    ) : (
+                      <Rocket className="h-4 w-4 inline mr-2" />
+                    )}
+                    {modoEnvio === 'agendar' ? 'Agendar cobranças' : 'Disparar cobranças'}
                   </button>
                 ) : null}
               </div>
+            </div>
+          ) : null}
+
+          {step === 2 && preview.length === 0 && !loadingPreview ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+              Nenhuma unidade encontrada para os critérios selecionados.
             </div>
           ) : null}
 
@@ -321,20 +486,39 @@ export function WhatsAppCobrancas() {
             <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 space-y-3">
               {disparando ? (
                 <p className="flex items-center gap-2 text-sm">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Disparando cobranças…
+                  <Loader2 className="h-4 w-4 animate-spin" /> Processando…
                 </p>
               ) : resultado ? (
                 <>
-                  <p className="text-sm">
-                    ✅ Enviados: <strong>{resultado.enviados}</strong> · ❌ Falhos: <strong>{resultado.falhos}</strong>
-                  </p>
+                  {resultado.tipo === 'agendado' ? (
+                    <p className="text-sm">
+                      📅 <strong>{resultado.agendados}</strong> mensagem(ns) agendada(s) para{' '}
+                      <strong>{formatDateTimeBR(resultado.scheduledAt)}</strong>
+                      {resultado.semTelefone > 0 ? (
+                        <span className="text-amber-700"> · {resultado.semTelefone} sem telefone</span>
+                      ) : null}
+                    </p>
+                  ) : (
+                    <p className="text-sm">
+                      ✅ Enviados: <strong>{resultado.enviados}</strong> · ❌ Falhos: <strong>{resultado.falhos}</strong>
+                    </p>
+                  )}
                   <div className="flex flex-wrap gap-2">
-                    {resultado.falhos > 0 ? (
+                    {resultado.tipo === 'imediato' && resultado.falhos > 0 ? (
                       <button type="button" className={processosBtnSecondary} onClick={() => void handleReenviar(resultado.loteId)}>
                         <RefreshCw className="h-4 w-4 inline mr-1" /> Reenviar falhos
                       </button>
                     ) : null}
-                    <button type="button" className={processosBtnPrimary} onClick={() => { setTab('historico'); setStep(1); }}>
+                    <button
+                      type="button"
+                      className={processosBtnPrimary}
+                      onClick={() => {
+                        setTab('historico');
+                        setStep(1);
+                        setPreview([]);
+                        setResultado(null);
+                      }}
+                    >
                       Ver histórico
                     </button>
                   </div>
@@ -352,9 +536,15 @@ export function WhatsAppCobrancas() {
                   <p className="font-semibold">{lote.loteDescricao || lote.loteId}</p>
                   <p className="text-xs text-slate-500 mt-1">
                     Total: {lote.total} · ✅ {lote.enviados} · ❌ {lote.falhos} · ⏳ {lote.pendentes}
+                    {loteTemAgendados(lote) ? <span className="text-violet-700 ml-1">(incl. agendados)</span> : null}
                   </p>
                 </div>
                 <div className="flex gap-2">
+                  {loteTemAgendados(lote) ? (
+                    <button type="button" className={processosBtnSecondary} onClick={() => void handleCancelarAgendado(lote.loteId)}>
+                      Cancelar agendados
+                    </button>
+                  ) : null}
                   {lote.falhos > 0 ? (
                     <button type="button" className={processosBtnSecondary} onClick={() => void handleReenviar(lote.loteId)}>
                       Reenviar falhos
@@ -376,7 +566,6 @@ export function WhatsAppCobrancas() {
                           <th className="p-1">Nome</th>
                           <th className="p-1">Unidade</th>
                           <th className="p-1">Telefone</th>
-                          <th className="p-1">Valor</th>
                           <th className="p-1">Status</th>
                         </tr>
                       </thead>
@@ -386,7 +575,6 @@ export function WhatsAppCobrancas() {
                             <td className="p-1">{d.pessoaNome}</td>
                             <td className="p-1">{d.unidadeDescricao}</td>
                             <td className="p-1">{d.phoneNumber}</td>
-                            <td className="p-1">{Number(d.valorPendente ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                             <td className="p-1">
                               <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${statusBadgeClass(d.status)}`}>{d.status}</span>
                             </td>
