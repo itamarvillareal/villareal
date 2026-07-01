@@ -612,10 +612,11 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     processosFetchAbortRef.current = ac;
 
     const myId = ++processosApiReqIdRef.current;
-    const mesmoCliente = processosGradeCodigoRef.current === padded;
+    const codigoGradeAnterior = processosGradeCodigoRef.current;
     processosGradeCodigoRef.current = padded;
     setErroApiProcessosGrade('');
-    if (!mesmoCliente) {
+    // Só limpa a grade ao trocar de cliente — evita piscar entre «Carregando…» e dados já hidratados.
+    if (codigoGradeAnterior && codigoGradeAnterior !== padded) {
       setProcessos([]);
     }
     setProcessosGradeCarregando(true);
@@ -1099,8 +1100,23 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
       const padded = padCliente8(codigoRef.current);
       setProcessos((prev) => alinharListaProcessosDescricaoComHistorico(padded, prev));
     };
-    const recarregarClienteExterno = () =>
-      aplicarDadosClienteRef.current(padCliente8(codigoRef.current));
+    /** Atualização externa (outra aba): não chama `aplicarDadosCliente` — resetava PK/mensalista e re-disparava GET processos em loop. */
+    const recarregarClienteExterno = () => {
+      const padded = padCliente8(codigoRef.current);
+      const fromList = (clientesApiIndexRef.current || []).find((c) => c.codigo === padded);
+      if (fromList) {
+        pularSincPorCargaClienteRef.current = true;
+        setNomeRazao(corrigirNomePessoaExibicao(fromList.nomeRazao ?? ''));
+        setCnpjCpf(fromList.cnpjCpf ?? '');
+        setPessoa(fromList.pessoa ?? '');
+        setObservacao(fromList.observacao ?? '');
+        setClienteInativo(fromList.clienteInativo ?? false);
+        if (fromList.clienteId != null && Number.isFinite(Number(fromList.clienteId))) {
+          setClientePkResolvido(Number(fromList.clienteId));
+        }
+      }
+      refreshProcessosGrade(padded, persistSnapshotRef.current?.processos ?? []);
+    };
     window.addEventListener('vilareal:cadastro-clientes-externo-atualizado', recarregarClienteExterno);
     window.addEventListener('vilareal:processos-historico-atualizado', realinharGradeComHistoricoLocal);
     return () => {
@@ -1422,10 +1438,11 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     [processos, pesquisaProcesso]
   );
 
-  /** Oculta cache/local incompleto enquanto GET /api/processos está em andamento. */
+  /** Só esconde a grade na carga inicial; recarregar o mesmo cliente mantém os dados visíveis. */
+  const processosGradeLoadingInicial = processosGradeCarregando && processos.length === 0;
   const processosGradeVisiveis = useMemo(
-    () => (processosGradeCarregando ? [] : processosFiltrados),
-    [processosGradeCarregando, processosFiltrados]
+    () => (processosGradeLoadingInicial ? [] : processosFiltrados),
+    [processosGradeLoadingInicial, processosFiltrados]
   );
 
   const totalPaginasProcessos = useMemo(() => {
@@ -2473,7 +2490,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
             <div className="border-b border-sky-200/70 bg-gradient-to-r from-sky-600 via-cyan-600 to-indigo-600 px-4 py-2.5">
               <p className="text-sm font-bold uppercase tracking-wide text-white">Processos do cliente</p>
               <p className="text-xs text-sky-100/95 mt-0.5">
-                {processosGradeCarregando
+                {processosGradeLoadingInicial
                   ? 'Carregando processos…'
                   : processos.length === 0
                     ? 'Nenhum processo cadastrado para este cliente — use Incluir processo abaixo'
@@ -2556,7 +2573,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
               </button>
             </div>
             <div className="mb-3 space-y-2 md:hidden">
-              {processosGradeCarregando ? (
+              {processosGradeLoadingInicial ? (
                 <p className="rounded-xl border border-slate-200 bg-white px-3 py-6 text-center text-sm text-slate-500 shadow-sm">
                   A carregar processos…
                 </p>
@@ -2622,14 +2639,14 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                   </tr>
                 </thead>
                 <tbody>
-                  {processosGradeCarregando ? (
+                  {processosGradeLoadingInicial ? (
                     <tr>
                       <td colSpan={6} className="border border-slate-200 px-3 py-6 text-center text-slate-500">
                         A carregar processos…
                       </td>
                     </tr>
                   ) : null}
-                  {!processosGradeCarregando
+                  {!processosGradeLoadingInicial
                     ? processosPagina.map((proc, idx) => {
                     const parteClienteTxt = textoParteClienteGrade(proc);
                     const procLabelNum =
@@ -2714,8 +2731,10 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
               <p className="text-sm text-slate-600">
                 Página <span className="font-semibold text-slate-800">{paginaProcessos}</span> de{' '}
                 <span className="font-semibold text-slate-800">{totalPaginasProcessos}</span>
-                {processosGradeCarregando ? (
+                {processosGradeLoadingInicial ? (
                   <span className="text-slate-500"> — carregando…</span>
+                ) : processosGradeCarregando ? (
+                  <span className="text-slate-500"> — a atualizar…</span>
                 ) : processosGradeVisiveis.length > 0 ? (
                   <span className="text-slate-500"> — {processosGradeVisiveis.length} processo(s)</span>
                 ) : (
