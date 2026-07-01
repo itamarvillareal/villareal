@@ -19,6 +19,8 @@ import {
   processarCobranca,
 } from '../../repositories/cobrancaRepository.js';
 import { clienteUsaEntradaPdfCobranca } from './cobrancaEntradaPorCliente.js';
+import { mesclarProprietariosPlanilhaNaExtracao } from './cobrancaMesclarProprietariosPlanilha.js';
+import { extrairUnidadesPessoasPlanilha } from '../../repositories/condominioUnidadesPessoasRepository.js';
 import { downloadPdfBlob } from '../../repositories/documentosRepository.js';
 import { BlocoReversaoImportacao } from '../importacao/BlocoReversaoImportacao.jsx';
 
@@ -193,16 +195,22 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
   const usaPdf = clienteUsaEntradaPdfCobranca(codigoCliente);
 
   const [step, setStep] = useState(1);
+  /** No fluxo PDF: 'planilha' antes da revisão quando faltam proprietários. */
+  const [step2Modo, setStep2Modo] = useState(null);
   const [arquivoRelatorio, setArquivoRelatorio] = useState(null);
+  const [arquivoPlanilhaProprietarios, setArquivoPlanilhaProprietarios] = useState(null);
   const [fileInputKey, setFileInputKey] = useState(0);
+  const [fileInputKeyPlanilha, setFileInputKeyPlanilha] = useState(0);
   const [extracao, setExtracao] = useState(null);
   const [processResult, setProcessResult] = useState(null);
   const [loadingExtrair, setLoadingExtrair] = useState(false);
+  const [loadingExtrairPlanilha, setLoadingExtrairPlanilha] = useState(false);
   const [loadingProcessar, setLoadingProcessar] = useState(false);
   const [erro, setErro] = useState(null);
   const [copiado, setCopiado] = useState(false);
   const [regraInicioDias, setRegraInicioDias] = useState(1);
   const arquivoInputRef = useRef(null);
+  const planilhaInputRef = useRef(null);
 
   const recarregarRegraCliente = useCallback(async () => {
     if (featureFlags.useApiCalculos) {
@@ -231,8 +239,11 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
 
   const resetFluxo = useCallback(() => {
     setStep(1);
+    setStep2Modo(null);
     setArquivoRelatorio(null);
+    setArquivoPlanilhaProprietarios(null);
     setFileInputKey((k) => k + 1);
+    setFileInputKeyPlanilha((k) => k + 1);
     setExtracao(null);
     setProcessResult(null);
     setErro(null);
@@ -260,6 +271,14 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
         : await extrairCobranca(arquivoRelatorio);
       setExtracao(data);
       setProcessResult(null);
+      setArquivoPlanilhaProprietarios(null);
+      setFileInputKeyPlanilha((k) => k + 1);
+      const semProp = Array.isArray(data?.unidadesSemProprietario) ? data.unidadesSemProprietario : [];
+      if (usaPdf && semProp.length > 0) {
+        setStep2Modo('planilha');
+      } else {
+        setStep2Modo('revisao');
+      }
       setStep(2);
     } catch (e) {
       setErro(e?.message || String(e));
@@ -275,6 +294,39 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
     }
     void onExtrair();
   }, [arquivoRelatorio, onExtrair]);
+
+  const onExtrairPlanilhaProprietarios = useCallback(async () => {
+    if (!arquivoPlanilhaProprietarios || !extracao) return;
+    setErro(null);
+    setLoadingExtrairPlanilha(true);
+    try {
+      const planilha = await extrairUnidadesPessoasPlanilha(codigoCliente, arquivoPlanilhaProprietarios);
+      const merged = mesclarProprietariosPlanilhaNaExtracao(extracao, planilha);
+      const faltando = merged.unidadesSemProprietario || [];
+      if (faltando.length > 0) {
+        const preview = faltando.slice(0, 12).join(', ');
+        const resto = faltando.length > 12 ? ` (+${faltando.length - 12})` : '';
+        setErro(
+          `Ainda há ${faltando.length} unidade(s) do PDF sem proprietário na planilha: ${preview}${resto}. Confira o layout Condo Id «Condôminos por unidade».`,
+        );
+        return;
+      }
+      setExtracao(merged);
+      setStep2Modo('revisao');
+    } catch (e) {
+      setErro(e?.message || String(e));
+    } finally {
+      setLoadingExtrairPlanilha(false);
+    }
+  }, [arquivoPlanilhaProprietarios, codigoCliente, extracao]);
+
+  const onClicarExtrairOuEscolherPlanilha = useCallback(() => {
+    if (!arquivoPlanilhaProprietarios) {
+      planilhaInputRef.current?.click();
+      return;
+    }
+    void onExtrairPlanilhaProprietarios();
+  }, [arquivoPlanilhaProprietarios, onExtrairPlanilhaProprietarios]);
 
   const onProcessar = useCallback(async () => {
     if (!Array.isArray(extracao?.unidades)) return;
@@ -369,8 +421,8 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
             {usaPdf ? (
               <>
                 <span className="font-medium text-slate-800">Passo 1 — Relatório PDF (Condo Id)</span>: envie o PDF
-                de inadimplência exportado pelo sistema do condomínio e clique em Extrair. O proprietário de cada
-                unidade é obtido do processo já cadastrado (RÉU).
+                de inadimplência exportado pelo sistema do condomínio e clique em Extrair. Em seguida, no passo 2,
+                envie a planilha de condôminos por unidade (se ainda não houver RÉU cadastrado no processo).
               </>
             ) : (
               <>
@@ -407,10 +459,82 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
         </div>
       )}
 
-      {step === 2 && extracao && resumoExtracao && (
+      {step === 2 && usaPdf && step2Modo === 'planilha' && extracao && (
         <div className="space-y-3">
           <p className="text-sm text-slate-600">
-            <span className="font-medium text-slate-800">Passo 2 — Revisão</span>: confira o relatório e as unidades
+            <span className="font-medium text-slate-800">Passo 2 — Planilha de condôminos</span>: envie a planilha{' '}
+            <strong>.xls</strong> ou <strong>.xlsx</strong> do cadastro de unidades (layout legado ou Condo Id
+            «Condôminos por unidade») para vincular o proprietário a cada unidade extraída do PDF.
+          </p>
+          {(extracao.unidadesSemProprietario || []).length > 0 && (
+            <p className="text-sm text-amber-950 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              {extracao.unidadesSemProprietario.length} unidade(s) do PDF ainda sem proprietário (RÉU no processo ou na
+              planilha). Após extrair a planilha, confira a revisão antes de processar.
+            </p>
+          )}
+          <dl className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 text-sm">
+            <div>
+              <dt className="text-slate-500">Unidades no PDF</dt>
+              <dd className="font-medium tabular-nums text-slate-800">
+                {(extracao.unidades || []).length}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">Sem proprietário</dt>
+              <dd className="font-medium tabular-nums text-slate-800">
+                {(extracao.unidadesSemProprietario || []).length}
+              </dd>
+            </div>
+          </dl>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">
+              Planilha de unidades (.xls / .xlsx)
+            </label>
+            <input
+              ref={planilhaInputRef}
+              key={fileInputKeyPlanilha}
+              type="file"
+              accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              className="block w-full text-sm text-slate-600"
+              onChange={(e) => setArquivoPlanilhaProprietarios(e.target.files?.[0] ?? null)}
+            />
+          </div>
+          <div className="flex flex-wrap gap-2 pt-1">
+            <button
+              type="button"
+              className={botaoSecundario()}
+              disabled={loadingExtrairPlanilha}
+              onClick={() => {
+                setStep(1);
+                setStep2Modo(null);
+                setExtracao(null);
+              }}
+            >
+              Voltar
+            </button>
+            <button
+              type="button"
+              className={botaoPrimario()}
+              disabled={loadingExtrairPlanilha}
+              onClick={() => void onClicarExtrairOuEscolherPlanilha()}
+            >
+              {loadingExtrairPlanilha
+                ? 'Extraindo…'
+                : !arquivoPlanilhaProprietarios
+                  ? 'Escolher planilha…'
+                  : 'Extrair planilha'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step === 2 && step2Modo === 'revisao' && extracao && resumoExtracao && (
+        <div className="space-y-3">
+          <p className="text-sm text-slate-600">
+            <span className="font-medium text-slate-800">
+              Passo {usaPdf ? '3' : '2'} — Revisão
+            </span>
+            : confira o relatório e as unidades
             antes de processar para o cliente <span className="font-mono text-xs">{codigoCliente}</span>
             {nomeCliente ? ` (${nomeCliente})` : ''}.
           </p>
@@ -513,7 +637,13 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
               className={botaoSecundario()}
               disabled={loadingProcessar}
               onClick={() => {
+                if (usaPdf) {
+                  setStep2Modo('planilha');
+                  setErro(null);
+                  return;
+                }
                 setStep(1);
+                setStep2Modo(null);
                 setExtracao(null);
               }}
             >

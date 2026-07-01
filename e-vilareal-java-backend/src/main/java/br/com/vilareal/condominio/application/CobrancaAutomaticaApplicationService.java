@@ -98,19 +98,15 @@ public class CobrancaAutomaticaApplicationService {
             var propOpt = proprietarioLookupService.buscarPorUnidade(clienteId, cod);
             if (propOpt.isEmpty()) {
                 semProprietario.add(cod);
-                continue;
+                unidades.add(new CobrancaUnidadeParsed(
+                        cod, "", "", u.cobrancas() != null ? u.cobrancas() : List.of()));
+            } else {
+                var prop = propOpt.get();
+                unidades.add(new CobrancaUnidadeParsed(
+                        cod, prop.nome(), prop.docDigitos(), u.cobrancas() != null ? u.cobrancas() : List.of()));
             }
-            var prop = propOpt.get();
-            unidades.add(new CobrancaUnidadeParsed(
-                    cod, prop.nome(), prop.docDigitos(), u.cobrancas() != null ? u.cobrancas() : List.of()));
         }
 
-        if (!semProprietario.isEmpty()) {
-            throw new BusinessRuleException(
-                    "Unidades sem proprietário (RÉU) cadastrado no processo: "
-                            + String.join(", ", semProprietario)
-                            + ". Importe a planilha de unidades ou cadastre o processo antes de usar o PDF.");
-        }
         if (unidades.isEmpty()) {
             throw new BusinessRuleException("Nenhuma unidade com débito foi encontrada no PDF.");
         }
@@ -119,7 +115,8 @@ public class CobrancaAutomaticaApplicationService {
                 unidades,
                 calcularTotais(unidades),
                 Utf8MojibakeUtil.corrigir(parsed.condominioNome()),
-                parsed.dataReferenciaPdf());
+                parsed.dataReferenciaPdf(),
+                List.copyOf(semProprietario));
     }
 
     public CobrancaExtracaoResponse extrair(MultipartFile arquivo) {
