@@ -76,6 +76,21 @@ function MediaBubbleContent({ message, isOutbound }) {
   return null;
 }
 
+function formatTemplateContent(message) {
+  const template = String(message.templateName ?? '').toLowerCase();
+  const raw = String(message.content ?? '').trim();
+  if (template === 'cobranca_pagamento') {
+    if (raw.startsWith('Olá ')) return raw;
+    const [nome, unidade, condominio] = raw.split(',').map((s) => s.trim());
+    if (nome && unidade) {
+      return condominio
+        ? `Olá ${nome}, identificamos pendência referente à ${unidade} no ${condominio}.`
+        : `Olá ${nome}, identificamos pendência referente à ${unidade}.`;
+    }
+  }
+  return raw || '—';
+}
+
 export function ChatBubble({ message }) {
   const isOutbound = String(message.direction ?? '').toUpperCase() === 'OUTBOUND';
   const hasTemplate = Boolean(message.templateName);
@@ -102,7 +117,7 @@ export function ChatBubble({ message }) {
           </span>
         ) : null}
         {mediaContent ?? (
-          <p className="text-sm whitespace-pre-wrap break-words">{message.content || '—'}</p>
+          <p className="text-sm whitespace-pre-wrap break-words">{formatTemplateContent(message)}</p>
         )}
         <div className={`flex items-center justify-end gap-1 mt-1 ${isOutbound ? 'text-white/80' : 'text-slate-500'}`}>
           <span className="text-[11px]">{formatTimeBR(message.createdAt)}</span>

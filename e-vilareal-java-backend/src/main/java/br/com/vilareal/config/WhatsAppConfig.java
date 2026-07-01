@@ -29,6 +29,9 @@ public class WhatsAppConfig {
     private boolean aniversarioEnabled = true;
     private String aniversarioCron = "0 0 8 * * *";
 
+    /** Resposta automática com Claude para mensagens recebidas (pode ser sobrescrito via portal). */
+    private boolean iaEnabled = true;
+
     public String getApiUrl() {
         return apiUrl;
     }
@@ -147,6 +150,14 @@ public class WhatsAppConfig {
 
     public void setAniversarioCron(String aniversarioCron) {
         this.aniversarioCron = aniversarioCron;
+    }
+
+    public boolean isIaEnabled() {
+        return iaEnabled;
+    }
+
+    public void setIaEnabled(boolean iaEnabled) {
+        this.iaEnabled = iaEnabled;
     }
 
     /** Cópia best-effort de cada envio outbound para número de monitoramento. */

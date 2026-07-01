@@ -65,10 +65,16 @@ class WhatsAppServiceCopiaMonitoramentoTest {
     private WhatsAppAIService whatsAppAIService;
 
     @Mock
+    private WhatsAppIAConfigService whatsAppIAConfigService;
+
+    @Mock
     private WhatsAppMediaService whatsAppMediaService;
 
     @Mock
     private WhatsAppNotificationService whatsAppNotificationService;
+
+    @Mock
+    private WhatsAppConversationContextService conversationContextService;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -105,6 +111,8 @@ class WhatsAppServiceCopiaMonitoramentoTest {
         whatsAppConfig.setAccessToken("token-test");
         whatsAppConfig.setApiUrl("http://localhost:" + httpServer.getAddress().getPort());
 
+        org.mockito.Mockito.lenient().when(whatsAppIAConfigService.isIaHabilitada()).thenReturn(true);
+
         whatsAppService = newService();
     }
 
@@ -120,8 +128,10 @@ class WhatsAppServiceCopiaMonitoramentoTest {
                 aniversarioWhatsAppRepository,
                 cobrancaWhatsAppRepository,
                 whatsAppAIService,
+                whatsAppIAConfigService,
                 whatsAppMediaService,
-                whatsAppNotificationService);
+                whatsAppNotificationService,
+                conversationContextService);
     }
 
     @AfterEach

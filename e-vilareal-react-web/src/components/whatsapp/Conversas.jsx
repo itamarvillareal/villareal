@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Loader2, MessageCircle, Search, Send } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { ExternalLink, Loader2, MessageCircle, Search, Send } from 'lucide-react';
 import { ChatBubble } from './components/ChatBubble.jsx';
 import { useWhatsApp } from './hooks/useWhatsApp.js';
 import { useWhatsAppToast } from './WhatsAppToast.jsx';
 import { useWhatsAppNotificationContext } from './WhatsAppNotificationProvider.jsx';
+import { getWhatsAppConversationContext } from '../../repositories/whatsappRepository.js';
 import { formatPhoneDisplay, formatTimeBR, isValidBrazilPhone, normalizePhoneForApi } from '../../utils/whatsappFormat.js';
 import { FREE_TEXT_DELIVERY_ERROR, FREE_TEXT_WINDOW_HINT } from '../../utils/whatsappTemplateUtils.js';
 import { isWhatsAppMediaPending, mergeMediaReady } from './utils/whatsappMediaUtils.js';
@@ -37,6 +38,93 @@ function tituloContato(nome, telefone) {
   return formatPhoneDisplay(telefone);
 }
 
+function resumoContexto(ctx) {
+  if (!ctx) return '';
+  const partes = [];
+  if (ctx.codigoCliente) {
+    const cod = String(ctx.codigoCliente).replace(/^0+(?=\d)/, '');
+    partes.push(`Cli. ${cod || ctx.codigoCliente}`);
+  }
+  if (ctx.processoNumeroInterno != null) partes.push(`Proc. ${ctx.processoNumeroInterno}`);
+  if (ctx.unidadeDescricao) partes.push(ctx.unidadeDescricao);
+  if (ctx.condominioNome && !ctx.unidadeDescricao) partes.push(ctx.condominioNome);
+  return partes.join(' · ');
+}
+
+function linkProcesso(ctx) {
+  if (!ctx?.codigoCliente) return null;
+  const params = new URLSearchParams();
+  params.set('codigoCliente', ctx.codigoCliente);
+  if (ctx.processoNumeroInterno != null) params.set('numeroInterno', String(ctx.processoNumeroInterno));
+  if (ctx.processoId) params.set('processoApiId', String(ctx.processoId));
+  return `/processos?${params.toString()}`;
+}
+
+function ContextoProcessoLinha({ ctx, className = '' }) {
+  const resumo = resumoContexto(ctx);
+  if (!resumo) return null;
+  return (
+    <p className={`text-[11px] text-emerald-700 dark:text-emerald-400 truncate ${className}`} title={resumo}>
+      {resumo}
+    </p>
+  );
+}
+
+function PainelContextoChat({ contextos, indice, onIndiceChange }) {
+  const lista = Array.isArray(contextos) ? contextos : [];
+  if (lista.length === 0) return null;
+
+  const ctx = lista[indice] ?? lista[0];
+  const href = linkProcesso(ctx);
+  const multiplos = lista.length > 1;
+
+  return (
+    <div className="mt-1.5 rounded-lg border border-emerald-200/80 bg-emerald-50/80 dark:border-emerald-900/50 dark:bg-emerald-950/30 px-2.5 py-2">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-800/70 dark:text-emerald-300/80">
+            Resposta provável à cobrança
+          </p>
+          <p className="text-xs text-emerald-900 dark:text-emerald-100 truncate" title={resumoContexto(ctx)}>
+            {resumoContexto(ctx)}
+          </p>
+          {ctx.clienteEscritorioNome ? (
+            <p className="text-[11px] text-emerald-800/80 dark:text-emerald-200/80 truncate">{ctx.clienteEscritorioNome}</p>
+          ) : null}
+        </div>
+        {href ? (
+          <Link
+            to={href}
+            className="inline-flex shrink-0 items-center gap-1 rounded-md bg-emerald-700 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-600"
+          >
+            Abrir processo
+            <ExternalLink className="h-3 w-3" />
+          </Link>
+        ) : null}
+      </div>
+      {multiplos ? (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {lista.map((item, i) => (
+            <button
+              key={`${item.cobrancaId ?? item.processoId ?? i}-${i}`}
+              type="button"
+              onClick={() => onIndiceChange?.(i)}
+              className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                i === indice
+                  ? 'bg-emerald-700 text-white'
+                  : 'bg-white/80 text-emerald-800 hover:bg-white dark:bg-slate-800 dark:text-emerald-200'
+              }`}
+              title={resumoContexto(item)}
+            >
+              {item.processoNumeroInterno != null ? `Proc. ${item.processoNumeroInterno}` : `Opção ${i + 1}`}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function WhatsAppConversas() {
   const { getConversations, getMessages, sendText } = useWhatsApp();
   const toast = useWhatsAppToast();
@@ -54,6 +142,8 @@ export function WhatsAppConversas() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [contextosAtivos, setContextosAtivos] = useState([]);
+  const [indiceContexto, setIndiceContexto] = useState(0);
   const bottomRef = useRef(null);
   const openedFromUrl = useRef(false);
 
@@ -92,14 +182,25 @@ export function WhatsAppConversas() {
   );
 
   const openConversation = useCallback(
-    async (phone, nameHint = '') => {
+    async (phone, nameHint = '', contextosHint = null) => {
       const normalized = normalizePhoneForApi(phone);
       if (!normalized) return;
       setActivePhone(normalized);
       setContactName(nameHint || '');
+      setIndiceContexto(0);
+      const hintList = Array.isArray(contextosHint) ? contextosHint : [];
+      setContextosAtivos(hintList);
       setLoading(true);
       setSearchParams({ telefone: normalized }, { replace: true });
       try {
+        if (hintList.length === 0) {
+          try {
+            const ctx = await getWhatsAppConversationContext(normalized);
+            setContextosAtivos(Array.isArray(ctx) ? ctx : []);
+          } catch {
+            setContextosAtivos([]);
+          }
+        }
         await fetchPage(normalized, 0, false);
         window.setTimeout(scrollToBottom, 100);
       } catch (err) {
@@ -166,6 +267,14 @@ export function WhatsAppConversas() {
   };
 
   useEffect(() => {
+    if (!activePhone) return;
+    const conv = conversations.find((c) => normalizePhoneForApi(c.phoneNumber) === activePhone);
+    if (Array.isArray(conv?.contextos) && conv.contextos.length > 0) {
+      setContextosAtivos(conv.contextos);
+    }
+  }, [conversations, activePhone]);
+
+  useEffect(() => {
     loadConversations();
     const interval = window.setInterval(loadConversations, CONVERSATIONS_REFRESH_MS);
     clearNotifications?.();
@@ -221,7 +330,7 @@ export function WhatsAppConversas() {
       openedFromUrl.current = true;
       const normalized = normalizePhoneForApi(fromUrl);
       const conv = conversations.find((c) => normalizePhoneForApi(c.phoneNumber) === normalized);
-      openConversation(fromUrl, conv?.contactName);
+      openConversation(fromUrl, conv?.contactName, conv?.contextos);
     }
   }, [conversations, openConversation, searchParams]);
 
@@ -275,7 +384,7 @@ export function WhatsAppConversas() {
                   <li key={conv.phoneNumber}>
                     <button
                       type="button"
-                      onClick={() => openConversation(conv.phoneNumber, conv.contactName)}
+                      onClick={() => openConversation(conv.phoneNumber, conv.contactName, conv.contextos)}
                       className={`w-full text-left px-3 py-3 hover:bg-white dark:hover:bg-slate-800 transition-colors ${
                         selected ? 'bg-white dark:bg-slate-800 border-l-4 border-emerald-600' : 'border-l-4 border-transparent'
                       }`}
@@ -289,6 +398,7 @@ export function WhatsAppConversas() {
                       {String(conv.contactName ?? '').trim() ? (
                         <p className="text-xs text-slate-500 truncate">{formatPhoneDisplay(conv.phoneNumber)}</p>
                       ) : null}
+                      <ContextoProcessoLinha ctx={conv.contextoPrincipal} className="mt-0.5" />
                       <p className="text-xs text-slate-500 truncate mt-0.5">{previewText(conv)}</p>
                     </button>
                   </li>
@@ -317,6 +427,11 @@ export function WhatsAppConversas() {
               {String(contactName ?? '').trim() ? (
                 <p className="text-xs text-slate-500">{formatPhoneDisplay(activePhone)}</p>
               ) : null}
+              <PainelContextoChat
+                contextos={contextosAtivos}
+                indice={indiceContexto}
+                onIndiceChange={setIndiceContexto}
+              />
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto px-3 py-4 space-y-3 bg-[#e5ddd5] dark:bg-slate-800/50">
               {page + 1 < totalPages ? (

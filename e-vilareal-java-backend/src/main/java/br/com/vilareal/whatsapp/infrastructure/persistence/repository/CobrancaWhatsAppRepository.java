@@ -111,4 +111,17 @@ public interface CobrancaWhatsAppRepository extends JpaRepository<CobrancaWhatsA
             WHERE c.createdAt >= :inicioMes AND c.createdAt < :fimMes
             """)
     Object[] statsDoMes(@Param("inicioMes") Instant inicioMes, @Param("fimMes") Instant fimMes);
+
+    @Query(
+            value =
+                    """
+                    SELECT c.* FROM whatsapp_cobrancas c
+                    WHERE c.status <> 'CANCELADO'
+                      AND c.created_at >= :desde
+                      AND RIGHT(c.phone_number, 11) IN (:suffix11)
+                    ORDER BY COALESCE(c.enviado_at, c.scheduled_at, c.created_at) DESC
+                    """,
+            nativeQuery = true)
+    List<CobrancaWhatsAppEntity> findRecentesPorSufixoTelefone(
+            @Param("desde") Instant desde, @Param("suffix11") Collection<String> suffix11);
 }

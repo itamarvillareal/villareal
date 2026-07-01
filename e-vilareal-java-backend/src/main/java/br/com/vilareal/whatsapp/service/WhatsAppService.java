@@ -37,6 +37,7 @@ import org.springframework.web.client.RestClientResponseException;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -49,6 +50,7 @@ import java.util.concurrent.CompletableFuture;
 public class WhatsAppService {
 
     private static final Logger log = LoggerFactory.getLogger(WhatsAppService.class);
+    private static final int JANELA_CONTEXTO_INBOUND_DIAS = 30;
 
     private final WhatsAppConfig whatsAppConfig;
     private final RestClient restClient;
@@ -60,8 +62,10 @@ public class WhatsAppService {
     private final AniversarioWhatsAppRepository aniversarioWhatsAppRepository;
     private final CobrancaWhatsAppRepository cobrancaWhatsAppRepository;
     private final WhatsAppAIService whatsAppAIService;
+    private final WhatsAppIAConfigService whatsAppIAConfigService;
     private final WhatsAppMediaService whatsAppMediaService;
     private final WhatsAppNotificationService whatsAppNotificationService;
+    private final WhatsAppConversationContextService conversationContextService;
 
     public WhatsAppService(
             WhatsAppConfig whatsAppConfig,
@@ -74,8 +78,10 @@ public class WhatsAppService {
             AniversarioWhatsAppRepository aniversarioWhatsAppRepository,
             CobrancaWhatsAppRepository cobrancaWhatsAppRepository,
             @Lazy WhatsAppAIService whatsAppAIService,
+            WhatsAppIAConfigService whatsAppIAConfigService,
             WhatsAppMediaService whatsAppMediaService,
-            WhatsAppNotificationService whatsAppNotificationService) {
+            WhatsAppNotificationService whatsAppNotificationService,
+            WhatsAppConversationContextService conversationContextService) {
         this.whatsAppConfig = whatsAppConfig;
         this.objectMapper = objectMapper;
         this.whatsAppMessageRepository = whatsAppMessageRepository;
@@ -85,8 +91,10 @@ public class WhatsAppService {
         this.aniversarioWhatsAppRepository = aniversarioWhatsAppRepository;
         this.cobrancaWhatsAppRepository = cobrancaWhatsAppRepository;
         this.whatsAppAIService = whatsAppAIService;
+        this.whatsAppIAConfigService = whatsAppIAConfigService;
         this.whatsAppMediaService = whatsAppMediaService;
         this.whatsAppNotificationService = whatsAppNotificationService;
+        this.conversationContextService = conversationContextService;
 
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofSeconds(10));
@@ -119,6 +127,16 @@ public class WhatsAppService {
 
     public WhatsAppSendResponse sendTemplateMessage(
             String phoneNumber, String templateName, String languageCode, List<String> parameters) {
+        return sendTemplateMessage(phoneNumber, templateName, languageCode, parameters, null, null);
+    }
+
+    public WhatsAppSendResponse sendTemplateMessage(
+            String phoneNumber,
+            String templateName,
+            String languageCode,
+            List<String> parameters,
+            Long clienteId,
+            Long processoId) {
         String formattedPhone = formatPhoneNumber(phoneNumber);
         log.info("Enviando mensagem de template para {}", maskPhoneNumber(formattedPhone));
         log.debug("Destinatário completo (template {}): {}", templateName, formattedPhone);
@@ -143,7 +161,8 @@ public class WhatsAppService {
                 SendContext.template(templateName, parameters));
         String content =
                 parameters != null && !parameters.isEmpty() ? String.join(", ", parameters) : null;
-        persistOutboundMessage(response, formattedPhone, WhatsAppMessageType.TEMPLATE, content, templateName);
+        persistOutboundMessage(
+                response, formattedPhone, WhatsAppMessageType.TEMPLATE, content, templateName, clienteId, processoId);
         return response;
     }
 
@@ -205,7 +224,12 @@ public class WhatsAppService {
         msg.setMediaFilename(filename);
 
         Long clienteId = resolveClienteId(from);
+        Long processoId = resolveProcessoIdInbound(from);
+        if (clienteId == null) {
+            clienteId = resolveClienteIdInbound(from, processoId);
+        }
         msg.setClienteId(clienteId);
+        msg.setProcessoId(processoId);
 
         WhatsAppMessageEntity saved;
         try {
@@ -255,13 +279,15 @@ public class WhatsAppService {
         }
 
         boolean hasText = body != null && !body.isBlank();
-        if (hasText || StringUtils.hasText(mediaId)) {
+        if ((hasText || StringUtils.hasText(mediaId)) && whatsAppIAConfigService.isIaHabilitada()) {
             try {
                 String aiInput = hasText ? body : content;
                 whatsAppAIService.handleIncomingMessage(from, aiInput, contactName);
             } catch (Exception e) {
                 log.error("Falha ao processar mensagem inbound com IA: {}", e.getMessage(), e);
             }
+        } else if (hasText || StringUtils.hasText(mediaId)) {
+            log.debug("Resposta automática WhatsApp IA desligada — mensagem de {} registrada sem IA", from);
         }
     }
 
@@ -436,6 +462,17 @@ public class WhatsAppService {
             WhatsAppMessageType messageType,
             String content,
             String templateName) {
+        persistOutboundMessage(response, formattedPhone, messageType, content, templateName, null, null);
+    }
+
+    private void persistOutboundMessage(
+            WhatsAppSendResponse response,
+            String formattedPhone,
+            WhatsAppMessageType messageType,
+            String content,
+            String templateName,
+            Long clienteId,
+            Long processoId) {
         String waMessageId = extractMessageId(response);
         if (!StringUtils.hasText(waMessageId) || "desconhecido".equals(waMessageId)) {
             return;
@@ -449,12 +486,46 @@ public class WhatsAppService {
         msg.setContent(content);
         msg.setTemplateName(templateName);
         msg.setStatus(WhatsAppMessageStatus.SENT);
+        msg.setClienteId(clienteId);
+        msg.setProcessoId(processoId);
 
         try {
             whatsAppMessageRepository.save(msg);
         } catch (Exception e) {
             log.error("Falha ao salvar mensagem enviada no banco: {}", e.getMessage());
         }
+    }
+
+    private Long resolveProcessoIdInbound(String phoneFrom) {
+        Instant since = Instant.now().minus(JANELA_CONTEXTO_INBOUND_DIAS, ChronoUnit.DAYS);
+        Optional<WhatsAppMessageEntity> ultimaOutbound = whatsAppMessageRepository
+                .findFirstByPhoneNumberAndDirectionAndProcessoIdIsNotNullAndCreatedAtAfterOrderByCreatedAtDesc(
+                        phoneFrom, WhatsAppMessageDirection.OUTBOUND, since);
+        if (ultimaOutbound.isPresent()) {
+            return ultimaOutbound.get().getProcessoId();
+        }
+
+        var contexto = conversationContextService.resolverContextoMaisRecente(phoneFrom);
+        if (contexto != null && contexto.processoId() != null) {
+            return contexto.processoId();
+        }
+        return null;
+    }
+
+    private Long resolveClienteIdInbound(String phoneFrom, Long processoId) {
+        Instant since = Instant.now().minus(JANELA_CONTEXTO_INBOUND_DIAS, ChronoUnit.DAYS);
+        Optional<WhatsAppMessageEntity> ultimaOutbound = whatsAppMessageRepository
+                .findFirstByPhoneNumberAndDirectionAndClienteIdIsNotNullAndCreatedAtAfterOrderByCreatedAtDesc(
+                        phoneFrom, WhatsAppMessageDirection.OUTBOUND, since);
+        if (ultimaOutbound.isPresent()) {
+            return ultimaOutbound.get().getClienteId();
+        }
+
+        var contexto = conversationContextService.resolverContextoMaisRecente(phoneFrom);
+        if (contexto != null && contexto.clienteId() != null) {
+            return contexto.clienteId();
+        }
+        return null;
     }
 
     /**

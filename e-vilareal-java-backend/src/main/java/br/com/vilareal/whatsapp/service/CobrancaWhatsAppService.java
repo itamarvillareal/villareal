@@ -316,7 +316,9 @@ public class CobrancaWhatsAppService {
                         phone,
                         TEMPLATE_COBRANCA,
                         "pt_BR",
-                        List.of(primeiroNome, item.unidadeDescricao(), item.condominioNome()));
+                        List.of(primeiroNome, item.unidadeDescricao(), item.condominioNome()),
+                        item.clienteId(),
+                        item.processoId());
 
                 CobrancaWhatsAppEntity cobranca = montarEntidade(loteId, loteDescricao, item, createdBy);
                 cobranca.setPhoneNumber(phone);
@@ -444,7 +446,9 @@ public class CobrancaWhatsAppService {
                     cobranca.getPhoneNumber(),
                     TEMPLATE_COBRANCA,
                     "pt_BR",
-                    List.of(primeiroNome, cobranca.getUnidadeDescricao(), cobranca.getCondominioNome()));
+                    List.of(primeiroNome, cobranca.getUnidadeDescricao(), cobranca.getCondominioNome()),
+                    cobranca.getClienteId(),
+                    cobranca.getProcessoId());
             cobranca.setStatus("ENVIADO");
             cobranca.setWaMessageId(extractMessageId(response));
             cobranca.setErrorMessage(null);
@@ -481,7 +485,9 @@ public class CobrancaWhatsAppService {
                         List.of(
                                 primeiroNome,
                                 cobranca.getUnidadeDescricao(),
-                                cobranca.getCondominioNome()));
+                                cobranca.getCondominioNome()),
+                        cobranca.getClienteId(),
+                        cobranca.getProcessoId());
                 cobranca.setStatus("ENVIADO");
                 cobranca.setWaMessageId(extractMessageId(response));
                 cobranca.setErrorMessage(null);

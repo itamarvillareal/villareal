@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 import java.util.List;
@@ -199,12 +200,29 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
 
     Page<WhatsAppMessageEntity> findByPhoneNumberOrderByCreatedAtDesc(String phoneNumber, Pageable pageable);
 
+    @Query(
+            value =
+                    """
+                    SELECT m.* FROM whatsapp_messages m
+                    WHERE RIGHT(m.phone_number, 11) = :suffix11
+                       OR RIGHT(m.phone_number, 10) = RIGHT(:suffix11, 10)
+                    ORDER BY m.created_at DESC
+                    """,
+            nativeQuery = true)
+    List<WhatsAppMessageEntity> findByPhoneSuffixOrderByCreatedAtDesc(@Param("suffix11") String suffix11);
+
     List<WhatsAppMessageEntity> findByPhoneNumberAndCreatedAtAfterOrderByCreatedAtAsc(
             String phoneNumber, Instant after);
 
     Optional<WhatsAppMessageEntity> findByWaMessageId(String waMessageId);
 
     Page<WhatsAppMessageEntity> findByClienteIdOrderByCreatedAtDesc(Long clienteId, Pageable pageable);
+
+    Optional<WhatsAppMessageEntity> findFirstByPhoneNumberAndDirectionAndProcessoIdIsNotNullAndCreatedAtAfterOrderByCreatedAtDesc(
+            String phoneNumber, WhatsAppMessageDirection direction, Instant since);
+
+    Optional<WhatsAppMessageEntity> findFirstByPhoneNumberAndDirectionAndClienteIdIsNotNullAndCreatedAtAfterOrderByCreatedAtDesc(
+            String phoneNumber, WhatsAppMessageDirection direction, Instant since);
 
     long countByDirectionAndCreatedAtAfter(WhatsAppMessageDirection direction, Instant after);
 

@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { LayoutDashboard, MessageCircle, Send, CalendarClock, FileText, Cake, Banknote } from 'lucide-react';
 import { WhatsAppToastProvider } from './WhatsAppToast.jsx';
+import { WhatsAppIaToggle } from './components/WhatsAppIaToggle.jsx';
 
 const TABS = [
   { to: '/whatsapp/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -39,6 +40,9 @@ export function WhatsAppLayout() {
               </NavLink>
             ))}
           </nav>
+          <div className="mt-3 max-w-xl">
+            <WhatsAppIaToggle />
+          </div>
         </header>
         <main className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6">
           <Outlet />

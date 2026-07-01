@@ -1,6 +1,7 @@
 package br.com.vilareal.whatsapp.dto;
 
 import java.time.Instant;
+import java.util.List;
 
 public record WhatsAppConversationDTO(
         String phoneNumber,
@@ -8,4 +9,6 @@ public record WhatsAppConversationDTO(
         String lastMessagePreview,
         String lastMessageDirection,
         String lastMessageType,
-        Instant lastMessageAt) {}
+        Instant lastMessageAt,
+        WhatsAppProcessoContextItemDTO contextoPrincipal,
+        List<WhatsAppProcessoContextItemDTO> contextos) {}

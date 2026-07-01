@@ -4,6 +4,17 @@ export async function getWhatsAppStats(signal) {
   return request('/api/whatsapp/stats', { signal });
 }
 
+export async function getWhatsAppIaHabilitada(signal) {
+  return request('/api/whatsapp/ia/habilitada', { signal });
+}
+
+export async function putWhatsAppIaHabilitada(habilitada) {
+  return request('/api/whatsapp/ia/habilitada', {
+    method: 'PUT',
+    body: { habilitada: Boolean(habilitada) },
+  });
+}
+
 export async function getWhatsAppMessages(phoneNumber, page = 0, size = 20, signal) {
   return request('/api/whatsapp/messages', {
     query: { phoneNumber, page, size },
@@ -14,6 +25,13 @@ export async function getWhatsAppMessages(phoneNumber, page = 0, size = 20, sign
 export async function getWhatsAppConversations(page = 0, size = 50, signal) {
   return request('/api/whatsapp/conversations', {
     query: { page, size },
+    signal,
+  });
+}
+
+export async function getWhatsAppConversationContext(phoneNumber, signal) {
+  return request('/api/whatsapp/conversations/context', {
+    query: { phoneNumber },
     signal,
   });
 }

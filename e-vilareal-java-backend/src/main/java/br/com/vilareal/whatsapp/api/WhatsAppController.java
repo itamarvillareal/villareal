@@ -13,8 +13,10 @@ import br.com.vilareal.whatsapp.dto.SendTemplateRequest;
 import br.com.vilareal.whatsapp.dto.SendTextRequest;
 import br.com.vilareal.whatsapp.dto.ScheduledMessageDTO;
 import br.com.vilareal.whatsapp.dto.RecentConversationDTO;
+import br.com.vilareal.whatsapp.dto.WhatsAppIaHabilitadaDTO;
 import br.com.vilareal.whatsapp.dto.WhatsAppConversationDTO;
 import br.com.vilareal.whatsapp.dto.WhatsAppMessageDTO;
+import br.com.vilareal.whatsapp.dto.WhatsAppProcessoContextItemDTO;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppMessageRepository.ConversationSummaryRow;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppMessageRepository.RecentConversationRow;
 import br.com.vilareal.whatsapp.dto.WhatsAppSendResponse;
@@ -26,6 +28,9 @@ import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppMe
 import br.com.vilareal.whatsapp.dto.WhatsAppTemplateDTO;
 import br.com.vilareal.whatsapp.service.WhatsAppAgendamentosFeedService;
 import br.com.vilareal.whatsapp.service.WhatsAppContactResolverService;
+import br.com.vilareal.whatsapp.service.WhatsAppConversationContextService;
+import br.com.vilareal.whatsapp.service.WhatsAppConversationFeedService;
+import br.com.vilareal.whatsapp.service.WhatsAppIAConfigService;
 import br.com.vilareal.whatsapp.service.WhatsAppNotificationService;
 import br.com.vilareal.whatsapp.service.WhatsAppTemplateService;
 import br.com.vilareal.whatsapp.service.WhatsAppSchedulerService;
@@ -49,6 +54,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -81,6 +87,9 @@ public class WhatsAppController {
     private final WhatsAppTemplateService whatsAppTemplateService;
     private final WhatsAppNotificationService whatsAppNotificationService;
     private final WhatsAppAgendamentosFeedService agendamentosFeedService;
+    private final WhatsAppIAConfigService whatsAppIAConfigService;
+    private final WhatsAppConversationContextService conversationContextService;
+    private final WhatsAppConversationFeedService conversationFeedService;
 
     public WhatsAppController(
             WhatsAppService whatsAppService,
@@ -92,7 +101,10 @@ public class WhatsAppController {
             WhatsAppContactResolverService contactResolver,
             WhatsAppTemplateService whatsAppTemplateService,
             WhatsAppNotificationService whatsAppNotificationService,
-            WhatsAppAgendamentosFeedService agendamentosFeedService) {
+            WhatsAppAgendamentosFeedService agendamentosFeedService,
+            WhatsAppIAConfigService whatsAppIAConfigService,
+            WhatsAppConversationContextService conversationContextService,
+            WhatsAppConversationFeedService conversationFeedService) {
         this.whatsAppService = whatsAppService;
         this.whatsAppSchedulerService = whatsAppSchedulerService;
         this.whatsAppMessageRepository = whatsAppMessageRepository;
@@ -103,6 +115,23 @@ public class WhatsAppController {
         this.whatsAppTemplateService = whatsAppTemplateService;
         this.whatsAppNotificationService = whatsAppNotificationService;
         this.agendamentosFeedService = agendamentosFeedService;
+        this.whatsAppIAConfigService = whatsAppIAConfigService;
+        this.conversationContextService = conversationContextService;
+        this.conversationFeedService = conversationFeedService;
+    }
+
+    @GetMapping("/ia/habilitada")
+    @Operation(summary = "Estado do interruptor da resposta automática (IA) do WhatsApp")
+    public ResponseEntity<WhatsAppIaHabilitadaDTO> obterIaHabilitada() {
+        return ResponseEntity.ok(new WhatsAppIaHabilitadaDTO(whatsAppIAConfigService.isIaHabilitada()));
+    }
+
+    @PutMapping("/ia/habilitada")
+    @Operation(summary = "Liga ou desliga a resposta automática (IA) do WhatsApp")
+    public ResponseEntity<WhatsAppIaHabilitadaDTO> atualizarIaHabilitada(
+            @RequestBody WhatsAppIaHabilitadaDTO body) {
+        boolean habilitada = body != null && body.habilitada();
+        return ResponseEntity.ok(new WhatsAppIaHabilitadaDTO(whatsAppIAConfigService.salvarIaHabilitada(habilitada)));
     }
 
     @PostMapping("/send")
@@ -143,7 +172,25 @@ public class WhatsAppController {
             @RequestParam(defaultValue = "50") int size) {
         Page<ConversationSummaryRow> rows =
                 whatsAppMessageRepository.findConversationSummariesExcluindoAniversario(PageRequest.of(page, size));
-        return ResponseEntity.ok(rows.map(this::toConversationDto));
+        List<String> phones = rows.getContent().stream()
+                .map(ConversationSummaryRow::getPhoneNumber)
+                .toList();
+        Map<String, List<WhatsAppProcessoContextItemDTO>> contextosPorTelefone =
+                conversationContextService.resolverPorTelefones(phones);
+        return ResponseEntity.ok(rows.map(row -> toConversationDto(
+                row, contextosPorTelefone.getOrDefault(row.getPhoneNumber(), List.of()))));
+    }
+
+    @GetMapping("/conversations/context")
+    @Operation(summary = "Contexto de processo/unidade inferido de cobranças recentes para um telefone")
+    public ResponseEntity<List<WhatsAppProcessoContextItemDTO>> getConversationContext(
+            @RequestParam String phoneNumber) {
+        try {
+            String normalized = WhatsAppService.formatPhoneNumber(phoneNumber);
+            return ResponseEntity.ok(conversationContextService.resolverContextos(normalized));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
     }
 
     @GetMapping("/conversations/recent")
@@ -178,10 +225,7 @@ public class WhatsAppController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         try {
-            String normalizedPhone = WhatsAppService.formatPhoneNumber(phoneNumber);
-            Page<WhatsAppMessageEntity> messages = whatsAppMessageRepository.findByPhoneNumberOrderByCreatedAtDesc(
-                    normalizedPhone, PageRequest.of(page, size));
-            return ResponseEntity.ok(messages.map(this::toMessageDto));
+            return ResponseEntity.ok(conversationFeedService.listarMensagens(phoneNumber, PageRequest.of(page, size)));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
         }
@@ -329,18 +373,25 @@ public class WhatsAppController {
         return !"123456789".equals(phoneId.trim());
     }
 
-    private WhatsAppConversationDTO toConversationDto(ConversationSummaryRow row) {
+    private WhatsAppConversationDTO toConversationDto(
+            ConversationSummaryRow row, List<WhatsAppProcessoContextItemDTO> contextos) {
         String preview = previewFromRow(row);
         if (StringUtils.hasText(preview) && preview.length() > 120) {
             preview = preview.substring(0, 117) + "...";
         }
+        List<WhatsAppProcessoContextItemDTO> safeContextos =
+                contextos != null ? contextos : List.of();
+        WhatsAppProcessoContextItemDTO principal =
+                safeContextos.isEmpty() ? null : safeContextos.getFirst();
         return new WhatsAppConversationDTO(
                 row.getPhoneNumber(),
                 contactResolver.resolveContactName(row.getPhoneNumber(), row.getContactName()),
                 preview,
                 row.getLastMessageDirection(),
                 row.getLastMessageType(),
-                row.getLastMessageAt());
+                row.getLastMessageAt(),
+                principal,
+                safeContextos);
     }
 
     private static String previewFromRow(ConversationSummaryRow row) {
