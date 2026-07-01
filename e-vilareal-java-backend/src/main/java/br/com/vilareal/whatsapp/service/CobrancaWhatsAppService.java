@@ -59,6 +59,14 @@ public class CobrancaWhatsAppService {
     private static final NumberFormat MOEDA_BR = NumberFormat.getCurrencyInstance(new Locale("pt", "BR"));
     private static final long DELAY_ENTRE_ENVIOS_MS = 200L;
 
+    private static Instant inicioMesInstant(int ano, int mes) {
+        return LocalDate.of(ano, mes, 1).atStartOfDay(ZONE_BRASILIA).toInstant();
+    }
+
+    private static Instant fimMesInstant(int ano, int mes) {
+        return LocalDate.of(ano, mes, 1).plusMonths(1).atStartOfDay(ZONE_BRASILIA).toInstant();
+    }
+
     private final CobrancaWhatsAppRepository cobrancaRepository;
     private final ImovelRepository imovelRepository;
     private final PagamentoRepository pagamentoRepository;
@@ -132,6 +140,8 @@ public class CobrancaWhatsAppService {
         LocalDate hoje = LocalDate.now(ZONE_BRASILIA);
         int ano = hoje.getYear();
         int mes = hoje.getMonthValue();
+        Instant inicioMes = inicioMesInstant(ano, mes);
+        Instant fimMes = fimMesInstant(ano, mes);
         String nomeEscritorio = processos.stream()
                 .map(ProcessoEntity::getCliente)
                 .filter(c -> c != null && c.getPessoa() != null && StringUtils.hasText(c.getPessoa().getNome()))
@@ -163,7 +173,7 @@ public class CobrancaWhatsAppService {
             String telefoneFormatado = temTelefone ? WhatsAppService.formatPhoneDisplay(telefone) : null;
             String unidadeDescricao = montarUnidadeDescricao(processo.getUnidade());
             BigDecimal valorPendente = BigDecimal.ZERO;
-            boolean jaCobrado = cobrancaRepository.existsCobrancaNoMesPorProcesso(processo.getId(), ano, mes);
+            boolean jaCobrado = cobrancaRepository.existsCobrancaNoMesPorProcesso(processo.getId(), inicioMes, fimMes);
 
             previews.add(new CobrancaPreviewDTO(
                     null,
@@ -205,6 +215,8 @@ public class CobrancaWhatsAppService {
         LocalDate hoje = LocalDate.now(ZONE_BRASILIA);
         int ano = hoje.getYear();
         int mes = hoje.getMonthValue();
+        Instant inicioMes = inicioMesInstant(ano, mes);
+        Instant fimMes = fimMesInstant(ano, mes);
 
         List<CobrancaPreviewDTO> previews = new ArrayList<>();
         for (ImovelEntity imovel : imoveis) {
@@ -235,7 +247,7 @@ public class CobrancaWhatsAppService {
             String unidadeDescricao = montarUnidadeDescricao(imovel.getUnidade());
             ProcessoEntity processo = imovel.getProcesso();
             Long processoId = processo != null ? processo.getId() : null;
-            boolean jaCobrado = cobrancaRepository.existsCobrancaNoMes(imovelId, ano, mes);
+            boolean jaCobrado = cobrancaRepository.existsCobrancaNoMes(imovelId, inicioMes, fimMes);
 
             previews.add(new CobrancaPreviewDTO(
                     imovelId,
@@ -470,10 +482,23 @@ public class CobrancaWhatsAppService {
 
     public CobrancaStatsDTO statsDoMes() {
         LocalDate hoje = LocalDate.now(ZONE_BRASILIA);
-        Object[] row = cobrancaRepository.statsDoMes(hoje.getYear(), hoje.getMonthValue());
-        long enviadas = row[0] instanceof Number n0 ? n0.longValue() : 0L;
-        long entregues = row[1] instanceof Number n1 ? n1.longValue() : 0L;
-        BigDecimal valor = row[2] instanceof BigDecimal bd ? bd : BigDecimal.ZERO;
+        Instant inicioMes = inicioMesInstant(hoje.getYear(), hoje.getMonthValue());
+        Instant fimMes = fimMesInstant(hoje.getYear(), hoje.getMonthValue());
+        Object[] row = cobrancaRepository.statsDoMes(inicioMes, fimMes);
+        long enviadas = 0L;
+        long entregues = 0L;
+        BigDecimal valor = BigDecimal.ZERO;
+        if (row != null && row.length > 0 && row[0] instanceof Number n0) {
+            enviadas = n0.longValue();
+        }
+        if (row != null && row.length > 1 && row[1] instanceof Number n1) {
+            entregues = n1.longValue();
+        }
+        if (row != null && row.length > 2 && row[2] instanceof BigDecimal bd) {
+            valor = bd;
+        } else if (row != null && row.length > 2 && row[2] instanceof Number n2) {
+            valor = BigDecimal.valueOf(n2.doubleValue());
+        }
         double taxa = enviadas > 0 ? (entregues * 100.0 / enviadas) : 0.0;
         return new CobrancaStatsDTO(enviadas, entregues, valor, taxa);
     }

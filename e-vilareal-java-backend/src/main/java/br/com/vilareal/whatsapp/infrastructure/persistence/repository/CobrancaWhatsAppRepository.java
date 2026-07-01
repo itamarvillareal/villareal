@@ -59,11 +59,13 @@ public interface CobrancaWhatsAppRepository extends JpaRepository<CobrancaWhatsA
             SELECT COUNT(c) > 0 FROM CobrancaWhatsAppEntity c
             WHERE c.imovelId = :imovelId
               AND c.status <> 'CANCELADO'
-              AND YEAR(c.createdAt) = :ano
-              AND MONTH(c.createdAt) = :mes
+              AND c.createdAt >= :inicioMes
+              AND c.createdAt < :fimMes
             """)
     boolean existsCobrancaNoMes(
-            @Param("imovelId") Long imovelId, @Param("ano") int ano, @Param("mes") int mes);
+            @Param("imovelId") Long imovelId,
+            @Param("inicioMes") Instant inicioMes,
+            @Param("fimMes") Instant fimMes);
 
     Optional<CobrancaWhatsAppEntity> findByWaMessageId(String waMessageId);
 
@@ -77,11 +79,13 @@ public interface CobrancaWhatsAppRepository extends JpaRepository<CobrancaWhatsA
             SELECT COUNT(c) > 0 FROM CobrancaWhatsAppEntity c
             WHERE c.processoId = :processoId
               AND c.status <> 'CANCELADO'
-              AND YEAR(c.createdAt) = :ano
-              AND MONTH(c.createdAt) = :mes
+              AND c.createdAt >= :inicioMes
+              AND c.createdAt < :fimMes
             """)
     boolean existsCobrancaNoMesPorProcesso(
-            @Param("processoId") Long processoId, @Param("ano") int ano, @Param("mes") int mes);
+            @Param("processoId") Long processoId,
+            @Param("inicioMes") Instant inicioMes,
+            @Param("fimMes") Instant fimMes);
 
     @Query(
             """
@@ -89,7 +93,7 @@ public interface CobrancaWhatsAppRepository extends JpaRepository<CobrancaWhatsA
                    SUM(CASE WHEN c.status IN ('ENTREGUE', 'LIDO') THEN 1 ELSE 0 END),
                    COALESCE(SUM(c.valorPendente), 0)
             FROM CobrancaWhatsAppEntity c
-            WHERE YEAR(c.createdAt) = :ano AND MONTH(c.createdAt) = :mes
+            WHERE c.createdAt >= :inicioMes AND c.createdAt < :fimMes
             """)
-    Object[] statsDoMes(@Param("ano") int ano, @Param("mes") int mes);
+    Object[] statsDoMes(@Param("inicioMes") Instant inicioMes, @Param("fimMes") Instant fimMes);
 }

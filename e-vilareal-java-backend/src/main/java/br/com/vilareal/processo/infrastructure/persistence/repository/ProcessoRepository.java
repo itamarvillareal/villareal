@@ -410,7 +410,7 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
             SELECT p FROM ProcessoEntity p
             JOIN FETCH p.cliente cc
             JOIN FETCH cc.pessoa cp
-            WHERE cc.codigoCliente = :codigoCliente
+            WHERE TRIM(cc.codigoCliente) = :codigoCliente
               AND p.ativo = TRUE
               AND p.unidade IS NOT NULL
               AND TRIM(p.unidade) <> ''
