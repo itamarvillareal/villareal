@@ -3,7 +3,7 @@ import { Bot, Loader2 } from 'lucide-react';
 import {
   getWhatsAppIaHabilitada,
   putWhatsAppIaHabilitada,
-} from '../../repositories/whatsappRepository.js';
+} from '../../../repositories/whatsappRepository.js';
 import { useWhatsAppToast } from '../WhatsAppToast.jsx';
 
 export function WhatsAppIaToggle() {
