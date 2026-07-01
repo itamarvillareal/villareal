@@ -198,12 +198,16 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
   const autosaveTimerRef = useRef(null);
   const autosaveEmCursoRef = useRef(false);
   const autosaveReagendarRef = useRef(false);
+  const persistirCadastroRef = useRef(null);
   const modoRef = useRef(modo);
   const editIdRef = useRef(editId);
   const codigoSugeridoNovaRef = useRef('');
   const formRef = useRef(form);
   const enderecosRef = useRef(enderecos);
   const contatosRef = useRef(contatos);
+  /** Endereços/contatos alterados no modal antes da ficha complementar terminar de carregar. */
+  const enderecosAlteradosPeloUsuarioRef = useRef(false);
+  const contatosAlteradosPeloUsuarioRef = useRef(false);
   /** CPF/CNPJ já cadastrado: oferece abrir a ficha existente. */
   const [modalCpfDuplicado, setModalCpfDuplicado] = useState(null);
   /** Enquanto true, o campo Nacionalidade fica em vermelho até o usuário entrar e sair (blur), validando a sugestão. */
@@ -280,6 +284,24 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
   useEffect(() => {
     contatosRef.current = contatos;
   }, [contatos]);
+
+  const atualizarEnderecos = useCallback((value) => {
+    enderecosAlteradosPeloUsuarioRef.current = true;
+    setEnderecos((prev) => {
+      const next = typeof value === 'function' ? value(prev) : value;
+      enderecosRef.current = Array.isArray(next) ? next : [];
+      return enderecosRef.current;
+    });
+  }, []);
+
+  const atualizarContatos = useCallback((value) => {
+    contatosAlteradosPeloUsuarioRef.current = true;
+    setContatos((prev) => {
+      const next = typeof value === 'function' ? value(prev) : value;
+      contatosRef.current = Array.isArray(next) ? next : [];
+      return contatosRef.current;
+    });
+  }, []);
 
   useEffect(() => {
     if (!toastDocumento?.mensagem) return undefined;
@@ -985,6 +1007,8 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
     }
     setEditId(item.id);
     complementaresAplicadosParaIdRef.current = null;
+    enderecosAlteradosPeloUsuarioRef.current = false;
+    contatosAlteradosPeloUsuarioRef.current = false;
     autosaveAtivoRef.current = false;
     setFichaProntaAutosave(false);
     ultimoSnapshotSalvoRef.current = null;
@@ -1184,10 +1208,14 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
           if (featureFlags.useApiPessoasComplementares && ec) {
             const [ends, conts] = ec;
             if (ends != null && enderecosRef.current.length === 0) {
-              setEnderecos(enderecosApiParaUi(ends));
+              const normalizados = enderecosApiParaUi(ends);
+              enderecosRef.current = normalizados;
+              setEnderecos(normalizados);
             }
             if (conts != null && contatosRef.current.length === 0) {
-              setContatos(contatosApiParaUi(conts));
+              const normalizados = contatosApiParaUi(conts);
+              contatosRef.current = normalizados;
+              setContatos(normalizados);
             }
           }
           complementaresAplicadosParaIdRef.current = idNum;
@@ -1195,6 +1223,20 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
         if (!cancelado) {
           autosaveAtivoRef.current = true;
           setFichaProntaAutosave(true);
+          if (
+            enderecosAlteradosPeloUsuarioRef.current ||
+            contatosAlteradosPeloUsuarioRef.current
+          ) {
+            queueMicrotask(() => {
+              persistirCadastroRef.current?.({ forcar: true });
+            });
+          } else {
+            ultimoSnapshotSalvoRef.current = buildSnapshotCadastro(
+              formRef.current,
+              enderecosRef.current,
+              contatosRef.current
+            );
+          }
         }
       } catch (e) {
         if (!cancelado) {
@@ -1253,7 +1295,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
       if (formAtual.edicaoDesabilitada) return false;
       const modoAtual = modoRef.current;
       if (modoAtual !== 'criar' && modoAtual !== 'editar') return false;
-      if (modoAtual === 'editar' && !autosaveAtivoRef.current) return false;
+      if (modoAtual === 'editar' && !autosaveAtivoRef.current && !opts.forcar) return false;
 
       const enderecosAtual = enderecosRef.current;
       const contatosAtual = contatosRef.current;
@@ -1405,6 +1447,8 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
           enderecosRef.current,
           contatosRef.current
         );
+        enderecosAlteradosPeloUsuarioRef.current = false;
+        contatosAlteradosPeloUsuarioRef.current = false;
         return true;
       } catch (err) {
         const msg = String(err.message || '');
@@ -1437,6 +1481,8 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
     },
     [apenasAtivos, docPreview, lista, navigate]
   );
+
+  persistirCadastroRef.current = persistirCadastro;
 
   useEffect(() => {
     if (form.edicaoDesabilitada) return undefined;
@@ -1486,22 +1532,20 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
   const agendarPersistenciaCadastro = useCallback(() => {
     if (formRef.current.edicaoDesabilitada) return;
     if (modoRef.current !== 'criar' && modoRef.current !== 'editar') return;
-    if (modoRef.current === 'editar' && !autosaveAtivoRef.current) return;
     if (autosaveTimerRef.current) {
       clearTimeout(autosaveTimerRef.current);
       autosaveTimerRef.current = null;
     }
     const snap = buildSnapshotCadastro(formRef.current, enderecosRef.current, contatosRef.current);
     if (ultimoSnapshotSalvoRef.current === snap) return;
-    void persistirCadastro({ snapshotEsperado: snap });
+    void persistirCadastro({ snapshotEsperado: snap, forcar: true });
   }, [persistirCadastro]);
 
   useEffect(() => {
     if (ultimoSnapshotSalvoRef.current !== null) return;
-    if (modo !== 'editar' && modo !== 'criar') return;
-    if (modo === 'editar' && !fichaProntaAutosave) return;
+    if (modo !== 'criar') return;
     ultimoSnapshotSalvoRef.current = buildSnapshotCadastro(form, enderecos, contatos);
-  }, [form, enderecos, contatos, modo, editId, fichaProntaAutosave]);
+  }, [form, enderecos, contatos, modo]);
 
   function confirmarAbrirCadastroPessoaExistente() {
     if (!modalCpfDuplicado) return;
@@ -2517,14 +2561,17 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
         nomePessoa={form.nome}
         codigoPessoa={form.codigo}
         enderecos={enderecos}
-        onChange={setEnderecos}
+        onChange={atualizarEnderecos}
         sugestaoEndereco={extracaoEndereco}
       />
       <ModalContatos
         open={modalContatos}
-        onClose={fecharModalContatos}
+        onClose={() => {
+          fecharModalContatos();
+          agendarPersistenciaCadastro();
+        }}
         contatos={contatos}
-        onChange={setContatos}
+        onChange={atualizarContatos}
       />
 
       {modalCpfDuplicado && (

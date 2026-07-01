@@ -80,6 +80,7 @@ export function ModalEnderecos({
   const [cep, setCep] = useState('');
   const [buscandoCep, setBuscandoCep] = useState(false);
   const [editandoIndex, setEditandoIndex] = useState(-1);
+  const [erroFormulario, setErroFormulario] = useState('');
   const sessaoAbertaRef = useRef(false);
 
   useCloseOnEscape(open, onClose);
@@ -180,8 +181,15 @@ export function ModalEnderecos({
   };
 
   const salvarEndereco = () => {
-    if (!rua.trim()) return;
-    if (!municipioSel?.municipioId) return;
+    if (!rua.trim()) {
+      setErroFormulario('Informe o logradouro.');
+      return;
+    }
+    if (!municipioSel?.municipioId) {
+      setErroFormulario('Selecione o município na lista (digite e clique na opção).');
+      return;
+    }
+    setErroFormulario('');
     const item = montarEnderecoItem({
       numeroLista,
       rua,
@@ -271,6 +279,11 @@ export function ModalEnderecos({
             {editandoIndex >= 0 ? (
               <p className="text-sm text-blue-800 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
                 Editando endereço #{editandoIndex + 1}. Altere os campos abaixo e clique em <strong>Salvar</strong>.
+              </p>
+            ) : null}
+            {erroFormulario ? (
+              <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                {erroFormulario}
               </p>
             ) : null}
             <div className="flex items-center gap-2">

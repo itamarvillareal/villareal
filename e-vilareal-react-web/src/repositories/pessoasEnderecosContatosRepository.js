@@ -111,7 +111,15 @@ export async function salvarEnderecosPessoa(pessoaId, itemsUi) {
   if (!featureFlags.useApiPessoasComplementares) return null;
   const id = Number(pessoaId);
   if (!Number.isFinite(id) || id < 1) return null;
+  const list = Array.isArray(itemsUi) ? itemsUi : [];
   const body = enderecosUiParaApi(itemsUi);
+  const comRua = list.filter((e) => String(e?.rua ?? '').trim());
+  if (comRua.length > 0 && body.length === 0) {
+    throw new Error('Informe o município (busque e selecione na lista) em todos os endereços.');
+  }
+  if (comRua.length > body.length) {
+    throw new Error('Um ou mais endereços estão sem município válido selecionado.');
+  }
   return request(`/api/pessoas/${id}/enderecos`, {
     method: 'PUT',
     body,
