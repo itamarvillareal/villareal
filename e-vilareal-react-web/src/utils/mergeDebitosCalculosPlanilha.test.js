@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { mergeDebitosCalculosMultiSheet, mergeDebitosCalculosPlanilha } from './mergeDebitosCalculosPlanilha.js';
+import {
+  mergeDebitosCalculosMultiSheet,
+  mergeDebitosCalculosPlanilha,
+  migrarRodadasLegadoParaSequenciaCompacta,
+} from './mergeDebitosCalculosPlanilha.js';
 
 describe('mergeDebitosCalculosPlanilha', () => {
   it('retorna aviso se só cabeçalho', () => {
@@ -82,5 +86,82 @@ describe('mergeDebitosCalculosPlanilha', () => {
     expect(nextRodadas['00000001:10:0'].cabecalho).toEqual({ autor: 'X', reu: 'Y' });
     expect(nextRodadas['00000001:10:0'].titulos[0].valorInicial).toBe('R$ 99,00');
     expect(nextRodadas['00000001:10:0'].parcelas[0].dataVencimento).toBe('05/05/2026');
+  });
+
+  it('stub legado (proc na API sem rodada) → sequência compacta', () => {
+    const matrix = [
+      ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'],
+      [299, '15/03/2026', 100, '', '', '', 1474, 0],
+    ];
+    const numerosInternosPorCliente8 = {
+      '00000299': [...Array.from({ length: 74 }, (_, i) => i + 1), 1474],
+    };
+    const { nextRodadas, stats } = mergeDebitosCalculosPlanilha({}, matrix, { numerosInternosPorCliente8 });
+    expect(stats.aplicadas).toBe(1);
+    expect(nextRodadas['00000299:75:0']).toBeTruthy();
+    expect(nextRodadas['00000299:1474:0']).toBeFalsy();
+    expect(stats.avisos.some((a) => a.includes('1474') && a.includes('75'))).toBe(true);
+  });
+
+  it('mesmo proc legado em duas linhas mantém o mesmo destino compacto', () => {
+    const matrix = [
+      ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'],
+      [299, '01/01/2026', 10, '', '', '', 1474, 0],
+      [299, '02/02/2026', 20, '', '', '', 1474, 0],
+    ];
+    const numerosInternosPorCliente8 = {
+      '00000299': [...Array.from({ length: 74 }, (_, i) => i + 1), 1474],
+    };
+    const { nextRodadas, stats } = mergeDebitosCalculosPlanilha({}, matrix, { numerosInternosPorCliente8 });
+    expect(stats.aplicadas).toBe(2);
+    const r = nextRodadas['00000299:75:0'];
+    expect(r.parcelas[0].valorParcela).toContain('10,00');
+    expect(r.parcelas[1].valorParcela).toContain('20,00');
+  });
+
+  it('migra rodada existente no proc legado 1474 para 75', () => {
+    const base = {
+      '00000299:1474:0': {
+        pagina: 1,
+        paginaParcelamento: 1,
+        titulos: [
+          {
+            dataVencimento: '15/03/2026',
+            valorInicial: 'R$ 100,00',
+            atualizacaoMonetaria: '',
+            diasAtraso: '',
+            juros: '',
+            multa: '',
+            honorarios: '',
+            total: '',
+            descricaoValor: '',
+          },
+        ],
+        parcelas: [
+          {
+            dataVencimento: '15/03/2026',
+            valorParcela: 'R$ 100,00',
+            honorariosParcela: '',
+            observacao: '',
+            dataPagamento: '',
+          },
+        ],
+        quantidadeParcelasInformada: '01',
+        taxaJurosParcelamento: '0,00',
+        limpezaAtiva: false,
+        snapshotAntesLimpeza: null,
+        cabecalho: { autor: 'Condomínio', reu: '' },
+        honorariosDataRecebimento: {},
+        parcelamentoAceito: false,
+      },
+    };
+    const avisos = [];
+    const out = migrarRodadasLegadoParaSequenciaCompacta(base, {
+      '00000299': [...Array.from({ length: 74 }, (_, i) => i + 1), 1474],
+    }, avisos);
+    expect(out['00000299:75:0']).toBeTruthy();
+    expect(out['00000299:1474:0']).toBeFalsy();
+    expect(out['00000299:75:0'].parcelas[0].valorParcela).toContain('100,00');
+    expect(avisos.some((a) => a.includes('1474') && a.includes('75'))).toBe(true);
   });
 });

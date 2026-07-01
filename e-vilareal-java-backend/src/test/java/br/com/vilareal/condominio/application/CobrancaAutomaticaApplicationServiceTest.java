@@ -3,6 +3,7 @@ package br.com.vilareal.condominio.application;
 import br.com.vilareal.condominio.api.dto.CobrancaExtracaoResponse;
 import br.com.vilareal.condominio.api.dto.CobrancaProcessarRequest;
 import br.com.vilareal.condominio.api.dto.CobrancaUnidadeRequestDto;
+import br.com.vilareal.condominio.application.CobrancaDebitosCadastradosConsultaService;
 import br.com.vilareal.condominio.api.dto.InadimplenciaCobrancaDto;
 import br.com.vilareal.calculo.api.dto.CalculoClienteConfigResponse;
 import br.com.vilareal.calculo.application.CalculoApplicationService;
@@ -23,6 +24,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -52,12 +54,16 @@ class CobrancaAutomaticaApplicationServiceTest {
     @Mock
     private CalculoApplicationService calculoApplicationService;
 
-    private final CobrancaRegraInicioCobrancaService regraInicioCobrancaService = new CobrancaRegraInicioCobrancaService();
+    @Mock
+    private CobrancaDebitosCadastradosConsultaService debitosCadastradosConsulta;
+
+    private CobrancaRegraInicioCobrancaService regraInicioCobrancaService;
 
     private CobrancaAutomaticaApplicationService service;
 
     @BeforeEach
     void setUp() {
+        regraInicioCobrancaService = new CobrancaRegraInicioCobrancaService(debitosCadastradosConsulta);
         service = new CobrancaAutomaticaApplicationService(
                 xlsParser,
                 clienteRepository,
@@ -135,7 +141,7 @@ class CobrancaAutomaticaApplicationServiceTest {
     }
 
     @Test
-    void processar_D60_naoProcessaDevedorDescartado() {
+    void processar_condicional61_naoProcessaDevedorDescartado() {
         ClienteEntity cliente = new ClienteEntity();
         cliente.setId(50L);
         PessoaEntity pessoa = new PessoaEntity();
@@ -144,7 +150,10 @@ class CobrancaAutomaticaApplicationServiceTest {
         when(clienteRepository.findByCodigoClienteFetchPessoa("00000299")).thenReturn(Optional.of(cliente));
         ObjectMapper om = new ObjectMapper();
         when(calculoApplicationService.obterConfigCliente("00000299"))
-                .thenReturn(new CalculoClienteConfigResponse(om.createObjectNode().put("regraInicioCobrancaDias", 60)));
+                .thenReturn(new CalculoClienteConfigResponse(
+                        om.createObjectNode().put("regraInicioCobrancaDias", 61)));
+        when(debitosCadastradosConsulta.unidadeTemDebitoAbertoAcimaDe60Dias(anyLong(), any(), any(), any()))
+                .thenReturn(false);
 
         LocalDate hoje = LocalDate.now();
         java.time.format.DateTimeFormatter fmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");

@@ -18,8 +18,8 @@ export function padCliente8Config(val) {
 /** Valores alinhados ao legado e à tela Cálculos. */
 export const DEFAULT_CONFIG_CALCULO_CLIENTE = {
   honorariosTipo: 'fixos',
-  /** Valor exibido no campo quando honorários fixos */
-  honorariosValor: '0',
+  /** Percentual fixo (ex.: «20 %») — alinhado ao legado Excel / tela Cálculos */
+  honorariosValor: '0 %',
   /** Texto livre para faixas (honorários variáveis), ex.: legado Excel */
   honorariosVariaveisTexto: '> 30 = 0%\n< 30 < 60 = 10%\n< 60 = 20%',
   juros: '1 %',
@@ -27,7 +27,7 @@ export const DEFAULT_CONFIG_CALCULO_CLIENTE = {
   indice: 'INPC',
   periodicidade: 'mensal',
   modeloListaDebitos: '01',
-  /** 1, 30 ou 60 — regra de início de cobrança automática (D+T) */
+  /** 1 = importar tudo; 61 = 60+1 condicional */
   regraInicioCobrancaDias: 1,
 };
 
@@ -35,6 +35,36 @@ function dispatchAtualizado() {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('vilareal:cliente-config-calculo-atualizado'));
   }
+}
+
+/** Honorários «fixos» são percentual (20 %), nunca valor em R$. */
+export function normalizarHonorariosValorFixo(val) {
+  const raw = String(val ?? '').trim();
+  if (!raw) return '0 %';
+  if (/%/.test(raw)) {
+    const n = raw.replace(/%/g, '').trim().replace(',', '.');
+    const num = Number(n);
+    if (Number.isFinite(num)) {
+      const fmt = Number.isInteger(num) ? String(num) : String(num).replace('.', ',');
+      return `${fmt} %`;
+    }
+    return raw;
+  }
+  const semMoeda = raw.replace(/^R\$\s*/i, '').trim();
+  const num = Number(semMoeda.replace(',', '.'));
+  if (Number.isFinite(num)) {
+    const fmt = Number.isInteger(num) ? String(num) : String(num).replace('.', ',');
+    return `${fmt} %`;
+  }
+  return raw;
+}
+
+function normalizarRowConfigCalculo(row) {
+  const out = { ...row };
+  if (out.honorariosTipo !== 'variaveis') {
+    out.honorariosValor = normalizarHonorariosValorFixo(out.honorariosValor);
+  }
+  return out;
 }
 
 /** Normaliza resposta `config` da API para o mesmo formato do bag em localStorage. */
@@ -56,9 +86,10 @@ function rowFromApiConfig(raw) {
   pick('modeloListaDebitos');
   if (raw.regraInicioCobrancaDias !== undefined && raw.regraInicioCobrancaDias !== null) {
     const n = Number(raw.regraInicioCobrancaDias);
-    if (n === 1 || n === 30 || n === 60) base.regraInicioCobrancaDias = n;
+    if (n === 30 || n === 60) base.regraInicioCobrancaDias = 61;
+    else if (n === 1 || n === 61) base.regraInicioCobrancaDias = n;
   }
-  return base;
+  return normalizarRowConfigCalculo(base);
 }
 
 function gravarRowNoBag(key, row) {
@@ -101,7 +132,7 @@ export function loadConfigCalculoCliente(codCliente) {
     if (!parsed || typeof parsed !== 'object') return base;
     const row = parsed[key];
     if (!row || typeof row !== 'object') return base;
-    return { ...base, ...row };
+    return normalizarRowConfigCalculo({ ...base, ...row });
   } catch {
     return base;
   }
@@ -118,15 +149,17 @@ export function saveConfigCalculoCliente(codCliente, config) {
     const raw = window.localStorage.getItem(STORAGE_CLIENTE_CONFIG_CALCULO);
     const parsed = raw ? JSON.parse(raw) : {};
     const bag = parsed && typeof parsed === 'object' ? parsed : {};
-    bag[key] = {
+    const merged = {
       ...DEFAULT_CONFIG_CALCULO_CLIENTE,
       ...(bag[key] && typeof bag[key] === 'object' ? bag[key] : {}),
       ...config,
     };
+    if (merged.honorariosTipo === 'variaveis') merged.honorariosValor = '';
+    bag[key] = normalizarRowConfigCalculo(merged);
     window.localStorage.setItem(STORAGE_CLIENTE_CONFIG_CALCULO, JSON.stringify(bag));
     dispatchAtualizado();
     if (featureFlags.useApiCalculos) {
-      return putCalculoConfigCliente(key, config)
+      return putCalculoConfigCliente(key, bag[key])
         .then((res) => {
           if (res?.config) gravarRowNoBag(key, rowFromApiConfig(res.config));
         })
@@ -146,7 +179,7 @@ export function saveConfigCalculoCliente(codCliente, config) {
  * Mescla defaults do cliente com sobrescritas da rodada (processo/dimensão).
  */
 export function mergeConfigPainelCalculo(defCliente, panelConfig) {
-  const d = { ...DEFAULT_CONFIG_CALCULO_CLIENTE, ...defCliente };
+  const d = normalizarRowConfigCalculo({ ...DEFAULT_CONFIG_CALCULO_CLIENTE, ...defCliente });
   if (!panelConfig || typeof panelConfig !== 'object') return d;
-  return { ...d, ...panelConfig };
+  return normalizarRowConfigCalculo({ ...d, ...panelConfig });
 }

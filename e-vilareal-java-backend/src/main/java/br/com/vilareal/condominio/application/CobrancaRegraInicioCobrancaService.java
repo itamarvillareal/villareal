@@ -1,5 +1,6 @@
 package br.com.vilareal.condominio.application;
 
+import br.com.vilareal.calculo.application.RegraInicioCobrancaDiasValidator;
 import br.com.vilareal.condominio.api.dto.CobrancaUnidadeRequestDto;
 import br.com.vilareal.condominio.api.dto.InadimplenciaCobrancaDto;
 import org.springframework.stereotype.Component;
@@ -12,13 +13,26 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Regra de início de cobrança (D+T): só unidades com ao menos um título com {@code dias >= T}
- * entram no pipeline de /processar.
+ * Regras de início de cobrança automática (.xls):
+ * <ul>
+ *   <li>{@code 1} — importar tudo (qualquer taxa vencida na planilha, D+1)</li>
+ *   <li>{@code 61} — 60+1 condicional: na planilha exige &gt;60 dias; se já houver débito cadastrado &gt;60 dias,
+ *       importa todas as taxas em aberto da unidade</li>
+ * </ul>
  */
 @Component
 public class CobrancaRegraInicioCobrancaService {
 
+    /** Dias mínimos na planilha para acionar unidade nova (regra 61): &gt;60 = {@code >= 61}. */
+    static final int DIAS_MINIMOS_PLANILHA_CONDICIONAL = 61;
+
     private static final DateTimeFormatter VENCIMENTO_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+
+    private final CobrancaDebitosCadastradosConsultaService debitosCadastradosConsulta;
+
+    public CobrancaRegraInicioCobrancaService(CobrancaDebitosCadastradosConsultaService debitosCadastradosConsulta) {
+        this.debitosCadastradosConsulta = debitosCadastradosConsulta;
+    }
 
     public record FiltragemRegraInicio(
             List<CobrancaUnidadeRequestDto> acionadas,
@@ -26,7 +40,12 @@ public class CobrancaRegraInicioCobrancaService {
             int titulosDescartados) {}
 
     public FiltragemRegraInicio filtrarUnidadesAcionadas(
-            List<CobrancaUnidadeRequestDto> unidades, LocalDate dataImportacao, int regraDias) {
+            List<CobrancaUnidadeRequestDto> unidades,
+            LocalDate dataImportacao,
+            int regraDias,
+            long clienteId,
+            String codigoCliente8) {
+        int regra = RegraInicioCobrancaDiasValidator.validar(regraDias);
         List<CobrancaUnidadeRequestDto> acionadas = new ArrayList<>();
         int devedoresDescartados = 0;
         int titulosDescartados = 0;
@@ -34,7 +53,13 @@ public class CobrancaRegraInicioCobrancaService {
             return new FiltragemRegraInicio(List.of(), 0, 0);
         }
         for (CobrancaUnidadeRequestDto u : unidades) {
-            if (unidadeAcionada(u, dataImportacao, regraDias)) {
+            boolean acionada =
+                    switch (regra) {
+                        case RegraInicioCobrancaDiasValidator.REGRA_CONDICIONAL_60_MAIS_1 -> unidadeAcionadaCondicional60Mais1(
+                                u, dataImportacao, clienteId, codigoCliente8);
+                        default -> unidadeAcionada(u, dataImportacao, RegraInicioCobrancaDiasValidator.REGRA_IMPORTAR_TUDO);
+                    };
+            if (acionada) {
                 acionadas.add(u);
             } else {
                 devedoresDescartados++;
@@ -42,6 +67,26 @@ public class CobrancaRegraInicioCobrancaService {
             }
         }
         return new FiltragemRegraInicio(acionadas, devedoresDescartados, titulosDescartados);
+    }
+
+    /**
+     * Regra 61: se já existe débito cadastrado com &gt;60 dias, importa a unidade inteira; senão exige taxa na
+     * planilha com &gt;60 dias.
+     */
+    boolean unidadeAcionadaCondicional60Mais1(
+            CobrancaUnidadeRequestDto unidade,
+            LocalDate dataImportacao,
+            long clienteId,
+            String codigoCliente8) {
+        if (unidade == null || unidade.cobrancas() == null || unidade.cobrancas().isEmpty()) {
+            return false;
+        }
+        String cod = unidade.codigoUnidadeNormalizada();
+        if (debitosCadastradosConsulta.unidadeTemDebitoAbertoAcimaDe60Dias(
+                clienteId, codigoCliente8, cod, dataImportacao)) {
+            return true;
+        }
+        return unidadeAcionada(unidade, dataImportacao, DIAS_MINIMOS_PLANILHA_CONDICIONAL);
     }
 
     public boolean unidadeAcionada(CobrancaUnidadeRequestDto unidade, LocalDate dataImportacao, int regraDias) {
@@ -62,7 +107,11 @@ public class CobrancaRegraInicioCobrancaService {
         if (cobranca == null || cobranca.vencimento() == null || cobranca.vencimento().isBlank()) {
             return null;
         }
-        LocalDate venc = parseVencimento(cobranca.vencimento().trim());
+        return diasDesdeVencimentoTexto(cobranca.vencimento().trim(), dataImportacao);
+    }
+
+    static Long diasDesdeVencimentoTexto(String vencimento, LocalDate dataImportacao) {
+        LocalDate venc = parseVencimento(vencimento);
         if (venc == null) {
             return null;
         }

@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FilterX, ArrowDownAZ, ArrowUpAZ, Calculator, FileSpreadsheet, Loader2, ChevronDown, X } from 'lucide-react';
 import {
+  agregarLinhasRelatorioCalculosConsolidado,
   carregarLinhasRelatorioCalculosAsync,
   getLinhasRelatorioCalculosConsolidadoComFiltros,
   formatBRL,
@@ -66,6 +67,7 @@ const CRITERIOS_EMITIR_INICIAL = {
   textoCodigosCliente: '',
   textoProcessos: '',
   parcelamentoAceito: 'todos',
+  modoExibicao: 'detalhado',
 };
 
 export function RelatorioCalculos() {
@@ -85,6 +87,15 @@ export function RelatorioCalculos() {
     () => montarFiltroEmitirRelatorioCalculosFromUi(criteriosEmitir),
     [criteriosEmitir]
   );
+
+  const modoConsolidado = criteriosEmitir.modoExibicao === 'consolidado';
+
+  const linhasExibicao = useMemo(() => {
+    if (modoConsolidado) {
+      return agregarLinhasRelatorioCalculosConsolidado(linhas);
+    }
+    return linhas;
+  }, [linhas, modoConsolidado]);
 
   const recarregar = useCallback(async () => {
     if (featureFlags.useApiCalculos) {
@@ -169,7 +180,7 @@ export function RelatorioCalculos() {
   };
 
   const dadosFiltrados = useMemo(() => {
-    return linhas.filter((row) =>
+    return linhasExibicao.filter((row) =>
       COLUNAS.every((col) => {
         const modo = modoFiltroPorColuna[col.id] ?? MODOS_FILTRO_COLUNA.contem;
         const filtro = filtrosPorColuna[col.id] ?? '';
@@ -177,7 +188,7 @@ export function RelatorioCalculos() {
         return linhaPassaFiltroColunaRelatorio(exibicao, filtro, modo);
       })
     );
-  }, [linhas, filtrosPorColuna, modoFiltroPorColuna]);
+  }, [linhasExibicao, filtrosPorColuna, modoFiltroPorColuna]);
 
   const dadosOrdenados = useMemo(() => {
     if (!ordenarPor) return dadosFiltrados;
@@ -258,9 +269,10 @@ export function RelatorioCalculos() {
               Relatório de Cálculos
             </h1>
             <p className="text-sm text-slate-600 mt-0.5 max-w-3xl">
-              Uma linha por parcela do parcelamento (como na planilha): código, réu, unidade, datas de vencimento e pagamento,
-              valores, honorários, observação, parcela, processo e indicação de cálculo aceito. Duplo clique na linha abre o
-              formulário de Cálculos numa janela suspensa (mesma experiência da tela Cálculos).
+              No modo <strong className="font-medium text-slate-700">Detalhado</strong>, uma linha por parcela/taxa do
+              parcelamento (como na planilha). No modo <strong className="font-medium text-slate-700">Consolidado</strong>,
+              uma linha por cálculo com a soma final dos valores e honorários. Duplo clique na linha abre o formulário de
+              Cálculos numa janela suspensa.
             </p>
             {!relatorioEmitido ? (
               <p className="text-xs text-slate-600 mt-1.5 max-w-xl">
@@ -389,6 +401,29 @@ export function RelatorioCalculos() {
                   className="w-full px-2.5 py-2 rounded-lg border border-slate-300 text-sm text-slate-900 bg-white dark:bg-slate-950 dark:border-slate-600 dark:text-slate-100"
                 />
               </div>
+              <fieldset className="min-w-0 space-y-2">
+                <legend className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">Exibição</legend>
+                <label className="flex items-center gap-2 text-sm text-slate-800 dark:text-slate-200 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="modoExibicaoRel"
+                    checked={criteriosEmitir.modoExibicao === 'detalhado'}
+                    onChange={() => setCriteriosEmitir((p) => ({ ...p, modoExibicao: 'detalhado' }))}
+                    className="text-indigo-600"
+                  />
+                  Detalhado (cada taxa/parcela)
+                </label>
+                <label className="flex items-center gap-2 text-sm text-slate-800 dark:text-slate-200 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="modoExibicaoRel"
+                    checked={criteriosEmitir.modoExibicao === 'consolidado'}
+                    onChange={() => setCriteriosEmitir((p) => ({ ...p, modoExibicao: 'consolidado' }))}
+                    className="text-indigo-600"
+                  />
+                  Consolidado (soma das taxas)
+                </label>
+              </fieldset>
               <div>
                 <label htmlFor="filtroAceitarPagRel" className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
                   Aceitar pagamento (no Cálculos)
@@ -536,7 +571,7 @@ export function RelatorioCalculos() {
                   {dadosOrdenados.length === 0 ? (
                     <tr>
                       <td colSpan={COLUNAS.length} className="px-3 py-8 text-center text-slate-500 border-b border-slate-300">
-                        {linhas.length === 0
+                        {linhasExibicao.length === 0
                           ? 'Nenhuma parcela encontrada (sem quantidade de parcelas ou linhas preenchidas nas rodadas de Cálculos).'
                           : 'Nenhuma linha corresponde aos filtros.'}
                       </td>
@@ -544,7 +579,11 @@ export function RelatorioCalculos() {
                   ) : (
                     dadosOrdenados.map((row, idx) => (
                       <tr
-                        key={`${row.rodadaKey}|${row.indiceParcela}`}
+                        key={
+                          row.consolidadoKey
+                            ? `${row.consolidadoKey}|consolidado`
+                            : `${row.rodadaKey}|${row.indiceParcela}`
+                        }
                         className={`border-b border-slate-300 cursor-pointer hover:brightness-[0.98] ${
                           idx % 2 === 0 ? 'bg-white' : 'bg-slate-100'
                         }`}
@@ -577,7 +616,15 @@ export function RelatorioCalculos() {
                       Total
                       {totaisFiltrados.qtd > 0 ? (
                         <span className="ml-1.5 font-normal text-slate-600 dark:text-slate-400 tabular-nums">
-                          ({totaisFiltrados.qtd} {totaisFiltrados.qtd === 1 ? 'parcela' : 'parcelas'})
+                          ({totaisFiltrados.qtd}{' '}
+                          {modoConsolidado
+                            ? totaisFiltrados.qtd === 1
+                              ? 'linha'
+                              : 'linhas'
+                            : totaisFiltrados.qtd === 1
+                              ? 'parcela'
+                              : 'parcelas'}
+                          )
                         </span>
                       ) : null}
                     </td>

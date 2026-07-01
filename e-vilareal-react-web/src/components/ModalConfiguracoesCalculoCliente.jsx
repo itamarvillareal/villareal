@@ -5,7 +5,9 @@ import {
   saveConfigCalculoCliente,
   padCliente8Config,
   refreshConfigCalculoClienteFromApi,
+  normalizarHonorariosValorFixo,
 } from '../data/clienteConfigCalculoStorage.js';
+import { normalizarRegraInicioCobrancaDias } from '../domain/cobrancaRegraInicio.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { INDICES_CALCULO, PERIODICIDADE_OPCOES, MODELOS_LISTA_DEBITOS } from '../data/calculosIndices.js';
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
@@ -41,13 +43,16 @@ function classeInput(somenteLeitura, salvando) {
 }
 
 const REGRA_INICIO_OPCOES = [
-  { valor: 1, label: '1º dia (D+1)' },
-  { valor: 30, label: '30 dias (D+30)' },
-  { valor: 60, label: '60 dias (D+60)' },
+  { valor: 1, label: 'Importar tudo' },
+  {
+    valor: 61,
+    label: '60+1 dias (condicional)',
+  },
 ];
 
 const REGRA_INICIO_TOOLTIP =
-  'Atingir o limite em qualquer taxa do devedor puxa também as taxas com menos dias de vencido; quem não atinge é totalmente ignorado na importação.';
+  'Condicional: se a unidade já tem débito cadastrado com mais de 60 dias, importa todas as taxas da planilha; ' +
+  'caso contrário, só importa quando alguma taxa tiver mais de 60 dias de atraso.';
 
 /**
  * Modal "Configurações Personalizadas do Cliente" — padrões de cálculo por código de cliente.
@@ -61,7 +66,7 @@ export function ModalConfiguracoesCalculoCliente({
   somenteLeitura = false,
 }) {
   const [honorariosTipo, setHonorariosTipo] = useState('fixos');
-  const [honorariosValor, setHonorariosValor] = useState('0');
+  const [honorariosValor, setHonorariosValor] = useState('0 %');
   const [honorariosVariaveisTexto, setHonorariosVariaveisTexto] = useState('');
   const [juros, setJuros] = useState('1 %');
   const [multa, setMulta] = useState('0 %');
@@ -89,15 +94,16 @@ export function ModalConfiguracoesCalculoCliente({
       if (cancelled) return;
       const c = loadConfigCalculoCliente(codigoCliente);
       setHonorariosTipo(c.honorariosTipo === 'variaveis' ? 'variaveis' : 'fixos');
-      setHonorariosValor(c.honorariosValor ?? '0');
+      setHonorariosValor(
+        c.honorariosTipo === 'variaveis' ? '' : normalizarHonorariosValorFixo(c.honorariosValor ?? '0 %')
+      );
       setHonorariosVariaveisTexto(c.honorariosVariaveisTexto ?? '');
       setJuros(c.juros ?? '1 %');
       setMulta(c.multa ?? '0 %');
       setIndice(c.indice ?? 'INPC');
       setPeriodicidade(c.periodicidade ?? 'mensal');
       setModeloListaDebitos(c.modeloListaDebitos ?? '01');
-      const rd = Number(c.regraInicioCobrancaDias);
-      setRegraInicioCobrancaDias(rd === 30 || rd === 60 ? rd : 1);
+      setRegraInicioCobrancaDias(normalizarRegraInicioCobrancaDias(c.regraInicioCobrancaDias));
     })();
     return () => {
       cancelled = true;
@@ -115,7 +121,8 @@ export function ModalConfiguracoesCalculoCliente({
     try {
       await saveConfigCalculoCliente(codigoCliente, {
         honorariosTipo,
-        honorariosValor: honorariosTipo === 'fixos' ? honorariosValor : '',
+        honorariosValor:
+          honorariosTipo === 'fixos' ? normalizarHonorariosValorFixo(honorariosValor) : '',
         honorariosVariaveisTexto,
         juros,
         multa,
@@ -242,15 +249,9 @@ export function ModalConfiguracoesCalculoCliente({
                     ) : (
                       <>
                         <label htmlFor="hon-fix-valor" className="mb-0.5 block text-[11px] font-medium text-slate-600">
-                          Valor fixo
+                          Percentual fixo
                         </label>
                         <div className="relative">
-                          <span
-                            className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-500"
-                            aria-hidden
-                          >
-                            R$
-                          </span>
                           <input
                             id="hon-fix-valor"
                             type="text"
@@ -258,9 +259,15 @@ export function ModalConfiguracoesCalculoCliente({
                             onChange={(e) => setHonorariosValor(e.target.value)}
                             readOnly={somenteLeitura}
                             disabled={salvando}
-                            className={`${inputCls} pl-7`}
-                            placeholder="150,00"
+                            className={inputSuffixCls}
+                            placeholder="20"
                           />
+                          <span
+                            className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-500"
+                            aria-hidden
+                          >
+                            %
+                          </span>
                         </div>
                       </>
                     )}
@@ -281,7 +288,7 @@ export function ModalConfiguracoesCalculoCliente({
                   <fieldset disabled={inputsDesabilitados} className="mt-1.5 min-w-0 border-0 p-0">
                     <legend className="text-[11px] font-medium text-slate-700">Regra de início</legend>
                     <p className="mt-0.5 text-[10px] leading-snug text-slate-500">
-                      Dias de atraso mínimos em alguma taxa para importar a unidade.
+                      Define quais unidades da planilha .xls entram na importação automática.
                     </p>
                     <div
                       className="mt-1 flex flex-col gap-0.5"

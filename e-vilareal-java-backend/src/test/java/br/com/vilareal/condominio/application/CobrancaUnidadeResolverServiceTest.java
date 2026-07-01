@@ -9,6 +9,7 @@ import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.processo.api.dto.ProcessoParteWriteRequest;
 import br.com.vilareal.processo.api.dto.ProcessoResponse;
+import br.com.vilareal.processo.api.dto.ProcessoWriteRequest;
 import br.com.vilareal.processo.application.ProcessoApplicationService;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoParteEntity;
@@ -20,8 +21,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Pageable;
-
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -29,6 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -72,6 +73,44 @@ class CobrancaUnidadeResolverServiceTest {
     }
 
     @Test
+    void resolverUnidade_procNovo_preencheNaturezaAcaoEParteCliente() {
+        when(pessoaRepository.findByCpf("12345678901")).thenReturn(Optional.of(pessoa(888L)));
+        when(processoRepository.findByCliente_IdAndUnidade(CLIENTE_ID, UNIDADE)).thenReturn(Optional.empty());
+        when(processoRepository.findByCliente_IdOrderByNumeroInternoAscIdAsc(CLIENTE_ID)).thenReturn(List.of());
+        ProcessoResponse criado = new ProcessoResponse();
+        criado.setId(701L);
+        criado.setNumeroInterno(1);
+        when(processoApplicationService.criar(any())).thenReturn(criado);
+        when(processoRepository.findById(701L)).thenReturn(Optional.of(processo(701L, 1, UNIDADE)));
+        when(processoParteRepository.findFirstByProcesso_IdAndPoloIgnoreCaseAndPessoa_Id(701L, "AUTOR", CLIENTE_PESSOA_ID))
+                .thenReturn(Optional.empty());
+        when(processoParteRepository.findFirstByProcesso_IdAndPoloIgnoreCaseAndPessoa_Id(701L, "REU", 888L))
+                .thenReturn(Optional.empty());
+        when(processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(701L)).thenReturn(List.of());
+
+        service.resolverUnidade(input("João", "12345678901"));
+
+        ArgumentCaptor<ProcessoWriteRequest> procReq = ArgumentCaptor.forClass(ProcessoWriteRequest.class);
+        verify(processoApplicationService).criar(procReq.capture());
+        assertThat(procReq.getValue().getNaturezaAcao())
+                .isEqualTo(CobrancaUnidadeResolverService.NATUREZA_ACAO_COBRANCA_XLS);
+        assertThat(procReq.getValue().getPapelCliente()).isEqualTo("REQUERENTE");
+
+        ArgumentCaptor<ProcessoParteWriteRequest> parteReq = ArgumentCaptor.forClass(ProcessoParteWriteRequest.class);
+        verify(processoApplicationService, times(2)).criarParte(eq(701L), parteReq.capture());
+        assertThat(parteReq.getAllValues())
+                .anySatisfy(p -> {
+                    assertThat(p.getPolo()).isEqualTo("AUTOR");
+                    assertThat(p.getPessoaId()).isEqualTo(CLIENTE_PESSOA_ID);
+                    assertThat(p.getQualificacao()).isEqualTo("Parte cliente");
+                })
+                .anySatisfy(p -> {
+                    assertThat(p.getPolo()).isEqualTo("REU");
+                    assertThat(p.getPessoaId()).isEqualTo(888L);
+                });
+    }
+
+    @Test
     void resolverUnidade_pfNova_criaPessoaComGeneroInferido() {
         when(pessoaRepository.findByCpf("12345678901")).thenReturn(Optional.empty());
         PessoaCadastroResponse criada = new PessoaCadastroResponse();
@@ -79,14 +118,14 @@ class CobrancaUnidadeResolverServiceTest {
         when(pessoaApplicationService.criar(any(PessoaCadastroRequest.class))).thenReturn(criada);
         when(claudeApiService.enviarMensagem(any(), eq("Maria"))).thenReturn("F");
         when(processoRepository.findByCliente_IdAndUnidade(CLIENTE_ID, UNIDADE)).thenReturn(Optional.empty());
-        when(processoRepository.findProcessosVaziosPorCliente(eq(CLIENTE_ID), eq(COD8), any(Pageable.class)))
-                .thenReturn(List.of());
         when(processoRepository.findByCliente_IdOrderByNumeroInternoAscIdAsc(CLIENTE_ID)).thenReturn(List.of());
         ProcessoResponse procResp = new ProcessoResponse();
         procResp.setId(200L);
         procResp.setNumeroInterno(1);
         when(processoApplicationService.criar(any())).thenReturn(procResp);
         when(processoRepository.findById(200L)).thenReturn(Optional.of(processo(200L, 1, UNIDADE)));
+        when(processoParteRepository.findFirstByProcesso_IdAndPoloIgnoreCaseAndPessoa_Id(200L, "AUTOR", CLIENTE_PESSOA_ID))
+                .thenReturn(Optional.empty());
         when(processoParteRepository.findFirstByProcesso_IdAndPoloIgnoreCaseAndPessoa_Id(200L, "REU", 9001L))
                 .thenReturn(Optional.empty());
         when(processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(200L)).thenReturn(List.of());
@@ -108,13 +147,13 @@ class CobrancaUnidadeResolverServiceTest {
         criada.setId(9002L);
         when(pessoaApplicationService.criar(any())).thenReturn(criada);
         when(processoRepository.findByCliente_IdAndUnidade(CLIENTE_ID, UNIDADE)).thenReturn(Optional.empty());
-        when(processoRepository.findProcessosVaziosPorCliente(eq(CLIENTE_ID), eq(COD8), any(Pageable.class)))
-                .thenReturn(List.of());
         when(processoRepository.findByCliente_IdOrderByNumeroInternoAscIdAsc(CLIENTE_ID)).thenReturn(List.of());
         ProcessoResponse procResp = new ProcessoResponse();
         procResp.setId(201L);
         when(processoApplicationService.criar(any())).thenReturn(procResp);
         when(processoRepository.findById(201L)).thenReturn(Optional.of(processo(201L, 1, UNIDADE)));
+        when(processoParteRepository.findFirstByProcesso_IdAndPoloIgnoreCaseAndPessoa_Id(201L, "AUTOR", CLIENTE_PESSOA_ID))
+                .thenReturn(Optional.empty());
         when(processoParteRepository.findFirstByProcesso_IdAndPoloIgnoreCaseAndPessoa_Id(201L, "REU", 9002L))
                 .thenReturn(Optional.empty());
         when(processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(201L)).thenReturn(List.of());
@@ -190,8 +229,6 @@ class CobrancaUnidadeResolverServiceTest {
         when(processoParteRepository.findByProcesso_IdAndPoloReuOrderByOrdemAscIdAsc(500L))
                 .thenReturn(List.of(parteReu(999L)));
 
-        when(processoRepository.findProcessosVaziosPorCliente(eq(CLIENTE_ID), eq(COD8), any(Pageable.class)))
-                .thenReturn(List.of());
         when(processoRepository.findByCliente_IdOrderByNumeroInternoAscIdAsc(CLIENTE_ID))
                 .thenReturn(List.of(procAntigo));
         ProcessoResponse novo = new ProcessoResponse();
@@ -199,6 +236,8 @@ class CobrancaUnidadeResolverServiceTest {
         novo.setNumeroInterno(7);
         when(processoApplicationService.criar(any())).thenReturn(novo);
         when(processoRepository.findById(501L)).thenReturn(Optional.of(processo(501L, 7, UNIDADE)));
+        when(processoParteRepository.findFirstByProcesso_IdAndPoloIgnoreCaseAndPessoa_Id(501L, "AUTOR", CLIENTE_PESSOA_ID))
+                .thenReturn(Optional.empty());
         when(processoParteRepository.findFirstByProcesso_IdAndPoloIgnoreCaseAndPessoa_Id(501L, "REU", 888L))
                 .thenReturn(Optional.empty());
         when(processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(501L)).thenReturn(List.of());
@@ -214,32 +253,38 @@ class CobrancaUnidadeResolverServiceTest {
     }
 
     @Test
-    void resolverUnidade_semProcComVazio_reaproveitaProcessoVazio() {
+    void resolverUnidade_semProc_ignoraStubLegadoDistante_criaSequenciaCompacta() {
         when(pessoaRepository.findByCpf("12345678901")).thenReturn(Optional.of(pessoa(888L)));
         when(processoRepository.findByCliente_IdAndUnidade(CLIENTE_ID, UNIDADE)).thenReturn(Optional.empty());
-        ProcessoEntity vazio = processo(600L, 8, null);
-        when(processoRepository.findProcessosVaziosPorCliente(eq(CLIENTE_ID), eq(COD8), any(Pageable.class)))
-                .thenReturn(List.of(vazio));
-        when(processoRepository.save(vazio)).thenAnswer(inv -> inv.getArgument(0));
-        when(processoParteRepository.findFirstByProcesso_IdAndPoloIgnoreCaseAndPessoa_Id(600L, "REU", 888L))
+        List<ProcessoEntity> existentes = new ArrayList<>();
+        for (int ni = 1; ni <= 74; ni++) {
+            existentes.add(processo(500L + ni, ni, "Unidade " + ni + " X"));
+        }
+        existentes.add(processo(600L, 1474, null));
+        when(processoRepository.findByCliente_IdOrderByNumeroInternoAscIdAsc(CLIENTE_ID)).thenReturn(existentes);
+        ProcessoResponse criado = new ProcessoResponse();
+        criado.setId(701L);
+        criado.setNumeroInterno(75);
+        when(processoApplicationService.criar(any())).thenReturn(criado);
+        when(processoRepository.findById(701L)).thenReturn(Optional.of(processo(701L, 75, UNIDADE)));
+        when(processoParteRepository.findFirstByProcesso_IdAndPoloIgnoreCaseAndPessoa_Id(701L, "AUTOR", CLIENTE_PESSOA_ID))
                 .thenReturn(Optional.empty());
-        when(processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(600L)).thenReturn(List.of());
+        when(processoParteRepository.findFirstByProcesso_IdAndPoloIgnoreCaseAndPessoa_Id(701L, "REU", 888L))
+                .thenReturn(Optional.empty());
+        when(processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(701L)).thenReturn(List.of());
 
         ResolucaoUnidade r = service.resolverUnidade(input("João", "12345678901"));
 
-        assertThat(r.processoId()).isEqualTo(600L);
-        assertThat(r.processoCriado()).isFalse();
-        assertThat(vazio.getUnidade()).isEqualTo("Unidade 103 A");
-        verify(processoApplicationService, never()).criar(any());
-        verify(processoRepository).save(vazio);
+        assertThat(r.processoId()).isEqualTo(701L);
+        assertThat(r.processoCriado()).isTrue();
+        assertThat(r.numeroInterno()).isEqualTo(75);
+        verify(processoApplicationService).criar(any());
     }
 
     @Test
     void resolverUnidade_semProcSemVazio_criaNovoProcesso() {
         when(pessoaRepository.findByCpf("12345678901")).thenReturn(Optional.of(pessoa(888L)));
         when(processoRepository.findByCliente_IdAndUnidade(CLIENTE_ID, UNIDADE)).thenReturn(Optional.empty());
-        when(processoRepository.findProcessosVaziosPorCliente(eq(CLIENTE_ID), eq(COD8), any(Pageable.class)))
-                .thenReturn(List.of());
         ProcessoEntity existente = processo(700L, 9, "B-0200");
         when(processoRepository.findByCliente_IdOrderByNumeroInternoAscIdAsc(CLIENTE_ID)).thenReturn(List.of(existente));
         ProcessoResponse criado = new ProcessoResponse();
@@ -247,6 +292,8 @@ class CobrancaUnidadeResolverServiceTest {
         criado.setNumeroInterno(10);
         when(processoApplicationService.criar(any())).thenReturn(criado);
         when(processoRepository.findById(701L)).thenReturn(Optional.of(processo(701L, 10, UNIDADE)));
+        when(processoParteRepository.findFirstByProcesso_IdAndPoloIgnoreCaseAndPessoa_Id(701L, "AUTOR", CLIENTE_PESSOA_ID))
+                .thenReturn(Optional.empty());
         when(processoParteRepository.findFirstByProcesso_IdAndPoloIgnoreCaseAndPessoa_Id(701L, "REU", 888L))
                 .thenReturn(Optional.empty());
         when(processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(701L)).thenReturn(List.of());
@@ -314,25 +361,30 @@ class CobrancaUnidadeResolverServiceTest {
     }
 
     @Test
-    void resolverUnidade_reaproveitaVazioComNumeroInternoZero_atribuiNumeroValido() {
+    void resolverUnidade_semProc_ignoraStubComNiZero_criaNovo() {
         when(pessoaRepository.findByCpf("12345678901")).thenReturn(Optional.of(pessoa(888L)));
         when(processoRepository.findByCliente_IdAndUnidade(CLIENTE_ID, "A-0103")).thenReturn(Optional.empty());
         ProcessoEntity vazio = processo(601L, 0, null);
         ProcessoEntity ocupado = processo(602L, 40, "Unidade 999 V");
-        when(processoRepository.findProcessosVaziosPorCliente(eq(CLIENTE_ID), eq(COD8), any(Pageable.class)))
-                .thenReturn(List.of(vazio));
         when(processoRepository.findByCliente_IdOrderByNumeroInternoAscIdAsc(CLIENTE_ID))
                 .thenReturn(List.of(ocupado, vazio));
-        when(processoRepository.save(vazio)).thenAnswer(inv -> inv.getArgument(0));
-        when(processoParteRepository.findFirstByProcesso_IdAndPoloIgnoreCaseAndPessoa_Id(601L, "REU", 888L))
+        ProcessoResponse criado = new ProcessoResponse();
+        criado.setId(701L);
+        criado.setNumeroInterno(1);
+        when(processoApplicationService.criar(any())).thenReturn(criado);
+        when(processoRepository.findById(701L)).thenReturn(Optional.of(processo(701L, 1, UNIDADE)));
+        when(processoParteRepository.findFirstByProcesso_IdAndPoloIgnoreCaseAndPessoa_Id(701L, "AUTOR", CLIENTE_PESSOA_ID))
                 .thenReturn(Optional.empty());
-        when(processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(601L)).thenReturn(List.of());
+        when(processoParteRepository.findFirstByProcesso_IdAndPoloIgnoreCaseAndPessoa_Id(701L, "REU", 888L))
+                .thenReturn(Optional.empty());
+        when(processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(701L)).thenReturn(List.of());
 
         ResolucaoUnidade r = service.resolverUnidade(input("João", "12345678901"));
 
-        assertThat(vazio.getNumeroInterno()).isEqualTo(1);
+        assertThat(r.processoCriado()).isTrue();
         assertThat(r.numeroInterno()).isEqualTo(1);
-        assertThat(vazio.getUnidade()).isEqualTo("Unidade 103 A");
+        verify(processoApplicationService).criar(any());
+        verify(processoRepository, never()).save(vazio);
     }
 
     private static ResolverUnidadeInput input(String nome, String doc) {

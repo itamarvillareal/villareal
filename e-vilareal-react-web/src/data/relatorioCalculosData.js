@@ -456,6 +456,58 @@ export function getLinhasRelatorioCalculosConsolidadoFromMap(
   return rows;
 }
 
+/**
+ * Agrupa linhas detalhadas (uma por parcela) em uma linha por rodada de cálculo,
+ * somando valor e honorários — modo «Consolidado» do relatório.
+ * @param {LinhaRelatorioCalculos[]} linhas
+ * @returns {LinhaRelatorioCalculos[]}
+ */
+export function agregarLinhasRelatorioCalculosConsolidado(linhas) {
+  /** @type {Map<string, LinhaRelatorioCalculos & { _somaValor: number, _somaHon: number }>} */
+  const map = new Map();
+  for (const row of linhas || []) {
+    const key = String(row.rodadaKey ?? '');
+    if (!key) continue;
+    let agg = map.get(key);
+    if (!agg) {
+      agg = {
+        ...row,
+        linhaConsolidada: true,
+        indiceParcela: -1,
+        parcela: '',
+        dataVencimento: '',
+        dataPagamento: '',
+        obs: '',
+        situacao: '—',
+        codBaixaContaCorrente: '',
+        _somaValor: 0,
+        _somaHon: 0,
+      };
+      map.set(key, agg);
+    }
+    agg._somaValor += parseBRL(row.valor);
+    agg._somaHon += parseBRL(row.valorHonorarios);
+  }
+  const out = [...map.values()].map((a) => ({
+    ...a,
+    valor: formatBRL(a._somaValor),
+    valorHonorarios: formatBRL(a._somaHon),
+    consolidadoKey: a.rodadaKey,
+  }));
+  out.sort((a, b) => {
+    const ca = Number(String(a.codCliente).replace(/\D/g, '')) || 0;
+    const cb = Number(String(b.codCliente).replace(/\D/g, '')) || 0;
+    if (ca !== cb) return ca - cb;
+    const pa = Number(String(a.proc).replace(/\D/g, '')) || 0;
+    const pb = Number(String(b.proc).replace(/\D/g, '')) || 0;
+    if (pa !== pb) return pa - pb;
+    const da = Number(a.dimensao) || 0;
+    const db = Number(b.dimensao) || 0;
+    return da - db;
+  });
+  return out;
+}
+
 /** @returns {LinhaRelatorioCalculos[]} — modo localStorage ou mapa completo em memória (sync). */
 export function getLinhasRelatorioCalculosConsolidado() {
   return getLinhasRelatorioCalculosConsolidadoFromMap(loadRodadasCalculos() || {});

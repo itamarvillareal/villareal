@@ -1,19 +1,26 @@
 /** Valores permitidos para regraInicioCobrancaDias (alinhado ao backend). */
-const REGRAS_PERMITIDAS = [1, 30, 60];
+const REGRAS_PERMITIDAS = [1, 61];
+
+/** Limite da regra condicional: > 60 dias (= 61+ na planilha). */
+export const REGRA_CONDICIONAL_LIMITE_DIAS = 60;
+export const REGRA_CONDICIONAL_MINIMO_PLANILHA = 61;
 
 /**
  * @param {unknown} valor
- * @returns {1 | 30 | 60}
+ * @returns {1 | 61}
  */
 export function normalizarRegraInicioCobrancaDias(valor) {
   const n = Number(valor);
-  if (REGRAS_PERMITIDAS.includes(n)) return /** @type {1 | 30 | 60} */ (n);
+  if (n === 30 || n === 60) return 61;
+  if (REGRAS_PERMITIDAS.includes(n)) return /** @type {1 | 61} */ (n);
   return 1;
 }
 
-/** @param {1 | 30 | 60 | number} regraDias */
+/** @param {1 | 61 | number} regraDias */
 export function labelRegraInicio(regraDias) {
-  return `D+${normalizarRegraInicioCobrancaDias(regraDias)}`;
+  const r = normalizarRegraInicioCobrancaDias(regraDias);
+  if (r === 61) return '60+1 condicional';
+  return 'Importar tudo';
 }
 
 /**
@@ -71,17 +78,25 @@ export function maiorDiasAtrasoUnidade(unidade, dataReferencia = new Date()) {
 }
 
 /**
+ * Prévia client-side (não consulta débitos cadastrados — regra 61 pode incluir mais unidades no backend).
  * @param {{ cobrancas?: Array<{ vencimento?: string | null }> } | null | undefined} unidade
  * @param {number} regraDias
  * @param {Date} [dataReferencia]
  */
 export function unidadeAcionadaPelaRegra(unidade, regraDias, dataReferencia = new Date()) {
-  const t = normalizarRegraInicioCobrancaDias(regraDias);
+  const r = normalizarRegraInicioCobrancaDias(regraDias);
   const list = unidade?.cobrancas;
   if (!Array.isArray(list)) return false;
+  if (r === 1) {
+    for (const c of list) {
+      const d = diasDesdeVencimento(c?.vencimento, dataReferencia);
+      if (d != null && d >= 1) return true;
+    }
+    return false;
+  }
   for (const c of list) {
     const d = diasDesdeVencimento(c?.vencimento, dataReferencia);
-    if (d != null && d >= t) return true;
+    if (d != null && d >= REGRA_CONDICIONAL_MINIMO_PLANILHA) return true;
   }
   return false;
 }

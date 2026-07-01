@@ -406,9 +406,11 @@ export async function executarAlinhamentoExtratoComOfxCore({
   diagnosticar,
   removerLote,
   salvarLancamentos,
+  /** Quando true, ignora incoerência LEDGERBAL × efeito do reparo (OFX parcial ou LEDGERBAL enganoso). */
+  ignorarIncoerenciaSaldo = false,
 }) {
   let diag = await diagnosticar();
-  if (!alinhamentoSaldoCoerenteComOfx(diag)) {
+  if (!ignorarIncoerenciaSaldo && !alinhamentoSaldoCoerenteComOfx(diag)) {
     const { deltaEsperado, deltaReparo } = calcularDeltasAlinhamentoSaldo(diag);
     throw new Error(
       `Alinhamento bloqueado: importar/excluir alteraria o saldo em ${formatarMoeda(deltaReparo)}, ` +

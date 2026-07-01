@@ -76,6 +76,7 @@ public class CondominioInadimplenciaApplicationService {
         ClienteEntity cliente =
                 clienteRepository.findByCodigoClienteFetchPessoa(cod8).orElseThrow(() -> new BusinessRuleException(
                         "Cliente não encontrado para o código: " + cod8));
+        long clienteId = cliente.getId();
         long pessoaId = cliente.getPessoa().getId();
         boolean autorMesmaPessoaCliente =
                 request.autorMesmaPessoaCliente() == null || Boolean.TRUE.equals(request.autorMesmaPessoaCliente());
@@ -91,7 +92,7 @@ public class CondominioInadimplenciaApplicationService {
         for (InadimplenciaUnidadeDto u : request.unidades()) {
             try {
                 InadimplenciaImportItemResultadoDto r = unidadeTransactionalService.importarUmaUnidade(
-                        pessoaId, cod8, u, autorMesmaPessoaCliente, nomeAutorParaCalculo, importacaoId);
+                        clienteId, pessoaId, cod8, u, autorMesmaPessoaCliente, nomeAutorParaCalculo, importacaoId);
                 itens.add(r);
                 if (r.processoCriado()) {
                     criados++;

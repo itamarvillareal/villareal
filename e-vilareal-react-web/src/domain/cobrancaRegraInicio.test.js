@@ -23,30 +23,32 @@ function unidadeComDias(...diasList) {
 
 describe('cobrancaRegraInicio', () => {
   it('normalizarRegraInicioCobrancaDias', () => {
-    expect(normalizarRegraInicioCobrancaDias(60)).toBe(60);
+    expect(normalizarRegraInicioCobrancaDias(61)).toBe(61);
+    expect(normalizarRegraInicioCobrancaDias(60)).toBe(61);
+    expect(normalizarRegraInicioCobrancaDias(30)).toBe(61);
     expect(normalizarRegraInicioCobrancaDias(99)).toBe(1);
   });
 
-  it('D+60 exemplo spec', () => {
-    const a = unidadeComDias(75, 40, 10);
-    const b = unidadeComDias(30);
-    const c = unidadeComDias(90, 65);
-
-    expect(unidadeAcionadaPelaRegra(a, 60, DATA)).toBe(true);
-    expect(unidadeAcionadaPelaRegra(b, 60, DATA)).toBe(false);
-    expect(unidadeAcionadaPelaRegra(c, 60, DATA)).toBe(true);
-
-    const res = resumoPreviasRegraInicio([a, b, c], 60, DATA);
-    expect(res.acionados).toBe(2);
-    expect(res.descartados).toBe(1);
-    expect(res.titulosDescartados).toBe(1);
-    expect(labelRegraInicio(60)).toBe('D+60');
-  });
-
-  it('D+1 nenhum descartado no exemplo', () => {
+  it('importar tudo — nenhum descartado no exemplo', () => {
     const unidades = [unidadeComDias(75, 40, 10), unidadeComDias(30), unidadeComDias(90, 65)];
     const res = resumoPreviasRegraInicio(unidades, 1, DATA);
     expect(res.descartados).toBe(0);
+    expect(labelRegraInicio(1)).toBe('Importar tudo');
+  });
+
+  it('60+1 condicional — prévia exige >60 dias na planilha', () => {
+    const com61 = unidadeComDias(4, 10, 61);
+    const so4 = unidadeComDias(4);
+    const so30 = unidadeComDias(30);
+
+    expect(unidadeAcionadaPelaRegra(com61, 61, DATA)).toBe(true);
+    expect(unidadeAcionadaPelaRegra(so4, 61, DATA)).toBe(false);
+    expect(unidadeAcionadaPelaRegra(so30, 61, DATA)).toBe(false);
+
+    const res = resumoPreviasRegraInicio([com61, so4, so30], 61, DATA);
+    expect(res.acionados).toBe(1);
+    expect(res.descartados).toBe(2);
+    expect(res.regraLabel).toBe('60+1 condicional');
   });
 
   it('diasDesdeVencimento futuro retorna null', () => {

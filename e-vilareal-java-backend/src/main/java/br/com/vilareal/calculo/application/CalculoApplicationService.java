@@ -435,7 +435,7 @@ public class CalculoApplicationService {
     private ObjectNode defaultsConfigCliente() {
         ObjectNode n = objectMapper.createObjectNode();
         n.put("honorariosTipo", "fixos");
-        n.put("honorariosValor", "0");
+        n.put("honorariosValor", "0 %");
         n.put("honorariosVariaveisTexto", "> 30 = 0%\n< 30 < 60 = 10%\n< 60 = 20%");
         n.put("juros", "1 %");
         n.put("multa", "0 %");

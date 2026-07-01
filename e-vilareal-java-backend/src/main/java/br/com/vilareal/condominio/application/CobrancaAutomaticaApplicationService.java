@@ -98,9 +98,9 @@ public class CobrancaAutomaticaApplicationService {
         LocalDate dataImportacao = LocalDate.now();
         int regraDias = lerRegraInicioCobrancaDias(cod8);
         CobrancaRegraInicioCobrancaService.FiltragemRegraInicio filtragem = regraInicioCobrancaService.filtrarUnidadesAcionadas(
-                request.unidades(), dataImportacao, regraDias);
+                request.unidades(), dataImportacao, regraDias, clienteId, cod8);
         RelatorioRegraInicioDto regraInicio = new RelatorioRegraInicioDto(
-                "D+" + regraDias,
+                RegraInicioCobrancaDiasValidator.label(regraDias),
                 dataImportacao.toString(),
                 filtragem.devedoresDescartados(),
                 filtragem.titulosDescartados());

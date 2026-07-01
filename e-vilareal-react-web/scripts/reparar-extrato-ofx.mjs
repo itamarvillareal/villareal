@@ -5,6 +5,7 @@
  * Uso (a partir de e-vilareal-react-web/):
  *   node scripts/reparar-extrato-ofx.mjs --ofx=/path/arquivo.ofx --numero-banco=26 --banco=CORA
  *   node scripts/reparar-extrato-ofx.mjs --ofx=... --numero-banco=26 --banco=CORA --executar
+ *   node scripts/reparar-extrato-ofx.mjs --ofx=... --executar --forcar   # ignora trava LEDGERBAL
  *
  * Envs: VILAREAL_API_BASE, VILAREAL_IMPORT_SENHA (ver load-vilareal-import-env.mjs)
  */
@@ -30,9 +31,11 @@ function parseArgs(argv) {
     senha: process.env.VILAREAL_IMPORT_SENHA || '',
     baseUrl: (process.env.VILAREAL_API_BASE || 'http://localhost:8080').replace(/\/$/, ''),
     executar: false,
+    forcar: false,
   };
   for (const a of argv) {
     if (a === '--executar') out.executar = true;
+    else if (a === '--forcar') out.forcar = true;
     else if (a.startsWith('--ofx=')) out.ofx = a.slice(6).trim();
     else if (a.startsWith('--banco=')) out.banco = a.slice(8).trim();
     else if (a.startsWith('--numero-banco=')) out.numeroBanco = Number(a.slice(15));
@@ -225,6 +228,9 @@ async function main() {
   }
 
   console.log('\n=== Executando alinhamento ===');
+  if (opts.forcar && !diag.totais.alinhamentoSaldoCoerente) {
+    console.log('• --forcar: ignorando incoerência LEDGERBAL × efeito do reparo.');
+  }
 
   const removerLote = async (apiIds) => {
     const removidos = [];
@@ -272,6 +278,7 @@ async function main() {
     diagnosticar: carregarDiag,
     removerLote,
     salvarLancamentos,
+    ignorarIncoerenciaSaldo: opts.forcar,
   });
 
   console.log(`Excluídos: ${r.removidos}`);

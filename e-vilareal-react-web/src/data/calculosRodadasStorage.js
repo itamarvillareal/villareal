@@ -7,6 +7,12 @@ import {
   fetchCalculoRodadasResumo,
   putCalculoRodada,
 } from '../repositories/calculosRepository.js';
+import { listarProcessosResumoPorCodigoCliente } from '../repositories/processosRepository.js';
+import {
+  coletarNumerosInternosUsadosPorCliente,
+  migrarRodadasLegadoParaSequenciaCompacta,
+  procLegadoDeveRemapear,
+} from '../utils/mergeDebitosCalculosPlanilha.js';
 import {
   enriquecerMapaRodadasTitulosDesdeParcelas,
   normalizarMapaChavesRodadasCalculos,
@@ -144,6 +150,55 @@ export function mapaRodadasTemValorTituloOuParcela(map) {
 function pipelineRodadasMap(raw) {
   const m = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
   return enriquecerMapaRodadasTitulosDesdeParcelas(normalizarMapaChavesRodadasCalculos(m));
+}
+
+async function aplicarMigracaoRodadasLegadoSeNecessario(rodadasMap) {
+  if (!featureFlags.useApiProcessos || !rodadasMap || typeof rodadasMap !== 'object') {
+    return rodadasMap;
+  }
+  const codigos = new Set();
+  for (const key of Object.keys(rodadasMap)) {
+    const m = /^(\d{8}):\d+:\d+$/.exec(key);
+    if (m) codigos.add(m[1]);
+  }
+  if (!codigos.size) return rodadasMap;
+
+  /** @type {Record<string, number[]>} */
+  const numerosInternosPorCliente8 = {};
+  await Promise.all(
+    [...codigos].map(async (cod8) => {
+      try {
+        const lista = await listarProcessosResumoPorCodigoCliente(cod8);
+        numerosInternosPorCliente8[cod8] = (lista || [])
+          .map((p) => Number(p?.numeroInterno))
+          .filter((n) => Number.isFinite(n) && n >= 1);
+      } catch (err) {
+        console.warn(`${LOG_CALC_API} migração legado: falha ao listar processos ${cod8}`, err);
+      }
+    })
+  );
+
+  const usadosProbe = coletarNumerosInternosUsadosPorCliente(rodadasMap, numerosInternosPorCliente8);
+  const apiProbe = buildApiPorCod8(numerosInternosPorCliente8);
+  const precisaMigrar = Object.keys(rodadasMap).some((key) => {
+    const m = /^(\d{8}):(\d+):\d+$/.exec(key);
+    return m && procLegadoDeveRemapear(m[1], Number(m[2]), usadosProbe, apiProbe);
+  });
+  if (!precisaMigrar) return rodadasMap;
+
+  const avisos = [];
+  const migrated = migrarRodadasLegadoParaSequenciaCompacta(
+    rodadasMap,
+    numerosInternosPorCliente8,
+    avisos
+  );
+  if (avisos.length) {
+    console.info(`${LOG_CALC_API} migração proc legado → sequência compacta:`, avisos);
+  }
+  if (avisos.length && mapaRodadasTemValorTituloOuParcela(migrated)) {
+    await putCalculoRodadas(migrated);
+  }
+  return migrated;
 }
 
 /** Normaliza uma rodada recebida do GET individual e atualiza o LRU. */
@@ -396,8 +451,9 @@ export async function hydrateRodadasCalculosFromApi(options = {}) {
   try {
     console.info(`${LOG_CALC_API} GET /api/calculos/rodadas → em curso…`);
     const data = await fetchCalculoRodadas({});
-    const serverMap =
+    const serverMapRaw =
       data?.rodadas && typeof data.rodadas === 'object' && !Array.isArray(data.rodadas) ? data.rodadas : {};
+    const serverMap = await aplicarMigracaoRodadasLegadoSeNecessario(serverMapRaw);
     const nRodadas = Object.keys(serverMap).length;
     console.info(`${LOG_CALC_API} GET /api/calculos/rodadas → OK, chaves em rodadas: ${nRodadas}`);
     const localMap = parseRodadasMapLocal();

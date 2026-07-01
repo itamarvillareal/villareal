@@ -5,6 +5,10 @@ import { linhaTituloVaziaCalculos } from '../data/calculosTitulosParcelasSync.js
  * Colunas: A=código cliente, B=vencimento 1ª parcela, C=valor 1ª parcela, G=processo, H=dimensão.
  * Linha 1 = cabeçalho; dados a partir da linha 2 (índice 1 na matriz).
  *
+ * Coluna G agrupa linhas da planilha (nº legado). Se já existir rodada com débitos nesse proc, mantém o nº.
+ * Se o proc já existir no cliente (API/rodadas) mas sem cálculo gravado — stub legado — usa sequência compacta
+ * (75, 76…) em vez de reaproveitar o nº distante (ex.: 1474).
+ *
  * Módulo autossuficiente (sem importar `processosDadosRelatorio`) para o script Node não puxar o grafo da app.
  */
 
@@ -140,6 +144,197 @@ function rodadaKeyFromAGH(codRaw, procRaw, dimRaw) {
   return `${cod8}:${proc}:${dim}`;
 }
 
+function campoValorNaoVazio(s) {
+  return String(s ?? '').trim() !== '';
+}
+
+function rodadaTemValorTituloOuParcela(rodada) {
+  if (!rodada || typeof rodada !== 'object') return false;
+  for (const t of Array.isArray(rodada.titulos) ? rodada.titulos : []) {
+    if (t && (campoValorNaoVazio(t.valorInicial) || campoValorNaoVazio(t.valorParcela))) return true;
+  }
+  for (const p of Array.isArray(rodada.parcelas) ? rodada.parcelas : []) {
+    if (p && campoValorNaoVazio(p.valorParcela)) return true;
+  }
+  return false;
+}
+
+function rodadaTemConteudoParaProc(rodadasAtual, cod8, proc) {
+  const prefix = `${cod8}:${proc}:`;
+  for (const [key, rodada] of Object.entries(rodadasAtual || {})) {
+    if (!key.startsWith(prefix)) continue;
+    if (rodadaTemValorTituloOuParcela(rodada)) return true;
+  }
+  return false;
+}
+
+/** Menor `numero_interno` ≥ 1 ainda não presente no conjunto (sequência compacta). */
+export function proximoNumeroInternoDisponivel(usadosSet) {
+  const usados = usadosSet instanceof Set ? usadosSet : new Set(usadosSet);
+  let n = 1;
+  while (usados.has(n)) n += 1;
+  return n;
+}
+
+/**
+ * @param {Record<string, unknown>} rodadasAtual
+ * @param {Record<string, number[]>} [numerosInternosApi] cod8 → lista de proc já existentes no cliente
+ * @returns {Map<string, Set<number>>}
+ */
+export function coletarNumerosInternosUsadosPorCliente(rodadasAtual, numerosInternosApi = {}) {
+  /** @type {Map<string, Set<number>>} */
+  const map = new Map();
+  const add = (cod8, ni) => {
+    const n = Math.floor(Number(ni));
+    if (!Number.isFinite(n) || n < 1) return;
+    const key = padCliente(cod8);
+    if (!map.has(key)) map.set(key, new Set());
+    map.get(key).add(n);
+  };
+  for (const key of Object.keys(rodadasAtual || {})) {
+    const m = /^(\d{8}):(\d+):\d+$/.exec(key);
+    if (m) add(m[1], Number(m[2]));
+  }
+  for (const [codRaw, lista] of Object.entries(numerosInternosApi || {})) {
+    for (const ni of Array.isArray(lista) ? lista : []) add(codRaw, ni);
+  }
+  return map;
+}
+
+function buildApiPorCod8(numerosInternosApi = {}) {
+  /** @type {Map<string, Set<number>>} */
+  const map = new Map();
+  for (const [codRaw, lista] of Object.entries(numerosInternosApi || {})) {
+    const cod8 = padCliente(codRaw);
+    const set = new Set();
+    for (const ni of Array.isArray(lista) ? lista : []) {
+      const n = Math.floor(Number(ni));
+      if (Number.isFinite(n) && n >= 1) set.add(n);
+    }
+    map.set(cod8, set);
+  }
+  return map;
+}
+
+export function procLegadoDeveRemapear(cod8, procSheet, usadosPorCod8, apiPorCod8) {
+  const cod = padCliente(cod8);
+  if (!apiPorCod8?.get(cod)?.has(procSheet)) return false;
+  const usados = usadosPorCod8.get(cod);
+  if (!usados?.has(procSheet)) return false;
+  return procSheet > proximoNumeroInternoDisponivel(usados);
+}
+
+/**
+ * @param {string} cod8
+ * @param {number} procSheet
+ * @param {Record<string, unknown>} rodadasAtual
+ * @param {Map<string, Set<number>>} usadosPorCod8
+ * @param {Map<string, number>} remapCache `${cod8}|${procSheet}` → proc destino
+ * @param {string[]} [avisos]
+ * @param {number} [sheetRow]
+ */
+function resolverProcImportacaoDebitos(
+  cod8,
+  procSheet,
+  rodadasAtual,
+  usadosPorCod8,
+  remapCache,
+  avisos,
+  sheetRow,
+  apiPorCod8
+) {
+  const cacheKey = `${cod8}|${procSheet}`;
+  if (remapCache.has(cacheKey)) return remapCache.get(cacheKey);
+
+  const legado = procLegadoDeveRemapear(cod8, procSheet, usadosPorCod8, apiPorCod8);
+  if (rodadaTemConteudoParaProc(rodadasAtual, cod8, procSheet) && !legado) {
+    remapCache.set(cacheKey, procSheet);
+    return procSheet;
+  }
+
+  if (!usadosPorCod8.has(cod8)) usadosPorCod8.set(cod8, new Set());
+  const usados = usadosPorCod8.get(cod8);
+
+  let dest = procSheet;
+  if (legado) {
+    dest = proximoNumeroInternoDisponivel(usados);
+    if (dest !== procSheet && Array.isArray(avisos)) {
+      const prefix = sheetRow != null ? `Linha ${sheetRow}: ` : '';
+      avisos.push(`${prefix}proc ${procSheet} (legado) → ${dest} (sequência compacta).`);
+    }
+  }
+
+  remapCache.set(cacheKey, dest);
+  usados.add(dest);
+  return dest;
+}
+
+function mesclarRodadasCalculo(dest, src) {
+  if (!src) return dest;
+  if (!dest) return cloneRodada(src);
+  const out = cloneRodada(dest);
+  const incoming = cloneRodada(src);
+  if (!out || !incoming) return out ?? incoming;
+  if (rodadaTemValorTituloOuParcela(incoming) && !rodadaTemValorTituloOuParcela(out)) {
+    return incoming;
+  }
+  if (rodadaTemValorTituloOuParcela(incoming)) {
+    return {
+      ...out,
+      ...incoming,
+      cabecalho: { ...(out.cabecalho ?? {}), ...(incoming.cabecalho ?? {}) },
+      titulos: incoming.titulos ?? out.titulos,
+      parcelas: incoming.parcelas ?? out.parcelas,
+    };
+  }
+  return out;
+}
+
+/**
+ * Move rodadas em nº de processo legado distante (ex.: 1474) para a sequência compacta (ex.: 75).
+ *
+ * @param {Record<string, unknown>} rodadas
+ * @param {Record<string, number[]>} [numerosInternosApi]
+ * @param {string[]} [avisosOut]
+ */
+export function migrarRodadasLegadoParaSequenciaCompacta(rodadas, numerosInternosApi = {}, avisosOut = []) {
+  if (!rodadas || typeof rodadas !== 'object') return {};
+  const base = { ...rodadas };
+  const avisos = avisosOut;
+  const usadosPorCod8 = coletarNumerosInternosUsadosPorCliente(base, numerosInternosApi);
+  const apiPorCod8 = buildApiPorCod8(numerosInternosApi);
+  const remapProc = new Map();
+
+  for (const key of Object.keys(base)) {
+    const m = /^(\d{8}):(\d+):(\d+)$/.exec(key);
+    if (!m) continue;
+    const cod8 = m[1];
+    const proc = Number(m[2]);
+    const dim = Number(m[3]);
+    if (!procLegadoDeveRemapear(cod8, proc, usadosPorCod8, apiPorCod8)) continue;
+
+    const dest = resolverProcImportacaoDebitos(
+      cod8,
+      proc,
+      base,
+      usadosPorCod8,
+      remapProc,
+      avisos,
+      null,
+      apiPorCod8
+    );
+    if (dest === proc) continue;
+
+    const newKey = `${cod8}:${dest}:${dim}`;
+    if (newKey === key) continue;
+
+    avisos.push(`Rodada ${key} → ${newKey} (sequência compacta).`);
+    base[newKey] = mesclarRodadasCalculo(base[newKey], base[key]);
+    delete base[key];
+  }
+  return base;
+}
+
 function cloneRodada(r) {
   try {
     return JSON.parse(JSON.stringify(r));
@@ -151,11 +346,16 @@ function cloneRodada(r) {
 /**
  * @param {Record<string, unknown>} rodadasAtual
  * @param {unknown[][]} matrix - primeira linha = cabeçalho
+ * @param {{ numerosInternosPorCliente8?: Record<string, number[]> }} [opts]
  * @returns {{ nextRodadas: Record<string, unknown>, stats: { linhasLidas: number, aplicadas: number, ignoradas: number, avisos: string[] } }}
  */
-export function mergeDebitosCalculosPlanilha(rodadasAtual, matrix) {
-  const base = rodadasAtual && typeof rodadasAtual === 'object' ? { ...rodadasAtual } : {};
+export function mergeDebitosCalculosPlanilha(rodadasAtual, matrix, opts = {}) {
   const avisos = [];
+  const base = migrarRodadasLegadoParaSequenciaCompacta(
+    rodadasAtual && typeof rodadasAtual === 'object' ? { ...rodadasAtual } : {},
+    opts.numerosInternosPorCliente8,
+    avisos
+  );
   let linhasLidas = 0;
   let ignoradas = 0;
   let aplicadas = 0;
@@ -166,6 +366,13 @@ export function mergeDebitosCalculosPlanilha(rodadasAtual, matrix) {
       stats: { linhasLidas: 0, aplicadas: 0, ignoradas: 0, avisos: ['Planilha sem linhas de dados (apenas cabeçalho ou vazia).'] },
     };
   }
+
+  const usadosPorCod8 =
+    opts.usadosPorCod8 ??
+    coletarNumerosInternosUsadosPorCliente(base, opts.numerosInternosPorCliente8);
+  const apiPorCod8 = opts.apiPorCod8 ?? buildApiPorCod8(opts.numerosInternosPorCliente8);
+  /** `${cod8}|${procPlanilha}` → proc destino */
+  const remapProc = opts.remapProc ?? new Map();
 
   /** Próximo índice de parcela/título por chave — várias linhas da planilha para o mesmo cliente/proc/dim. */
   const slotNext = new Map();
@@ -190,7 +397,18 @@ export function mergeDebitosCalculosPlanilha(rodadasAtual, matrix) {
     }
 
     const dim = h === '' || h == null ? 0 : Math.max(0, Math.floor(Number(h) || 0));
-    const key = rodadaKeyFromAGH(codNum, procNum, dim);
+    const cod8 = padCliente(codNum);
+    const procDestino = resolverProcImportacaoDebitos(
+      cod8,
+      procNum,
+      base,
+      usadosPorCod8,
+      remapProc,
+      avisos,
+      sheetRow,
+      apiPorCod8
+    );
+    const key = rodadaKeyFromAGH(codNum, procDestino, dim);
     const slot = slotNext.get(key) ?? 0;
     slotNext.set(key, slot + 1);
 
@@ -207,7 +425,7 @@ export function mergeDebitosCalculosPlanilha(rodadasAtual, matrix) {
 
     let rodada = base[key] ? cloneRodada(base[key]) : null;
     if (!rodada) {
-      rodada = criarRodadaMockCalculos(codNum, procNum, dim);
+      rodada = criarRodadaMockCalculos(codNum, procDestino, dim);
     }
     if (!rodada) {
       ignoradas += 1;
@@ -265,7 +483,12 @@ const ROW_CABECALHO_PLACEHOLDER = ['cod', 'venc', 'valor', '', '', '', 'proc', '
  * já parecer dados (A e G com cliente e processo válidos), insere cabeçalho fictício para o merge
  * manter «linha 1 = cabeçalho» em todas as folhas.
  */
-export function mergeDebitosCalculosMultiSheet(rodadasAtual, matrices) {
+/**
+ * @param {Record<string, unknown>} rodadasAtual
+ * @param {unknown[][][]} matrices
+ * @param {{ numerosInternosPorCliente8?: Record<string, number[]> }} [opts]
+ */
+export function mergeDebitosCalculosMultiSheet(rodadasAtual, matrices, opts = {}) {
   const list = Array.isArray(matrices) ? matrices : [];
   let acc = rodadasAtual && typeof rodadasAtual === 'object' ? { ...rodadasAtual } : {};
   const avisos = [];
@@ -273,6 +496,12 @@ export function mergeDebitosCalculosMultiSheet(rodadasAtual, matrices) {
   let aplicadas = 0;
   let ignoradas = 0;
   let sheetsUsadas = 0;
+  const usadosPorCod8 = coletarNumerosInternosUsadosPorCliente(
+    acc,
+    opts.numerosInternosPorCliente8
+  );
+  const apiPorCod8 = buildApiPorCod8(opts.numerosInternosPorCliente8);
+  const remapProc = new Map();
 
   for (let i = 0; i < list.length; i += 1) {
     let m = list[i];
@@ -290,7 +519,12 @@ export function mergeDebitosCalculosMultiSheet(rodadasAtual, matrices) {
         m = [ROW_CABECALHO_PLACEHOLDER, ...m];
       }
     }
-    const { nextRodadas, stats } = mergeDebitosCalculosPlanilha(acc, m);
+    const { nextRodadas, stats } = mergeDebitosCalculosPlanilha(acc, m, {
+      numerosInternosPorCliente8: opts.numerosInternosPorCliente8,
+      usadosPorCod8,
+      remapProc,
+      apiPorCod8,
+    });
     acc = nextRodadas;
     linhasLidas += stats.linhasLidas;
     aplicadas += stats.aplicadas;

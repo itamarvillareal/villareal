@@ -19,8 +19,6 @@ import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoPa
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,7 +40,13 @@ public class CobrancaUnidadeResolverService {
     private static final Logger log = LoggerFactory.getLogger(CobrancaUnidadeResolverService.class);
 
     private static final String POLO_REU = "REU";
+    private static final String POLO_AUTOR = "AUTOR";
     private static final String QUAL_PROPRIETARIO = "Proprietário";
+    /** Marca explícita da parte cliente (condomínio) — alinhado ao cadastro / import legado. */
+    private static final String QUAL_PARTE_CLIENTE = "Parte cliente";
+    private static final String PAPEL_CLIENTE_REQUERENTE = "REQUERENTE";
+    /** Natureza padrão dos processos criados pela cobrança automática (.xls). */
+    static final String NATUREZA_ACAO_COBRANCA_XLS = "EXECUÇÃO DE TAXA CONDOMINIAL";
     private static final String GENERO_PJ = "PJ";
 
     private final PessoaRepository pessoaRepository;
@@ -145,7 +149,8 @@ public class CobrancaUnidadeResolverService {
             return resolverProcessoExistente(in, procOpt.get(), pessoaIdDevedor, unidadeProcesso);
         }
 
-        AlocacaoProcesso aloc = alocarProcVazioOuNovo(in, unidadeProcesso);
+        AlocacaoProcesso aloc = criarProcessoNovo(in, unidadeProcesso);
+        vincularAutorClienteSeNecessario(aloc.processo().getId(), in.clientePessoaId(), in.importacaoId());
         boolean reuVinculado = vincularReuSeNecessario(aloc.processo().getId(), pessoaIdDevedor, in.importacaoId());
         int ni = exigirNumeroInternoValido(aloc.processo());
         return new ProcessoResolvido(
@@ -180,7 +185,8 @@ public class CobrancaUnidadeResolverService {
         Long reuAnterior = reuIds.getFirst();
         String unidadeNova =
                 StringUtils.hasText(proc.getUnidade()) ? proc.getUnidade().trim() : unidadeProcesso;
-        AlocacaoProcesso aloc = alocarProcVazioOuNovo(in, unidadeNova);
+        AlocacaoProcesso aloc = criarProcessoNovo(in, unidadeNova);
+        vincularAutorClienteSeNecessario(aloc.processo().getId(), in.clientePessoaId(), in.importacaoId());
         boolean reuVinculado = vincularReuSeNecessario(aloc.processo().getId(), pessoaIdDevedor, in.importacaoId());
         return new ProcessoResolvido(
                 aloc.processo().getId(),
@@ -219,30 +225,16 @@ public class CobrancaUnidadeResolverService {
         }
     }
 
-    private AlocacaoProcesso alocarProcVazioOuNovo(ResolverUnidadeInput in, String unidade) {
-        String cod8 = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(in.codigoCliente8());
-        List<ProcessoEntity> vazios = processoRepository.findProcessosVaziosPorCliente(
-                in.clienteId(),
-                cod8,
-                PageRequest.of(0, 1, Sort.by("numeroInterno").ascending().and(Sort.by("id").ascending())));
-
-        if (!vazios.isEmpty()) {
-            ProcessoEntity p = vazios.getFirst();
-            garantirNumeroInternoValido(p, in.clienteId());
-            p.setUnidade(unidade);
-            if (StringUtils.hasText(in.importacaoId())) {
-                p.setImportacaoId(in.importacaoId().trim());
-            }
-            ProcessoEntity salvo = processoRepository.save(p);
-            return new AlocacaoProcesso(salvo, false);
-        }
-
+    /** Cria processo novo com o menor {@code numero_interno} livre do cliente (sequência compacta). */
+    private AlocacaoProcesso criarProcessoNovo(ResolverUnidadeInput in, String unidade) {
         int ni = proximoNumeroInternoDisponivel(in.clienteId());
         ProcessoWriteRequest req = new ProcessoWriteRequest();
         req.setClienteId(in.clienteId());
         req.setPessoaTitularId(in.clientePessoaId());
         req.setNumeroInterno(ni);
         req.setUnidade(unidade);
+        req.setNaturezaAcao(NATUREZA_ACAO_COBRANCA_XLS);
+        req.setPapelCliente(PAPEL_CLIENTE_REQUERENTE);
         if (StringUtils.hasText(in.importacaoId())) {
             req.setImportacaoId(in.importacaoId().trim());
         }
@@ -295,6 +287,24 @@ public class CobrancaUnidadeResolverService {
             }
         }
         return ids;
+    }
+
+    private boolean vincularAutorClienteSeNecessario(Long processoId, long clientePessoaId, String importacaoId) {
+        if (processoParteRepository
+                .findFirstByProcesso_IdAndPoloIgnoreCaseAndPessoa_Id(processoId, POLO_AUTOR, clientePessoaId)
+                .isPresent()) {
+            return false;
+        }
+        ProcessoParteWriteRequest wr = new ProcessoParteWriteRequest();
+        wr.setPessoaId(clientePessoaId);
+        wr.setPolo(POLO_AUTOR);
+        wr.setQualificacao(QUAL_PARTE_CLIENTE);
+        wr.setOrdem(1);
+        if (StringUtils.hasText(importacaoId)) {
+            wr.setImportacaoId(importacaoId.trim());
+        }
+        processoApplicationService.criarParte(processoId, wr);
+        return true;
     }
 
     private boolean vincularReuSeNecessario(Long processoId, long pessoaIdDevedor, String importacaoId) {

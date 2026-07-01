@@ -48,7 +48,7 @@ class CobrancaRelatorioMontadorTest {
                 "inadimplencia.xls",
                 "admin",
                 List.of(uOk, uErro),
-                new RelatorioRegraInicioDto("D+1", "2026-06-03", 0, 0),
+                new RelatorioRegraInicioDto("Importar tudo", "2026-06-03", 0, 0),
                 List.of(sucesso),
                 List.of(new CobrancaProcessarErroDto("B-9999", "Falha simulada")));
 
@@ -83,7 +83,7 @@ class CobrancaRelatorioMontadorTest {
                 null,
                 null,
                 List.of(unidade("A-01", "X", "12345678901", List.of(cob("10/10/2026", 100L)))),
-                new RelatorioRegraInicioDto("D+1", "2026-06-03", 0, 0),
+                new RelatorioRegraInicioDto("Importar tudo", "2026-06-03", 0, 0),
                 List.of(),
                 List.of());
 
@@ -111,13 +111,13 @@ class CobrancaRelatorioMontadorTest {
                 null,
                 null,
                 List.of(),
-                new RelatorioRegraInicioDto("D+60", "2026-06-03", 1, 1),
+                new RelatorioRegraInicioDto("60+1 condicional", "2026-06-03", 1, 1),
                 List.of(),
                 List.of());
 
-        assertThat(r.regraInicio().regraAplicada()).isEqualTo("D+60");
+        assertThat(r.regraInicio().regraAplicada()).isEqualTo("60+1 condicional");
         assertThat(r.regraInicio().devedoresDescartados()).isEqualTo(1);
         assertThat(r.pontosAtencao())
-                .anyMatch(p -> p.contains("não atingiram a regra D+60") && p.contains("descartados"));
+                .anyMatch(p -> p.contains("não atingiram a regra 60+1 condicional") && p.contains("descartados"));
     }
 }

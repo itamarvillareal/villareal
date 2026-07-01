@@ -399,7 +399,8 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
           <p className="text-sm text-slate-700">
             <span className="font-medium text-slate-800">Regra:</span> {regraLabel}
             <span className="text-slate-500 text-xs ml-1">
-              (prévia com base na data de hoje; a decisão oficial é no processamento)
+              (prévia parcial na regra condicional — unidades com débito anterior &gt;60d podem entrar mesmo com
+              taxas recentes na planilha)
             </span>
           </p>
           {previaRegra && previaRegra.descartados > 0 && (

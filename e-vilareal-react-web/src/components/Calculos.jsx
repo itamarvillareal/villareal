@@ -41,6 +41,7 @@ import { featureFlags } from '../config/featureFlags.js';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import { buildRouterStateChaveClienteProcesso, extrairIntentNavegacaoProcessos } from '../domain/camposProcessoCliente.js';
 import { mergeDebitosCalculosMultiSheet } from '../utils/mergeDebitosCalculosPlanilha.js';
+import { listarProcessosResumoPorCodigoCliente } from '../repositories/processosRepository.js';
 import { resolverTextosPartesCabecalhoCalculo } from '../data/processosDadosRelatorio.js';
 import {
   calcularTotalTituloGrade,
@@ -346,7 +347,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   const [juros, setJuros] = useState('1 %');
   const [multa, setMulta] = useState('0 %');
   const [honorariosTipo, setHonorariosTipo] = useState('fixos');
-  const [honorariosValor, setHonorariosValor] = useState('0');
+  const [honorariosValor, setHonorariosValor] = useState('0 %');
   const [honorariosVariaveisTexto, setHonorariosVariaveisTexto] = useState('');
   const [indice, setIndice] = useState('INPC');
   const [periodicidade, setPeriodicidade] = useState('mensal');
@@ -425,7 +426,38 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       const matrices = wb.SheetNames.map((name) =>
         XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' })
       );
-      const { nextRodadas, stats } = mergeDebitosCalculosMultiSheet(rodadasStateRef.current, matrices);
+
+      /** @type {Record<string, number[]>} */
+      let numerosInternosPorCliente8 = {};
+      if (featureFlags.useApiProcessos) {
+        const codigos = new Set();
+        for (const m of matrices) {
+          if (!Array.isArray(m)) continue;
+          for (let i = 1; i < m.length; i += 1) {
+            const row = m[i];
+            const codNum = Number(String(row?.[0] ?? '').trim().replace(/\D/g, '') || NaN);
+            if (Number.isFinite(codNum) && codNum >= 1) {
+              codigos.add(String(codNum).padStart(8, '0'));
+            }
+          }
+        }
+        await Promise.all(
+          [...codigos].map(async (cod8) => {
+            try {
+              const lista = await listarProcessosResumoPorCodigoCliente(cod8);
+              numerosInternosPorCliente8[cod8] = (lista || [])
+                .map((p) => Number(p?.numeroInterno))
+                .filter((n) => Number.isFinite(n) && n >= 1);
+            } catch (err) {
+              console.warn(`[Calculos] import débitos: falha ao listar processos ${cod8}`, err);
+            }
+          })
+        );
+      }
+
+      const { nextRodadas, stats } = mergeDebitosCalculosMultiSheet(rodadasStateRef.current, matrices, {
+        numerosInternosPorCliente8,
+      });
       setRodadasState(nextRodadas);
       rodadasStateRef.current = nextRodadas;
       const keysComValor = Object.keys(nextRodadas).filter((k) =>
@@ -682,7 +714,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     setJuros(merged.juros);
     setMulta(merged.multa);
     setHonorariosTipo(merged.honorariosTipo === 'variaveis' ? 'variaveis' : 'fixos');
-    setHonorariosValor(merged.honorariosValor ?? '0');
+    setHonorariosValor(merged.honorariosValor ?? '0 %');
     setHonorariosVariaveisTexto(merged.honorariosVariaveisTexto ?? '');
     setIndice(merged.indice);
     setPeriodicidade(merged.periodicidade ?? 'mensal');
@@ -697,7 +729,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       setJuros(merged.juros);
       setMulta(merged.multa);
       setHonorariosTipo(merged.honorariosTipo === 'variaveis' ? 'variaveis' : 'fixos');
-      setHonorariosValor(merged.honorariosValor ?? '0');
+      setHonorariosValor(merged.honorariosValor ?? '0 %');
       setHonorariosVariaveisTexto(merged.honorariosVariaveisTexto ?? '');
       setIndice(merged.indice);
       setPeriodicidade(merged.periodicidade ?? 'mensal');

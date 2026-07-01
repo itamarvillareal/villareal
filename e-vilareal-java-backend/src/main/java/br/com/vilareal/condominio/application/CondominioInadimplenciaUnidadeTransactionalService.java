@@ -47,6 +47,7 @@ public class CondominioInadimplenciaUnidadeTransactionalService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public InadimplenciaImportItemResultadoDto importarUmaUnidade(
+            long clienteId,
             long pessoaId,
             String codigoCliente8,
             InadimplenciaUnidadeDto unidade,
@@ -66,9 +67,10 @@ public class CondominioInadimplenciaUnidadeTransactionalService {
                 processoRepository.findByPessoa_IdAndUnidade(pessoaId, codU).orElse(null);
         boolean criado = false;
         if (proc == null) {
-            int ni = menorNumeroInternoDisponivel(pessoaId);
+            int ni = menorNumeroInternoDisponivel(clienteId);
             ProcessoWriteRequest req = new ProcessoWriteRequest();
-            req.setClienteId(pessoaId);
+            req.setClienteId(clienteId);
+            req.setPessoaTitularId(pessoaId);
             req.setNumeroInterno(ni);
             req.setUnidade(codU);
             if (importacaoId != null && !importacaoId.isBlank()) {
@@ -100,8 +102,8 @@ public class CondominioInadimplenciaUnidadeTransactionalService {
                 codU, proc.getNumeroInterno(), proc.getId(), criado, cobrancas.size());
     }
 
-    private int menorNumeroInternoDisponivel(long pessoaId) {
-        List<ProcessoEntity> lista = processoRepository.findByPessoa_IdOrderByNumeroInternoAsc(pessoaId);
+    private int menorNumeroInternoDisponivel(long clienteId) {
+        List<ProcessoEntity> lista = processoRepository.findByCliente_IdOrderByNumeroInternoAscIdAsc(clienteId);
         Set<Integer> usados = new HashSet<>();
         for (ProcessoEntity p : lista) {
             usados.add(p.getNumeroInterno());

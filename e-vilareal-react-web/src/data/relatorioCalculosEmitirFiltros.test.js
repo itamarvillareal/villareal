@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  agregarLinhasRelatorioCalculosConsolidado,
   chaveProcessoRelatorioCalculosExtras,
   codigosClientes8UnicosDasChavesRodadasCalculos,
   filtroEmitirRelatorioCalculosPadrao,
   montarFiltroEmitirRelatorioCalculosFromUi,
   normalizarCodigoCliente8Relatorio,
+  parseBRL,
   parseListaCodigosClientesRelatorio,
   parseListaProcessosRelatorio,
   rodadaChavePassaFiltrosEmitirRelatorio,
@@ -55,6 +57,52 @@ describe('relatorioCalculos emitir filtros', () => {
     expect(
       codigosClientes8UnicosDasChavesRodadasCalculos(['00000299:1:0', '00000299:2:0', '00000001:1:0']).sort()
     ).toEqual(['00000001', '00000299']);
+  });
+
+  it('agregarLinhasRelatorioCalculosConsolidado soma parcelas por rodada', () => {
+    const linhas = [
+      {
+        rodadaKey: '00000299:13:0',
+        indiceParcela: 0,
+        codCliente: '00000299',
+        proc: '13',
+        dimensao: '0',
+        valor: 'R$ 100,00',
+        valorHonorarios: 'R$ 10,00',
+        reu: 'Réu A',
+        unidade: '501 A',
+      },
+      {
+        rodadaKey: '00000299:13:0',
+        indiceParcela: 1,
+        codCliente: '00000299',
+        proc: '13',
+        dimensao: '0',
+        valor: 'R$ 200,50',
+        valorHonorarios: 'R$ 20,00',
+        reu: 'Réu A',
+        unidade: '501 A',
+      },
+      {
+        rodadaKey: '00000299:24:0',
+        indiceParcela: 0,
+        codCliente: '00000299',
+        proc: '24',
+        dimensao: '0',
+        valor: 'R$ 50,00',
+        valorHonorarios: 'R$ 5,00',
+        reu: 'Réu B',
+        unidade: '502 B',
+      },
+    ];
+    const agg = agregarLinhasRelatorioCalculosConsolidado(linhas);
+    expect(agg).toHaveLength(2);
+    const proc13 = agg.find((r) => r.proc === '13');
+    expect(parseBRL(proc13.valor)).toBeCloseTo(300.5, 2);
+    expect(parseBRL(proc13.valorHonorarios)).toBeCloseTo(30, 2);
+    expect(proc13.dataVencimento).toBe('');
+    expect(proc13.parcela).toBe('');
+    expect(proc13.linhaConsolidada).toBe(true);
   });
 
   it('validarFiltroEmitirRelatorioCalculos', () => {

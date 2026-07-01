@@ -8,6 +8,7 @@
     "dev:web": "npm run dev --prefix e-vilareal-react-web",
     "import:historico": "npm run import:historico --prefix e-vilareal-react-web",
     "dedupe:andamentos-processo": "npm run dedupe:andamentos-processo --prefix e-vilareal-react-web",
-    "import:extrato-bancos-itau": "npm run import:extrato-bancos-itau --prefix e-vilareal-react-web"
+    "import:extrato-bancos-itau": "npm run import:extrato-bancos-itau --prefix e-vilareal-react-web",
+    "import:extrato-bancos-itau:faltantes": "npm run import:extrato-bancos-itau:faltantes --prefix e-vilareal-react-web"
   }
 }

@@ -7,7 +7,9 @@
  *
  * Uso (a partir de e-vilareal-react-web/):
  *   npm run import:extrato-bancos-itau
+ *   npm run import:extrato-bancos-itau:faltantes   # só PL-* ausentes, sem apagar
  *   node scripts/import-extrato-bancos-planilha.mjs --dry-run
+ *   node scripts/import-extrato-bancos-planilha.mjs --apenas-faltantes --dry-run
  *
  * Na raiz do repositório villareal/:
  *   npm run import:extrato-bancos-itau
@@ -40,6 +42,11 @@ import {
   candidatosExtratoBancosPlanilhaXlsParaLog,
   resolveExtratoBancosPlanilhaXlsPath,
 } from './lib/resolve-extrato-bancos-planilha-xls.mjs';
+import {
+  fetchNumerosExistentes,
+  imprimirRelatorioValidacao,
+  validarExtratoPlanilhaVsApi,
+} from './lib/extrato-bancos-planilha-validacao.mjs';
 import { anexarCodigoClienteTagDescricaoDetalhada } from '../src/data/financeiroData.js';
 
 const CORA_NUMERO_BANCO = 26;
@@ -61,6 +68,9 @@ function parseArgs(argv) {
     baseUrl: (process.env.VILAREAL_API_BASE || 'http://localhost:8080').replace(/\/$/, ''),
     dryRun: false,
     substituir: false,
+    /** Insere só linhas cujo PL-* ainda não existe (nunca usa --substituir). */
+    apenasFaltantes: false,
+    semValidacao: false,
     concurrency: Math.min(
       24,
       Math.max(1, Number(process.env.VILAREAL_IMPORT_CONCURRENCY || 12) || 12),
@@ -77,6 +87,8 @@ function parseArgs(argv) {
   };
   for (const a of argv) {
     if (a === '--dry-run') out.dryRun = true;
+    else if (a === '--apenas-faltantes') out.apenasFaltantes = true;
+    else if (a === '--sem-validacao') out.semValidacao = true;
     else if (a === '--substituir') out.substituir = true;
     else if (a === '--todos-bancos') out.todosBancos = true;
     else if (a === '--incluir-itau') out.pularItau = false;
@@ -126,7 +138,9 @@ function parseArgs(argv) {
     }
     out.file = resolved;
   }
-  if (!argv.includes('--substituir') && !out.dryRun && !out.data && !out.mes && !out.desde) {
+  if (out.apenasFaltantes) {
+    out.substituir = false;
+  } else if (!argv.includes('--substituir') && !out.dryRun && !out.data && !out.mes && !out.desde) {
     out.substituir = true;
   }
   if (out.data || out.mes || out.desde) out.substituir = false;
@@ -329,6 +343,9 @@ function imprimirResumo(stats) {
   console.log(`Prontas para API:    ${stats.prontas}`);
   console.log(`POST ok:             ${stats.criados}`);
   console.log(`POST erro:           ${stats.errosPost}`);
+  if (stats.puladasJaExistem != null) {
+    console.log(`Já existiam (PL-*):  ${stats.puladasJaExistem}`);
+  }
   console.log(`Letra desconhecida:  ${stats.letraDesconhecida}`);
   console.log(`Cliente não achado:  ${stats.clienteNaoAchado}`);
   console.log(`Processo não achado: ${stats.processoNaoAchado}`);
@@ -366,7 +383,9 @@ async function importarUmBanco(opts, token, wb, bancoNome, contaIdPorLetra) {
   if (opts.limite != null) linhas = linhas.slice(0, opts.limite);
 
   const stats = {
+    lidasPlanilha: linhas.length,
     lidas: linhas.length,
+    puladasJaExistem: 0,
     prontas: 0,
     criados: 0,
     errosPost: 0,
@@ -384,13 +403,39 @@ async function importarUmBanco(opts, token, wb, bancoNome, contaIdPorLetra) {
   }
 
   if (opts.dryRun) {
-    console.log(`  ${bancoNome}: ${linhas.length} lançamentos (layout ${layout.id})`);
+    const msg =
+      opts.apenasFaltantes && opts.numerosExistentes
+        ? `${linhas.filter((r) => !opts.numerosExistentes.has(r.numeroLancamento)).length} faltantes de ${linhas.length}`
+        : `${linhas.length} lançamentos`;
+    console.log(`  ${bancoNome}: ${msg} (layout ${layout.id})`);
+    stats.lidas = opts.apenasFaltantes
+      ? linhas.filter((r) => !opts.numerosExistentes?.has(r.numeroLancamento)).length
+      : linhas.length;
     return stats;
   }
 
   if (numeroBanco == null) {
     console.error(`  Número do banco desconhecido: ${bancoNome}`);
     return { errosPost: 1 };
+  }
+
+  if (opts.apenasFaltantes) {
+    const existentes =
+      opts.numerosExistentes ??
+      (await fetchNumerosExistentes(
+        token,
+        opts.baseUrl,
+        numeroBanco,
+        linhas.map((r) => r.numeroLancamento),
+      ));
+    const antes = linhas.length;
+    linhas = linhas.filter((r) => !existentes.has(r.numeroLancamento));
+    stats.puladasJaExistem = antes - linhas.length;
+    stats.lidas = linhas.length;
+    console.log(
+      `  ${bancoNome}: ${stats.lidas} faltantes (${stats.puladasJaExistem} PL-* já no banco)`,
+    );
+    if (linhas.length === 0) return stats;
   }
 
   if (opts.substituir) {
@@ -437,7 +482,8 @@ async function importarUmBanco(opts, token, wb, bancoNome, contaIdPorLetra) {
     if (res.ok) stats.criados += 1;
     else {
       stats.errosPost += 1;
-      if (stats.amostraErros.length < 3) {
+      const maxAmostra = opts.apenasFaltantes ? 10 : 3;
+      if (stats.amostraErros.length < maxAmostra) {
         stats.amostraErros.push(`L${row.linhaExcel}: HTTP ${res.status} — ${res.text || ''}`);
       }
     }
@@ -468,9 +514,11 @@ async function main() {
   console.log(`Bancos (${bancosAlvo.length}): ${bancosAlvo.join(', ')}`);
   const modo = opts.dryRun
     ? 'DRY-RUN'
-    : opts.substituir
-      ? 'SUBSTITUIR + IMPORTAR'
-      : 'IMPORTAR';
+    : opts.apenasFaltantes
+      ? 'APENAS FALTANTES'
+      : opts.substituir
+        ? 'SUBSTITUIR + IMPORTAR'
+        : 'IMPORTAR';
   const periodo = opts.data
     ? ` (só ${opts.data})`
     : opts.mes
@@ -482,29 +530,93 @@ async function main() {
 
   const wb = XLSX.readFile(filePath, { cellDates: true, cellNF: false });
 
-  if (opts.dryRun) {
-    let total = 0;
-    for (const nome of bancosAlvo) {
-      const st = await importarUmBanco(opts, null, wb, nome, new Map());
-      total += st.lidas || 0;
-    }
-    console.log(`\nTotal: ${total} lançamentos`);
-    return;
-  }
-
-  if (!opts.senha) {
+  if (!opts.senha && !opts.dryRun) {
     console.error('Defina VILAREAL_IMPORT_SENHA ou --senha=');
     process.exit(1);
   }
 
-  const token = await login(opts);
+  /** @type {string | null} */
+  let token = null;
+  /** @type {Map<string, Set<string>>} */
+  const numerosExistentesPorBanco = new Map();
+
+  if (opts.apenasFaltantes) {
+    if (!opts.senha) {
+      console.error('--apenas-faltantes requer VILAREAL_IMPORT_SENHA ou --senha=');
+      process.exit(1);
+    }
+    token = await login(opts);
+    for (const nome of bancosAlvo) {
+      const numeroBanco = numeroBancoPorNome(nome);
+      if (numeroBanco == null) continue;
+      const layout =
+        opts.layout && nome === (opts.banco || opts.sheet)
+          ? LAYOUTS_EXTRATO_BANCO[opts.layout] ?? layoutExtratoPorNomeInstituicao(nome)
+          : layoutExtratoPorNomeInstituicao(nome);
+      const ws = wb.Sheets[nome];
+      if (!ws) continue;
+      let linhas = extrairLancamentosDaAba(ws, layout, nome);
+      if (opts.data) linhas = linhas.filter((r) => r.dataIso === opts.data);
+      else if (opts.mes) linhas = linhas.filter((r) => r.dataIso.startsWith(`${opts.mes}-`));
+      else if (opts.desde) linhas = linhas.filter((r) => r.dataIso >= opts.desde);
+      const existentes = await fetchNumerosExistentes(
+        token,
+        opts.baseUrl,
+        numeroBanco,
+        linhas.map((r) => r.numeroLancamento),
+      );
+      numerosExistentesPorBanco.set(nome, existentes);
+    }
+    opts.numerosExistentesPorBanco = numerosExistentesPorBanco;
+  }
+
+  if (opts.apenasFaltantes && !opts.semValidacao && token) {
+    for (const nome of bancosAlvo) {
+      const rel = await validarExtratoPlanilhaVsApi({
+        token,
+        baseUrl: opts.baseUrl,
+        wb,
+        bancoNome: nome,
+        opts,
+      });
+      imprimirRelatorioValidacao(rel, `PRÉ-VOO — ${nome}`);
+    }
+  }
+
+  if (opts.dryRun) {
+    let total = 0;
+    for (const nome of bancosAlvo) {
+      opts.numerosExistentes = numerosExistentesPorBanco.get(nome);
+      const st = await importarUmBanco(opts, null, wb, nome, new Map());
+      total += st.lidas || 0;
+    }
+    console.log(`\nTotal a importar: ${total} lançamentos`);
+    return;
+  }
+
+  if (!token) token = await login(opts);
   const contasApi = await listarContasContabeis(token, opts.baseUrl);
   const contaIdPorLetra = buildContaIdPorLetra(contasApi);
 
   let totalErros = 0;
   for (const nome of bancosAlvo) {
+    opts.numerosExistentes = numerosExistentesPorBanco.get(nome);
     const st = await importarUmBanco(opts, token, wb, nome, contaIdPorLetra);
     totalErros += st.errosPost || 0;
+  }
+
+  if (opts.apenasFaltantes && !opts.semValidacao) {
+    for (const nome of bancosAlvo) {
+      const rel = await validarExtratoPlanilhaVsApi({
+        token,
+        baseUrl: opts.baseUrl,
+        wb,
+        bancoNome: nome,
+        opts,
+      });
+      imprimirRelatorioValidacao(rel, `PÓS-VOO — ${nome}`);
+      if (rel.faltantes.length > 0) totalErros += 1;
+    }
   }
 
   if (totalErros > 0) process.exit(1);

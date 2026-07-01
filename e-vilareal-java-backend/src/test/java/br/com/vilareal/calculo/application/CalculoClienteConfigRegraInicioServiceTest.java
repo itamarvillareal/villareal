@@ -61,7 +61,32 @@ class CalculoClienteConfigRegraInicioServiceTest {
     }
 
     @Test
-    void salvar_e_obter_roundTrip60() {
+    void salvar_e_obter_roundTrip61() {
+        when(clienteCodigoPessoaResolver.resolverPessoaIdComFallbackCliente(COD)).thenReturn(Optional.of(100L));
+        when(pessoaRepository.existsById(100L)).thenReturn(true);
+        when(clienteConfigRepository.findById(COD)).thenReturn(Optional.empty());
+        when(clienteConfigRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        ObjectNode patch = objectMapper.createObjectNode();
+        patch.put("regraInicioCobrancaDias", 61);
+        CalculoClienteConfigResponse salvo = service.salvarConfigCliente(COD, patch);
+
+        assertThat(salvo.config().get("regraInicioCobrancaDias").intValue()).isEqualTo(61);
+
+        ArgumentCaptor<CalculoClienteConfigEntity> cap = ArgumentCaptor.forClass(CalculoClienteConfigEntity.class);
+        verify(clienteConfigRepository).save(cap.capture());
+        assertThat(cap.getValue().getRegraInicioCobrancaDias()).isEqualTo(61);
+        assertThat(cap.getValue().getPayloadJson().has("regraInicioCobrancaDias")).isFalse();
+
+        CalculoClienteConfigEntity persisted = cap.getValue();
+        when(clienteConfigRepository.findById(COD)).thenReturn(Optional.of(persisted));
+
+        CalculoClienteConfigResponse lido = service.obterConfigCliente(COD);
+        assertThat(lido.config().get("regraInicioCobrancaDias").intValue()).isEqualTo(61);
+    }
+
+    @Test
+    void salvar_legado60_migraPara61() {
         when(clienteCodigoPessoaResolver.resolverPessoaIdComFallbackCliente(COD)).thenReturn(Optional.of(100L));
         when(pessoaRepository.existsById(100L)).thenReturn(true);
         when(clienteConfigRepository.findById(COD)).thenReturn(Optional.empty());
@@ -71,18 +96,7 @@ class CalculoClienteConfigRegraInicioServiceTest {
         patch.put("regraInicioCobrancaDias", 60);
         CalculoClienteConfigResponse salvo = service.salvarConfigCliente(COD, patch);
 
-        assertThat(salvo.config().get("regraInicioCobrancaDias").intValue()).isEqualTo(60);
-
-        ArgumentCaptor<CalculoClienteConfigEntity> cap = ArgumentCaptor.forClass(CalculoClienteConfigEntity.class);
-        verify(clienteConfigRepository).save(cap.capture());
-        assertThat(cap.getValue().getRegraInicioCobrancaDias()).isEqualTo(60);
-        assertThat(cap.getValue().getPayloadJson().has("regraInicioCobrancaDias")).isFalse();
-
-        CalculoClienteConfigEntity persisted = cap.getValue();
-        when(clienteConfigRepository.findById(COD)).thenReturn(Optional.of(persisted));
-
-        CalculoClienteConfigResponse lido = service.obterConfigCliente(COD);
-        assertThat(lido.config().get("regraInicioCobrancaDias").intValue()).isEqualTo(60);
+        assertThat(salvo.config().get("regraInicioCobrancaDias").intValue()).isEqualTo(61);
     }
 
     @Test
