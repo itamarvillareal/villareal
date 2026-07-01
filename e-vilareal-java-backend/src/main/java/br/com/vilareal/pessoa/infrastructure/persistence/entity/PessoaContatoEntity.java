@@ -26,6 +26,12 @@ public class PessoaContatoEntity {
     @Column(nullable = false, length = 500)
     private String valor;
 
+    @Column(name = "valor_digitos", length = 15)
+    private String valorDigitos;
+
+    @Column(name = "valor_sufixo_8", length = 8)
+    private String valorSufixo8;
+
     @Column(name = "importacao_id", length = 36)
     private String importacaoId;
 

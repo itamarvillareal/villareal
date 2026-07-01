@@ -24,7 +24,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -125,12 +124,11 @@ public class PessoaApplicationService {
     }
 
     private List<Long> buscarIdsPorTelefone(String telDigits) {
-        LinkedHashSet<Long> ids = new LinkedHashSet<>();
+        List<String> variants = TelefoneBuscaSupport.variantes(telDigits);
         String sufixoLocal = TelefoneBuscaSupport.sufixoLocal(telDigits);
-        for (String variant : TelefoneBuscaSupport.variantes(telDigits)) {
-            ids.addAll(pessoaRepository.findIdsByTelefoneDigitosContendo(variant, sufixoLocal));
-        }
-        return new ArrayList<>(ids);
+        String parcial = telDigits.length() < 8 ? telDigits : "";
+        return pessoaRepository.findIdsByTelefoneIndice(
+                variants, sufixoLocal != null ? sufixoLocal : "", parcial);
     }
 
     @Transactional(readOnly = true)
@@ -311,12 +309,30 @@ public class PessoaApplicationService {
             c.setPessoa(p);
             c.setTipo(Utf8MojibakeUtil.corrigir(r.getTipo()));
             c.setValor(Utf8MojibakeUtil.corrigir(r.getValor()));
+            aplicarIndiceTelefoneContato(c);
             c.setDataLancamento(r.getDataLancamento() != null ? r.getDataLancamento() : now);
             c.setDataAlteracao(r.getDataAlteracao() != null ? r.getDataAlteracao() : now);
             c.setUsuarioLancamento(Utf8MojibakeUtil.corrigir(r.getUsuario()));
             contatoRepository.save(c);
         }
         return listarContatos(pessoaId);
+    }
+
+    private void aplicarIndiceTelefonePessoa(PessoaEntity p) {
+        TelefoneIndiceUtil.TelefoneIndice idx = TelefoneIndiceUtil.fromRaw(p.getTelefone());
+        p.setTelefoneDigitos(idx.digitos());
+        p.setTelefoneSufixo8(idx.sufixo8());
+    }
+
+    private void aplicarIndiceTelefoneContato(PessoaContatoEntity c) {
+        if (c.getTipo() != null && "telefone".equalsIgnoreCase(c.getTipo().trim())) {
+            TelefoneIndiceUtil.TelefoneIndice idx = TelefoneIndiceUtil.fromRaw(c.getValor());
+            c.setValorDigitos(idx.digitos());
+            c.setValorSufixo8(idx.sufixo8());
+        } else {
+            c.setValorDigitos(null);
+            c.setValorSufixo8(null);
+        }
     }
 
     private void garantirPessoaExiste(Long id) {
@@ -363,6 +379,7 @@ public class PessoaApplicationService {
         p.setTelefone(StringUtils.hasText(req.getTelefone())
                 ? Utf8MojibakeUtil.corrigir(req.getTelefone().trim())
                 : null);
+        aplicarIndiceTelefonePessoa(p);
         p.setDataNascimento(req.getDataNascimento());
         p.setAtivo(req.getAtivo() != null ? req.getAtivo() : true);
         p.setMarcadoMonitoramento(Boolean.TRUE.equals(req.getMarcadoMonitoramento()));

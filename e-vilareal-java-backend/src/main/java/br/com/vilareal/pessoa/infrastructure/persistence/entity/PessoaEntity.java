@@ -29,6 +29,12 @@ public class PessoaEntity {
     @Column(length = 40)
     private String telefone;
 
+    @Column(name = "telefone_digitos", length = 15)
+    private String telefoneDigitos;
+
+    @Column(name = "telefone_sufixo_8", length = 8)
+    private String telefoneSufixo8;
+
     @Column(name = "data_nascimento")
     private LocalDate dataNascimento;
 

@@ -13,27 +13,36 @@ import java.util.Optional;
 public interface PessoaRepository extends JpaRepository<PessoaEntity, Long>, JpaSpecificationExecutor<PessoaEntity> {
 
     /**
-     * Pessoas cujo telefone legado ({@code pessoa.telefone}) ou contato tipo telefone contém os dígitos informados.
+     * Pessoas por índice de telefone ({@code telefone_digitos} / {@code telefone_sufixo_8} e contatos).
      */
     @Query(
             value =
                     """
                     SELECT DISTINCT p.id FROM pessoa p
                     LEFT JOIN pessoa_contato pc ON pc.pessoa_id = p.id AND LOWER(pc.tipo) = 'telefone'
-                    WHERE REGEXP_REPLACE(IFNULL(p.telefone, ''), '[^0-9]', '') LIKE CONCAT('%', :digits, '%')
-                       OR REGEXP_REPLACE(IFNULL(pc.valor, ''), '[^0-9]', '') LIKE CONCAT('%', :digits, '%')
+                    WHERE p.telefone_digitos IN (:digitosList)
+                       OR pc.valor_digitos IN (:digitosList)
                        OR (
                          :sufixoLocal <> ''
                          AND (
-                           RIGHT(REGEXP_REPLACE(IFNULL(p.telefone, ''), '[^0-9]', ''), 8) = :sufixoLocal
-                           OR RIGHT(REGEXP_REPLACE(IFNULL(pc.valor, ''), '[^0-9]', ''), 8) = :sufixoLocal
+                           p.telefone_sufixo_8 = :sufixoLocal
+                           OR pc.valor_sufixo_8 = :sufixoLocal
+                         )
+                       )
+                       OR (
+                         :buscaParcial <> ''
+                         AND (
+                           p.telefone_digitos LIKE CONCAT('%', :buscaParcial, '%')
+                           OR pc.valor_digitos LIKE CONCAT('%', :buscaParcial, '%')
                          )
                        )
                     ORDER BY p.id
                     """,
             nativeQuery = true)
-    List<Long> findIdsByTelefoneDigitosContendo(
-            @Param("digits") String digits, @Param("sufixoLocal") String sufixoLocal);
+    List<Long> findIdsByTelefoneIndice(
+            @Param("digitosList") List<String> digitosList,
+            @Param("sufixoLocal") String sufixoLocal,
+            @Param("buscaParcial") String buscaParcial);
 
     @EntityGraph(attributePaths = "responsavel")
     @Query("SELECT p FROM PessoaEntity p WHERE p.id = :id")

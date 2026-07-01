@@ -24,14 +24,27 @@ public interface PessoaContatoRepository extends JpaRepository<PessoaContatoEnti
                     SELECT pc.pessoa_id FROM pessoa_contato pc
                     WHERE LOWER(pc.tipo) = 'telefone'
                       AND (
-                        REGEXP_REPLACE(pc.valor, '[^0-9]', '') = :digits
-                        OR RIGHT(REGEXP_REPLACE(pc.valor, '[^0-9]', ''), 11) = RIGHT(:digits, 11)
-                        OR RIGHT(REGEXP_REPLACE(pc.valor, '[^0-9]', ''), 10) = RIGHT(:digits, 10)
+                        pc.valor_digitos = :digits
+                        OR (:sufixo8 <> '' AND pc.valor_sufixo_8 = :sufixo8)
+                        OR RIGHT(IFNULL(pc.valor_digitos, ''), 11) = RIGHT(:digits, 11)
+                        OR RIGHT(IFNULL(pc.valor_digitos, ''), 10) = RIGHT(:digits, 10)
                       )
                     LIMIT 1
                     """,
             nativeQuery = true)
-    Optional<Long> findPessoaIdByTelefoneNormalizado(@Param("digits") String digits);
+    Optional<Long> findPessoaIdByTelefoneIndice(@Param("digits") String digits, @Param("sufixo8") String sufixo8);
+
+    default Optional<Long> findPessoaIdByTelefoneNormalizado(String digitsRaw) {
+        if (digitsRaw == null || digitsRaw.isBlank()) {
+            return Optional.empty();
+        }
+        String digits = digitsRaw.replaceAll("\\D", "");
+        if (digits.isEmpty()) {
+            return Optional.empty();
+        }
+        String sufixo8 = digits.length() >= 8 ? digits.substring(digits.length() - 8) : "";
+        return findPessoaIdByTelefoneIndice(digits, sufixo8);
+    }
 
     long countByImportacaoId(String importacaoId);
 
