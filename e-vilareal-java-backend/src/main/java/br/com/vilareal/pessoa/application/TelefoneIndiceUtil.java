@@ -3,7 +3,7 @@ package br.com.vilareal.pessoa.application;
 /** Dígitos normalizados e sufixo local (8) para indexação e busca de telefone. */
 public final class TelefoneIndiceUtil {
 
-    private static final int MAX_DIGITOS = 15;
+    private static final int MAX_DIGITOS = 20;
 
     private TelefoneIndiceUtil() {}
 

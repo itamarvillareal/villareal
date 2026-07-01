@@ -29,7 +29,7 @@ public class PessoaEntity {
     @Column(length = 40)
     private String telefone;
 
-    @Column(name = "telefone_digitos", length = 15)
+    @Column(name = "telefone_digitos", length = 20)
     private String telefoneDigitos;
 
     @Column(name = "telefone_sufixo_8", length = 8)

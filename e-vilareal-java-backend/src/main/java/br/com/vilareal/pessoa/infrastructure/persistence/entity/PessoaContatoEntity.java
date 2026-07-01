@@ -26,7 +26,7 @@ public class PessoaContatoEntity {
     @Column(nullable = false, length = 500)
     private String valor;
 
-    @Column(name = "valor_digitos", length = 15)
+    @Column(name = "valor_digitos", length = 20)
     private String valorDigitos;
 
     @Column(name = "valor_sufixo_8", length = 8)
