@@ -148,4 +148,17 @@ public interface PagamentoRepository extends JpaRepository<PagamentoEntity, Long
             """)
     List<PagamentoEntity> findReceberAbertosPorImovelOuCliente(
             @Param("imovelId") Long imovelId, @Param("clienteId") Long clienteId);
+
+    @Query(
+            """
+            SELECT p FROM PagamentoEntity p
+            WHERE p.tipo = 'RECEBER'
+              AND p.processo.id = :processoId
+              AND p.dataVencimento = :vencimento
+              AND p.status IN ('EMITIDO', 'VENCIDO')
+              AND LOWER(p.origem) LIKE 'contrato_honorarios:%'
+            ORDER BY p.id ASC
+            """)
+    List<PagamentoEntity> findReceberHonorariosAbertosPorProcessoEVencimento(
+            @Param("processoId") Long processoId, @Param("vencimento") LocalDate vencimento);
 }

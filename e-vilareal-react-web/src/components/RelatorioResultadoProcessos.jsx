@@ -134,6 +134,9 @@ export function RelatorioResultadoProcessos() {
                   <th className="px-3 py-2 font-semibold text-slate-700 dark:text-slate-200 text-right">Pagamento</th>
                   <th className="px-3 py-2 font-semibold text-slate-700 dark:text-slate-200 text-right">Despesa</th>
                   <th className="px-3 py-2 font-semibold text-teal-800 dark:text-teal-200 text-right">Lucro proc.</th>
+                  <th className="px-3 py-2 font-semibold text-indigo-800 dark:text-indigo-200 text-right">Honorários</th>
+                  <th className="px-3 py-2 font-semibold text-emerald-800 dark:text-emerald-200 text-right">Recebido</th>
+                  <th className="px-3 py-2 font-semibold text-amber-800 dark:text-amber-200 text-right">Pendente</th>
                   <th className="px-3 py-2 font-semibold text-slate-700 dark:text-slate-200 text-right">Lucro mês</th>
                   <th className="px-3 py-2 font-semibold text-slate-700 dark:text-slate-200">Nº vínculos</th>
                 </tr>
@@ -141,7 +144,7 @@ export function RelatorioResultadoProcessos() {
               <tbody>
                 {linhas.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-3 py-8 text-center text-slate-500">
+                    <td colSpan={13} className="px-3 py-8 text-center text-slate-500">
                       Nenhum processo com os filtros escolhidos.
                     </td>
                   </tr>
@@ -170,6 +173,18 @@ export function RelatorioResultadoProcessos() {
                         }`}
                       >
                         {fmtReais(l.lucroProcesso)}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-indigo-800">
+                        {l.honorarios ? fmtReais(l.honorarios.contratoTotal) : '—'}
+                        {l.honorarios?.parcelas && l.honorarios.parcelas !== '—' ? (
+                          <span className="block text-[10px] text-slate-400">{l.honorarios.parcelas} pagas</span>
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-emerald-800">
+                        {l.honorarios ? fmtReais(l.honorarios.recebido) : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-amber-800">
+                        {l.honorarios ? fmtReais(l.honorarios.pendente) : '—'}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums text-slate-600">
                         {fmtReais(l.lucroMesAtual)}

@@ -7,7 +7,7 @@ import {
   getProximosAniversarios,
   getWhatsAppAniversarios,
 } from '../../repositories/whatsappRepository.js';
-import { formatPhoneDisplay } from '../../utils/whatsappFormat.js';
+import { formatPhoneDisplay, formatDateTimeBR } from '../../utils/whatsappFormat.js';
 import { processosBtnPrimary, processosBtnSecondary, processosInputClass } from '../processos/ProcessosAdminLayout.jsx';
 
 const REFRESH_MS = 60_000;
@@ -287,9 +287,7 @@ export function WhatsAppAniversarios() {
                           </span>
                         </td>
                         <td className="px-3 py-2 text-slate-500">
-                          {row.createdAt
-                            ? new Date(row.createdAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
-                            : '—'}
+                          {row.createdAt ? formatDateTimeBR(row.createdAt) : '—'}
                         </td>
                       </tr>
                     ))

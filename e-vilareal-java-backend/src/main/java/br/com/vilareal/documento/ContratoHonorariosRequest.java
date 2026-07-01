@@ -23,4 +23,6 @@ public record ContratoHonorariosRequest(
         /** Conteúdo editado na prévia (substitui o montado automaticamente no PDF final). */
         ContratoHonorariosConteudoPreview conteudoEditado,
         /** Quando true (padrão com clausula3Dados), persiste contrato e gera recebíveis se configurado. */
-        Boolean persistirDados) {}
+        Boolean persistirDados,
+        /** Lembrete WhatsApp no vencimento das parcelas (honorários fixos). */
+        ContratoHonorariosWhatsAppCobrancaConfig whatsappCobranca) {}

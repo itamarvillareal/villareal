@@ -65,6 +65,21 @@ public class WhatsAppSchedulerService {
             Long processoId,
             String createdBy,
             String descricao) {
+        return agendarMensagem(
+                phoneNumber, templateName, params, scheduledAt, clienteId, processoId, null, createdBy, descricao);
+    }
+
+    @Transactional
+    public ScheduledWhatsAppMessageEntity agendarMensagem(
+            String phoneNumber,
+            String templateName,
+            List<String> params,
+            Instant scheduledAt,
+            Long clienteId,
+            Long processoId,
+            Long pagamentoId,
+            String createdBy,
+            String descricao) {
         if (scheduledAt == null || !scheduledAt.isAfter(Instant.now())) {
             throw new IllegalArgumentException("Data de agendamento deve ser no futuro");
         }
@@ -80,6 +95,7 @@ public class WhatsAppSchedulerService {
         entity.setStatus(ScheduledMessageStatus.PENDING);
         entity.setClienteId(clienteId);
         entity.setProcessoId(processoId);
+        entity.setPagamentoId(pagamentoId);
         entity.setCreatedBy(createdBy);
         entity.setDescricao(descricao);
 

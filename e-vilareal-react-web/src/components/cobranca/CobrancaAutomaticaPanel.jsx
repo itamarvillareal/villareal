@@ -15,8 +15,10 @@ import {
 import {
   baixarRelatorioPdf,
   extrairCobranca,
+  extrairCobrancaPdf,
   processarCobranca,
 } from '../../repositories/cobrancaRepository.js';
+import { clienteUsaEntradaPdfCobranca } from './cobrancaEntradaPorCliente.js';
 import { downloadPdfBlob } from '../../repositories/documentosRepository.js';
 import { BlocoReversaoImportacao } from '../importacao/BlocoReversaoImportacao.jsx';
 
@@ -182,15 +184,16 @@ function condominioDivergeDoCliente(condominioNome, clienteNome) {
 }
 
 /**
- * Fluxo de cobrança automática (.xls) embutido na ficha do cliente.
+ * Fluxo de cobrança automática embutido na ficha do cliente (.xls ou PDF Condo Id).
  * @param {{ clienteCodigo: string, clienteNome?: string }} props
  */
 export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
   const codigoCliente = padCliente8Cadastro(clienteCodigo);
   const nomeCliente = String(clienteNome ?? '').trim();
+  const usaPdf = clienteUsaEntradaPdfCobranca(codigoCliente);
 
   const [step, setStep] = useState(1);
-  const [arquivoXls, setArquivoXls] = useState(null);
+  const [arquivoRelatorio, setArquivoRelatorio] = useState(null);
   const [fileInputKey, setFileInputKey] = useState(0);
   const [extracao, setExtracao] = useState(null);
   const [processResult, setProcessResult] = useState(null);
@@ -199,7 +202,7 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
   const [erro, setErro] = useState(null);
   const [copiado, setCopiado] = useState(false);
   const [regraInicioDias, setRegraInicioDias] = useState(1);
-  const xlsInputRef = useRef(null);
+  const arquivoInputRef = useRef(null);
 
   const recarregarRegraCliente = useCallback(async () => {
     if (featureFlags.useApiCalculos) {
@@ -228,7 +231,7 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
 
   const resetFluxo = useCallback(() => {
     setStep(1);
-    setArquivoXls(null);
+    setArquivoRelatorio(null);
     setFileInputKey((k) => k + 1);
     setExtracao(null);
     setProcessResult(null);
@@ -248,11 +251,13 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
   }, [extracao, nomeCliente]);
 
   const onExtrair = useCallback(async () => {
-    if (!arquivoXls) return;
+    if (!arquivoRelatorio) return;
     setErro(null);
     setLoadingExtrair(true);
     try {
-      const data = await extrairCobranca(arquivoXls);
+      const data = usaPdf
+        ? await extrairCobrancaPdf(codigoCliente, arquivoRelatorio)
+        : await extrairCobranca(arquivoRelatorio);
       setExtracao(data);
       setProcessResult(null);
       setStep(2);
@@ -261,15 +266,15 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
     } finally {
       setLoadingExtrair(false);
     }
-  }, [arquivoXls]);
+  }, [arquivoRelatorio, codigoCliente, usaPdf]);
 
   const onClicarExtrairOuEscolher = useCallback(() => {
-    if (!arquivoXls) {
-      xlsInputRef.current?.click();
+    if (!arquivoRelatorio) {
+      arquivoInputRef.current?.click();
       return;
     }
     void onExtrair();
-  }, [arquivoXls, onExtrair]);
+  }, [arquivoRelatorio, onExtrair]);
 
   const onProcessar = useCallback(async () => {
     if (!Array.isArray(extracao?.unidades)) return;
@@ -279,7 +284,7 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
       const data = await processarCobranca({
         clienteCodigo: codigoCliente,
         unidades: extracao.unidades,
-        arquivoNome: arquivoXls?.name || undefined,
+        arquivoNome: arquivoRelatorio?.name || undefined,
       });
       setProcessResult(data);
       setStep(3);
@@ -300,7 +305,7 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
     } finally {
       setLoadingProcessar(false);
     }
-  }, [codigoCliente, extracao, arquivoXls]);
+  }, [codigoCliente, extracao, arquivoRelatorio]);
 
   const onBaixarPdf = useCallback(async () => {
     const id = processResult?.importacaoId;
@@ -361,18 +366,34 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
       {step === 1 && (
         <div className="space-y-3">
           <p className="text-sm text-slate-600">
-            <span className="font-medium text-slate-800">Passo 1 — Relatório .xls</span>: envie o arquivo exportado
-            pelo sistema do condomínio e clique em Extrair.
+            {usaPdf ? (
+              <>
+                <span className="font-medium text-slate-800">Passo 1 — Relatório PDF (Condo Id)</span>: envie o PDF
+                de inadimplência exportado pelo sistema do condomínio e clique em Extrair. O proprietário de cada
+                unidade é obtido do processo já cadastrado (RÉU).
+              </>
+            ) : (
+              <>
+                <span className="font-medium text-slate-800">Passo 1 — Relatório .xls</span>: envie o arquivo exportado
+                pelo sistema do condomínio e clique em Extrair.
+              </>
+            )}
           </p>
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Arquivo .xls / .xlsx</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">
+              {usaPdf ? 'Arquivo PDF (.pdf)' : 'Arquivo .xls / .xlsx'}
+            </label>
             <input
-              ref={xlsInputRef}
+              ref={arquivoInputRef}
               key={fileInputKey}
               type="file"
-              accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              accept={
+                usaPdf
+                  ? '.pdf,application/pdf'
+                  : '.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+              }
               className="block w-full text-sm text-slate-600"
-              onChange={(e) => setArquivoXls(e.target.files?.[0] ?? null)}
+              onChange={(e) => setArquivoRelatorio(e.target.files?.[0] ?? null)}
             />
           </div>
           <button
@@ -381,7 +402,7 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
             disabled={loadingExtrair}
             onClick={onClicarExtrairOuEscolher}
           >
-            {loadingExtrair ? 'Extraindo…' : !arquivoXls ? 'Escolher arquivo…' : 'Extrair relatório'}
+            {loadingExtrair ? 'Extraindo…' : !arquivoRelatorio ? 'Escolher arquivo…' : 'Extrair relatório'}
           </button>
         </div>
       )}

@@ -56,4 +56,17 @@ public interface ContratoHonorariosRepository extends JpaRepository<ContratoHono
             ORDER BY c.id ASC
             """)
     List<ContratoHonorariosEntity> findAllPercentualProveitoComProcesso();
+
+    @Query("""
+            SELECT DISTINCT c FROM ContratoHonorariosEntity c
+            LEFT JOIN FETCH c.pessoa
+            LEFT JOIN FETCH c.processo p
+            LEFT JOIN FETCH p.cliente
+            LEFT JOIN FETCH c.parcelas par
+            LEFT JOIN FETCH par.pagamento pag
+            WHERE c.whatsappCobrancaAtivo = true
+              AND c.gerarRecebiveis = true
+              AND c.processo IS NOT NULL
+            """)
+    List<ContratoHonorariosEntity> findComWhatsappCobrancaAtiva();
 }

@@ -6,6 +6,7 @@ import java.time.Instant;
 public record ContratoHonorariosProcessoResponse(
         ContratoHonorariosResumoResponse resumo,
         ContratoHonorariosClausula3Dados clausula3Dados,
+        ContratoHonorariosWhatsAppCobrancaConfig whatsappCobranca,
         String formaAssinatura,
         Instant criadoEm,
         Instant atualizadoEm) {}

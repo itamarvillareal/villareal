@@ -3,8 +3,27 @@ import { getTransacoesContaCorrenteCompleto } from './financeiroData.js';
 import { linhaRelatorioResultadoProcesso } from './contaCorrenteProcessoResultado.js';
 import { obterLinhasBaseRelatorioProcessos } from './relatorioProcessosDados.js';
 import { listarLancamentosProcessoApiFirst } from '../repositories/financeiroRepository.js';
+import { listarContratosHonorarios } from '../repositories/documentosRepository.js';
+import { resumirParcelasHonorarios } from '../pages/documentos/contratoHonorariosClausula3.js';
 
 const FETCH_CONCURRENCY = 8;
+
+function resumirHonorariosContrato(contrato) {
+  if (!contrato) return null;
+  const parcelas = Array.isArray(contrato.parcelas) ? contrato.parcelas : [];
+  if (parcelas.length) {
+    const r = resumirParcelasHonorarios(parcelas);
+    return {
+      contratoTotal: r.total,
+      recebido: r.recebido,
+      pendente: r.pendente,
+      parcelas: `${r.qtdPagas}/${r.qtdParcelas}`,
+    };
+  }
+  const total = Number(contrato.valorTotalParcelas) || Number(contrato.valorFixo) || 0;
+  if (total <= 0) return null;
+  return { contratoTotal: total, recebido: 0, pendente: total, parcelas: '—' };
+}
 
 async function transacoesContaCorrenteProcesso(codCliente, proc, processoApiId) {
   if (featureFlags.useApiFinanceiro && Number(processoApiId) > 0) {
@@ -67,5 +86,21 @@ export async function carregarRelatorioResultadoProcessos(opts = {}) {
     return Number(a.proc) - Number(b.proc);
   });
 
-  return { ok: true, linhas: filtradas, ultimaCarga: Date.now() };
+  let mapHonorarios = new Map();
+  try {
+    const contratos = await listarContratosHonorarios();
+    for (const c of contratos ?? []) {
+      if (c.processoId != null) mapHonorarios.set(Number(c.processoId), c);
+    }
+  } catch {
+    /* relatório segue sem colunas de honorários */
+  }
+
+  const enriquecidas = filtradas.map((l) => {
+    const contrato = l.processoApiId ? mapHonorarios.get(Number(l.processoApiId)) : null;
+    const honorarios = resumirHonorariosContrato(contrato);
+    return honorarios ? { ...l, honorarios } : l;
+  });
+
+  return { ok: true, linhas: enriquecidas, ultimaCarga: Date.now() };
 }

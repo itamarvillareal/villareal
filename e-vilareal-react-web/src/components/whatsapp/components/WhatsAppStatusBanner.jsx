@@ -1,4 +1,5 @@
 import { CheckCircle2, AlertCircle, WifiOff } from 'lucide-react';
+import { formatDateTimeBR } from '../../../utils/whatsappFormat.js';
 
 /**
  * @param {{
@@ -53,9 +54,7 @@ export function WhatsAppStatusBanner({ configured, loadOk, fetchedAt, loading })
   }
 
   const hora =
-    fetchedAt && !Number.isNaN(Date.parse(fetchedAt))
-      ? new Date(fetchedAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
-      : null;
+    fetchedAt && !Number.isNaN(Date.parse(fetchedAt)) ? formatDateTimeBR(fetchedAt) : null;
 
   return (
     <div

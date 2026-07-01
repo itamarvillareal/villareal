@@ -206,18 +206,29 @@ public class AcoesDoDiaApplicationService {
 
         RecebivelQuadroResponse quadro = quadroService.quadro(null, inicio, fim);
         for (RecebivelQuadroItemResponse item : quadro.itens()) {
-            if (item.tipo() != RecebivelQuadroTipo.MENSALIDADE || item.status() != RecebivelQuadroStatus.VENCIDO) {
+            if (item.status() != RecebivelQuadroStatus.VENCIDO) {
                 continue;
             }
             int diasAtraso = item.vencimento() != null ? diasEntre(item.vencimento(), hoje) : 0;
-            itens.add(new ItemCobrar(
-                    item.descricao(),
-                    "MENSALIDADE",
-                    item.valor(),
-                    item.vencimento(),
-                    diasAtraso,
-                    null,
-                    null));
+            if (item.tipo() == RecebivelQuadroTipo.MENSALIDADE) {
+                itens.add(new ItemCobrar(
+                        item.descricao(),
+                        "MENSALIDADE",
+                        item.valor(),
+                        item.vencimento(),
+                        diasAtraso,
+                        null,
+                        null));
+            } else if (item.tipo() == RecebivelQuadroTipo.HONORARIOS) {
+                itens.add(new ItemCobrar(
+                        item.descricao(),
+                        "HONORARIOS",
+                        item.valor(),
+                        item.vencimento(),
+                        diasAtraso,
+                        item.refId(),
+                        null));
+            }
         }
 
         itens.sort(Comparator.comparingInt(ItemCobrar::diasEmAtraso).reversed()

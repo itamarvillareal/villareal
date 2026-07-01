@@ -7,16 +7,19 @@ import br.com.vilareal.condominio.api.dto.CobrancaProcessarErroDto;
 import br.com.vilareal.condominio.api.dto.CobrancaProcessarRequest;
 import br.com.vilareal.condominio.api.dto.CobrancaTotaisDto;
 import br.com.vilareal.condominio.api.dto.InadimplenciaCobrancaDto;
+import br.com.vilareal.condominio.api.dto.InadimplenciaUnidadeDto;
 import br.com.vilareal.condominio.api.dto.RelatorioExecucaoCobranca;
 import br.com.vilareal.condominio.api.dto.RelatorioRegraInicioDto;
 import br.com.vilareal.calculo.application.CalculoApplicationService;
 import br.com.vilareal.calculo.application.RegraInicioCobrancaDiasValidator;
+import br.com.vilareal.condominio.pdf.InadimplenciaPdfParser;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
 import br.com.vilareal.processo.application.CodigoClienteUtil;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -38,6 +41,7 @@ public class CobrancaAutomaticaApplicationService {
     private final CobrancaRelatorioPdfService pdfService;
     private final CalculoApplicationService calculoApplicationService;
     private final CobrancaRegraInicioCobrancaService regraInicioCobrancaService;
+    private final CobrancaProprietarioUnidadeLookupService proprietarioLookupService;
 
     public CobrancaAutomaticaApplicationService(
             CobrancaRelatorioXlsParser xlsParser,
@@ -47,7 +51,8 @@ public class CobrancaAutomaticaApplicationService {
             CobrancaExecucaoPersistenciaService persistenciaService,
             CobrancaRelatorioPdfService pdfService,
             CalculoApplicationService calculoApplicationService,
-            CobrancaRegraInicioCobrancaService regraInicioCobrancaService) {
+            CobrancaRegraInicioCobrancaService regraInicioCobrancaService,
+            CobrancaProprietarioUnidadeLookupService proprietarioLookupService) {
         this.xlsParser = xlsParser;
         this.clienteRepository = clienteRepository;
         this.unidadeTransactionalService = unidadeTransactionalService;
@@ -56,6 +61,65 @@ public class CobrancaAutomaticaApplicationService {
         this.pdfService = pdfService;
         this.calculoApplicationService = calculoApplicationService;
         this.regraInicioCobrancaService = regraInicioCobrancaService;
+        this.proprietarioLookupService = proprietarioLookupService;
+    }
+
+    public CobrancaExtracaoResponse extrairPdf(String clienteCodigoRaw, MultipartFile arquivo) {
+        if (arquivo == null || arquivo.isEmpty()) {
+            throw new BusinessRuleException("Arquivo PDF é obrigatório.");
+        }
+        String nome = arquivo.getOriginalFilename() != null ? arquivo.getOriginalFilename().toLowerCase(Locale.ROOT) : "";
+        String ct = arquivo.getContentType();
+        if (!nome.endsWith(".pdf") && (ct == null || !ct.contains("pdf"))) {
+            throw new BusinessRuleException("Envie um arquivo PDF de inadimplência (Condo Id).");
+        }
+
+        String cod8 = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(clienteCodigoRaw);
+        ClienteEntity cliente = clienteRepository
+                .findByCodigoClienteFetchPessoa(cod8)
+                .orElseThrow(() -> new BusinessRuleException("Cliente não encontrado para o código: " + cod8));
+        long clienteId = cliente.getId();
+
+        InadimplenciaPdfParser.InadimplenciaPdfParseResult parsed;
+        try {
+            parsed = InadimplenciaPdfParser.parse(arquivo.getBytes());
+        } catch (IOException e) {
+            throw new BusinessRuleException(
+                    "Não foi possível ler o PDF. Confirme que o arquivo é válido: " + e.getMessage());
+        }
+
+        List<CobrancaUnidadeParsed> unidades = new ArrayList<>();
+        List<String> semProprietario = new ArrayList<>();
+        for (InadimplenciaUnidadeDto u : parsed.unidades()) {
+            String cod = u.codigoUnidade() != null ? u.codigoUnidade().trim().toUpperCase(Locale.ROOT) : "";
+            if (!StringUtils.hasText(cod)) {
+                continue;
+            }
+            var propOpt = proprietarioLookupService.buscarPorUnidade(clienteId, cod);
+            if (propOpt.isEmpty()) {
+                semProprietario.add(cod);
+                continue;
+            }
+            var prop = propOpt.get();
+            unidades.add(new CobrancaUnidadeParsed(
+                    cod, prop.nome(), prop.docDigitos(), u.cobrancas() != null ? u.cobrancas() : List.of()));
+        }
+
+        if (!semProprietario.isEmpty()) {
+            throw new BusinessRuleException(
+                    "Unidades sem proprietário (RÉU) cadastrado no processo: "
+                            + String.join(", ", semProprietario)
+                            + ". Importe a planilha de unidades ou cadastre o processo antes de usar o PDF.");
+        }
+        if (unidades.isEmpty()) {
+            throw new BusinessRuleException("Nenhuma unidade com débito foi encontrada no PDF.");
+        }
+
+        return new CobrancaExtracaoResponse(
+                unidades,
+                calcularTotais(unidades),
+                Utf8MojibakeUtil.corrigir(parsed.condominioNome()),
+                parsed.dataReferenciaPdf());
     }
 
     public CobrancaExtracaoResponse extrair(MultipartFile arquivo) {

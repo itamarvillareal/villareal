@@ -34,6 +34,17 @@ public class CobrancaController {
         this.service = service;
     }
 
+    @PostMapping(value = "/extrair-pdf", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Extrair unidades e débitos do relatório PDF Condo Id (sem gravar)")
+    public ResponseEntity<CobrancaExtracaoResponse> extrairPdf(
+            @RequestParam("clienteCodigo") String clienteCodigo, @RequestParam("arquivo") MultipartFile arquivo) {
+        CobrancaExtracaoResponse body = service.extrairPdf(clienteCodigo, arquivo);
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .cacheControl(CacheControl.noStore())
+                .body(body);
+    }
+
     @PostMapping(value = "/extrair", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(summary = "Extrair unidades e débitos do relatório .xls (sem gravar)")
     public ResponseEntity<CobrancaExtracaoResponse> extrair(@RequestParam("arquivo") MultipartFile arquivo) {

@@ -1,10 +1,11 @@
-import { ChevronLeft, FileSpreadsheet, X } from 'lucide-react';
+import { ChevronLeft, FileSpreadsheet, FileText, X } from 'lucide-react';
 import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 import { CobrancaAutomaticaPanel } from './CobrancaAutomaticaPanel.jsx';
 import { padCliente8Cadastro } from '../../data/cadastroClientesStorage.js';
+import { clienteUsaEntradaPdfCobranca } from './cobrancaEntradaPorCliente.js';
 
 /**
- * Modal de cobrança automática (relatório .xls de inadimplência) na ficha do cliente.
+ * Modal de cobrança automática na ficha do cliente (.xls ou PDF Condo Id, conforme o cliente).
  * @param {{ open: boolean, codigoCliente: string, nomeCliente?: string, onClose?: () => void }} props
  */
 export function ModalCobrancaAutomaticaCliente({ open, codigoCliente, nomeCliente, onClose }) {
@@ -12,6 +13,8 @@ export function ModalCobrancaAutomaticaCliente({ open, codigoCliente, nomeClient
   if (!open) return null;
 
   const codPad = padCliente8Cadastro(codigoCliente);
+  const usaPdf = clienteUsaEntradaPdfCobranca(codPad);
+  const Icone = usaPdf ? FileText : FileSpreadsheet;
 
   return (
     <div
@@ -39,11 +42,11 @@ export function ModalCobrancaAutomaticaCliente({ open, codigoCliente, nomeClient
               id="modal-cobranca-automatica-titulo"
               className="flex items-center gap-1.5 text-sm font-semibold leading-tight sm:text-base"
             >
-              <FileSpreadsheet className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
+              <Icone className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
               <span className="truncate">Cobrança automática</span>
             </h2>
             <p className="truncate text-[11px] text-sky-100/95">
-              Relatório .xls de inadimplência — cliente{' '}
+              {usaPdf ? 'Relatório PDF (Condo Id)' : 'Relatório .xls de inadimplência'} — cliente{' '}
               <span className="font-mono font-medium text-white">{codPad}</span>
               {nomeCliente ? ` · ${nomeCliente}` : ''}
             </p>

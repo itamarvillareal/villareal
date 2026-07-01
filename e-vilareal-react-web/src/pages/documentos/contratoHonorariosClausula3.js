@@ -33,11 +33,24 @@ export function estadoInicialClausula3() {
     gerarRecebiveis: false,
     quantidadeParcelas: '2',
     valorTotalParcelas: '',
-    primeiroVencimento: new Date().toISOString().slice(0, 10),
+    primeiroVencimento: sugerirPrimeiroVencimentoMensal(),
     intervaloParcelas: INTERVALO_PARCELA_MENSAL,
     formaPagamento: FORMA_PAGAMENTO_PIX,
     parcelas: [],
   };
+}
+
+/** Dia 1 do próximo mês civil (fuso Brasília) — padrão para parcelas mensais. */
+export function sugerirPrimeiroVencimentoMensal() {
+  const hojeIso = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+  const [y, m] = hojeIso.split('-').map(Number);
+  let ano = y;
+  let mes = m + 1;
+  if (mes > 12) {
+    mes = 1;
+    ano += 1;
+  }
+  return `${ano}-${String(mes).padStart(2, '0')}-01`;
 }
 
 function parseMoedaBR(valor) {
@@ -254,7 +267,7 @@ export function clausula3DadosParaForm(dados, dataContrato = null) {
     valorTotalParcelas:
       dados.valorTotalParcelas != null ? formatarMoedaCampo(dados.valorTotalParcelas) : '',
     primeiroVencimento:
-      dados.primeiroVencimento || dataContratoIso || new Date().toISOString().slice(0, 10),
+      dados.primeiroVencimento || dataContratoIso || sugerirPrimeiroVencimentoMensal(),
     intervaloParcelas: dados.intervaloParcelas || INTERVALO_PARCELA_MENSAL,
     formaPagamento: dados.formaPagamento || FORMA_PAGAMENTO_PIX,
     parcelas: Array.isArray(dados.parcelas)
@@ -269,4 +282,66 @@ export function clausula3DadosParaForm(dados, dataContrato = null) {
     form.parcelas = calcularParcelasPreview(form);
   }
   return form;
+}
+
+export const ANTECEDENCIA_VENCIMENTO_DIA = 'VENCIMENTO_DIA';
+export const ANTECEDENCIA_VENCIMENTO_MENOS_1 = 'VENCIMENTO_MENOS_1';
+export const ANTECEDENCIA_VENCIMENTO_MENOS_3 = 'VENCIMENTO_MENOS_3';
+
+export const ANTECEDENCIAS_WHATSAPP_HONORARIOS = [
+  { value: ANTECEDENCIA_VENCIMENTO_DIA, label: 'No dia do vencimento (D+0)' },
+  { value: ANTECEDENCIA_VENCIMENTO_MENOS_1, label: '1 dia antes (D-1)' },
+  { value: ANTECEDENCIA_VENCIMENTO_MENOS_3, label: '3 dias antes (D-3)' },
+];
+
+export function whatsappCobrancaInicial() {
+  return {
+    ativo: false,
+    horarioEnvio: '09:00',
+    antecedencia: ANTECEDENCIA_VENCIMENTO_DIA,
+    telefonesExtrasTexto: '',
+  };
+}
+
+export function whatsappCobrancaParaForm(config) {
+  if (!config) return whatsappCobrancaInicial();
+  const extras = Array.isArray(config.telefonesExtras) ? config.telefonesExtras : [];
+  return {
+    ativo: Boolean(config.ativo),
+    horarioEnvio: config.horarioEnvio || '09:00',
+    antecedencia: config.antecedencia || ANTECEDENCIA_VENCIMENTO_DIA,
+    telefonesExtrasTexto: extras.join('\n'),
+  };
+}
+
+export function whatsappCobrancaParaApi(form) {
+  const raw = String(form.telefonesExtrasTexto ?? '')
+    .split(/[\n,;]+/)
+    .map((s) => s.replace(/\D/g, ''))
+    .filter(Boolean)
+    .map((d) => (d.startsWith('55') ? d : `55${d}`));
+  return {
+    ativo: Boolean(form.ativo),
+    horarioEnvio: form.horarioEnvio || '09:00',
+    antecedencia: form.antecedencia || ANTECEDENCIA_VENCIMENTO_DIA,
+    telefonesExtras: raw,
+  };
+}
+
+/** Totais de parcelas contratuais (recebido / pendente). */
+export function resumirParcelasHonorarios(parcelas) {
+  const lista = Array.isArray(parcelas) ? parcelas : [];
+  const total = lista.reduce((s, p) => s + (Number(p.valor) || 0), 0);
+  const recebido = lista.reduce(
+    (s, p) => s + (p.pagamentoPago ? Number(p.valor) || 0 : 0),
+    0,
+  );
+  const pagas = lista.filter((p) => p.pagamentoPago).length;
+  return {
+    total: Math.round(total * 100) / 100,
+    recebido: Math.round(recebido * 100) / 100,
+    pendente: Math.round(Math.max(0, total - recebido) * 100) / 100,
+    qtdParcelas: lista.length,
+    qtdPagas: pagas,
+  };
 }

@@ -64,6 +64,18 @@ public class ContratoHonorariosEntity {
     @Column(name = "forma_pagamento_parcelas", length = 40)
     private String formaPagamentoParcelas;
 
+    @Column(name = "whatsapp_cobranca_ativo", nullable = false)
+    private Boolean whatsappCobrancaAtivo = false;
+
+    @Column(name = "whatsapp_cobranca_horario", nullable = false, length = 5)
+    private String whatsappCobrancaHorario = "09:00";
+
+    @Column(name = "whatsapp_cobranca_antecedencia", nullable = false, length = 24)
+    private String whatsappCobrancaAntecedencia = "VENCIMENTO_DIA";
+
+    @Column(name = "whatsapp_cobranca_telefones_extras", columnDefinition = "TEXT")
+    private String whatsappCobrancaTelefonesExtras;
+
     @Column(name = "criado_em", nullable = false)
     private Instant criadoEm;
 

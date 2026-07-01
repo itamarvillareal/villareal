@@ -7,6 +7,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 
 public interface ScheduledWhatsAppMessageRepository extends JpaRepository<ScheduledWhatsAppMessageEntity, Long> {
@@ -24,6 +25,9 @@ public interface ScheduledWhatsAppMessageRepository extends JpaRepository<Schedu
 
     List<ScheduledWhatsAppMessageEntity> findByProcessoIdAndStatusAndTemplateName(
             Long processoId, ScheduledMessageStatus status, String templateName);
+
+    boolean existsByPagamentoIdAndTemplateNameAndStatusIn(
+            Long pagamentoId, String templateName, Collection<ScheduledMessageStatus> statuses);
 
     long countByStatus(ScheduledMessageStatus status);
 }

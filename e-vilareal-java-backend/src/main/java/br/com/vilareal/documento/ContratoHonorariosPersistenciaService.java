@@ -20,6 +20,8 @@ import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoPa
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.usuario.infrastructure.persistence.entity.UsuarioEntity;
 import br.com.vilareal.usuario.infrastructure.persistence.repository.UsuarioRepository;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -48,6 +50,7 @@ public class ContratoHonorariosPersistenciaService {
     private final PagamentoRepository pagamentoRepository;
     private final UsuarioRepository usuarioRepository;
     private final ContratoHonorariosRecebiveisConciliacaoService recebiveisConciliacaoService;
+    private final ObjectMapper objectMapper;
     private final Clock clock;
 
     public ContratoHonorariosPersistenciaService(
@@ -59,6 +62,7 @@ public class ContratoHonorariosPersistenciaService {
             PagamentoRepository pagamentoRepository,
             UsuarioRepository usuarioRepository,
             ContratoHonorariosRecebiveisConciliacaoService recebiveisConciliacaoService,
+            ObjectMapper objectMapper,
             Clock clock) {
         this.contratoRepository = contratoRepository;
         this.processoRepository = processoRepository;
@@ -68,6 +72,7 @@ public class ContratoHonorariosPersistenciaService {
         this.pagamentoRepository = pagamentoRepository;
         this.usuarioRepository = usuarioRepository;
         this.recebiveisConciliacaoService = recebiveisConciliacaoService;
+        this.objectMapper = objectMapper;
         this.clock = clock;
     }
 
@@ -138,6 +143,7 @@ public class ContratoHonorariosPersistenciaService {
                             : null);
         }
         entity.setFormaPagamentoParcelas(dados.formaPagamento());
+        aplicarWhatsappCobrancaConfig(entity, request != null ? request.whatsappCobranca() : null);
 
         entity = contratoRepository.save(entity);
         sincronizarParcelasERecebiveis(entity, dados);
@@ -323,9 +329,58 @@ public class ContratoHonorariosPersistenciaService {
         return new ContratoHonorariosProcessoResponse(
                 toResumo(e),
                 montarClausula3Dados(e),
+                toWhatsappCobrancaConfig(e),
                 e.getFormaAssinatura(),
                 e.getCriadoEm(),
                 e.getAtualizadoEm());
+    }
+
+    private void aplicarWhatsappCobrancaConfig(
+            ContratoHonorariosEntity entity, ContratoHonorariosWhatsAppCobrancaConfig config) {
+        if (config == null) {
+            return;
+        }
+        entity.setWhatsappCobrancaAtivo(Boolean.TRUE.equals(config.ativo()));
+        entity.setWhatsappCobrancaHorario(
+                StringUtils.hasText(config.horarioEnvio()) ? config.horarioEnvio().trim() : "09:00");
+        entity.setWhatsappCobrancaAntecedencia(
+                config.antecedencia() != null
+                        ? HonorariosWhatsAppAntecedencia.parse(config.antecedencia()).name()
+                        : HonorariosWhatsAppAntecedencia.VENCIMENTO_DIA.name());
+        entity.setWhatsappCobrancaTelefonesExtras(serializeTelefonesExtras(config.telefonesExtras()));
+    }
+
+    private ContratoHonorariosWhatsAppCobrancaConfig toWhatsappCobrancaConfig(ContratoHonorariosEntity e) {
+        return new ContratoHonorariosWhatsAppCobrancaConfig(
+                Boolean.TRUE.equals(e.getWhatsappCobrancaAtivo()),
+                e.getWhatsappCobrancaHorario() != null ? e.getWhatsappCobrancaHorario() : "09:00",
+                e.getWhatsappCobrancaAntecedencia() != null
+                        ? e.getWhatsappCobrancaAntecedencia()
+                        : HonorariosWhatsAppAntecedencia.VENCIMENTO_DIA.name(),
+                parseTelefonesExtras(e.getWhatsappCobrancaTelefonesExtras()));
+    }
+
+    private String serializeTelefonesExtras(List<String> telefones) {
+        if (telefones == null || telefones.isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(telefones);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private List<String> parseTelefonesExtras(String json) {
+        if (!StringUtils.hasText(json)) {
+            return List.of();
+        }
+        try {
+            List<String> list = objectMapper.readValue(json, new TypeReference<>() {});
+            return list != null ? list : List.of();
+        } catch (Exception e) {
+            return List.of();
+        }
     }
 
     static ContratoHonorariosClausula3Dados montarClausula3Dados(ContratoHonorariosEntity e) {

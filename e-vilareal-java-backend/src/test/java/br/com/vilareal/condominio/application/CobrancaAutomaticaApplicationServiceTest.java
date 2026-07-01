@@ -57,6 +57,9 @@ class CobrancaAutomaticaApplicationServiceTest {
     @Mock
     private CobrancaDebitosCadastradosConsultaService debitosCadastradosConsulta;
 
+    @Mock
+    private CobrancaProprietarioUnidadeLookupService proprietarioLookupService;
+
     private CobrancaRegraInicioCobrancaService regraInicioCobrancaService;
 
     private CobrancaAutomaticaApplicationService service;
@@ -72,7 +75,8 @@ class CobrancaAutomaticaApplicationServiceTest {
                 persistenciaService,
                 pdfService,
                 calculoApplicationService,
-                regraInicioCobrancaService);
+                regraInicioCobrancaService,
+                proprietarioLookupService);
     }
 
     @Test

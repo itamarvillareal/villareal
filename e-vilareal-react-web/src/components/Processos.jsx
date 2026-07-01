@@ -154,6 +154,7 @@ import { listarPublicacoesRelatorioPorProcesso, listarMovimentacoesEmailPorProce
 import { ModalCriarTarefaContextual } from './ModalCriarTarefaContextual.jsx';
 import { ModalConsultaPeriodicaProcesso } from './consultas-periodicas/ModalConsultaPeriodicaProcesso.jsx';
 import { ProcessoWhatsAppContatosSecao } from './whatsapp/ProcessoWhatsAppContatosSecao.jsx';
+import { ProcessoRemuneracaoSecao } from './processos/ProcessoRemuneracaoSecao.jsx';
 import { ModalPeticionamentoProcesso } from './projudi/ModalPeticionamentoProcesso.jsx';
 import { PessoaEmbedModal } from './PessoaEmbedModal.jsx';
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
@@ -2304,6 +2305,62 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       navigate('/documentos/gerar', { state: { dadosProcesso } });
     } catch (e) {
       setApiError(e?.message || 'Falha ao preparar dados para gerar documento.');
+    } finally {
+      setGerandoDocNav(false);
+    }
+  }, [
+    podeGerarDocumento,
+    gerandoDocNav,
+    processoApiId,
+    codigoCliente,
+    processo,
+    numeroProcessoNovo,
+    numeroProcessoVelho,
+    naturezaAcao,
+    competencia,
+    orgaoJulgadorSelecionado,
+    valorCausa,
+    cidade,
+    estado,
+    observacao,
+    papelParte,
+    textoParteCliente,
+    textoParteOposta,
+    parteCliente,
+    parteOposta,
+    pessoasVinculoCache,
+    navigate,
+  ]);
+
+  const handleAbrirGerarContratoHonorarios = useCallback(async () => {
+    if (!podeGerarDocumento || gerandoDocNav) return;
+    setGerandoDocNav(true);
+    setApiError('');
+    try {
+      const dadosProcesso = await montarDadosParaDocumentoFromProcesso({
+        processoApiId,
+        codigoCliente,
+        processo,
+        numeroInterno: processo,
+        numeroProcessoNovo,
+        numeroProcessoVelho,
+        naturezaAcao,
+        competencia,
+        orgaoJulgador: orgaoJulgadorSelecionado?.orgaoJulgador ?? null,
+        valorCausa,
+        cidade,
+        estado,
+        observacao,
+        papelParte,
+        textoParteCliente,
+        textoParteOposta,
+        parteCliente,
+        parteOposta,
+        pessoasVinculoCache,
+      });
+      navigate('/documentos/gerar', { state: { dadosProcesso, modoInicial: 'contrato' } });
+    } catch (e) {
+      setApiError(e?.message || 'Falha ao preparar dados para gerar contrato.');
     } finally {
       setGerandoDocNav(false);
     }
@@ -4839,6 +4896,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                 <ProcessosTabButton id="tab-historico" label="Histórico do Processo" active={tabAtiva === 'historico'} count={historico.length} onClick={() => setTabAtiva('historico')} />
                 <ProcessosTabButton id="tab-publicacoes" label="Publicações" active={tabAtiva === 'publicacoes'} count={publicacoesRelatorioItens?.length ?? 0} onClick={() => setTabAtiva('publicacoes')} />
                 <ProcessosTabButton id="tab-movemail" label="Mov. por Email" active={tabAtiva === 'movemail'} count={movEmailItens?.length ?? 0} onClick={() => setTabAtiva('movemail')} />
+                <ProcessosTabButton id="tab-remuneracao" label="Remuneração" active={tabAtiva === 'remuneracao'} onClick={() => setTabAtiva('remuneracao')} />
                 <ProcessosTabButton id="tab-whatsapp" label="WhatsApp" active={tabAtiva === 'whatsapp'} onClick={() => setTabAtiva('whatsapp')} />
                 <ProcessosTabButton id="tab-observacoes" label="Observações" active={tabAtiva === 'observacoes'} onClick={() => setTabAtiva('observacoes')} />
                 <ProcessosTabButton id="tab-execucao" label="Execução" active={tabAtiva === 'execucao'} onClick={() => setTabAtiva('execucao')} />
@@ -5074,6 +5132,17 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
               {tabAtiva === 'observacoes' && (
                 <div className="border border-slate-300 rounded-b-lg p-4 bg-white shadow-sm -mt-px">
                   <p className="text-sm text-slate-500">Conteúdo da aba Observações.</p>
+                </div>
+              )}
+              {tabAtiva === 'remuneracao' && (
+                <div className="border border-slate-300 rounded-b-lg p-4 bg-white shadow-sm -mt-px">
+                  <ProcessoRemuneracaoSecao
+                    processoApiId={processoApiId}
+                    codigoCliente={codigoCliente}
+                    numeroInterno={processo}
+                    pessoaIdContratante={parteClienteIds[0] ?? null}
+                    onAbrirGerarContrato={() => void handleAbrirGerarContratoHonorarios()}
+                  />
                 </div>
               )}
               {tabAtiva === 'whatsapp' && (

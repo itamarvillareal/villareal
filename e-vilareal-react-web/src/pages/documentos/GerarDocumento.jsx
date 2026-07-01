@@ -59,7 +59,7 @@ import {
   MODELOS_CONTRATO,
   rotuloModeloContrato,
 } from './contratoModelos.js';
-import { estadoInicialClausula3, parcelamentoAtivo, clausula3DadosParaForm } from './contratoHonorariosClausula3.js';
+import { estadoInicialClausula3, parcelamentoAtivo, clausula3DadosParaForm, whatsappCobrancaParaForm, whatsappCobrancaParaApi } from './contratoHonorariosClausula3.js';
 import { renumerarClausulas } from './contratoHonorariosClausulasPreview.js';
 
 const ModoModeloTopicos = lazy(() =>
@@ -381,6 +381,7 @@ export function GerarDocumento() {
     clausula3Form: estadoInicialClausula3(),
     clausula3Dados: null,
     clausula3Configurada: false,
+    whatsappCobrancaForm: whatsappCobrancaParaForm(null),
     formaAssinatura: FORMA_ASSINATURA_DUAS_VIAS,
     nomeLocador: dadosProcesso?.nomeLocador || '',
     nomeLocatarios: dadosProcesso?.nomeLocatarios || '',
@@ -439,6 +440,7 @@ export function GerarDocumento() {
           clausula3Dados: salvo.clausula3Dados,
           clausula3Remuneracao: r.clausula3Texto || f.clausula3Remuneracao,
           clausula3Configurada: true,
+          whatsappCobrancaForm: whatsappCobrancaParaForm(salvo.whatsappCobranca),
         }));
       })
       .catch((e) => {
@@ -753,6 +755,7 @@ export function GerarDocumento() {
       objetoContrato: formContrato.objetoContrato,
       clausula3Dados: dados,
       formaAssinatura: formContrato.formaAssinatura,
+      whatsappCobranca: whatsappCobrancaParaApi(formContrato.whatsappCobrancaForm),
     };
   };
 
@@ -772,6 +775,7 @@ export function GerarDocumento() {
         objetoContrato: salvo?.resumo?.objetoContrato ?? f.objetoContrato,
         formaAssinatura: salvo?.formaAssinatura || f.formaAssinatura,
         clausula3Configurada: true,
+        whatsappCobrancaForm: whatsappCobrancaParaForm(salvo?.whatsappCobranca ?? f.whatsappCobrancaForm),
       }));
       if (dados?.gerarRecebiveis) {
         setMensagemSucesso('Contratação salva. Recebíveis atualizados no financeiro do processo.');

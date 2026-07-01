@@ -55,6 +55,9 @@ public class ScheduledWhatsAppMessageEntity {
     @Column(name = "processo_id")
     private Long processoId;
 
+    @Column(name = "pagamento_id")
+    private Long pagamentoId;
+
     @Column(name = "created_by", length = 100)
     private String createdBy;
 

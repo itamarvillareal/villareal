@@ -30,6 +30,18 @@ export async function extrairCobranca(file) {
 }
 
 /**
+ * Extrai unidades e débitos do PDF Condo Id (clientes configurados, ex. 928 ASFAROL).
+ * @param {string} clienteCodigo
+ * @param {File} file
+ */
+export async function extrairCobrancaPdf(clienteCodigo, file) {
+  const fd = new FormData();
+  fd.append('clienteCodigo', String(clienteCodigo ?? '').trim());
+  fd.append('arquivo', file);
+  return postFormData('/api/cobranca/extrair-pdf', fd);
+}
+
+/**
  * @param {{
  *   clienteCodigo: string,
  *   unidades: Array<{
