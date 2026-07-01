@@ -22,7 +22,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Extrai unidades e cobranças de relatório PDF «Inadimplência por Unidade» (gestora condominial).
+ * Extrai unidades e cobranças de relatório PDF de inadimplência.
+ * <ul>
+ *   <li>Gestora condominial — unidades {@code A-0103}, colunas Doc/Período/Vencimento/Valor</li>
+ *   <li>Condo Id — unidades {@code QD01-LT01}, colunas Id/Histórico/Compet./Vencimento/Atraso/Principal</li>
+ * </ul>
  */
 public final class InadimplenciaPdfParser {
 
@@ -39,18 +43,27 @@ public final class InadimplenciaPdfParser {
     /** Índice de linha + código (coluna numérica do PDF). */
     private static final Pattern PAT_UNIDADE_COM_INDICE = Pattern.compile(
             "^\\s*\\d+\\s+([A-Za-zÀ-ÿ]+)[-–—](\\d{3,4})\\s*$", Pattern.CASE_INSENSITIVE);
+
+    /** Condo Id — quadra/lote (ex.: QD01-LT01). */
+    private static final Pattern PAT_UNIDADE_CONDO_ID =
+            Pattern.compile("^\\s*(QD\\d+-LT\\d+)\\s*$", Pattern.CASE_INSENSITIVE);
+
     private static final Pattern PAT_DATA_REF =
             Pattern.compile("Data de referência:\\s*(\\d{2}/\\d{2}/\\d{4})", Pattern.CASE_INSENSITIVE);
 
-    /** Primeira linha tipo «Residencial X Inadimplência por Unidade». */
-    private static final Pattern PAT_TITULO_COM_INADIMPLENCIA = Pattern.compile(
-            "^(.+?)\\s+Inadimplência\\s+por\\s+Unidade\\s*$", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    /** Condo Id — «Até: dd/mm/aaaa - Valores calculados até: …». */
+    private static final Pattern PAT_DATA_REF_CONDO_ID =
+            Pattern.compile("Até:\\s*(\\d{2}/\\d{2}/\\d{4})", Pattern.CASE_INSENSITIVE);
 
     /**
      * Sufixo típico: período (mm/aaaa) + vencimento + valor (+ demais colunas monetárias). Relatórios completos trazem
      * Multa, Juros, Atual., Hon., Vl.Atual. após o valor principal. Valores podem usar ponto ou espaço como milhar.
      */
     private static final String PAT_MILHARES_VALOR = "\\d{1,3}(?:[.\\s]\\d{3})*,\\d{2}";
+
+    /** Primeira linha tipo «Residencial X Inadimplência por Unidade». */
+    private static final Pattern PAT_TITULO_COM_INADIMPLENCIA = Pattern.compile(
+            "^(.+?)\\s+Inadimplência\\s+por\\s+Unidade\\s*$", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
     private static final Pattern PAT_VALOR_BR = Pattern.compile(PAT_MILHARES_VALOR);
 
@@ -124,11 +137,18 @@ public final class InadimplenciaPdfParser {
 
     /** Expuesto para testes com texto já extraído. */
     public static InadimplenciaPdfParseResult parseText(String text) {
+        boolean formatoCondoId = isFormatoCondoId(text);
         String condominioNome = "";
         String dataRef = "";
         Matcher mRef = PAT_DATA_REF.matcher(text);
         if (mRef.find()) {
             dataRef = mRef.group(1);
+        }
+        if (dataRef.isEmpty()) {
+            Matcher mRefCondo = PAT_DATA_REF_CONDO_ID.matcher(text);
+            if (mRefCondo.find()) {
+                dataRef = mRefCondo.group(1);
+            }
         }
         String[] rawLines = text.split("\\R");
         List<String> lines = new ArrayList<>();
@@ -146,15 +166,18 @@ public final class InadimplenciaPdfParser {
                 break;
             }
         }
+        if (condominioNome.isEmpty() && formatoCondoId) {
+            condominioNome = extrairCondominioNomeCondoId(lines);
+        }
         if (condominioNome.isEmpty()) {
             for (String line : lines) {
-                if (isLinhaIgnorada(line)) {
+                if (isLinhaIgnorada(line, formatoCondoId)) {
                     continue;
                 }
                 if (extrairCodigoUnidadeDaLinha(line).isPresent()) {
                     break;
                 }
-                if (PAT_DATA_REF.matcher(line).find()) {
+                if (PAT_DATA_REF.matcher(line).find() || PAT_DATA_REF_CONDO_ID.matcher(line).find()) {
                     continue;
                 }
                 if (line.contains("Inadimplência")
@@ -169,9 +192,18 @@ public final class InadimplenciaPdfParser {
 
         Map<String, List<InadimplenciaCobrancaDto>> porUnidade = new LinkedHashMap<>();
         String unidadeAtual = null;
+        boolean aposSecaoAcordo = false;
 
         for (String line : lines) {
-            if (isLinhaIgnorada(line)) {
+            if (formatoCondoId && isInicioSecaoCobrancasEmAcordo(line)) {
+                aposSecaoAcordo = true;
+                unidadeAtual = null;
+                continue;
+            }
+            if (aposSecaoAcordo) {
+                continue;
+            }
+            if (isLinhaIgnorada(line, formatoCondoId)) {
                 continue;
             }
             Optional<String> codUnidade = extrairCodigoUnidadeDaLinha(line);
@@ -189,7 +221,7 @@ public final class InadimplenciaPdfParser {
             if (line.startsWith("TOTAL de")) {
                 continue;
             }
-            Optional<InadimplenciaCobrancaDto> cob = parseLinhaCobranca(line);
+            Optional<InadimplenciaCobrancaDto> cob = parseLinhaCobranca(line, formatoCondoId);
             final String uKey = unidadeAtual;
             cob.ifPresent(c -> porUnidade.get(uKey).add(c));
         }
@@ -213,7 +245,62 @@ public final class InadimplenciaPdfParser {
         return new InadimplenciaPdfParseResult(condominioNome, dataRef, unidades, resumo);
     }
 
+    private static boolean isFormatoCondoId(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        if (text.contains("Condo Id")) {
+            return true;
+        }
+        return PAT_UNIDADE_CONDO_ID.matcher(text).find();
+    }
+
+    private static String extrairCondominioNomeCondoId(List<String> lines) {
+        StringBuilder sb = new StringBuilder();
+        for (String line : lines) {
+            if (line.startsWith("RUA ")
+                    || line.matches(".*\\d{8}.*")
+                    || extrairCodigoUnidadeDaLinha(line).isPresent()) {
+                break;
+            }
+            if (isLinhaIgnoradaCondoIdCabecalho(line)) {
+                continue;
+            }
+            if (!sb.isEmpty()) {
+                sb.append(' ');
+            }
+            sb.append(line.trim());
+        }
+        return sb.toString().trim();
+    }
+
+    private static boolean isInicioSecaoCobrancasEmAcordo(String line) {
+        String n = normalizarAsciiHeader(line);
+        return n.contains("COBRANCAS EM ACORDO");
+    }
+
+    private static boolean isLinhaIgnoradaCondoIdCabecalho(String line) {
+        String u = line.toUpperCase(Locale.ROOT);
+        if (u.equals("INADIMPLÊNCIA") || u.equals("R45")) {
+            return true;
+        }
+        if (PAT_DATA_REF_CONDO_ID.matcher(line).find()) {
+            return true;
+        }
+        if (u.contains("CONDO ID")) {
+            return true;
+        }
+        if (u.startsWith("PÁGINA ") || u.startsWith("PAGINA ")) {
+            return true;
+        }
+        return false;
+    }
+
     private static boolean isLinhaIgnorada(String line) {
+        return isLinhaIgnorada(line, false);
+    }
+
+    private static boolean isLinhaIgnorada(String line, boolean formatoCondoId) {
         String u = line.toUpperCase(Locale.ROOT);
         if (u.contains("ALTO NIVEL GESTAO CONDOMINIAL")) {
             return true;
@@ -230,15 +317,39 @@ public final class InadimplenciaPdfParser {
         if (u.equals("INADIMPLÊNCIA POR UNIDADE") || u.equals("INADIMPLÊNCIA POR UNIDADE PÁG. 1 DE 45")) {
             return true;
         }
+        if (!formatoCondoId) {
+            return false;
+        }
+        if (isLinhaIgnoradaCondoIdCabecalho(line)) {
+            return true;
+        }
+        if (line.startsWith("RUA ") || u.contains("COBRANÇAS EM ACORDO") || u.contains("COBRANCAS EM ACORDO")) {
+            return true;
+        }
+        if (u.startsWith("QTD:") || u.startsWith("QTD TOTAL:")) {
+            return true;
+        }
+        if (u.contains("CONDO ID")) {
+            return true;
+        }
+        if (u.startsWith("PÁGINA ") || u.startsWith("PAGINA ")) {
+            return true;
+        }
         return false;
     }
 
     private static boolean isCabecalhoColunas(String line) {
         String n = normalizarAsciiHeader(line);
-        return n.contains("DOC N.NUM")
+        if (n.contains("DOC N.NUM")
                 || n.contains("DOC N.")
                 || (n.contains("PERIODO") && n.contains("VENCIMENTO") && n.contains("VALOR"))
-                || (n.contains("PERÍODO") && n.contains("VENCIMENTO") && n.contains("VALOR"));
+                || (n.contains("PERÍODO") && n.contains("VENCIMENTO") && n.contains("VALOR"))) {
+            return true;
+        }
+        return n.contains("ID HISTORICO")
+                && n.contains("COMPET")
+                && n.contains("VENCIMENTO")
+                && n.contains("PRINCIPAL");
     }
 
     private static String normalizarAsciiHeader(String line) {
@@ -284,6 +395,10 @@ public final class InadimplenciaPdfParser {
         if (n.isEmpty()) {
             return Optional.empty();
         }
+        Matcher mCondo = PAT_UNIDADE_CONDO_ID.matcher(n);
+        if (mCondo.matches()) {
+            return Optional.of(mCondo.group(1).toUpperCase(Locale.ROOT));
+        }
         Matcher m = PAT_UNIDADE_LINHA_INTEIRA.matcher(n);
         if (m.matches()) {
             return Optional.of(formatarCodigoUnidade(m.group(1), m.group(2)));
@@ -301,7 +416,99 @@ public final class InadimplenciaPdfParser {
         return t + "-" + String.format("%04d", v);
     }
 
-    private static Optional<InadimplenciaCobrancaDto> parseLinhaCobranca(String line) {
+    private static Optional<InadimplenciaCobrancaDto> parseLinhaCobranca(String line, boolean formatoCondoId) {
+        if (formatoCondoId) {
+            Optional<InadimplenciaCobrancaDto> condo = parseLinhaCobrancaCondoId(line);
+            if (condo.isPresent()) {
+                return condo;
+            }
+        }
+        return parseLinhaCobrancaGestora(line);
+    }
+
+    private static Optional<InadimplenciaCobrancaDto> parseLinhaCobrancaCondoId(String line) {
+        Matcher mSuffix = Pattern.compile(
+                        " (\\d+) (" + PAT_MILHARES_VALOR + ")\\s*$")
+                .matcher(line);
+        if (!mSuffix.find()) {
+            return Optional.empty();
+        }
+        String valorStr = mSuffix.group(2);
+        int pos = mSuffix.start();
+
+        Matcher mVenc = Pattern.compile(" (\\d{2}/\\d{2}/\\d{2,4})\\s*$").matcher(line.substring(0, pos));
+        if (!mVenc.find()) {
+            return Optional.empty();
+        }
+        String vencimento = normalizarDataCurta(mVenc.group(1));
+        pos = mVenc.start();
+
+        List<String> competencias = new ArrayList<>();
+        String restante = line.substring(0, pos).trim();
+        Matcher mComp = Pattern.compile("(\\d{2}/\\d{4}|\\d{2}/\\d{2})\\s*$").matcher(restante);
+        while (mComp.find() && competencias.size() < 2) {
+            competencias.add(0, mComp.group(1));
+            restante = restante.substring(0, mComp.start()).trim();
+            mComp = Pattern.compile("(\\d{2}/\\d{4}|\\d{2}/\\d{2})\\s*$").matcher(restante);
+        }
+        if (competencias.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Matcher mHead = Pattern.compile("^(\\d+)\\s+(.+)$").matcher(restante);
+        if (!mHead.matches()) {
+            return Optional.empty();
+        }
+        String doc = mHead.group(1);
+        String receita = mHead.group(2).trim();
+        if (receita.isEmpty() || isReceitaEncargoAdministradoraNaoImportavel(receita)) {
+            return Optional.empty();
+        }
+
+        String periodoBruto = competencias.stream()
+                .filter(c -> c.matches("\\d{2}/\\d{4}"))
+                .findFirst()
+                .orElse(competencias.get(competencias.size() - 1));
+        String periodo = normalizarPeriodoCondoId(periodoBruto, vencimento);
+        long centavos = parseValorBrCentavos(valorStr);
+        return Optional.of(new InadimplenciaCobrancaDto(
+                receita, doc, periodo, vencimento, valorStr, centavos, "0,00"));
+    }
+
+    private static String normalizarDataCurta(String data) {
+        if (data == null || data.isBlank()) {
+            return data;
+        }
+        Matcher m = Pattern.compile("^(\\d{2})/(\\d{2})/(\\d{2,4})$").matcher(data.trim());
+        if (!m.matches()) {
+            return data;
+        }
+        String ano = m.group(3);
+        if (ano.length() == 2) {
+            int yy = Integer.parseInt(ano, 10);
+            ano = (yy >= 70 ? "19" : "20") + ano;
+        }
+        return m.group(1) + "/" + m.group(2) + "/" + ano;
+    }
+
+    private static String normalizarPeriodoCondoId(String periodoBruto, String vencimentoNormalizado) {
+        if (periodoBruto == null || periodoBruto.isBlank()) {
+            return periodoBruto;
+        }
+        if (periodoBruto.matches("\\d{2}/\\d{4}")) {
+            return periodoBruto;
+        }
+        if (periodoBruto.matches("\\d{2}/\\d{2}")) {
+            String ano = "20" + periodoBruto.substring(3);
+            if (vencimentoNormalizado != null && vencimentoNormalizado.length() >= 10) {
+                ano = vencimentoNormalizado.substring(6);
+            }
+            return periodoBruto.substring(0, 3) + ano;
+        }
+        return periodoBruto;
+    }
+
+    private static Optional<InadimplenciaCobrancaDto> parseLinhaCobrancaGestora(String line) {
         Matcher ms = PAT_COBRANCA_SUFFIX.matcher(line);
         if (!ms.find()) {
             return Optional.empty();

@@ -141,6 +141,81 @@ class InadimplenciaPdfParserTest {
         assertEquals(1, r.unidades().size());
     }
 
+    @Test
+    void parseText_condoId_extraiUnidadesQuadraLoteECobrancas() {
+        String text =
+                """
+                Asfarol - Associacao Dos Moradores Do Farol
+                Do Lago
+                RUA RUA TUCUNARE ESQUINA COM AVENIDA DO FAROL S/N, CONDOMINIO FAROL DO LAGO,
+                ABADIANIA, GO, 72940000
+                Inadimplência
+                R45
+                Até: 01/07/2026 - Valores calculados até: 01/07/2026 - Unidade: todas
+                Id Histórico Compet. Vencimento Atraso Principal
+                QD01-LT01
+                593703 TAXA ORDINÁRIA 01/2025 01/25 10/01/25 537 459,01
+                Qtd: 1 459,01
+                QD01-LT02
+                593316 TAXA ORDINÁRIA 08/2025 08/25 10/08/25 325 259,00
+                655209 TAXA CONDOMÍNIO REF 06/2026 06/26 10/06/26 21 359,00
+                Qtd: 2 618,00
+                QD11-LT13
+                594117 ACORDO 4/4 06/26 16/06/26 15 1.090,08
+                Qtd: 1 1.090,08
+                Qtd total: 273 - Total Unidades: 78 111.474,27
+                Cobranças em acordo
+                QD03-LT05
+                593706 TAXA ORDINÁRIA 03/2026 03/26 10/03/26 113 509,01
+                Qtd: 1 509,01
+                Página 9 de 10\tCondo Id - Condomínios Inteligentes
+                """;
+
+        InadimplenciaPdfParser.InadimplenciaPdfParseResult r = InadimplenciaPdfParser.parseText(text);
+
+        assertEquals("01/07/2026", r.dataReferenciaPdf());
+        assertTrue(r.condominioNome().contains("Asfarol"));
+        assertEquals(3, r.unidades().size());
+        assertEquals("QD01-LT01", r.unidades().get(0).codigoUnidade());
+        assertEquals(1, r.unidades().get(0).cobrancas().size());
+        assertEquals("593703", r.unidades().get(0).cobrancas().getFirst().doc());
+        assertEquals("01/2025", r.unidades().get(0).cobrancas().getFirst().periodo());
+        assertEquals("10/01/2025", r.unidades().get(0).cobrancas().getFirst().vencimento());
+        assertEquals(45901L, r.unidades().get(0).cobrancas().getFirst().valorCentavos());
+
+        InadimplenciaUnidadeDto lt02 = r.unidades().stream()
+                .filter(u -> "QD01-LT02".equals(u.codigoUnidade()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(2, lt02.cobrancas().size());
+
+        InadimplenciaUnidadeDto acordo = r.unidades().stream()
+                .filter(u -> "QD11-LT13".equals(u.codigoUnidade()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals("ACORDO 4/4", acordo.cobrancas().getFirst().receita());
+        assertEquals(109008L, acordo.cobrancas().getFirst().valorCentavos());
+
+        assertEquals(4, r.resumo().quantidadeCobrancas());
+    }
+
+    static boolean pdfCondoIdFarolLagoDisponivel() {
+        return java.nio.file.Files.isRegularFile(
+                java.nio.file.Path.of("/Users/itamar/Downloads/01-07_0854_INADIMPLÊNCIA - FAROLDOLAGO - CONDO ID.pdf"));
+    }
+
+    @Test
+    @EnabledIf("br.com.vilareal.condominio.pdf.InadimplenciaPdfParserTest#pdfCondoIdFarolLagoDisponivel")
+    void parse_pdfCondoIdFarolLago_extraiResumoEsperado() throws IOException {
+        byte[] bytes = java.nio.file.Files.readAllBytes(java.nio.file.Path.of(
+                "/Users/itamar/Downloads/01-07_0854_INADIMPLÊNCIA - FAROLDOLAGO - CONDO ID.pdf"));
+        InadimplenciaPdfParser.InadimplenciaPdfParseResult r = InadimplenciaPdfParser.parse(bytes);
+        assertEquals("01/07/2026", r.dataReferenciaPdf());
+        assertEquals(78, r.resumo().quantidadeUnidades());
+        assertEquals(273, r.resumo().quantidadeCobrancas());
+        assertEquals(11147427L, r.resumo().valorTotalCentavos());
+    }
+
     static boolean pdfEmResourcesDisponivel() {
         try (InputStream in =
                 InadimplenciaPdfParserTest.class.getResourceAsStream("/inadimplenciaPorUnidade.pdf")) {
