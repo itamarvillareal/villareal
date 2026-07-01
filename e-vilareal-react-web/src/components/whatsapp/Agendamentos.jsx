@@ -3,7 +3,7 @@ import { Calendar, ChevronDown, ChevronRight, Loader2, Plus } from 'lucide-react
 import { ConfirmDialog } from '../financeiro/shared/ConfirmDialog.jsx';
 import { ScheduleModal } from './components/ScheduleModal.jsx';
 import { ScheduleCard } from './components/ScheduleCard.jsx';
-import { cancelWhatsAppScheduledItem, scheduledItemKey } from '../../../repositories/whatsappRepository.js';
+import { cancelWhatsAppScheduledItem, scheduledItemKey } from '../../repositories/whatsappRepository.js';
 import { useWhatsAppToast } from './WhatsAppToast.jsx';
 import { agruparPorData } from '../../utils/whatsappScheduleUtils.js';
 import { processosBtnPrimary, processosBtnSecondary } from '../processos/ProcessosAdminLayout.jsx';
