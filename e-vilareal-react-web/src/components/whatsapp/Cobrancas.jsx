@@ -1,6 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Banknote, CalendarClock, ChevronDown, ChevronUp, Loader2, RefreshCw, Rocket, Search } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState, Fragment } from 'react';
+import { Banknote, CalendarClock, ChevronDown, ChevronUp, History, Loader2, RefreshCw, Rocket, Search } from 'lucide-react';
 import { useWhatsAppToast } from './WhatsAppToast.jsx';
+import {
+  labelStatusContatoWhatsApp,
+  resumoUltimoContato,
+  statusBadgeContatoWhatsApp,
+} from './ProcessoWhatsAppContatosSecao.jsx';
 import {
   agendarCobrancas,
   cancelarCobrancasAgendadas,
@@ -70,6 +75,7 @@ export function WhatsAppCobrancas() {
   const [expandedLote, setExpandedLote] = useState(null);
   const [detalhesLote, setDetalhesLote] = useState([]);
   const [loadingDetalhes, setLoadingDetalhes] = useState(false);
+  const [expandedHistoricoKey, setExpandedHistoricoKey] = useState(null);
 
   const condominioSelecionado = useMemo(
     () => condominios.find((c) => String(c.id) === String(condominioId)),
@@ -176,6 +182,7 @@ export function WhatsAppCobrancas() {
           : await getCobrancaPreview({ condominioId: Number(condominioId) });
       const list = Array.isArray(rows) ? rows : [];
       setPreview(list);
+      setExpandedHistoricoKey(null);
       const auto = new Set();
       for (const p of list) {
         if (p.temTelefone && !p.jaCobradoEsteMes) auto.add(itemKey(p));
@@ -393,14 +400,20 @@ export function WhatsAppCobrancas() {
                       <th className="p-2">Unidade</th>
                       <th className="p-2">Proc.</th>
                       <th className="p-2">Telefone</th>
+                      <th className="p-2">Contato</th>
+                      <th className="p-2 w-8" />
                     </tr>
                   </thead>
                   <tbody>
                     {preview.map((p) => {
                       const key = itemKey(p);
                       const disabled = !p.temTelefone;
+                      const historico = Array.isArray(p.historicoContatos) ? p.historicoContatos : [];
+                      const resumo = resumoUltimoContato(historico);
+                      const historicoAberto = expandedHistoricoKey === key;
                       return (
-                        <tr key={key} className="border-t border-slate-100 dark:border-slate-800">
+                        <Fragment key={key}>
+                        <tr className="border-t border-slate-100 dark:border-slate-800">
                           <td className="p-2">
                             <input
                               type="checkbox"
@@ -424,7 +437,70 @@ export function WhatsAppCobrancas() {
                             {p.jaCobradoEsteMes ? <span className="text-slate-500 text-xs ml-1">Já cobrado</span> : null}
                             {p.temTelefone ? p.telefoneFormatado : '—'}
                           </td>
+                          <td className="p-2">
+                            {resumo ? (
+                              <div className="space-y-0.5">
+                                <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold ${statusBadgeContatoWhatsApp(resumo.status)}`}>
+                                  {labelStatusContatoWhatsApp(resumo.status)}
+                                </span>
+                                <p className="text-[10px] text-slate-500 tabular-nums">{formatDateTimeBR(resumo.quando)}</p>
+                                {resumo.total > 1 ? (
+                                  <p className="text-[10px] text-slate-400">{resumo.total} envios no total</p>
+                                ) : null}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-400">Nunca contactado</span>
+                            )}
+                          </td>
+                          <td className="p-2">
+                            {historico.length > 0 ? (
+                              <button
+                                type="button"
+                                className="text-slate-500 hover:text-emerald-700"
+                                title="Ver histórico de contatos"
+                                onClick={() => setExpandedHistoricoKey(historicoAberto ? null : key)}
+                              >
+                                <History className="h-4 w-4" />
+                              </button>
+                            ) : null}
+                          </td>
                         </tr>
+                        {historicoAberto ? (
+                          <tr className="border-t border-slate-100 bg-slate-50/80 dark:bg-slate-800/40">
+                            <td colSpan={7} className="p-3">
+                              <p className="text-xs font-semibold text-slate-600 mb-2">Histórico de cobranças — {p.pessoaNome}</p>
+                              <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white dark:bg-slate-900">
+                                <table className="w-full text-xs">
+                                  <thead className="text-left text-slate-500 uppercase">
+                                    <tr>
+                                      <th className="p-2">Quando</th>
+                                      <th className="p-2">Status</th>
+                                      <th className="p-2">Telefone</th>
+                                      <th className="p-2">Lote</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {historico.map((h) => (
+                                      <tr key={h.id} className="border-t border-slate-100">
+                                        <td className="p-2 tabular-nums whitespace-nowrap">
+                                          {formatDateTimeBR(h.quando ?? h.enviadoAt ?? h.scheduledAt ?? h.createdAt)}
+                                        </td>
+                                        <td className="p-2">
+                                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${statusBadgeContatoWhatsApp(h.status)}`}>
+                                            {labelStatusContatoWhatsApp(h.status)}
+                                          </span>
+                                        </td>
+                                        <td className="p-2">{h.telefoneFormatado ?? '—'}</td>
+                                        <td className="p-2 max-w-[200px] truncate" title={h.loteDescricao}>{h.loteDescricao || '—'}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : null}
+                        </Fragment>
                       );
                     })}
                   </tbody>
@@ -565,7 +641,9 @@ export function WhatsAppCobrancas() {
                         <tr className="text-left text-slate-500">
                           <th className="p-1">Nome</th>
                           <th className="p-1">Unidade</th>
+                          <th className="p-1">Proc.</th>
                           <th className="p-1">Telefone</th>
+                          <th className="p-1">Enviado / agendado</th>
                           <th className="p-1">Status</th>
                         </tr>
                       </thead>
@@ -574,7 +652,11 @@ export function WhatsAppCobrancas() {
                           <tr key={d.id} className="border-t border-slate-100 dark:border-slate-800">
                             <td className="p-1">{d.pessoaNome}</td>
                             <td className="p-1">{d.unidadeDescricao}</td>
+                            <td className="p-1 tabular-nums">{d.processoNumeroInterno ?? '—'}</td>
                             <td className="p-1">{d.phoneNumber}</td>
+                            <td className="p-1 tabular-nums whitespace-nowrap">
+                              {formatDateTimeBR(d.enviadoAt ?? d.scheduledAt ?? d.createdAt)}
+                            </td>
                             <td className="p-1">
                               <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${statusBadgeClass(d.status)}`}>{d.status}</span>
                             </td>

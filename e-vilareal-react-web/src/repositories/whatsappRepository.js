@@ -141,6 +141,22 @@ export async function cancelarCobrancasAgendadas(loteId) {
   return request(`/api/whatsapp/cobrancas/agendar/${encodeURIComponent(loteId)}`, { method: 'DELETE' });
 }
 
+export async function cancelCobrancaAgendamentoItem(cobrancaId) {
+  return request(`/api/whatsapp/cobrancas/agendar/item/${encodeURIComponent(cobrancaId)}`, { method: 'DELETE' });
+}
+
+/** Cancela agendamento conforme origem (MESSAGE ou COBRANCA). */
+export async function cancelWhatsAppScheduledItem(item) {
+  if (String(item?.source ?? '').toUpperCase() === 'COBRANCA') {
+    return cancelCobrancaAgendamentoItem(item.id);
+  }
+  return cancelWhatsAppSchedule(item.id);
+}
+
+export function scheduledItemKey(item) {
+  return `${String(item?.source ?? 'MESSAGE').toUpperCase()}-${item?.id ?? ''}`;
+}
+
 export async function getCobrancaLotes(page = 0, size = 20, signal) {
   return request('/api/whatsapp/cobrancas/lotes', { query: { page, size }, signal });
 }
@@ -155,4 +171,8 @@ export async function reenviarCobrancasFalhas(loteId) {
 
 export async function getCobrancaStats(signal) {
   return request('/api/whatsapp/cobrancas/stats', { signal });
+}
+
+export async function getCobrancaHistoricoProcesso(processoId, signal) {
+  return request(`/api/whatsapp/cobrancas/processo/${encodeURIComponent(processoId)}/historico`, { signal });
 }

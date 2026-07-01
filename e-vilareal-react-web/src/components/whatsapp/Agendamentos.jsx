@@ -3,7 +3,7 @@ import { Calendar, ChevronDown, ChevronRight, Loader2, Plus } from 'lucide-react
 import { ConfirmDialog } from '../financeiro/shared/ConfirmDialog.jsx';
 import { ScheduleModal } from './components/ScheduleModal.jsx';
 import { ScheduleCard } from './components/ScheduleCard.jsx';
-import { useWhatsApp } from './hooks/useWhatsApp.js';
+import { cancelWhatsAppScheduledItem, scheduledItemKey } from '../../../repositories/whatsappRepository.js';
 import { useWhatsAppToast } from './WhatsAppToast.jsx';
 import { agruparPorData } from '../../utils/whatsappScheduleUtils.js';
 import { processosBtnPrimary, processosBtnSecondary } from '../processos/ProcessosAdminLayout.jsx';
@@ -54,7 +54,7 @@ function ScheduleDateHeader({ label, count, collapsed, onToggle, collapsible }) 
 }
 
 export function WhatsAppAgendamentos() {
-  const { getScheduled, cancelSchedule } = useWhatsApp();
+  const { getScheduled } = useWhatsApp();
   const toast = useWhatsAppToast();
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(0);
@@ -64,7 +64,7 @@ export function WhatsAppAgendamentos() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
-  const [cancelId, setCancelId] = useState(null);
+  const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelling, setCancelling] = useState(false);
   const [anterioresAbertos, setAnterioresAbertos] = useState(false);
 
@@ -123,15 +123,16 @@ export function WhatsAppAgendamentos() {
   };
 
   const handleCancel = async () => {
-    if (!cancelId) return;
+    if (!cancelTarget) return;
     setCancelling(true);
     try {
-      await cancelSchedule(cancelId);
+      await cancelWhatsAppScheduledItem(cancelTarget);
       toast.success('Agendamento cancelado.');
+      const key = scheduledItemKey(cancelTarget);
       setRows((prev) =>
-        prev.map((r) => (r.id === cancelId ? { ...r, status: 'CANCELLED' } : r)),
+        prev.map((r) => (scheduledItemKey(r) === key ? { ...r, status: 'CANCELLED' } : r)),
       );
-      setCancelId(null);
+      setCancelTarget(null);
     } catch (err) {
       toast.error(err?.message || 'Erro ao cancelar.');
     } finally {
@@ -196,10 +197,10 @@ export function WhatsAppAgendamentos() {
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {grupo.items.map((item) => (
                       <ScheduleCard
-                        key={item.id}
+                        key={scheduledItemKey(item)}
                         item={item}
-                        onCancel={setCancelId}
-                        cancelling={cancelling && cancelId === item.id}
+                        onCancel={setCancelTarget}
+                        cancelling={cancelling && cancelTarget && scheduledItemKey(cancelTarget) === scheduledItemKey(item)}
                       />
                     ))}
                   </div>
@@ -227,13 +228,13 @@ export function WhatsAppAgendamentos() {
 
       <ScheduleModal open={modalOpen} onClose={() => setModalOpen(false)} onSuccess={handleModalSuccess} />
       <ConfirmDialog
-        open={Boolean(cancelId)}
+        open={Boolean(cancelTarget)}
         title="Cancelar agendamento"
         message="Tem certeza que deseja cancelar este agendamento?"
         confirmLabel={cancelling ? 'Cancelando…' : 'Sim, cancelar'}
         danger
         onConfirm={handleCancel}
-        onCancel={() => !cancelling && setCancelId(null)}
+        onCancel={() => !cancelling && setCancelTarget(null)}
       />
     </div>
   );

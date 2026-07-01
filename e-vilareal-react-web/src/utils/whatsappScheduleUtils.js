@@ -40,6 +40,7 @@ export function templateIconName(templateName) {
     lembrete_audiencia: 'Bell',
     atualizacao_processo: 'FileText',
     boas_vindas_cliente: 'UserPlus',
+    cobranca_pagamento: 'Banknote',
   };
   return icons[templateName] || 'MessageCircle';
 }

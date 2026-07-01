@@ -8,6 +8,18 @@ public final class CobrancaWhatsAppDTOs {
 
     private CobrancaWhatsAppDTOs() {}
 
+    public record CobrancaHistoricoItemDTO(
+            Long id,
+            String status,
+            String loteDescricao,
+            String telefoneFormatado,
+            Instant quando,
+            Instant enviadoAt,
+            Instant scheduledAt,
+            Instant createdAt,
+            String createdBy,
+            String errorMessage) {}
+
     public record CobrancaPreviewDTO(
             Long imovelId,
             Long clienteId,
@@ -25,7 +37,8 @@ public final class CobrancaWhatsAppDTOs {
             String origem,
             Integer processoNumeroInterno,
             String clienteEscritorioCodigo,
-            String clienteEscritorioNome) {}
+            String clienteEscritorioNome,
+            List<CobrancaHistoricoItemDTO> historicoContatos) {}
 
     public record CobrancaItemDTO(
             Long imovelId,
@@ -69,10 +82,13 @@ public final class CobrancaWhatsAppDTOs {
             String phoneNumber,
             String condominioNome,
             String unidadeDescricao,
+            Long processoId,
+            Integer processoNumeroInterno,
             BigDecimal valorPendente,
             String status,
             String errorMessage,
             Instant enviadoAt,
+            Instant scheduledAt,
             Instant createdAt) {}
 
     public record CobrancaStatsDTO(

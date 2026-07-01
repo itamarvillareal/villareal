@@ -8,12 +8,27 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
 public interface CobrancaWhatsAppRepository extends JpaRepository<CobrancaWhatsAppEntity, Long> {
 
     List<CobrancaWhatsAppEntity> findByLoteIdOrderByPessoaNomeAsc(String loteId);
+
+    List<CobrancaWhatsAppEntity> findByProcessoIdAndStatusNotOrderByCreatedAtDesc(
+            Long processoId, String status);
+
+    List<CobrancaWhatsAppEntity> findByProcessoIdInAndStatusNotOrderByCreatedAtDesc(
+            Collection<Long> processoIds, String status);
+
+    List<CobrancaWhatsAppEntity> findByImovelIdInAndStatusNotOrderByCreatedAtDesc(
+            Collection<Long> imovelIds, String status);
+
+    long countByStatus(String status);
+
+    List<CobrancaWhatsAppEntity> findByStatusInAndScheduledAtIsNotNullOrderByScheduledAtDesc(
+            Collection<String> statuses);
 
     interface LoteResumoRow {
         String getLoteId();

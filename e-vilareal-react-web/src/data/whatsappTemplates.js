@@ -14,6 +14,11 @@ export const WHATSAPP_TEMPLATES = [
     label: 'Boas-vindas',
     params: ['Nome do cliente'],
   },
+  {
+    value: 'cobranca_pagamento',
+    label: 'Cobrança de pagamento',
+    params: ['Nome', 'Unidade', 'Condomínio'],
+  },
 ];
 
 export function findWhatsAppTemplate(value) {

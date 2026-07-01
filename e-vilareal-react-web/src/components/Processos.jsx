@@ -114,6 +114,7 @@ import {
   CalendarClock,
   Send,
   Receipt,
+  MessageCircle,
 } from 'lucide-react';
 import { ContaCorrenteVinculoAssist } from './processos/ContaCorrenteVinculoAssist.jsx';
 import {
@@ -152,6 +153,7 @@ import { ModalRelatorioPublicacoesProcesso, PublicacoesRelatorioConteudo } from 
 import { listarPublicacoesRelatorioPorProcesso, listarMovimentacoesEmailPorProcesso } from '../repositories/publicacoesRepository.js';
 import { ModalCriarTarefaContextual } from './ModalCriarTarefaContextual.jsx';
 import { ModalConsultaPeriodicaProcesso } from './consultas-periodicas/ModalConsultaPeriodicaProcesso.jsx';
+import { ProcessoWhatsAppContatosSecao } from './whatsapp/ProcessoWhatsAppContatosSecao.jsx';
 import { ModalPeticionamentoProcesso } from './projudi/ModalPeticionamentoProcesso.jsx';
 import { PessoaEmbedModal } from './PessoaEmbedModal.jsx';
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
@@ -4837,6 +4839,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                 <ProcessosTabButton id="tab-historico" label="Histórico do Processo" active={tabAtiva === 'historico'} count={historico.length} onClick={() => setTabAtiva('historico')} />
                 <ProcessosTabButton id="tab-publicacoes" label="Publicações" active={tabAtiva === 'publicacoes'} count={publicacoesRelatorioItens?.length ?? 0} onClick={() => setTabAtiva('publicacoes')} />
                 <ProcessosTabButton id="tab-movemail" label="Mov. por Email" active={tabAtiva === 'movemail'} count={movEmailItens?.length ?? 0} onClick={() => setTabAtiva('movemail')} />
+                <ProcessosTabButton id="tab-whatsapp" label="WhatsApp" active={tabAtiva === 'whatsapp'} onClick={() => setTabAtiva('whatsapp')} />
                 <ProcessosTabButton id="tab-observacoes" label="Observações" active={tabAtiva === 'observacoes'} onClick={() => setTabAtiva('observacoes')} />
                 <ProcessosTabButton id="tab-execucao" label="Execução" active={tabAtiva === 'execucao'} onClick={() => setTabAtiva('execucao')} />
               </div>
@@ -5071,6 +5074,18 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
               {tabAtiva === 'observacoes' && (
                 <div className="border border-slate-300 rounded-b-lg p-4 bg-white shadow-sm -mt-px">
                   <p className="text-sm text-slate-500">Conteúdo da aba Observações.</p>
+                </div>
+              )}
+              {tabAtiva === 'whatsapp' && (
+                <div className="border border-slate-300 rounded-b-lg p-4 bg-white shadow-sm -mt-px">
+                  <div className="flex items-center gap-2 mb-3 pb-2 border-b border-slate-100">
+                    <MessageCircle className="h-4 w-4 text-emerald-600" />
+                    <h3 className="text-sm font-semibold text-slate-800">Cobranças WhatsApp enviadas</h3>
+                  </div>
+                  <p className="text-xs text-slate-500 mb-3">
+                    Mensagens do template <strong>cobranca_pagamento</strong> disparadas ou agendadas para este processo.
+                  </p>
+                  <ProcessoWhatsAppContatosSecao processoApiId={processoApiId} />
                 </div>
               )}
               {tabAtiva === 'execucao' && (

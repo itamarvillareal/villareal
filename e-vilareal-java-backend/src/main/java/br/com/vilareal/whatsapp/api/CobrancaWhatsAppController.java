@@ -7,6 +7,7 @@ import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.CobrancaDTO;
 import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.CobrancaItemDTO;
 import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.CobrancaLoteResultDTO;
 import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.CobrancaLoteResumoDTO;
+import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.CobrancaHistoricoItemDTO;
 import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.CobrancaPreviewDTO;
 import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.CobrancaStatsDTO;
 import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.CondominioResumoDTO;
@@ -89,6 +90,19 @@ public class CobrancaWhatsAppController {
         return ResponseEntity.ok(result);
     }
 
+    @DeleteMapping("/agendar/item/{cobrancaId}")
+    @Operation(summary = "Cancelar uma cobrança WhatsApp ainda agendada")
+    public ResponseEntity<Void> cancelarItemAgendado(@PathVariable Long cobrancaId) {
+        try {
+            cobrancaWhatsAppService.cancelarItemAgendado(cobrancaId);
+            return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
     @DeleteMapping("/agendar/{loteId}")
     @Operation(summary = "Cancelar lote de cobranças ainda agendadas")
     public ResponseEntity<Map<String, Integer>> cancelarAgendado(@PathVariable String loteId) {
@@ -114,6 +128,12 @@ public class CobrancaWhatsAppController {
     public ResponseEntity<Map<String, Integer>> reenviar(@PathVariable String loteId) {
         int reenviados = cobrancaWhatsAppService.reenviarFalhas(loteId);
         return ResponseEntity.ok(Map.of("reenviados", reenviados));
+    }
+
+    @GetMapping("/processo/{processoId}/historico")
+    @Operation(summary = "Histórico de cobranças WhatsApp enviadas/agendadas para o processo")
+    public ResponseEntity<List<CobrancaHistoricoItemDTO>> historicoProcesso(@PathVariable Long processoId) {
+        return ResponseEntity.ok(cobrancaWhatsAppService.listarHistoricoProcesso(processoId));
     }
 
     @GetMapping("/stats")

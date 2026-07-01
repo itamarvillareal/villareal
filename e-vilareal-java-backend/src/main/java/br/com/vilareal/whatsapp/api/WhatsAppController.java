@@ -24,6 +24,7 @@ import br.com.vilareal.whatsapp.infrastructure.persistence.entity.WhatsAppMessag
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.ScheduledWhatsAppMessageRepository;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppMessageRepository;
 import br.com.vilareal.whatsapp.dto.WhatsAppTemplateDTO;
+import br.com.vilareal.whatsapp.service.WhatsAppAgendamentosFeedService;
 import br.com.vilareal.whatsapp.service.WhatsAppContactResolverService;
 import br.com.vilareal.whatsapp.service.WhatsAppNotificationService;
 import br.com.vilareal.whatsapp.service.WhatsAppTemplateService;
@@ -79,6 +80,7 @@ public class WhatsAppController {
     private final WhatsAppContactResolverService contactResolver;
     private final WhatsAppTemplateService whatsAppTemplateService;
     private final WhatsAppNotificationService whatsAppNotificationService;
+    private final WhatsAppAgendamentosFeedService agendamentosFeedService;
 
     public WhatsAppController(
             WhatsAppService whatsAppService,
@@ -89,7 +91,8 @@ public class WhatsAppController {
             WhatsAppConfig whatsAppConfig,
             WhatsAppContactResolverService contactResolver,
             WhatsAppTemplateService whatsAppTemplateService,
-            WhatsAppNotificationService whatsAppNotificationService) {
+            WhatsAppNotificationService whatsAppNotificationService,
+            WhatsAppAgendamentosFeedService agendamentosFeedService) {
         this.whatsAppService = whatsAppService;
         this.whatsAppSchedulerService = whatsAppSchedulerService;
         this.whatsAppMessageRepository = whatsAppMessageRepository;
@@ -99,6 +102,7 @@ public class WhatsAppController {
         this.contactResolver = contactResolver;
         this.whatsAppTemplateService = whatsAppTemplateService;
         this.whatsAppNotificationService = whatsAppNotificationService;
+        this.agendamentosFeedService = agendamentosFeedService;
     }
 
     @PostMapping("/send")
@@ -195,25 +199,19 @@ public class WhatsAppController {
     }
 
     @GetMapping("/scheduled")
-    @Operation(summary = "Listar agendamentos de mensagens")
+    @Operation(summary = "Listar agendamentos de mensagens (inclui cobranças em lote)")
     public ResponseEntity<Page<ScheduledMessageDTO>> getScheduled(
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        Page<ScheduledWhatsAppMessageEntity> scheduled;
         if (StringUtils.hasText(status)) {
             try {
-                ScheduledMessageStatus statusEnum =
-                        ScheduledMessageStatus.valueOf(status.trim().toUpperCase(Locale.ROOT));
-                scheduled = scheduledWhatsAppMessageRepository.findByStatusOrderByScheduledAtAsc(
-                        statusEnum, PageRequest.of(page, size));
+                ScheduledMessageStatus.valueOf(status.trim().toUpperCase(Locale.ROOT));
             } catch (IllegalArgumentException e) {
                 return ResponseEntity.badRequest().build();
             }
-        } else {
-            scheduled = scheduledWhatsAppMessageRepository.findAllByOrderByScheduledAtDesc(PageRequest.of(page, size));
         }
-        return ResponseEntity.ok(scheduled.map(this::toScheduledDto));
+        return ResponseEntity.ok(agendamentosFeedService.listar(status, PageRequest.of(page, size)));
     }
 
     @PostMapping("/schedule")
@@ -305,8 +303,7 @@ public class WhatsAppController {
                 WhatsAppMessageDirection.OUTBOUND, startOfToday);
         long receivedToday = whatsAppMessageRepository.countByDirectionAndCreatedAtAfter(
                 WhatsAppMessageDirection.INBOUND, startOfToday);
-        long scheduledPending =
-                scheduledWhatsAppMessageRepository.countByStatus(ScheduledMessageStatus.PENDING);
+        long scheduledPending = agendamentosFeedService.contarPendentes();
         long failedToday = whatsAppMessageRepository.countByStatusAndCreatedAtAfter(
                 WhatsAppMessageStatus.FAILED, startOfToday);
 

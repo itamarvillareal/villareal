@@ -24,6 +24,7 @@ import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.CobrancaDTO;
 import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.CobrancaItemDTO;
 import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.CobrancaLoteResultDTO;
 import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.CobrancaLoteResumoDTO;
+import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.CobrancaHistoricoItemDTO;
 import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.CobrancaPreviewDTO;
 import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.CobrancaStatsDTO;
 import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.CondominioResumoDTO;
@@ -46,9 +47,15 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class CobrancaWhatsAppService {
@@ -197,9 +204,10 @@ public class CobrancaWhatsAppService {
                     "PROCESSO",
                     processo.getNumeroInterno(),
                     cod8,
-                    nomeEscritorio));
+                    nomeEscritorio,
+                    List.of()));
         }
-        return previews;
+        return enriquecerPreviewComHistorico(previews);
     }
 
     private static ProcessoParteEntity escolherReuParaCobranca(List<ProcessoParteEntity> reus) {
@@ -272,9 +280,10 @@ public class CobrancaWhatsAppService {
                     "IMOVEL",
                     processo != null ? processo.getNumeroInterno() : null,
                     null,
-                    null));
+                    null,
+                    List.of()));
         }
-        return previews;
+        return enriquecerPreviewComHistorico(previews);
     }
 
     @Transactional
@@ -393,6 +402,18 @@ public class CobrancaWhatsAppService {
         return n;
     }
 
+    @Transactional
+    public void cancelarItemAgendado(Long cobrancaId) {
+        CobrancaWhatsAppEntity cobranca = cobrancaRepository
+                .findById(cobrancaId)
+                .orElseThrow(() -> new IllegalArgumentException("Cobrança agendada não encontrada."));
+        if (!"AGENDADO".equalsIgnoreCase(cobranca.getStatus())) {
+            throw new IllegalStateException("Somente cobranças com status AGENDADO podem ser canceladas.");
+        }
+        cobranca.setStatus("CANCELADO");
+        cobrancaRepository.save(cobranca);
+    }
+
     @Scheduled(fixedRate = 60_000)
     public void processarCobrancasAgendadasTick() {
         try {
@@ -476,14 +497,26 @@ public class CobrancaWhatsAppService {
         return reenviados;
     }
 
+    @Transactional(readOnly = true)
+    public List<CobrancaHistoricoItemDTO> listarHistoricoProcesso(Long processoId) {
+        if (processoId == null || processoId <= 0) {
+            return List.of();
+        }
+        return cobrancaRepository
+                .findByProcessoIdAndStatusNotOrderByCreatedAtDesc(processoId, "CANCELADO")
+                .stream()
+                .map(this::toHistoricoItem)
+                .toList();
+    }
+
     public Page<CobrancaLoteResumoDTO> listarLotes(Pageable pageable) {
         return cobrancaRepository.findLotesResumo(pageable).map(this::toLoteResumo);
     }
 
     public List<CobrancaDTO> detalhesLote(String loteId) {
-        return cobrancaRepository.findByLoteIdOrderByPessoaNomeAsc(loteId).stream()
-                .map(this::toDto)
-                .toList();
+        List<CobrancaWhatsAppEntity> rows = cobrancaRepository.findByLoteIdOrderByPessoaNomeAsc(loteId);
+        Map<Long, Integer> numeroPorProcesso = numerosInternosPorProcesso(rows);
+        return rows.stream().map(e -> toDto(e, numeroPorProcesso.get(e.getProcessoId()))).toList();
     }
 
     public CobrancaStatsDTO statsDoMes() {
@@ -678,6 +711,121 @@ public class CobrancaWhatsAppService {
         return response.messages().getFirst().id();
     }
 
+    private List<CobrancaPreviewDTO> enriquecerPreviewComHistorico(List<CobrancaPreviewDTO> previews) {
+        if (previews == null || previews.isEmpty()) {
+            return List.of();
+        }
+        Set<Long> processoIds = previews.stream()
+                .map(CobrancaPreviewDTO::processoId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Set<Long> imovelIds = previews.stream()
+                .map(CobrancaPreviewDTO::imovelId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        Map<Long, List<CobrancaHistoricoItemDTO>> porProcesso = agruparHistoricoPorProcesso(processoIds);
+        Map<Long, List<CobrancaHistoricoItemDTO>> porImovel = agruparHistoricoPorImovel(imovelIds);
+
+        List<CobrancaPreviewDTO> out = new ArrayList<>(previews.size());
+        for (CobrancaPreviewDTO p : previews) {
+            List<CobrancaHistoricoItemDTO> historico = List.of();
+            if (p.processoId() != null) {
+                historico = porProcesso.getOrDefault(p.processoId(), List.of());
+            } else if (p.imovelId() != null) {
+                historico = porImovel.getOrDefault(p.imovelId(), List.of());
+            }
+            out.add(withHistorico(p, historico));
+        }
+        return out;
+    }
+
+    private Map<Long, List<CobrancaHistoricoItemDTO>> agruparHistoricoPorProcesso(Set<Long> processoIds) {
+        if (processoIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, List<CobrancaHistoricoItemDTO>> out = new HashMap<>();
+        for (CobrancaWhatsAppEntity e :
+                cobrancaRepository.findByProcessoIdInAndStatusNotOrderByCreatedAtDesc(processoIds, "CANCELADO")) {
+            if (e.getProcessoId() == null) {
+                continue;
+            }
+            out.computeIfAbsent(e.getProcessoId(), k -> new ArrayList<>()).add(toHistoricoItem(e));
+        }
+        return out;
+    }
+
+    private Map<Long, List<CobrancaHistoricoItemDTO>> agruparHistoricoPorImovel(Set<Long> imovelIds) {
+        if (imovelIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, List<CobrancaHistoricoItemDTO>> out = new HashMap<>();
+        for (CobrancaWhatsAppEntity e :
+                cobrancaRepository.findByImovelIdInAndStatusNotOrderByCreatedAtDesc(imovelIds, "CANCELADO")) {
+            if (e.getImovelId() == null) {
+                continue;
+            }
+            out.computeIfAbsent(e.getImovelId(), k -> new ArrayList<>()).add(toHistoricoItem(e));
+        }
+        return out;
+    }
+
+    private static CobrancaPreviewDTO withHistorico(CobrancaPreviewDTO p, List<CobrancaHistoricoItemDTO> historico) {
+        return new CobrancaPreviewDTO(
+                p.imovelId(),
+                p.clienteId(),
+                p.pessoaId(),
+                p.pessoaNome(),
+                p.telefone(),
+                p.telefoneFormatado(),
+                p.temTelefone(),
+                p.condominioNome(),
+                p.unidadeDescricao(),
+                p.processoId(),
+                p.valorPendente(),
+                p.valorPendenteFormatado(),
+                p.jaCobradoEsteMes(),
+                p.origem(),
+                p.processoNumeroInterno(),
+                p.clienteEscritorioCodigo(),
+                p.clienteEscritorioNome(),
+                historico);
+    }
+
+    private CobrancaHistoricoItemDTO toHistoricoItem(CobrancaWhatsAppEntity e) {
+        Instant quando = e.getEnviadoAt() != null
+                ? e.getEnviadoAt()
+                : e.getScheduledAt() != null ? e.getScheduledAt() : e.getCreatedAt();
+        return new CobrancaHistoricoItemDTO(
+                e.getId(),
+                e.getStatus(),
+                e.getLoteDescricao(),
+                WhatsAppService.formatPhoneDisplay(e.getPhoneNumber()),
+                quando,
+                e.getEnviadoAt(),
+                e.getScheduledAt(),
+                e.getCreatedAt(),
+                e.getCreatedBy(),
+                e.getErrorMessage());
+    }
+
+    private Map<Long, Integer> numerosInternosPorProcesso(List<CobrancaWhatsAppEntity> rows) {
+        Set<Long> ids = new HashSet<>();
+        for (CobrancaWhatsAppEntity row : rows) {
+            if (row.getProcessoId() != null) {
+                ids.add(row.getProcessoId());
+            }
+        }
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, Integer> out = new HashMap<>();
+        for (ProcessoEntity p : processoRepository.findAllById(ids)) {
+            out.put(p.getId(), p.getNumeroInterno());
+        }
+        return out;
+    }
+
     private CobrancaLoteResumoDTO toLoteResumo(LoteResumoRow row) {
         return new CobrancaLoteResumoDTO(
                 row.getLoteId(),
@@ -690,7 +838,7 @@ public class CobrancaWhatsAppService {
                 row.getPendentes() != null ? row.getPendentes() : 0L);
     }
 
-    private CobrancaDTO toDto(CobrancaWhatsAppEntity e) {
+    private CobrancaDTO toDto(CobrancaWhatsAppEntity e, Integer processoNumeroInterno) {
         return new CobrancaDTO(
                 e.getId(),
                 e.getLoteId(),
@@ -698,10 +846,13 @@ public class CobrancaWhatsAppService {
                 WhatsAppService.formatPhoneDisplay(e.getPhoneNumber()),
                 e.getCondominioNome(),
                 e.getUnidadeDescricao(),
+                e.getProcessoId(),
+                processoNumeroInterno,
                 e.getValorPendente(),
                 e.getStatus(),
                 e.getErrorMessage(),
                 e.getEnviadoAt(),
+                e.getScheduledAt(),
                 e.getCreatedAt());
     }
 }

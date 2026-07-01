@@ -8,6 +8,7 @@ import {
   MessageCircle,
   User,
   UserPlus,
+  Banknote,
 } from 'lucide-react';
 import {
   formatPhoneDisplay,
@@ -25,6 +26,7 @@ const ICON_MAP = {
   FileText,
   UserPlus,
   MessageCircle,
+  Banknote,
 };
 
 function TemplateIcon({ templateName, className }) {
@@ -112,7 +114,7 @@ export function ScheduleCard({ item, compact = false, onCancel, cancelling = fal
               type="button"
               className="text-xs text-red-600 hover:underline disabled:opacity-50"
               disabled={cancelling}
-              onClick={() => onCancel(item.id)}
+              onClick={() => onCancel(item)}
             >
               Cancelar
             </button>
@@ -209,7 +211,7 @@ export function ScheduleCard({ item, compact = false, onCancel, cancelling = fal
               type="button"
               className="text-xs font-medium text-red-600 hover:text-red-700 hover:underline disabled:opacity-50"
               disabled={cancelling}
-              onClick={() => onCancel(item.id)}
+              onClick={() => onCancel(item)}
             >
               Cancelar
             </button>

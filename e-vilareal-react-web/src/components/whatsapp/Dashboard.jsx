@@ -7,16 +7,17 @@ import { WhatsAppStatusBanner } from './components/WhatsAppStatusBanner.jsx';
 import { useWhatsApp } from './hooks/useWhatsApp.js';
 import { useWhatsAppToast } from './WhatsAppToast.jsx';
 import { ConfirmDialog } from '../financeiro/shared/ConfirmDialog.jsx';
+import { cancelWhatsAppScheduledItem, scheduledItemKey } from '../../repositories/whatsappRepository.js';
 import { mensagemErroAmigavel } from '../../utils/mensagemErroAmigavel.js';
 
 export function WhatsAppDashboard() {
-  const { getStats, getScheduled, cancelSchedule } = useWhatsApp();
+  const { getStats, getScheduled } = useWhatsApp();
   const toast = useWhatsAppToast();
   const [stats, setStats] = useState(null);
   const [pending, setPending] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statsLoadOk, setStatsLoadOk] = useState(false);
-  const [cancelId, setCancelId] = useState(null);
+  const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelling, setCancelling] = useState(false);
 
   const loadData = useCallback(async (signal) => {
@@ -49,13 +50,14 @@ export function WhatsAppDashboard() {
   }, [loadData]);
 
   const handleCancel = async () => {
-    if (!cancelId) return;
+    if (!cancelTarget) return;
     setCancelling(true);
     try {
-      await cancelSchedule(cancelId);
+      await cancelWhatsAppScheduledItem(cancelTarget);
       toast.success('Agendamento cancelado.');
-      setPending((prev) => prev.filter((r) => r.id !== cancelId));
-      setCancelId(null);
+      const key = scheduledItemKey(cancelTarget);
+      setPending((prev) => prev.filter((r) => scheduledItemKey(r) !== key));
+      setCancelTarget(null);
     } catch (err) {
       toast.error(err?.message || 'Erro ao cancelar agendamento.');
     } finally {
@@ -124,11 +126,11 @@ export function WhatsAppDashboard() {
           <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {pending.slice(0, 3).map((row) => (
               <ScheduleCard
-                key={row.id}
+                key={scheduledItemKey(row)}
                 item={row}
                 compact
-                onCancel={setCancelId}
-                cancelling={cancelling && cancelId === row.id}
+                onCancel={setCancelTarget}
+                cancelling={cancelling && cancelTarget && scheduledItemKey(cancelTarget) === scheduledItemKey(row)}
               />
             ))}
           </div>
@@ -136,13 +138,13 @@ export function WhatsAppDashboard() {
       </section>
 
       <ConfirmDialog
-        open={Boolean(cancelId)}
+        open={Boolean(cancelTarget)}
         title="Cancelar agendamento"
         message="Tem certeza que deseja cancelar este agendamento?"
         confirmLabel={cancelling ? 'Cancelando…' : 'Sim, cancelar'}
         danger
         onConfirm={handleCancel}
-        onCancel={() => !cancelling && setCancelId(null)}
+        onCancel={() => !cancelling && setCancelTarget(null)}
       />
     </div>
   );
