@@ -39,7 +39,7 @@ const BANCOS = [
     numero: 5,
     ofxBankId: '104',
     ofxAgencia: null,
-    ofxConta: '0007770852952',
+    ofxConta: '0005968205993',
   },
   {
     nome: 'Sicoob VRV',
@@ -61,7 +61,7 @@ const BANCOS = [
 const OFX_CEF = `<OFX>
 <BANKACCTFROM>
 <BANKID>0104</BANKID>
-<ACCTID>0007770852952</ACCTID>
+<ACCTID>0005968205993</ACCTID>
 <ACCTTYPE>CHECKING</ACCTTYPE>
 </BANKACCTFROM>
 </OFX>`;
