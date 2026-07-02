@@ -13,6 +13,7 @@ import { isWhatsAppMediaPending, mergeMediaReady } from './utils/whatsappMediaUt
 import { resumoContactCardContent } from './utils/whatsappContactCard.js';
 
 const PAGE_SIZE = 20;
+const CONVERSATIONS_PAGE_SIZE = 50;
 const CONVERSATIONS_REFRESH_MS = 30_000;
 
 /** Input em linha flex (sem w-full — evita conflito com botão ao lado). */
@@ -136,6 +137,9 @@ export function WhatsAppConversas() {
   const [query, setQuery] = useState('');
   const [conversations, setConversations] = useState([]);
   const [loadingConversations, setLoadingConversations] = useState(true);
+  const [conversationsPageLoaded, setConversationsPageLoaded] = useState(0);
+  const [conversationsTotalPages, setConversationsTotalPages] = useState(0);
+  const [loadingMoreConversations, setLoadingMoreConversations] = useState(false);
   const [activePhone, setActivePhone] = useState('');
   const [messages, setMessages] = useState([]);
   const [contactName, setContactName] = useState('');
@@ -155,16 +159,55 @@ export function WhatsAppConversas() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const loadConversations = useCallback(async () => {
+  const loadConversations = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!silent) setLoadingConversations(true);
+      try {
+        const res = await getConversations(0, CONVERSATIONS_PAGE_SIZE);
+        const page0 = Array.isArray(res?.content) ? res.content : [];
+        setConversationsTotalPages(Number(res?.totalPages ?? 0));
+        if (silent) {
+          setConversations((prev) => {
+            if (prev.length <= CONVERSATIONS_PAGE_SIZE) return page0;
+            const page0Phones = new Set(page0.map((c) => normalizePhoneForApi(c.phoneNumber)));
+            const older = prev
+              .slice(CONVERSATIONS_PAGE_SIZE)
+              .filter((c) => !page0Phones.has(normalizePhoneForApi(c.phoneNumber)));
+            return [...page0, ...older];
+          });
+        } else {
+          setConversationsPageLoaded(0);
+          setConversations(page0);
+        }
+      } catch (err) {
+        toast.error(err?.message || 'Erro ao carregar conversas.');
+      } finally {
+        if (!silent) setLoadingConversations(false);
+      }
+    },
+    [getConversations, toast],
+  );
+
+  const handleLoadMoreConversations = useCallback(async () => {
+    if (conversationsPageLoaded + 1 >= conversationsTotalPages) return;
+    setLoadingMoreConversations(true);
     try {
-      const res = await getConversations(0, 50);
-      setConversations(Array.isArray(res?.content) ? res.content : []);
+      const nextPage = conversationsPageLoaded + 1;
+      const res = await getConversations(nextPage, CONVERSATIONS_PAGE_SIZE);
+      const chunk = Array.isArray(res?.content) ? res.content : [];
+      setConversationsTotalPages(Number(res?.totalPages ?? conversationsTotalPages));
+      setConversationsPageLoaded(nextPage);
+      setConversations((prev) => {
+        const existing = new Set(prev.map((c) => normalizePhoneForApi(c.phoneNumber)));
+        const novos = chunk.filter((c) => !existing.has(normalizePhoneForApi(c.phoneNumber)));
+        return [...prev, ...novos];
+      });
     } catch (err) {
       toast.error(err?.message || 'Erro ao carregar conversas.');
     } finally {
-      setLoadingConversations(false);
+      setLoadingMoreConversations(false);
     }
-  }, [getConversations, toast]);
+  }, [conversationsPageLoaded, conversationsTotalPages, getConversations, toast]);
 
   const fetchPage = useCallback(
     async (phone, pageNum, appendOlder = false) => {
@@ -262,7 +305,7 @@ export function WhatsAppConversas() {
       setDraft('');
       toast.success('Mensagem enviada.');
       window.setTimeout(scrollToBottom, 50);
-      loadConversations();
+      loadConversations({ silent: true });
     } catch (err) {
       toast.error(err?.message || FREE_TEXT_DELIVERY_ERROR);
     } finally {
@@ -279,8 +322,8 @@ export function WhatsAppConversas() {
   }, [conversations, activePhone]);
 
   useEffect(() => {
-    loadConversations();
-    const interval = window.setInterval(loadConversations, CONVERSATIONS_REFRESH_MS);
+    void loadConversations();
+    const interval = window.setInterval(() => void loadConversations({ silent: true }), CONVERSATIONS_REFRESH_MS);
     clearNotifications?.();
     return () => window.clearInterval(interval);
   }, [loadConversations, clearNotifications]);
@@ -303,7 +346,7 @@ export function WhatsAppConversas() {
         },
       ];
     });
-    loadConversations();
+    loadConversations({ silent: true });
   }, [latestInbound, activePhone, loadConversations]);
 
   useEffect(() => {
@@ -410,6 +453,18 @@ export function WhatsAppConversas() {
               })}
             </ul>
           )}
+          {!loadingConversations && conversationsPageLoaded + 1 < conversationsTotalPages ? (
+            <div className="p-3 border-t border-slate-200 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => void handleLoadMoreConversations()}
+                disabled={loadingMoreConversations}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-emerald-800 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-emerald-200 dark:hover:bg-slate-700"
+              >
+                {loadingMoreConversations ? 'Carregando…' : 'Carregar conversas anteriores'}
+              </button>
+            </div>
+          ) : null}
         </div>
       </aside>
 

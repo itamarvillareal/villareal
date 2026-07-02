@@ -43,7 +43,10 @@ export function WhatsAppToastProvider({ children }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 max-w-sm pointer-events-none" aria-live="polite">
+      <div
+        className="fixed bottom-[5.75rem] right-6 z-[10001] flex flex-col gap-2 max-w-sm pointer-events-none max-sm:bottom-[4.5rem] max-sm:right-4"
+        aria-live="polite"
+      >
         {items.map((t) => (
           <div
             key={t.id}

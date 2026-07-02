@@ -67,12 +67,34 @@ export function parseNomeArquivoUnidadeCalculos(fileName) {
  * @param {string | null | undefined} texto
  * @returns {string | null}
  */
+export function normalizarUnidadeCondoIdQuadraLote(texto) {
+  if (texto == null) return null;
+  const semPrefixo = String(texto)
+    .trim()
+    .replace(/^Unidade\s+/i, '')
+    .replace(/\s+/g, '')
+    .toUpperCase();
+  if (!semPrefixo) return null;
+  const m = /^QD(\d+)-?LT(\d+)$/.exec(semPrefixo);
+  if (!m) return null;
+  const quadra = Number.parseInt(m[1], 10);
+  const lote = Number.parseInt(m[2], 10);
+  if (!Number.isFinite(quadra) || !Number.isFinite(lote)) return null;
+  return `QD${String(quadra).padStart(2, '0')}-LT${String(lote).padStart(2, '0')}`;
+}
+
+/**
+ * @param {string | null | undefined} texto
+ * @returns {string | null}
+ */
 export function normalizarUnidadeTxt(texto) {
   if (texto == null) return null;
   const s = String(texto).trim();
   if (!s) return null;
-  const chars = [...s];
-  return chars.length <= LIMITE_UNIDADE ? s : chars.slice(0, LIMITE_UNIDADE).join('');
+  const condo = normalizarUnidadeCondoIdQuadraLote(s);
+  const canon = condo ?? s;
+  const chars = [...canon];
+  return chars.length <= LIMITE_UNIDADE ? canon : chars.slice(0, LIMITE_UNIDADE).join('');
 }
 
 /**

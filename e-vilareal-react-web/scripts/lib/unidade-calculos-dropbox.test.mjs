@@ -29,6 +29,11 @@ describe('unidade-calculos-dropbox', () => {
     assert.equal(normalizarUnidadeTxt(''), null);
   });
 
+  it('normalizarUnidadeTxt canoniza Condo Id quadra/lote', () => {
+    assert.equal(normalizarUnidadeTxt('Unidade QD12LT03'), 'QD12-LT03');
+    assert.equal(normalizarUnidadeTxt('qd12-lt03'), 'QD12-LT03');
+  });
+
   it('deduplicarUnidadesCalculos prefere 0.88.1', () => {
     const brutos = [
       {
