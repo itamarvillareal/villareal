@@ -289,6 +289,15 @@ public final class LancamentoFinanceiroSpecifications {
         return (root, query, cb) -> numeroBanco == null ? null : cb.equal(root.get("numeroBanco"), numeroBanco);
     }
 
+    public static Specification<LancamentoFinanceiroEntity> comNumerosBanco(java.util.Collection<Integer> numeros) {
+        return (root, query, cb) -> {
+            if (numeros == null || numeros.isEmpty()) {
+                return cb.disjunction();
+            }
+            return root.get("numeroBanco").in(numeros);
+        };
+    }
+
     /** Descrição (LIKE) e, se o termo for numérico, valor exato ou faixa parcial (ex.: 244 → 244,48). */
     public static Specification<LancamentoFinanceiroEntity> comBuscaDescricao(String busca) {
         return (root, query, cb) -> {

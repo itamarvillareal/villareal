@@ -9,7 +9,9 @@ import {
   isContaVirtual as isContaVirtualFn,
 } from '../../data/contaBancariaClassificacao.js';
 import { listarContasBancariasClassificacaoApi } from '../../repositories/financeiroRepository.js';
+import { filtrarBancosPorAcessoExtrato, usuarioPodeAcessarExtratoBanco } from '../../data/financeiroExtratoAcesso.js';
 import { useExtratoFilters } from './hooks/useExtratoFilters.js';
+import { mesAtualIso } from './shared/periodoFinanceiro.js';
 
 const FinanceiroFiltersContext = createContext(null);
 const FinanceiroChromeContext = createContext(null);
@@ -79,10 +81,12 @@ export function FinanceiroProvider({
       .sort(compararOrdemExibicaoBancos);
   }, [contadores, bancosRevision, classificacaoPorNumero]);
 
+  const bancosPermitidos = useMemo(() => filtrarBancosPorAcessoExtrato(bancos), [bancos]);
+
   const bancosVisiveis = useMemo(() => {
-    if (bancosExpandidos || bancos.length <= TOP_BANCOS_VISIVEIS + 1) return bancos;
-    return bancos.slice(0, TOP_BANCOS_VISIVEIS);
-  }, [bancos, bancosExpandidos]);
+    if (bancosExpandidos || bancosPermitidos.length <= TOP_BANCOS_VISIVEIS + 1) return bancosPermitidos;
+    return bancosPermitidos.slice(0, TOP_BANCOS_VISIVEIS);
+  }, [bancosPermitidos, bancosExpandidos]);
 
   const cartoes = useMemo(
     () => Object.entries(CARTAO_TO_NUMERO).map(([nome, numero]) => ({ nome, numero })),
@@ -91,13 +95,24 @@ export function FinanceiroProvider({
 
   const selecionarBanco = useCallback(
     (numero) => {
-      extratoFilters.setBanco(numero);
+      if (!usuarioPodeAcessarExtratoBanco(numero)) return;
+
       const path = location.pathname.replace(/\/$/, '');
-      if (path === '/financeiro') {
-        navigate('/financeiro/extrato');
+      if (path === '/financeiro/extrato') {
+        extratoFilters.setBanco(numero);
+        return;
       }
+
+      const params = new URLSearchParams();
+      params.set('banco', String(numero));
+      const mesAtual =
+        new URLSearchParams(location.search).get('mes') ||
+        extratoFilters.filters.mes ||
+        mesAtualIso();
+      params.set('mes', mesAtual);
+      navigate(`/financeiro/extrato?${params.toString()}`);
     },
-    [extratoFilters.setBanco, navigate, location.pathname],
+    [extratoFilters, navigate, location.pathname, location.search],
   );
 
   const filtersValue = useMemo(
@@ -151,9 +166,9 @@ export function FinanceiroProvider({
     () => ({
       totalPendentes,
       contadores,
-      bancos,
+      bancos: bancosPermitidos,
       bancosVisiveis,
-      bancosRestantes: Math.max(0, bancos.length - TOP_BANCOS_VISIVEIS),
+      bancosRestantes: Math.max(0, bancosPermitidos.length - TOP_BANCOS_VISIVEIS),
       cartoes,
       classificacaoPorNumero,
       isContaManual,
@@ -171,7 +186,7 @@ export function FinanceiroProvider({
     [
       totalPendentes,
       contadores,
-      bancos,
+      bancosPermitidos,
       bancosVisiveis,
       cartoes,
       classificacaoPorNumero,

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Importa extrato 99 Pay a partir de PDF (layout Data/Hora · Descrição · Valor).
+ * Importa extrato 99 Pay a partir de PDF (linha única, blocos data+hora, multilinha pdf.js ou tabela Nº/Valor).
  *
  * Uso (a partir de e-vilareal-react-web/):
  *   node scripts/import-extrato-99pay-pdf.mjs "/caminho/Extrato Maio 99 pay.pdf"

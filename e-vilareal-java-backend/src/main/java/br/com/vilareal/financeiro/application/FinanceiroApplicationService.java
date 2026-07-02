@@ -69,6 +69,7 @@ public class FinanceiroApplicationService {
     private final ClienteResolverService clienteResolverService;
     private final ContaBancariaResolverService contaBancariaResolverService;
     private final FinanceiroSaudeService financeiroSaudeService;
+    private final FinanceiroExtratoAcessoService extratoAcessoService;
 
     public FinanceiroApplicationService(
             ContaContabilRepository contaContabilRepository,
@@ -81,7 +82,8 @@ public class FinanceiroApplicationService {
             ClienteCodigoPessoaResolver clienteCodigoPessoaResolver,
             ClienteResolverService clienteResolverService,
             ContaBancariaResolverService contaBancariaResolverService,
-            @Lazy FinanceiroSaudeService financeiroSaudeService) {
+            @Lazy FinanceiroSaudeService financeiroSaudeService,
+            FinanceiroExtratoAcessoService extratoAcessoService) {
         this.contaContabilRepository = contaContabilRepository;
         this.lancamentoRepository = lancamentoRepository;
         this.saldoInicialRepository = saldoInicialRepository;
@@ -93,10 +95,27 @@ public class FinanceiroApplicationService {
         this.clienteResolverService = clienteResolverService;
         this.contaBancariaResolverService = contaBancariaResolverService;
         this.financeiroSaudeService = financeiroSaudeService;
+        this.extratoAcessoService = extratoAcessoService;
     }
 
     private void invalidarCacheSaude() {
         financeiroSaudeService.invalidarCacheSaude();
+    }
+
+    private Specification<LancamentoFinanceiroEntity> aplicarRestricaoExtratoBancos(
+            Specification<LancamentoFinanceiroEntity> spec, Integer numeroBanco) {
+        extratoAcessoService.assertAcessoExtratoBanco(numeroBanco);
+        var permitidos = extratoAcessoService.numerosBancosPermitidos();
+        if (numeroBanco != null || permitidos.isEmpty()) {
+            return spec;
+        }
+        return spec.and(LancamentoFinanceiroSpecifications.comNumerosBanco(permitidos.get()));
+    }
+
+    private void assertAcessoExtratoLancamento(LancamentoFinanceiroEntity lancamento) {
+        if (lancamento != null) {
+            extratoAcessoService.assertAcessoExtratoBanco(lancamento.getNumeroBanco());
+        }
     }
 
     @Transactional(readOnly = true)
@@ -249,6 +268,7 @@ public class FinanceiroApplicationService {
                 excluir,
                 cadastroPlenitude);
         spec = spec.and(comChaveNaturalContaCorrente(codigoCliente, numeroInternoProcesso));
+        spec = aplicarRestricaoExtratoBancos(spec, numeroBanco);
         return lancamentoRepository.findAll(spec, pageable).map(this::toExtratoListItem);
     }
 
@@ -257,6 +277,7 @@ public class FinanceiroApplicationService {
         if (numeroBanco == null) {
             return 0;
         }
+        extratoAcessoService.assertAcessoExtratoBanco(numeroBanco);
         return lancamentoRepository.countByNumeroBanco(numeroBanco);
     }
 
@@ -270,6 +291,7 @@ public class FinanceiroApplicationService {
         if (numeroBanco == null) {
             throw new BusinessRuleException("numeroBanco é obrigatório.");
         }
+        extratoAcessoService.assertAcessoExtratoBanco(numeroBanco);
         var r = new SaldoBancoResponse();
         r.setNumeroBanco(numeroBanco);
         r.setDataUltimoLancamento(lancamentoRepository.findDataUltimoLancamentoPorNumeroBanco(numeroBanco));
@@ -314,6 +336,7 @@ public class FinanceiroApplicationService {
         if (numeroBanco == null) {
             throw new BusinessRuleException("numeroBanco é obrigatório.");
         }
+        extratoAcessoService.assertAcessoExtratoBanco(numeroBanco);
         if (mes < 1 || mes > 12) {
             throw new BusinessRuleException("mes deve estar entre 1 e 12.");
         }
@@ -367,6 +390,7 @@ public class FinanceiroApplicationService {
         if (numeroBanco == null) {
             throw new BusinessRuleException("numeroBanco é obrigatório.");
         }
+        extratoAcessoService.assertAcessoExtratoBanco(numeroBanco);
         return saldoInicialRepository.findById(numeroBanco)
                 .map(this::toSaldoInicialResponse)
                 .orElse(null);
@@ -377,6 +401,7 @@ public class FinanceiroApplicationService {
         if (req == null || req.getNumeroBanco() == null) {
             throw new BusinessRuleException("numeroBanco é obrigatório.");
         }
+        extratoAcessoService.assertAcessoExtratoBanco(req.getNumeroBanco());
         if (req.getDataReferencia() == null) {
             throw new BusinessRuleException("dataReferencia é obrigatória.");
         }
@@ -399,6 +424,7 @@ public class FinanceiroApplicationService {
         if (numeroBanco == null) {
             throw new BusinessRuleException("numeroBanco é obrigatório.");
         }
+        extratoAcessoService.assertAcessoExtratoBanco(numeroBanco);
         saldoInicialRepository.findById(numeroBanco).ifPresent(s -> {
             saldoInicialRepository.delete(s);
             invalidarCacheSaude();
@@ -476,8 +502,10 @@ public class FinanceiroApplicationService {
 
     @Transactional(readOnly = true)
     public LancamentoFinanceiroResponse buscarLancamento(Long id) {
-        return toLancamentoResponse(lancamentoRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Lançamento não encontrado: " + id)));
+        LancamentoFinanceiroEntity lancamento = lancamentoRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Lançamento não encontrado: " + id));
+        assertAcessoExtratoLancamento(lancamento);
+        return toLancamentoResponse(lancamento);
     }
 
     @Transactional(readOnly = true)
@@ -492,6 +520,7 @@ public class FinanceiroApplicationService {
 
     @Transactional
     public LancamentoFinanceiroResponse criarLancamento(LancamentoFinanceiroWriteRequest req) {
+        extratoAcessoService.assertAcessoExtratoBanco(req.getNumeroBanco());
         LancamentoFinanceiroEntity e = new LancamentoFinanceiroEntity();
         aplicarLancamento(e, req, true);
         LancamentoFinanceiroResponse saved = toLancamentoResponse(lancamentoRepository.save(e));
@@ -503,6 +532,8 @@ public class FinanceiroApplicationService {
     public LancamentoFinanceiroResponse atualizarLancamento(Long id, LancamentoFinanceiroWriteRequest req) {
         LancamentoFinanceiroEntity e = lancamentoRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Lançamento não encontrado: " + id));
+        assertAcessoExtratoLancamento(e);
+        extratoAcessoService.assertAcessoExtratoBanco(req.getNumeroBanco());
         aplicarLancamento(e, req, false);
         LancamentoFinanceiroResponse saved = toLancamentoResponse(lancamentoRepository.save(e));
         invalidarCacheSaude();
@@ -610,6 +641,7 @@ public class FinanceiroApplicationService {
         if (!StringUtils.hasText(bancoRaw)) {
             throw new BusinessRuleException("Nome do banco é obrigatório.");
         }
+        extratoAcessoService.assertAcessoExtratoBanco(numeroBanco);
         final String bancoNorm = bancoRaw.trim().toUpperCase(Locale.ROOT);
         Map<Long, LancamentoFinanceiroEntity> porId = new LinkedHashMap<>();
         for (LancamentoFinanceiroEntity l : lancamentoRepository.findAllByBancoNormalizado(bancoNorm)) {
@@ -621,6 +653,9 @@ public class FinanceiroApplicationService {
             }
         }
         List<LancamentoFinanceiroEntity> toDelete = new ArrayList<>(porId.values());
+        for (LancamentoFinanceiroEntity l : toDelete) {
+            assertAcessoExtratoLancamento(l);
+        }
         int removidos = toDelete.size();
         if (!toDelete.isEmpty()) {
             List<Long> ids = toDelete.stream().map(LancamentoFinanceiroEntity::getId).toList();

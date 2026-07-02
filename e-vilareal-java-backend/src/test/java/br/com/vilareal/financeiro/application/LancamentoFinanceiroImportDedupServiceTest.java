@@ -21,6 +21,9 @@ class LancamentoFinanceiroImportDedupServiceTest {
     @Mock
     private LancamentoFinanceiroRepository lancamentoRepository;
 
+    @Mock
+    private FinanceiroExtratoAcessoService extratoAcessoService;
+
     @InjectMocks
     private LancamentoFinanceiroImportDedupService service;
 

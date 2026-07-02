@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Fonte de verdade da classificação de contas bancárias (Fase 3, item 3 — FASE B/B3).
@@ -27,15 +28,21 @@ public class ContaBancariaApplicationService {
     private static final String TIPO_MANUAL = "MANUAL";
 
     private final ContaBancariaRepository contaBancariaRepository;
+    private final FinanceiroExtratoAcessoService extratoAcessoService;
 
-    public ContaBancariaApplicationService(ContaBancariaRepository contaBancariaRepository) {
+    public ContaBancariaApplicationService(
+            ContaBancariaRepository contaBancariaRepository,
+            FinanceiroExtratoAcessoService extratoAcessoService) {
         this.contaBancariaRepository = contaBancariaRepository;
+        this.extratoAcessoService = extratoAcessoService;
     }
 
     /** Classificação de todas as contas (endpoint para o frontend consumir no B4). */
     @Transactional(readOnly = true)
     public List<ContaBancariaResponse> listar() {
+        Optional<Set<Integer>> permitidos = extratoAcessoService.numerosBancosPermitidos();
         return contaBancariaRepository.findAllByOrderByNumeroBancoAsc().stream()
+                .filter(c -> permitidos.isEmpty() || permitidos.get().contains(c.getNumeroBanco()))
                 .map(c -> new ContaBancariaResponse(
                         c.getNumeroBanco(),
                         c.getBancoNome(),

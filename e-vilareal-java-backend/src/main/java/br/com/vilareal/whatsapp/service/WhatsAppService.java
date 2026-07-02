@@ -198,6 +198,21 @@ public class WhatsAppService {
             String mediaId,
             String mimeType,
             String filename) {
+        processInboundMessage(
+                from, body, type, waMessageId, contactName, mediaId, mimeType, filename, Instant.now());
+    }
+
+    @Transactional
+    public void processInboundMessage(
+            String from,
+            String body,
+            String type,
+            String waMessageId,
+            String contactName,
+            String mediaId,
+            String mimeType,
+            String filename,
+            Instant receivedAt) {
         if (!StringUtils.hasText(waMessageId)) {
             log.warn("Mensagem inbound ignorada: waMessageId ausente");
             return;
@@ -222,6 +237,7 @@ public class WhatsAppService {
         msg.setMediaId(mediaId);
         msg.setMediaMimeType(mimeType);
         msg.setMediaFilename(filename);
+        msg.setCreatedAt(receivedAt != null ? receivedAt : Instant.now());
 
         Long clienteId = resolveClienteId(from);
         Long processoId = resolveProcessoIdInbound(from);
@@ -296,7 +312,7 @@ public class WhatsAppService {
     @Transactional
     public void processInboundMessage(
             String from, String body, String type, String waMessageId, String contactName) {
-        processInboundMessage(from, body, type, waMessageId, contactName, null, null, null);
+        processInboundMessage(from, body, type, waMessageId, contactName, null, null, null, Instant.now());
     }
 
     private static String montarConteudoInbound(String body, WhatsAppMessageType messageType, String filename) {
@@ -492,6 +508,7 @@ public class WhatsAppService {
         msg.setStatus(WhatsAppMessageStatus.SENT);
         msg.setClienteId(clienteId);
         msg.setProcessoId(processoId);
+        msg.setCreatedAt(Instant.now());
 
         try {
             whatsAppMessageRepository.save(msg);

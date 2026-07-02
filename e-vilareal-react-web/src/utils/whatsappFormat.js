@@ -83,6 +83,7 @@ export function formatTimeBR(isoString) {
     timeZone: TZ_BR,
     hour: '2-digit',
     minute: '2-digit',
+    hour12: false,
   });
 }
 

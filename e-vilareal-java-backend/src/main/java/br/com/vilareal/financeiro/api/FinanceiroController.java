@@ -9,6 +9,7 @@ import br.com.vilareal.financeiro.application.LancamentoFinanceiroImportDedupSer
 import br.com.vilareal.financeiro.application.FinanceiroApplicationService;
 import br.com.vilareal.financeiro.application.FinanceiroCompensacaoService;
 import br.com.vilareal.financeiro.application.FinanceiroFaturaSugestaoService;
+import br.com.vilareal.financeiro.application.FinanceiroExtratoAcessoService;
 import br.com.vilareal.financeiro.application.FinanceiroMesApplicationService;
 import br.com.vilareal.financeiro.application.FinanceiroSaudeService;
 import br.com.vilareal.financeiro.application.ClassificacaoAutomaticaService;
@@ -64,6 +65,7 @@ public class FinanceiroController {
     private final ExtratoPosImportApplicationService extratoPosImportService;
     private final ExtratoImportProtecaoService extratoImportProtecaoService;
     private final LancamentoFinanceiroImportDedupService lancamentoImportDedupService;
+    private final FinanceiroExtratoAcessoService extratoAcessoService;
 
     public FinanceiroController(
             FinanceiroApplicationService financeiroService,
@@ -83,7 +85,8 @@ public class FinanceiroController {
             InboxClassificarApplicationService inboxClassificarService,
             ExtratoPosImportApplicationService extratoPosImportService,
             ExtratoImportProtecaoService extratoImportProtecaoService,
-            LancamentoFinanceiroImportDedupService lancamentoImportDedupService) {
+            LancamentoFinanceiroImportDedupService lancamentoImportDedupService,
+            FinanceiroExtratoAcessoService extratoAcessoService) {
         this.financeiroService = financeiroService;
         this.financeiroCartaoService = financeiroCartaoService;
         this.pagamentoFaturaService = pagamentoFaturaService;
@@ -102,6 +105,7 @@ public class FinanceiroController {
         this.extratoPosImportService = extratoPosImportService;
         this.extratoImportProtecaoService = extratoImportProtecaoService;
         this.lancamentoImportDedupService = lancamentoImportDedupService;
+        this.extratoAcessoService = extratoAcessoService;
     }
 
     @GetMapping("/saude")
@@ -371,6 +375,7 @@ public class FinanceiroController {
     @PostMapping("/extrato/pos-import")
     @Operation(description = "Pós-processamento idempotente após upload OFX/PDF (honorários; skip Cora e bancos congelados).")
     public ExtratoPosImportResponse posImportExtrato(@Valid @RequestBody ExtratoPosImportRequest request) {
+        extratoAcessoService.assertAcessoExtratoBanco(request.numeroBanco());
         return extratoPosImportService.rodar(request);
     }
 

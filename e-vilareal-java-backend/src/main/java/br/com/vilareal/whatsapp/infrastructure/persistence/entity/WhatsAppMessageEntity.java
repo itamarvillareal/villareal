@@ -10,6 +10,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
@@ -74,9 +75,16 @@ public class WhatsAppMessageEntity {
     @Column(name = "media_drive_url", length = 500)
     private String mediaDriveUrl;
 
-    @Column(name = "created_at", insertable = false, updatable = false)
+    @Column(name = "created_at")
     private Instant createdAt;
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Instant updatedAt;
+
+    @PrePersist
+    void prePersistTimestamps() {
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
+    }
 }

@@ -195,7 +195,15 @@ public class WhatsAppWebhookController {
             log.debug("Conteúdo: {} (id={}, mediaId={})", body, msgId, mediaId);
 
             whatsAppService.processInboundMessage(
-                    from, body, type, msgId, contactName, mediaId, mimeType, filename);
+                    from,
+                    body,
+                    type,
+                    msgId,
+                    contactName,
+                    mediaId,
+                    mimeType,
+                    filename,
+                    WhatsAppTimestampUtil.fromWebhook(message.timestamp()));
         }
     }
 

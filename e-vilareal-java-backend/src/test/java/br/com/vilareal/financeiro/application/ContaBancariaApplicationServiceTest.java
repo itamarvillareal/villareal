@@ -22,7 +22,9 @@ import static org.mockito.Mockito.when;
 class ContaBancariaApplicationServiceTest {
 
     private final ContaBancariaRepository repo = mock(ContaBancariaRepository.class);
-    private final ContaBancariaApplicationService service = new ContaBancariaApplicationService(repo);
+    private final FinanceiroExtratoAcessoService extratoAcessoService = mock(FinanceiroExtratoAcessoService.class);
+    private final ContaBancariaApplicationService service =
+            new ContaBancariaApplicationService(repo, extratoAcessoService);
 
     private static ContaBancariaEntity conta(Integer numero, String nome, String tipo, boolean extrato) {
         ContaBancariaEntity c = new ContaBancariaEntity();
@@ -116,6 +118,7 @@ class ContaBancariaApplicationServiceTest {
 
     @Test
     void listarMapeiaClassificacao() {
+        when(extratoAcessoService.numerosBancosPermitidos()).thenReturn(Optional.empty());
         when(repo.findAllByOrderByNumeroBancoAsc()).thenReturn(List.of(
                 conta(1, "Itau", "REAL", true),
                 conta(9, "LANÇ MANUAIS", "MANUAL", false),

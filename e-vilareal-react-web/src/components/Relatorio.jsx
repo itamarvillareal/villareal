@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { Columns3, FileSpreadsheet, FileText, Loader2, Trash2 } from 'lucide-react';
+import { Columns3, Download, FileSpreadsheet, FileText, Loader2, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { RelatorioUltimoAndamentoHeader } from './RelatorioUltimoAndamentoHeader.jsx';
 import { RelatorioPresetsPanel } from './RelatorioPresetsPanel.jsx';
@@ -34,6 +34,10 @@ import {
   OPCOES_MODO_FILTRO_COLUNA,
   linhaPassaFiltroColunaRelatorio,
 } from '../data/relatorioFiltroColuna.js';
+import {
+  baixarRelatorioProcessosPdf,
+  descreverFiltrosRelatorioProcessos,
+} from '../data/relatorioProcessosPdf.js';
 
 const STORAGE_COLUNAS_RELATORIO = 'vilareal.relatorioProcessos.colunasVisiveis.v1';
 const STORAGE_LARGURA_UNIFORME = 'vilareal.relatorioProcessos.larguraUniforme.v1';
@@ -389,6 +393,8 @@ export function Relatorio() {
   const [selecionados, setSelecionados] = useState(() => new Set());
   const [erroExclusao, setErroExclusao] = useState('');
   const [erroPersistencia, setErroPersistencia] = useState('');
+  const [exportandoPdf, setExportandoPdf] = useState(false);
+  const [erroExportacao, setErroExportacao] = useState('');
   const [salvandoCelula, setSalvandoCelula] = useState(null);
   const selectAllRef = useRef(null);
   const emitindoRelatorioRef = useRef(false);
@@ -746,6 +752,42 @@ export function Relatorio() {
     }
   };
 
+  const exportarPdf = useCallback(async () => {
+    if (!relatorioEmitido || dadosOrdenados.length === 0) return;
+    setExportandoPdf(true);
+    setErroExportacao('');
+    try {
+      const filtrosDescricao = descreverFiltrosRelatorioProcessos({
+        filtroProcessoAtivo,
+        filtrosPorColuna,
+        modoFiltroPorColuna,
+        campoPorColuna,
+        colunas: COLUNAS,
+        totalLinhas: dados.length,
+        linhasFiltradas: dadosOrdenados.length,
+      });
+      baixarRelatorioProcessosPdf({
+        linhas: dadosOrdenados,
+        colunasAtivas,
+        campoPorColuna,
+        filtrosDescricao,
+      });
+    } catch (e) {
+      setErroExportacao(e?.message || 'Falha ao exportar PDF.');
+    } finally {
+      setExportandoPdf(false);
+    }
+  }, [
+    relatorioEmitido,
+    dadosOrdenados,
+    filtroProcessoAtivo,
+    filtrosPorColuna,
+    modoFiltroPorColuna,
+    campoPorColuna,
+    dados.length,
+    colunasAtivas,
+  ]);
+
   return (
     <div className="flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-gradient-to-br from-slate-100 via-indigo-50/40 to-emerald-50/50 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] overscroll-y-contain">
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3">
@@ -843,6 +885,22 @@ export function Relatorio() {
             modoAlteracao={modoAlteracao}
             setModoAlteracao={setModoAlteracao}
           />
+          {relatorioEmitido ? (
+            <button
+              type="button"
+              onClick={() => void exportarPdf()}
+              disabled={exportandoPdf || dadosOrdenados.length === 0 || emitindoRelatorio}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-slate-800 text-sm font-medium hover:bg-slate-50 shadow-sm disabled:opacity-60 disabled:pointer-events-none"
+              title="Exportar processos visíveis (filtros e colunas aplicados) para PDF"
+            >
+              {exportandoPdf ? (
+                <Loader2 className="w-4 h-4 shrink-0 animate-spin" aria-hidden />
+              ) : (
+                <Download className="w-4 h-4 shrink-0" aria-hidden />
+              )}
+              Exportar PDF
+            </button>
+          ) : null}
           <div className="relative" ref={painelColunasRef}>
             <button
               type="button"
@@ -946,6 +1004,9 @@ export function Relatorio() {
             ) : null}
             {erroPersistencia ? (
               <p className="px-4 py-3 text-sm text-red-700 bg-red-50 border-b border-red-100">{erroPersistencia}</p>
+            ) : null}
+            {erroExportacao ? (
+              <p className="px-4 py-3 text-sm text-red-700 bg-red-50 border-b border-red-100">{erroExportacao}</p>
             ) : null}
             <table
               className={`w-full text-sm border-collapse ${larguraUniforme ? 'table-fixed' : ''}`}

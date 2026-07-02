@@ -24,9 +24,13 @@ public class LancamentoFinanceiroImportDedupService {
     }
 
     private final LancamentoFinanceiroRepository lancamentoRepository;
+    private final FinanceiroExtratoAcessoService extratoAcessoService;
 
-    public LancamentoFinanceiroImportDedupService(LancamentoFinanceiroRepository lancamentoRepository) {
+    public LancamentoFinanceiroImportDedupService(
+            LancamentoFinanceiroRepository lancamentoRepository,
+            FinanceiroExtratoAcessoService extratoAcessoService) {
         this.lancamentoRepository = lancamentoRepository;
+        this.extratoAcessoService = extratoAcessoService;
     }
 
     /**
@@ -57,6 +61,7 @@ public class LancamentoFinanceiroImportDedupService {
         if (numeroBanco == null || numerosLancamento == null || numerosLancamento.isEmpty()) {
             return Set.of();
         }
+        extratoAcessoService.assertAcessoExtratoBanco(numeroBanco);
         Set<String> candidatos = new HashSet<>();
         for (String n : numerosLancamento) {
             if (StringUtils.hasText(n)) {

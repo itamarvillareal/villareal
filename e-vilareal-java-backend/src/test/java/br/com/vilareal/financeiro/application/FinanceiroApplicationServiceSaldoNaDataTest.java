@@ -1,5 +1,6 @@
 package br.com.vilareal.financeiro.application;
 
+import br.com.vilareal.financeiro.application.FinanceiroExtratoAcessoService;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoFinanceiroRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.SaldoInicialBancoRepository;
 import org.junit.jupiter.api.Test;
@@ -23,6 +24,9 @@ class FinanceiroApplicationServiceSaldoNaDataTest {
 
     @Mock
     private SaldoInicialBancoRepository saldoInicialRepository;
+
+    @Mock
+    private FinanceiroExtratoAcessoService extratoAcessoService;
 
     @InjectMocks
     private FinanceiroApplicationService service;

@@ -24,6 +24,7 @@ services:
       PROJUDI_CRED_KEY: ${PROJUDI_CRED_KEY:-}
       LANG: C.UTF-8
       LC_ALL: C.UTF-8
+      TZ: UTC
       PROJUDI_ORQUESTRADOR_CREDENCIAL_ID: ${PROJUDI_ORQUESTRADOR_CREDENCIAL_ID:-1}
       # Pipeline Movimentações Email (Gmail + Drive progressivo; perfis noturno/comercial/fim de semana)
       VILAREAL_EMAIL_PROJUDI_PIPELINE_ENABLED: ${VILAREAL_EMAIL_PROJUDI_PIPELINE_ENABLED:-true}

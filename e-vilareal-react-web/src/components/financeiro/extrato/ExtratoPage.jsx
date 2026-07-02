@@ -16,6 +16,10 @@ import {
   removerLancamentosFinanceiroApiEmLote,
 } from '../../../repositories/financeiroRepository.js';
 import { useFinanceiro } from '../FinanceiroContext.jsx';
+import {
+  getBancosExtratoPermitidosUsuario,
+  usuarioPodeAcessarExtratoBanco,
+} from '../../../data/financeiroExtratoAcesso.js';
 import { isSortDataAsc } from '../hooks/useExtratoFilters.js';
 import { useExtratoMesAoSelecionarBanco } from '../hooks/useExtratoMesAoSelecionarBanco.js';
 import { FINANCEIRO_REFRESH_PENDENTES, dispatchRefreshPendentes } from '../hooks/useKeyboardShortcuts.js';
@@ -37,6 +41,21 @@ export function ExtratoPage() {
   const toast = useFinanceiroToast();
 
   useExtratoMesAoSelecionarBanco(bancoAtivo, filters.mes, setMes);
+
+  useEffect(() => {
+    const permitidos = getBancosExtratoPermitidosUsuario();
+    if (permitidos == null) return undefined;
+
+    if (bancoAtivo != null && !usuarioPodeAcessarExtratoBanco(bancoAtivo)) {
+      setBanco(permitidos[0] ?? null);
+      return undefined;
+    }
+    if (bancoAtivo == null && permitidos.length > 0) {
+      setBanco(permitidos[0]);
+    }
+    return undefined;
+  }, [bancoAtivo, setBanco]);
+
   const scrollRef = useRef(null);
   const fetchKeyRef = useRef('');
   const paginasCacheRef = useRef(new Map());
