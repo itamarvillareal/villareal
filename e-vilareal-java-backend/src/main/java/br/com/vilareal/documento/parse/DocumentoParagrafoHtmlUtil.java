@@ -64,7 +64,14 @@ public final class DocumentoParagrafoHtmlUtil {
             }
             return List.of();
         }
-        return htmlToParagrafos(trimmed, tipoPadrao);
+        List<ParagrafoDocumento> paragrafos = htmlToParagrafos(trimmed, tipoPadrao);
+        if (paragrafos.isEmpty()) {
+            String texto = doc.body().wholeText();
+            if (StringUtils.hasText(texto)) {
+                return splitPlainTextToParagrafos(texto, tipoPadrao);
+            }
+        }
+        return paragrafos;
     }
 
     private static List<ParagrafoDocumento> splitPlainTextToParagrafos(String texto, TipoParagrafo tipo) {

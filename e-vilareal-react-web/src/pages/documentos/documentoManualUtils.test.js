@@ -4,6 +4,7 @@ import {
   coletarPayloadManualParaPdf,
   htmlSecaoTemTexto,
   normalizarPayloadManualPdf,
+  sanitizarHtmlSecao,
   sincronizarFormManualComEditores,
 } from './documentoManualUtils.js';
 
@@ -31,6 +32,19 @@ describe('documentoManualUtils', () => {
 
     it('retorna true quando há texto visível', () => {
       expect(htmlSecaoTemTexto('<p>Embora tenha sido o processo extinto.</p>')).toBe(true);
+    });
+  });
+
+  describe('sanitizarHtmlSecao', () => {
+    it('envolve br inicial em parágrafo', () => {
+      expect(sanitizarHtmlSecao('<br>Embora tenha sido o processo extinto.')).toBe(
+        '<p>Embora tenha sido o processo extinto.</p>',
+      );
+    });
+
+    it('preserva html já estruturado', () => {
+      const html = '<div>Texto dos fatos.</div>';
+      expect(sanitizarHtmlSecao(html)).toBe(html);
     });
   });
 

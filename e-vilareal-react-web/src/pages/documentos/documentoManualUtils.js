@@ -9,6 +9,22 @@ export function htmlSecaoTemTexto(html) {
   return plain.length > 0;
 }
 
+/** Normaliza HTML gerado pelo contentEditable antes de enviar ao PDF. */
+export function sanitizarHtmlSecao(html) {
+  let raw = String(html ?? '').trim();
+  if (!raw) return '';
+
+  // Chrome/contentEditable costuma gerar "<br>texto" — o backend perde isso na normalização.
+  if (/^<br\s*\/?>/i.test(raw) && !/^<(p|div)\b/i.test(raw)) {
+    raw = raw.replace(/^<br\s*\/?>\s*/i, '');
+    if (htmlSecaoTemTexto(raw)) {
+      return `<p>${raw}</p>`;
+    }
+  }
+
+  return raw;
+}
+
 function aplicarEditoresDom(base, root) {
   if (!base) return base;
   const container =
@@ -25,7 +41,7 @@ function aplicarEditoresDom(base, root) {
     const html = el.innerHTML;
 
     if (key === 'preambulo') {
-      next = { ...next, preambulo: html };
+      next = { ...next, preambulo: sanitizarHtmlSecao(html) };
       continue;
     }
 
@@ -34,7 +50,7 @@ function aplicarEditoresDom(base, root) {
       const index = Number(secaoMatch[1]);
       const secoes = [...(next.secoes || [])];
       if (secoes[index]) {
-        secoes[index] = { ...secoes[index], conteudo: html };
+        secoes[index] = { ...secoes[index], conteudo: sanitizarHtmlSecao(html) };
         next = { ...next, secoes };
       }
     }
@@ -53,7 +69,7 @@ export function normalizarPayloadManualPdf(payload) {
   const secoes = (payload.secoes || [])
     .map((s) => ({
       titulo: String(s?.titulo ?? '').trim(),
-      conteudo: String(s?.conteudo ?? '').trim(),
+      conteudo: sanitizarHtmlSecao(String(s?.conteudo ?? '').trim()),
     }))
     .filter((s) => s.titulo && htmlSecaoTemTexto(s.conteudo));
 
@@ -65,7 +81,7 @@ export function normalizarPayloadManualPdf(payload) {
     ...payload,
     enderecamento: String(payload.enderecamento ?? '').trim(),
     numeroProcesso: payload.numeroProcesso ? String(payload.numeroProcesso).trim() : null,
-    preambulo: String(payload.preambulo ?? '').trim(),
+    preambulo: sanitizarHtmlSecao(String(payload.preambulo ?? '').trim()),
     secoes,
     pedidos,
   };

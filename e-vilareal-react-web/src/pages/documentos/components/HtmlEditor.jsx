@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { sanitizarHtmlSecao } from '../documentoManualUtils.js';
 import {
   AlignCenter,
   AlignJustify,
@@ -329,7 +330,7 @@ export function HtmlEditor({
 
   const sincronizarHtml = (el) => {
     if (!el) return;
-    onChange?.(el.innerHTML);
+    onChange?.(sanitizarHtmlSecao(el.innerHTML));
   };
 
   return (
@@ -349,7 +350,7 @@ export function HtmlEditor({
         contentEditable
         suppressContentEditableWarning
         data-html-editor={editorKey || undefined}
-        onInput={(e) => onChange?.(e.currentTarget.innerHTML)}
+        onInput={(e) => onChange?.(sanitizarHtmlSecao(e.currentTarget.innerHTML))}
         onBlur={(e) => sincronizarHtml(e.currentTarget)}
         className={surfaceClass}
         style={{ minHeight }}

@@ -48,6 +48,14 @@ class DocumentoParagrafoHtmlUtilTest {
     }
 
     @Test
+    void normalizarHtmlLegadoCorpo_brSeguidoDeTexto() {
+        String html = DocumentoParagrafoHtmlUtil.normalizarHtmlLegadoCorpo(
+                "<br>Embora tenha sido o processo extinto por sentença.");
+
+        assertThat(html).contains("Embora tenha sido");
+    }
+
+    @Test
     void normalizarHtmlLegadoCorpo_preservaCitacaoSublinhadoDestacado() {
         String html = DocumentoParagrafoHtmlUtil.normalizarHtmlLegadoCorpo(
                 "<p>Parágrafo com <u>sublinhado</u> e <mark>destaque</mark>.</p>"
