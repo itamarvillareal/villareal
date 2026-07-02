@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
@@ -24,17 +25,8 @@ public class ProcessoUnidadeClienteLookupService {
 
     @Transactional(readOnly = true)
     public Optional<ProcessoEntity> buscarPorCodigoUnidade(long clienteId, String codigoUnidade) {
-        if (clienteId < 1 || !StringUtils.hasText(codigoUnidade)) {
-            return Optional.empty();
-        }
-        String codigo = CobrancaUnidadeFormatUtil.normalizarCodigoUnidade(codigoUnidade);
-        for (String chave : CobrancaUnidadeFormatUtil.chavesBuscaProcessoPorCodigo(codigo)) {
-            Optional<ProcessoEntity> found = processoRepository.findByCliente_IdAndUnidade(clienteId, chave);
-            if (found.isPresent()) {
-                return found;
-            }
-        }
-        return Optional.empty();
+        List<ProcessoEntity> procs = listarTodosPorCodigoUnidade(clienteId, codigoUnidade);
+        return procs.isEmpty() ? Optional.empty() : Optional.of(procs.getFirst());
     }
 
     @Transactional(readOnly = true)
@@ -52,6 +44,8 @@ public class ProcessoUnidadeClienteLookupService {
                 }
             }
         }
+        out.sort(Comparator.comparing(ProcessoEntity::getNumeroInterno, Comparator.nullsLast(Integer::compareTo))
+                .thenComparing(ProcessoEntity::getId));
         return out;
     }
 }
