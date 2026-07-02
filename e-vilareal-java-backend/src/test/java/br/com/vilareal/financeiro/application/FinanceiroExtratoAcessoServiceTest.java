@@ -44,14 +44,15 @@ class FinanceiroExtratoAcessoServiceTest {
     }
 
     @Test
-    void karla_apenasBbECef() {
+    void karla_apenasBbCefECora() {
         autenticar("karla.pedroza");
         when(usuarioRepository.findWithPerfilByLoginIgnoreCase("karla.pedroza"))
                 .thenReturn(Optional.of(usuario(2L, "karla.pedroza")));
 
-        assertThat(service.numerosBancosPermitidos()).hasValue(Set.of(3, 5));
+        assertThat(service.numerosBancosPermitidos()).hasValue(Set.of(3, 5, 26));
         assertThatCode(() -> service.assertAcessoExtratoBanco(3)).doesNotThrowAnyException();
         assertThatCode(() -> service.assertAcessoExtratoBanco(5)).doesNotThrowAnyException();
+        assertThatCode(() -> service.assertAcessoExtratoBanco(26)).doesNotThrowAnyException();
         assertThatThrownBy(() -> service.assertAcessoExtratoBanco(1))
                 .isInstanceOf(AccessDeniedException.class);
     }

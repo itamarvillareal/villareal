@@ -10,8 +10,10 @@ import {
 export const NUMERO_BANCO_BB = 3;
 /** Caixa Econômica Federal */
 export const NUMERO_BANCO_CEF = 5;
+/** Cora */
+export const NUMERO_BANCO_CORA = 26;
 
-const BANCOS_KARLA = [NUMERO_BANCO_BB, NUMERO_BANCO_CEF];
+const BANCOS_KARLA = [NUMERO_BANCO_BB, NUMERO_BANCO_CEF, NUMERO_BANCO_CORA];
 const KARLA_PERFIL_IDS = new Set(['karla', '2']);
 
 export function usuarioTemAcessoTotalExtratos(perfilId, login) {
