@@ -31,6 +31,8 @@ class CondoIdUnidadesProprietariosXlsReaderTest {
         assertEquals("ALEX SOUSA GUEDES", lt01.proprietario().nome());
         assertEquals("03772491146", lt01.proprietario().cpfCnpjNormalizado());
         assertEquals("alexsousa.15@gmail.cm", lt01.proprietario().emails().getFirst());
+        assertEquals(1, lt01.coproprietarios().size());
+        assertEquals("MARIA DA PENHA PERES MOURA", lt01.coproprietarios().getFirst().nome());
 
         UnidadePlanilhaLinhaDto lt02 = r.linhas().get(1);
         assertEquals("QD01-LT02", lt02.codigoUnidade());

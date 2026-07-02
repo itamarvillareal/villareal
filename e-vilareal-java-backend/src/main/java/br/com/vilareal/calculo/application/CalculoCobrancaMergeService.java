@@ -56,10 +56,17 @@ public class CalculoCobrancaMergeService {
         List<DimResumo> dims = carregarDimensoes(cod8, numeroProcesso);
         List<ResultadoMerge.DebitoIgnorado> ignorados = new ArrayList<>();
         Map<Integer, List<DebitoNovo>> filaPorDim = new LinkedHashMap<>();
+        Map<String, Long> vencimentosCadastrados = carregarVencimentosCadastrados(cod8, numeroProcesso, dims);
 
         if (dims.isEmpty()) {
             if (!entrada.isEmpty()) {
-                filaPorDim.put(0, new ArrayList<>(entrada));
+                List<DebitoNovo> fila0 = new ArrayList<>();
+                for (DebitoNovo debito : entrada) {
+                    validarSemConflitoValor(vencimentosCadastrados, debito);
+                    registrarVencimentoValor(vencimentosCadastrados, debito);
+                    fila0.add(debito);
+                }
+                filaPorDim.put(0, fila0);
             }
         } else {
             Map<Integer, Set<String>> chavesPorDim = new HashMap<>();
@@ -83,6 +90,7 @@ public class CalculoCobrancaMergeService {
                     }
                 }
                 if (!resolvido) {
+                    validarSemConflitoValor(vencimentosCadastrados, debito);
                     if (alvo == null) {
                         int novaDim = dims.stream().mapToInt(DimResumo::dimensao).max().orElse(-1) + 1;
                         alvo = novaDim;
@@ -92,6 +100,7 @@ public class CalculoCobrancaMergeService {
                     }
                     filaPorDim.computeIfAbsent(alvo, k -> new ArrayList<>()).add(debito);
                     chavesPorDim.get(alvo).add(chave);
+                    registrarVencimentoValor(vencimentosCadastrados, debito);
                 }
             }
         }
@@ -145,6 +154,84 @@ public class CalculoCobrancaMergeService {
             }
         }
         return chaves;
+    }
+
+    private Map<String, Long> carregarVencimentosCadastrados(String cod8, int numeroProcesso, List<DimResumo> dims) {
+        Map<String, Long> out = new LinkedHashMap<>();
+        for (DimResumo d : dims) {
+            mesclarVencimentosDimensao(out, extrairVencimentoValorCentavos(cod8, numeroProcesso, d.dimensao()));
+        }
+        return out;
+    }
+
+    private Map<String, Long> extrairVencimentoValorCentavos(String cod8, int numeroProcesso, int dimensao) {
+        Map<String, Long> out = new LinkedHashMap<>();
+        Optional<JsonNode> opt = calculoApplicationService.obterRodada(cod8, numeroProcesso, dimensao);
+        if (opt.isEmpty() || !opt.get().isObject()) {
+            return out;
+        }
+        JsonNode titulos = opt.get().get("titulos");
+        if (titulos == null || !titulos.isArray()) {
+            return out;
+        }
+        for (JsonNode t : titulos) {
+            if (t == null || !t.isObject()) {
+                continue;
+            }
+            String data = CalculoApplicationService.normalizaDataVencimento(textOrEmpty(t.get("dataVencimento")));
+            long centavos = CalculoApplicationService.parseValorInicialParaCentavos(textOrEmpty(t.get("valorInicial")));
+            if (data.isEmpty() || centavos <= 0) {
+                continue;
+            }
+            Long existente = out.get(data);
+            if (existente != null && existente != centavos) {
+                throw new BusinessRuleException(
+                        "Revisão manual necessária: cálculo existente inconsistente para vencimento "
+                                + textOrEmpty(t.get("dataVencimento"))
+                                + ".");
+            }
+            out.put(data, centavos);
+        }
+        return out;
+    }
+
+    private static void mesclarVencimentosDimensao(Map<String, Long> destino, Map<String, Long> origem) {
+        for (Map.Entry<String, Long> e : origem.entrySet()) {
+            Long existente = destino.get(e.getKey());
+            if (existente != null && !existente.equals(e.getValue())) {
+                throw new BusinessRuleException(
+                        "Revisão manual necessária: vencimento "
+                                + e.getKey()
+                                + " com valores diferentes entre dimensões do cálculo.");
+            }
+            destino.put(e.getKey(), e.getValue());
+        }
+    }
+
+    private static void validarSemConflitoValor(Map<String, Long> vencimentosCadastrados, DebitoNovo debito) {
+        String venc = CalculoApplicationService.normalizaDataVencimento(debito.vencimento());
+        if (venc.isEmpty() || debito.valorCentavos() <= 0) {
+            return;
+        }
+        Long existente = vencimentosCadastrados.get(venc);
+        if (existente != null && existente != debito.valorCentavos()) {
+            throw new BusinessRuleException(
+                    "Revisão manual necessária: vencimento "
+                            + debito.vencimento()
+                            + " já cadastrado com valor "
+                            + formatBrl(existente)
+                            + ", mas o PDF/planilha traz "
+                            + formatBrl(debito.valorCentavos())
+                            + ".");
+        }
+    }
+
+    private static void registrarVencimentoValor(Map<String, Long> vencimentosCadastrados, DebitoNovo debito) {
+        String venc = CalculoApplicationService.normalizaDataVencimento(debito.vencimento());
+        if (venc.isEmpty() || debito.valorCentavos() <= 0) {
+            return;
+        }
+        vencimentosCadastrados.put(venc, debito.valorCentavos());
     }
 
     private List<ResultadoMerge.InsercaoDebito> persistirInsercoes(

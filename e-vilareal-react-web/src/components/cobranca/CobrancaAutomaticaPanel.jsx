@@ -14,12 +14,13 @@ import {
 } from '../../domain/cobrancaRegraInicio.js';
 import {
   baixarRelatorioPdf,
+  diagnosticarProprietariosCobranca,
   extrairCobranca,
   extrairCobrancaPdf,
   processarCobranca,
 } from '../../repositories/cobrancaRepository.js';
 import { clienteUsaEntradaPdfCobranca } from './cobrancaEntradaPorCliente.js';
-import { mesclarProprietariosPlanilhaNaExtracao } from './cobrancaMesclarProprietariosPlanilha.js';
+import { mesclarProprietariosPlanilhaNaExtracao, montarPayloadDiagnosticoProprietarios } from './cobrancaMesclarProprietariosPlanilha.js';
 import { extrairUnidadesPessoasPlanilha } from '../../repositories/condominioUnidadesPessoasRepository.js';
 import { downloadPdfBlob } from '../../repositories/documentosRepository.js';
 import { BlocoReversaoImportacao } from '../importacao/BlocoReversaoImportacao.jsx';
@@ -185,6 +186,45 @@ function condominioDivergeDoCliente(condominioNome, clienteNome) {
   return true;
 }
 
+function labelClasseDiagnostico(classe) {
+  switch (classe) {
+    case 'MESMO_REU':
+      return 'Mesmo réu';
+    case 'TROCA_DONO':
+      return 'Troca de dono';
+    case 'EX_DONO_LEGADO':
+      return 'Ex-dono no legado';
+    case 'CPF_CORRIGIDO':
+      return 'CPF corrigido';
+    case 'COPROPRIETARIOS':
+      return 'Co-proprietários';
+    case 'SEM_PROPRIETARIO':
+      return 'Sem proprietário';
+    case 'SEM_LEGADO':
+      return 'Sem legado';
+    default:
+      return classe || '—';
+  }
+}
+
+function estiloClasseDiagnostico(classe) {
+  switch (classe) {
+    case 'MESMO_REU':
+    case 'SEM_LEGADO':
+      return 'bg-emerald-100 text-emerald-800';
+    case 'TROCA_DONO':
+    case 'CPF_CORRIGIDO':
+    case 'COPROPRIETARIOS':
+      return 'bg-amber-100 text-amber-900';
+    case 'EX_DONO_LEGADO':
+      return 'bg-orange-100 text-orange-900';
+    case 'SEM_PROPRIETARIO':
+      return 'bg-red-100 text-red-800';
+    default:
+      return 'bg-slate-100 text-slate-700';
+  }
+}
+
 /**
  * Fluxo de cobrança automática embutido na ficha do cliente (.xls ou PDF Condo Id).
  * @param {{ clienteCodigo: string, clienteNome?: string }} props
@@ -202,6 +242,7 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
   const [fileInputKey, setFileInputKey] = useState(0);
   const [fileInputKeyPlanilha, setFileInputKeyPlanilha] = useState(0);
   const [extracao, setExtracao] = useState(null);
+  const [diagnosticoProprietarios, setDiagnosticoProprietarios] = useState(null);
   const [processResult, setProcessResult] = useState(null);
   const [loadingExtrair, setLoadingExtrair] = useState(false);
   const [loadingExtrairPlanilha, setLoadingExtrairPlanilha] = useState(false);
@@ -245,6 +286,7 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
     setFileInputKey((k) => k + 1);
     setFileInputKeyPlanilha((k) => k + 1);
     setExtracao(null);
+    setDiagnosticoProprietarios(null);
     setProcessResult(null);
     setErro(null);
     setCopiado(false);
@@ -270,6 +312,7 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
         ? await extrairCobrancaPdf(codigoCliente, arquivoRelatorio)
         : await extrairCobranca(arquivoRelatorio);
       setExtracao(data);
+      setDiagnosticoProprietarios(null);
       setProcessResult(null);
       setArquivoPlanilhaProprietarios(null);
       setFileInputKeyPlanilha((k) => k + 1);
@@ -312,6 +355,19 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
         return;
       }
       setExtracao(merged);
+      try {
+        const diag = await diagnosticarProprietariosCobranca(
+          montarPayloadDiagnosticoProprietarios(codigoCliente, merged, planilha),
+        );
+        setDiagnosticoProprietarios(diag);
+      } catch (diagErr) {
+        setDiagnosticoProprietarios(null);
+        setErro(
+          (prev) =>
+            prev ||
+            `Planilha mesclada, mas o diagnóstico de proprietários falhou: ${diagErr?.message || String(diagErr)}`,
+        );
+      }
       setStep2Modo('revisao');
     } catch (e) {
       setErro(e?.message || String(e));
@@ -403,6 +459,13 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
       setErro('Não foi possível copiar para a área de transferência.');
     }
   }, [textoResumo]);
+
+  const resumoDiagnostico = useMemo(() => diagnosticoProprietarios?.resumo ?? null, [diagnosticoProprietarios]);
+
+  const itensDiagnosticoAtencao = useMemo(() => {
+    const itens = diagnosticoProprietarios?.itens || [];
+    return itens.filter((it) => it.classe !== 'MESMO_REU' && it.classe !== 'SEM_LEGADO');
+  }, [diagnosticoProprietarios]);
 
   const rotuloRelatorio =
     extracao?.condominioNome || extracao?.dataReferencia
@@ -583,6 +646,60 @@ export function CobrancaAutomaticaPanel({ clienteCodigo, clienteNome }) {
               </dd>
             </div>
           </dl>
+          {resumoDiagnostico && usaPdf && (
+            <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950 space-y-1">
+              <p className="font-medium">Diagnóstico proprietário (planilha vs legado)</p>
+              <p className="tabular-nums">
+                Mesmo réu: {resumoDiagnostico.mesmoReu ?? 0} · Troca de dono:{' '}
+                {resumoDiagnostico.trocaDono ?? 0} · Co-proprietários:{' '}
+                {resumoDiagnostico.coproprietarios ?? 0} · CPF corrigido:{' '}
+                {resumoDiagnostico.cpfCorrigido ?? 0}
+              </p>
+              {itensDiagnosticoAtencao.length > 0 && (
+                <p className="text-amber-900">
+                  {itensDiagnosticoAtencao.length} unidade(s) exigem atenção antes de processar.
+                </p>
+              )}
+            </div>
+          )}
+          {diagnosticoProprietarios?.itens?.length > 0 && usaPdf && (
+            <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50 text-slate-600">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-medium">Unidade</th>
+                    <th className="text-left px-3 py-2 font-medium">Classe</th>
+                    <th className="text-left px-3 py-2 font-medium">Planilha</th>
+                    <th className="text-left px-3 py-2 font-medium">Legado</th>
+                    <th className="text-left px-3 py-2 font-medium">Mensagem</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {diagnosticoProprietarios.itens
+                    .filter((it) => it.classe !== 'MESMO_REU')
+                    .map((it) => (
+                      <tr key={it.codigoUnidade} className="text-slate-800">
+                        <td className="px-3 py-2 font-mono text-xs">{it.codigoUnidade}</td>
+                        <td className="px-3 py-2">
+                          <span
+                            className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${estiloClasseDiagnostico(it.classe)}`}
+                          >
+                            {labelClasseDiagnostico(it.classe)}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 max-w-[180px] truncate" title={it.proprietarioEfetivoNome}>
+                          {it.proprietarioEfetivoNome || '—'}
+                        </td>
+                        <td className="px-3 py-2 max-w-[180px] truncate" title={it.proprietarioLegadoNome}>
+                          {it.proprietarioLegadoNome || '—'}
+                        </td>
+                        <td className="px-3 py-2 text-xs text-slate-600">{it.mensagem}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
           <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
             <table className="min-w-full text-sm">
               <thead className="bg-slate-50 text-slate-600">

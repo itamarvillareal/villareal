@@ -51,6 +51,7 @@ public class CobrancaUnidadeResolverService {
 
     private final PessoaRepository pessoaRepository;
     private final PessoaApplicationService pessoaApplicationService;
+    private final ProcessoUnidadeClienteLookupService processoUnidadeLookup;
     private final ProcessoRepository processoRepository;
     private final ProcessoParteRepository processoParteRepository;
     private final ProcessoApplicationService processoApplicationService;
@@ -59,12 +60,14 @@ public class CobrancaUnidadeResolverService {
     public CobrancaUnidadeResolverService(
             PessoaRepository pessoaRepository,
             PessoaApplicationService pessoaApplicationService,
+            ProcessoUnidadeClienteLookupService processoUnidadeLookup,
             ProcessoRepository processoRepository,
             ProcessoParteRepository processoParteRepository,
             ProcessoApplicationService processoApplicationService,
             ClaudeApiService claudeApiService) {
         this.pessoaRepository = pessoaRepository;
         this.pessoaApplicationService = pessoaApplicationService;
+        this.processoUnidadeLookup = processoUnidadeLookup;
         this.processoRepository = processoRepository;
         this.processoParteRepository = processoParteRepository;
         this.processoApplicationService = processoApplicationService;
@@ -198,15 +201,7 @@ public class CobrancaUnidadeResolverService {
     }
 
     private Optional<ProcessoEntity> buscarProcessoPorCodigoUnidade(long clienteId, String codigoUnidade) {
-        for (String chave : CobrancaUnidadeFormatUtil.chavesBuscaProcessoPorCodigo(codigoUnidade)) {
-            Optional<ProcessoEntity> found = processoRepository.findByCliente_IdAndUnidade(clienteId, chave);
-            if (found.isPresent()) {
-                ProcessoEntity proc = found.get();
-                garantirNumeroInternoValido(proc, clienteId);
-                return Optional.of(proc);
-            }
-        }
-        return Optional.empty();
+        return processoUnidadeLookup.buscarPorCodigoUnidade(clienteId, codigoUnidade);
     }
 
     private void garantirUnidadeProcesso(ProcessoEntity proc, String unidadeProcesso) {

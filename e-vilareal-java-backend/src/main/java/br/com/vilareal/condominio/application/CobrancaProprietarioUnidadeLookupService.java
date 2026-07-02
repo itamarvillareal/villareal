@@ -5,7 +5,6 @@ import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaReposi
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoParteEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoParteRepository;
-import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -20,15 +19,15 @@ public class CobrancaProprietarioUnidadeLookupService {
 
     private static final String POLO_REU = "REU";
 
-    private final ProcessoRepository processoRepository;
+    private final ProcessoUnidadeClienteLookupService processoUnidadeLookup;
     private final ProcessoParteRepository processoParteRepository;
     private final PessoaRepository pessoaRepository;
 
     public CobrancaProprietarioUnidadeLookupService(
-            ProcessoRepository processoRepository,
+            ProcessoUnidadeClienteLookupService processoUnidadeLookup,
             ProcessoParteRepository processoParteRepository,
             PessoaRepository pessoaRepository) {
-        this.processoRepository = processoRepository;
+        this.processoUnidadeLookup = processoUnidadeLookup;
         this.processoParteRepository = processoParteRepository;
         this.pessoaRepository = pessoaRepository;
     }
@@ -40,24 +39,22 @@ public class CobrancaProprietarioUnidadeLookupService {
         if (!StringUtils.hasText(codigoUnidade)) {
             return Optional.empty();
         }
-        for (String chave : CobrancaUnidadeFormatUtil.chavesBuscaProcessoPorCodigo(codigoUnidade)) {
-            Optional<ProcessoEntity> procOpt = processoRepository.findByCliente_IdAndUnidade(clienteId, chave);
-            if (procOpt.isEmpty()) {
+        Optional<ProcessoEntity> procOpt = processoUnidadeLookup.buscarPorCodigoUnidade(clienteId, codigoUnidade);
+        if (procOpt.isEmpty()) {
+            return Optional.empty();
+        }
+        List<Long> reuIds = listarReuPessoaIds(procOpt.get().getId());
+        for (Long pessoaId : reuIds) {
+            Optional<PessoaEntity> pessoaOpt = pessoaRepository.findById(pessoaId);
+            if (pessoaOpt.isEmpty()) {
                 continue;
             }
-            List<Long> reuIds = listarReuPessoaIds(procOpt.get().getId());
-            for (Long pessoaId : reuIds) {
-                Optional<PessoaEntity> pessoaOpt = pessoaRepository.findById(pessoaId);
-                if (pessoaOpt.isEmpty()) {
-                    continue;
-                }
-                PessoaEntity pessoa = pessoaOpt.get();
-                String doc = somenteDigitos(pessoa.getCpf());
-                if (!StringUtils.hasText(pessoa.getNome()) || (doc.length() != 11 && doc.length() != 14)) {
-                    continue;
-                }
-                return Optional.of(new ProprietarioUnidade(pessoa.getNome().trim(), doc));
+            PessoaEntity pessoa = pessoaOpt.get();
+            String doc = somenteDigitos(pessoa.getCpf());
+            if (!StringUtils.hasText(pessoa.getNome()) || (doc.length() != 11 && doc.length() != 14)) {
+                continue;
             }
+            return Optional.of(new ProprietarioUnidade(pessoa.getNome().trim(), doc));
         }
         return Optional.empty();
     }

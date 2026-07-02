@@ -134,7 +134,7 @@ public class CondominioUnidadesPessoasPlanilhaApplicationService {
             }
 
             enriquecidas.add(new UnidadePlanilhaLinhaDto(
-                    raw.codigoUnidade(), pr, iq, raw.endereco(), sitProp, sitInq));
+                    raw.codigoUnidade(), pr, iq, raw.endereco(), sitProp, sitInq, raw.coproprietarios()));
         }
 
         UnidadesPessoasExtracaoResumoDto resumo = new UnidadesPessoasExtracaoResumoDto(

@@ -9,4 +9,15 @@ public record CobrancaUnidadeParsed(
         String codigoUnidadeNormalizada,
         String proprietarioNome,
         String proprietarioDocDigitos,
-        List<InadimplenciaCobrancaDto> cobrancas) {}
+        List<InadimplenciaCobrancaDto> cobrancas,
+        String proprietarioLegadoNome,
+        String proprietarioLegadoDocDigitos) {
+
+    public CobrancaUnidadeParsed(
+            String codigoUnidadeNormalizada,
+            String proprietarioNome,
+            String proprietarioDocDigitos,
+            List<InadimplenciaCobrancaDto> cobrancas) {
+        this(codigoUnidadeNormalizada, proprietarioNome, proprietarioDocDigitos, cobrancas, null, null);
+    }
+}

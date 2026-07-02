@@ -9,4 +9,15 @@ public record CobrancaUnidadeRequestDto(
         @NotBlank String codigoUnidadeNormalizada,
         @NotBlank String proprietarioNome,
         @NotBlank String proprietarioDocDigitos,
-        @NotNull List<InadimplenciaCobrancaDto> cobrancas) {}
+        @NotNull List<InadimplenciaCobrancaDto> cobrancas,
+        String proprietarioLegadoNome,
+        String proprietarioLegadoDocDigitos) {
+
+    public CobrancaUnidadeRequestDto(
+            String codigoUnidadeNormalizada,
+            String proprietarioNome,
+            String proprietarioDocDigitos,
+            List<InadimplenciaCobrancaDto> cobrancas) {
+        this(codigoUnidadeNormalizada, proprietarioNome, proprietarioDocDigitos, cobrancas, null, null);
+    }
+}

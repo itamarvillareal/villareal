@@ -155,8 +155,17 @@ public final class CondoIdUnidadesProprietariosXlsReader {
         }
         PlanilhaPessoaDto proprietario = principal.toPlanilhaPessoa();
         PlanilhaPessoaDto inquilino = new PlanilhaPessoaDto("", "", "", "", List.of(), List.of());
+        List<PlanilhaPessoaDto> coproprietarios = new ArrayList<>();
+        for (LinhaPessoaBruta p : pessoas) {
+            if (p == principal) {
+                continue;
+            }
+            if (p.temConteudo()) {
+                coproprietarios.add(p.toPlanilhaPessoa());
+            }
+        }
         return Optional.of(new UnidadePlanilhaLinhaDto(
-                codUnidade, proprietario, inquilino, endereco, "PENDENTE", "PENDENTE"));
+                codUnidade, proprietario, inquilino, endereco, "PENDENTE", "PENDENTE", List.copyOf(coproprietarios)));
     }
 
     private static LinhaPessoaBruta lerLinhaPessoa(Row row, DataFormatter fmt) {

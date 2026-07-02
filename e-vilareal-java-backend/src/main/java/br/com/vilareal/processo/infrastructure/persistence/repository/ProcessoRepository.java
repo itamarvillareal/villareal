@@ -133,6 +133,18 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
     Optional<ProcessoEntity> findByCliente_IdAndUnidade(
             @Param("clienteId") Long clienteId, @Param("unidade") String unidade);
 
+    @Query(
+            """
+            SELECT p FROM ProcessoEntity p
+            WHERE p.cliente.id = :clienteId
+              AND LOWER(TRIM(p.unidade)) = LOWER(TRIM(:unidade))
+              AND p.unidade IS NOT NULL
+              AND TRIM(p.unidade) <> ''
+            ORDER BY p.numeroInterno ASC, p.id ASC
+            """)
+    List<ProcessoEntity> findAllByCliente_IdAndUnidade(
+            @Param("clienteId") Long clienteId, @Param("unidade") String unidade);
+
     /**
      * Primeiro processo «vazio» do cliente: sem unidade, sem RÉU, sem cálculo dim. 0, sem andamento.
      */

@@ -43,4 +43,18 @@ class CobrancaUnidadeFormatUtilTest {
         assertThat(chaves)
                 .contains("A-0000", "Unidade 0 A", "Unidade 000 A", "000-A", "000 A", "000A");
     }
+
+    @Test
+    void normalizarCodigoUnidade_converteCondoIdQuadraLote() {
+        assertThat(CobrancaUnidadeFormatUtil.normalizarCodigoUnidade("QD12-LT03")).isEqualTo("QD12-LT03");
+        assertThat(CobrancaUnidadeFormatUtil.normalizarCodigoUnidade("qd12lt03")).isEqualTo("QD12-LT03");
+        assertThat(CobrancaUnidadeFormatUtil.normalizarCodigoUnidade("Unidade QD12LT03")).isEqualTo("QD12-LT03");
+        assertThat(CobrancaUnidadeFormatUtil.normalizarCodigoUnidade("qd1-lt3")).isEqualTo("QD01-LT03");
+    }
+
+    @Test
+    void chavesBuscaProcessoPorCodigo_incluiVariantesCondoId() {
+        List<String> chaves = CobrancaUnidadeFormatUtil.chavesBuscaProcessoPorCodigo("QD12-LT03");
+        assertThat(chaves).contains("QD12-LT03", "QD12LT03", "Unidade QD12-LT03", "Unidade QD12LT03");
+    }
 }

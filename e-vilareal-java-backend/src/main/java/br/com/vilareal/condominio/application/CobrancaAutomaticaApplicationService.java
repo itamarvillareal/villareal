@@ -5,6 +5,8 @@ import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.condominio.api.dto.CobrancaExtracaoResponse;
 import br.com.vilareal.condominio.api.dto.CobrancaProcessarErroDto;
 import br.com.vilareal.condominio.api.dto.CobrancaProcessarRequest;
+import br.com.vilareal.condominio.api.dto.CobrancaProprietarioDiagnosticoRequest;
+import br.com.vilareal.condominio.api.dto.CobrancaProprietarioDiagnosticoResponse;
 import br.com.vilareal.condominio.api.dto.CobrancaTotaisDto;
 import br.com.vilareal.condominio.api.dto.InadimplenciaCobrancaDto;
 import br.com.vilareal.condominio.api.dto.InadimplenciaUnidadeDto;
@@ -42,6 +44,7 @@ public class CobrancaAutomaticaApplicationService {
     private final CalculoApplicationService calculoApplicationService;
     private final CobrancaRegraInicioCobrancaService regraInicioCobrancaService;
     private final CobrancaProprietarioUnidadeLookupService proprietarioLookupService;
+    private final CobrancaProprietarioDiagnosticoService proprietarioDiagnosticoService;
 
     public CobrancaAutomaticaApplicationService(
             CobrancaRelatorioXlsParser xlsParser,
@@ -52,7 +55,8 @@ public class CobrancaAutomaticaApplicationService {
             CobrancaRelatorioPdfService pdfService,
             CalculoApplicationService calculoApplicationService,
             CobrancaRegraInicioCobrancaService regraInicioCobrancaService,
-            CobrancaProprietarioUnidadeLookupService proprietarioLookupService) {
+            CobrancaProprietarioUnidadeLookupService proprietarioLookupService,
+            CobrancaProprietarioDiagnosticoService proprietarioDiagnosticoService) {
         this.xlsParser = xlsParser;
         this.clienteRepository = clienteRepository;
         this.unidadeTransactionalService = unidadeTransactionalService;
@@ -62,6 +66,7 @@ public class CobrancaAutomaticaApplicationService {
         this.calculoApplicationService = calculoApplicationService;
         this.regraInicioCobrancaService = regraInicioCobrancaService;
         this.proprietarioLookupService = proprietarioLookupService;
+        this.proprietarioDiagnosticoService = proprietarioDiagnosticoService;
     }
 
     public CobrancaExtracaoResponse extrairPdf(String clienteCodigoRaw, MultipartFile arquivo) {
@@ -96,14 +101,15 @@ public class CobrancaAutomaticaApplicationService {
                 continue;
             }
             var propOpt = proprietarioLookupService.buscarPorUnidade(clienteId, cod);
+            List<InadimplenciaCobrancaDto> cobrancas = u.cobrancas() != null ? u.cobrancas() : List.of();
             if (propOpt.isEmpty()) {
                 semProprietario.add(cod);
-                unidades.add(new CobrancaUnidadeParsed(
-                        cod, "", "", u.cobrancas() != null ? u.cobrancas() : List.of()));
+                unidades.add(new CobrancaUnidadeParsed(cod, "", "", cobrancas, null, null));
             } else {
                 var prop = propOpt.get();
+                semProprietario.add(cod);
                 unidades.add(new CobrancaUnidadeParsed(
-                        cod, prop.nome(), prop.docDigitos(), u.cobrancas() != null ? u.cobrancas() : List.of()));
+                        cod, "", "", cobrancas, prop.nome(), prop.docDigitos()));
             }
         }
 
@@ -196,6 +202,15 @@ public class CobrancaAutomaticaApplicationService {
 
         persistenciaService.salvar(relatorio);
         return relatorio;
+    }
+
+    public CobrancaProprietarioDiagnosticoResponse diagnosticarProprietarios(
+            CobrancaProprietarioDiagnosticoRequest request) {
+        String cod8 = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(request.clienteCodigo());
+        ClienteEntity cliente = clienteRepository
+                .findByCodigoClienteFetchPessoa(cod8)
+                .orElseThrow(() -> new BusinessRuleException("Cliente não encontrado para o código: " + cod8));
+        return proprietarioDiagnosticoService.diagnosticar(cliente.getId(), cod8, request);
     }
 
     public RelatorioExecucaoCobranca buscarRelatorio(String importacaoId) {

@@ -12,7 +12,7 @@ function docValido(doc) {
 }
 
 /**
- * Preenche proprietário das unidades da extração PDF com a planilha Condo Id / legado.
+ * Preenche proprietário das unidades da extração PDF com a planilha Condo Id (prioridade sobre legado/DB).
  * @param {Record<string, unknown> | null | undefined} extracao
  * @param {Record<string, unknown> | null | undefined} extracaoPlanilha
  */
@@ -28,16 +28,20 @@ export function mesclarProprietariosPlanilhaNaExtracao(extracao, extracaoPlanilh
 
   for (const u of extracao?.unidades || []) {
     const cod = normalizarCodigoUnidadeCobranca(u?.codigoUnidadeNormalizada || u?.codigoUnidade);
-    let nome = String(u?.proprietarioNome ?? '').trim();
-    let doc = String(u?.proprietarioDocDigitos ?? '').replace(/\D/g, '');
+    const legadoNome = String(u?.proprietarioLegadoNome ?? '').trim();
+    const legadoDoc = String(u?.proprietarioLegadoDocDigitos ?? '').replace(/\D/g, '');
 
-    if (!docValido(doc)) {
-      const lin = mapPlanilha.get(cod);
-      const prop = lin?.proprietario;
-      if (prop) {
-        nome = String(prop.nome ?? nome).trim();
-        doc = String(prop.cpfCnpjNormalizado ?? prop.cpfCnpjBruto ?? doc).replace(/\D/g, '');
-      }
+    const lin = mapPlanilha.get(cod);
+    const prop = lin?.proprietario;
+    let nome = '';
+    let doc = '';
+
+    if (prop && docValido(prop.cpfCnpjNormalizado ?? prop.cpfCnpjBruto)) {
+      nome = String(prop.nome ?? '').trim();
+      doc = String(prop.cpfCnpjNormalizado ?? prop.cpfCnpjBruto ?? '').replace(/\D/g, '');
+    } else if (docValido(legadoDoc)) {
+      nome = legadoNome;
+      doc = legadoDoc;
     }
 
     if (!nome || !docValido(doc)) {
@@ -49,6 +53,8 @@ export function mesclarProprietariosPlanilhaNaExtracao(extracao, extracaoPlanilh
       codigoUnidadeNormalizada: cod || u?.codigoUnidadeNormalizada,
       proprietarioNome: nome,
       proprietarioDocDigitos: doc,
+      proprietarioLegadoNome: legadoNome,
+      proprietarioLegadoDocDigitos: legadoDoc,
     });
   }
 
@@ -81,5 +87,24 @@ export function mesclarProprietariosPlanilhaNaExtracao(extracao, extracaoPlanilh
       pj,
       valorTotalCentavos,
     },
+  };
+}
+
+/** @param {Record<string, unknown> | null | undefined} extracao @param {Record<string, unknown> | null | undefined} planilha */
+export function montarPayloadDiagnosticoProprietarios(clienteCodigo, extracao, planilha) {
+  const unidades = (extracao?.unidades || []).map((u) => ({
+    codigoUnidadeNormalizada: normalizarCodigoUnidadeCobranca(
+      u?.codigoUnidadeNormalizada || u?.codigoUnidade,
+    ),
+    proprietarioNome: String(u?.proprietarioNome ?? ''),
+    proprietarioDocDigitos: String(u?.proprietarioDocDigitos ?? '').replace(/\D/g, ''),
+    cobrancas: Array.isArray(u?.cobrancas) ? u.cobrancas : [],
+    proprietarioLegadoNome: u?.proprietarioLegadoNome ?? null,
+    proprietarioLegadoDocDigitos: u?.proprietarioLegadoDocDigitos ?? null,
+  }));
+  return {
+    clienteCodigo: String(clienteCodigo ?? '').trim(),
+    unidades,
+    planilhaUnidades: planilha?.unidades || [],
   };
 }

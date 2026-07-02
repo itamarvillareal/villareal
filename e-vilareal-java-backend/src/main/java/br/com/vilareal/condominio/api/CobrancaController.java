@@ -2,6 +2,8 @@ package br.com.vilareal.condominio.api;
 
 import br.com.vilareal.condominio.api.dto.CobrancaExtracaoResponse;
 import br.com.vilareal.condominio.api.dto.CobrancaProcessarRequest;
+import br.com.vilareal.condominio.api.dto.CobrancaProprietarioDiagnosticoRequest;
+import br.com.vilareal.condominio.api.dto.CobrancaProprietarioDiagnosticoResponse;
 import br.com.vilareal.condominio.api.dto.RelatorioExecucaoCobranca;
 import br.com.vilareal.condominio.application.CobrancaAutomaticaApplicationService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -53,6 +55,17 @@ public class CobrancaController {
                 .contentType(MediaType.APPLICATION_JSON)
                 .cacheControl(CacheControl.noStore())
                 .body(body);
+    }
+
+    @PostMapping(value = "/diagnosticar-proprietarios", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Diagnosticar proprietário efetivo (planilha) vs processos legados por unidade")
+    public ResponseEntity<CobrancaProprietarioDiagnosticoResponse> diagnosticarProprietarios(
+            @Valid @RequestBody CobrancaProprietarioDiagnosticoRequest body) {
+        CobrancaProprietarioDiagnosticoResponse res = service.diagnosticarProprietarios(body);
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .cacheControl(CacheControl.noStore())
+                .body(res);
     }
 
     @PostMapping(value = "/processar", consumes = MediaType.APPLICATION_JSON_VALUE)

@@ -3,7 +3,17 @@
  * Espelha a regra de sequência compacta (stub 1474 → 75).
  */
 
-import { conectarMysqlVilareal } from './mysql-vilareal.mjs';
+/** @param {import('mysql2/promise').Connection | import('./mysql-vilareal.mjs').DockerMysqlAdapter} conn */
+async function execOpcional(conn, sql, params = []) {
+  try {
+    return await conn.query(sql, params);
+  } catch (err) {
+    if (err && typeof err === 'object' && 'code' in err && err.code === 'ER_NO_SUCH_TABLE') {
+      return null;
+    }
+    throw err;
+  }
+}
 
 function padCod8(raw) {
   const n = Number(String(raw ?? '').replace(/\D/g, '') || NaN);
@@ -97,6 +107,31 @@ export async function renumerarProcClienteMysql(conn, opts) {
       `UPDATE agenda_evento SET processo_ref = ?
        WHERE processo_ref = ?`,
       [refPara, refDe]
+    );
+
+    await execOpcional(
+      conn,
+      `UPDATE processo_andamento_usuario_reimport_par SET numero_interno = ?
+       WHERE TRIM(codigo_cliente) = ? AND numero_interno = ?`,
+      [para, cod8, de]
+    );
+    await execOpcional(
+      conn,
+      `UPDATE processo_andamento_usuario_reimport_diag SET numero_interno = ?
+       WHERE TRIM(codigo_cliente) = ? AND numero_interno = ?`,
+      [para, cod8, de]
+    );
+    await execOpcional(
+      conn,
+      `UPDATE imovel_vinculo_locatario SET numero_interno = ?
+       WHERE TRIM(codigo_cliente) = ? AND numero_interno = ?`,
+      [para, cod8, de]
+    );
+    await execOpcional(
+      conn,
+      `UPDATE imovel_vinculo_processo_principal SET numero_interno = ?
+       WHERE TRIM(codigo_cliente) = ? AND numero_interno = ?`,
+      [para, cod8, de]
     );
 
     await conn.query('COMMIT');

@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -28,6 +29,11 @@ public final class CobrancaUnidadeFormatUtil {
             Pattern.compile("^([" + TORRES + "])-(\\d{4})$", Pattern.CASE_INSENSITIVE);
     private static final Pattern PAT_UNIDADE_LEGIVEL =
             Pattern.compile("^Unidade\\s+(\\d+)\\s+([" + TORRES + "])$", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern PAT_PREFIX_UNIDADE =
+            Pattern.compile("^Unidade\\s+", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    /** Condo Id — quadra/lote (ex.: {@code QD12-LT03}, {@code QD12LT03}). */
+    private static final Pattern PAT_CONDO_QD_LT =
+            Pattern.compile("^QD(\\d+)-?LT(\\d+)$", Pattern.CASE_INSENSITIVE);
 
     private CobrancaUnidadeFormatUtil() {}
 
@@ -45,6 +51,11 @@ public final class CobrancaUnidadeFormatUtil {
         }
         if ("ADM".equals(u)) {
             return "ADM";
+        }
+
+        Optional<String> condoId = normalizarCondoIdQuadraLote(u);
+        if (condoId.isPresent()) {
+            return condoId.get();
         }
 
         Matcher m = PAT_COD_LETRA_HIFEN_DIGITOS.matcher(u.replace(" ", ""));
@@ -129,6 +140,8 @@ public final class CobrancaUnidadeFormatUtil {
             out.add("Unidade " + digitsTrim + " " + letra);
             out.add("Unidade " + digits3 + " " + letra);
             out.add("Unidade " + digits4 + " " + letra);
+        } else {
+            adicionarChavesCondoIdQuadraLote(out, cod);
         }
         return new ArrayList<>(out);
     }
@@ -151,6 +164,34 @@ public final class CobrancaUnidadeFormatUtil {
             return false;
         }
         return PAT_UNIDADE_LEGIVEL.matcher(unidade.trim()).matches();
+    }
+
+    private static Optional<String> normalizarCondoIdQuadraLote(String bruto) {
+        if (!StringUtils.hasText(bruto)) {
+            return Optional.empty();
+        }
+        String semPrefixo = PAT_PREFIX_UNIDADE.matcher(bruto.trim()).replaceFirst("").trim();
+        String compact = semPrefixo.replaceAll("\\s+", "").toUpperCase(Locale.ROOT);
+        Matcher m = PAT_CONDO_QD_LT.matcher(compact);
+        if (!m.matches()) {
+            return Optional.empty();
+        }
+        int quadra = Integer.parseInt(m.group(1), 10);
+        int lote = Integer.parseInt(m.group(2), 10);
+        return Optional.of(String.format(Locale.ROOT, "QD%02d-LT%02d", quadra, lote));
+    }
+
+    private static void adicionarChavesCondoIdQuadraLote(Set<String> out, String cod) {
+        Optional<String> canon = normalizarCondoIdQuadraLote(cod);
+        if (canon.isEmpty()) {
+            return;
+        }
+        String c = canon.get();
+        out.add(c);
+        String semHifen = c.replace("-", "");
+        out.add(semHifen);
+        out.add("Unidade " + c);
+        out.add("Unidade " + semHifen);
     }
 
     private static String codigoCanonico(String letra, String digitos) {

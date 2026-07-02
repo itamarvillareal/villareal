@@ -1,6 +1,7 @@
 package br.com.vilareal.condominio.application;
 
-import br.com.vilareal.calculo.application.CalculoApplicationService;
+import br.com.vilareal.calculo.application.CalculoCobrancaMergeService;
+import br.com.vilareal.calculo.application.DebitoNovo;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
 import br.com.vilareal.condominio.api.dto.InadimplenciaCobrancaDto;
 import br.com.vilareal.condominio.api.dto.InadimplenciaImportItemResultadoDto;
@@ -11,38 +12,37 @@ import br.com.vilareal.processo.application.CodigoClienteUtil;
 import br.com.vilareal.processo.application.ProcessoApplicationService;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
-import java.math.BigDecimal;
-import java.text.DecimalFormat;
-import java.text.DecimalFormatSymbols;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 
+/**
+ * Importação unitária de inadimplência (Atividades em Lote) — alinhada a {@link CobrancaImportRegras}:
+ * busca por {@code cliente_id + unidade} normalizada e merge via {@link CalculoCobrancaMergeService}.
+ */
 @Service
 public class CondominioInadimplenciaUnidadeTransactionalService {
 
     private final ProcessoRepository processoRepository;
     private final ProcessoApplicationService processoApplicationService;
-    private final CalculoApplicationService calculoApplicationService;
-    private final ObjectMapper objectMapper;
+    private final ProcessoUnidadeClienteLookupService processoUnidadeLookup;
+    private final CalculoCobrancaMergeService mergeService;
 
     public CondominioInadimplenciaUnidadeTransactionalService(
             ProcessoRepository processoRepository,
             ProcessoApplicationService processoApplicationService,
-            CalculoApplicationService calculoApplicationService,
-            ObjectMapper objectMapper) {
+            ProcessoUnidadeClienteLookupService processoUnidadeLookup,
+            CalculoCobrancaMergeService mergeService) {
         this.processoRepository = processoRepository;
         this.processoApplicationService = processoApplicationService;
-        this.calculoApplicationService = calculoApplicationService;
-        this.objectMapper = objectMapper;
+        this.processoUnidadeLookup = processoUnidadeLookup;
+        this.mergeService = mergeService;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -54,7 +54,7 @@ public class CondominioInadimplenciaUnidadeTransactionalService {
             boolean autorMesmaPessoaCliente,
             String nomeAutorParaCabecalhoCalculo,
             String importacaoId) {
-        String codU = unidade.codigoUnidade() == null ? "" : unidade.codigoUnidade().trim().toUpperCase(Locale.ROOT);
+        String codU = CobrancaUnidadeFormatUtil.normalizarCodigoUnidade(unidade.codigoUnidade());
         if (codU.isEmpty()) {
             throw new IllegalArgumentException("Código de unidade vazio.");
         }
@@ -63,8 +63,8 @@ public class CondominioInadimplenciaUnidadeTransactionalService {
             throw new IllegalArgumentException("Sem cobranças para a unidade " + codU);
         }
 
-        ProcessoEntity proc =
-                processoRepository.findByPessoa_IdAndUnidade(pessoaId, codU).orElse(null);
+        String unidadeProcesso = CobrancaUnidadeFormatUtil.codigoParaUnidadeProcesso(codU);
+        ProcessoEntity proc = processoUnidadeLookup.buscarPorCodigoUnidade(clienteId, codU).orElse(null);
         boolean criado = false;
         if (proc == null) {
             int ni = menorNumeroInternoDisponivel(clienteId);
@@ -72,7 +72,7 @@ public class CondominioInadimplenciaUnidadeTransactionalService {
             req.setClienteId(clienteId);
             req.setPessoaTitularId(pessoaId);
             req.setNumeroInterno(ni);
-            req.setUnidade(codU);
+            req.setUnidade(unidadeProcesso);
             if (importacaoId != null && !importacaoId.isBlank()) {
                 req.setImportacaoId(importacaoId);
             }
@@ -93,13 +93,28 @@ public class CondominioInadimplenciaUnidadeTransactionalService {
             }
         }
 
-        ObjectNode payload =
-                montarPayloadCalculo(cobrancas, nomeAutorParaCabecalhoCalculo != null ? nomeAutorParaCabecalhoCalculo : "");
         String cod8 = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(codigoCliente8);
-        calculoApplicationService.salvarRodada(cod8, proc.getNumeroInterno(), 0, payload, importacaoId);
+        List<DebitoNovo> debitos = toDebitosNovos(cobrancas);
+        mergeService.mesclarDebitos(cod8, proc.getNumeroInterno(), debitos, importacaoId);
 
         return new InadimplenciaImportItemResultadoDto(
                 codU, proc.getNumeroInterno(), proc.getId(), criado, cobrancas.size());
+    }
+
+    private static List<DebitoNovo> toDebitosNovos(List<InadimplenciaCobrancaDto> cobrancas) {
+        List<DebitoNovo> out = new ArrayList<>();
+        for (InadimplenciaCobrancaDto c : cobrancas) {
+            if (c == null) {
+                continue;
+            }
+            String venc = c.vencimento() != null ? c.vencimento().trim() : "";
+            String desc = c.receita() != null ? c.receita().trim() : "";
+            if (!StringUtils.hasText(venc)) {
+                continue;
+            }
+            out.add(new DebitoNovo(venc, c.valorCentavos(), desc));
+        }
+        return out;
     }
 
     private int menorNumeroInternoDisponivel(long clienteId) {
@@ -113,62 +128,5 @@ public class CondominioInadimplenciaUnidadeTransactionalService {
             n++;
         }
         return n;
-    }
-
-    private ObjectNode montarPayloadCalculo(List<InadimplenciaCobrancaDto> cobrancas, String textoAutorCabecalho) {
-        int n = cobrancas.size();
-        String qtd = n <= 99 ? String.format("%02d", n) : String.valueOf(n);
-
-        ArrayNode titulos = objectMapper.createArrayNode();
-        ArrayNode parcelas = objectMapper.createArrayNode();
-        for (InadimplenciaCobrancaDto c : cobrancas) {
-            String brl = formatBrl(c.valorCentavos());
-            String desc = c.receita().trim() + " — " + c.periodo().trim();
-            ObjectNode t = objectMapper.createObjectNode();
-            t.put("dataVencimento", c.vencimento());
-            t.put("valorInicial", brl);
-            t.put("atualizacaoMonetaria", "");
-            t.put("diasAtraso", "");
-            t.put("juros", "");
-            t.put("multa", "");
-            t.put("honorarios", "");
-            t.put("total", brl);
-            t.put("descricaoValor", desc);
-            t.putNull("datasEspeciais");
-            titulos.add(t);
-
-            ObjectNode p = objectMapper.createObjectNode();
-            p.put("dataVencimento", c.vencimento());
-            p.put("valorParcela", brl);
-            p.put("honorariosParcela", "");
-            p.put("observacao", "");
-            p.put("dataPagamento", c.vencimento());
-            parcelas.add(p);
-        }
-
-        ObjectNode root = objectMapper.createObjectNode();
-        root.put("pagina", 1);
-        root.put("paginaParcelamento", 1);
-        root.put("parcelamentoAceito", false);
-        root.put("quantidadeParcelasInformada", qtd);
-        root.put("taxaJurosParcelamento", "0,00");
-        root.put("limpezaAtiva", false);
-        root.putNull("snapshotAntesLimpeza");
-        ObjectNode cab = objectMapper.createObjectNode();
-        cab.put("autor", textoAutorCabecalho == null ? "" : textoAutorCabecalho);
-        cab.put("reu", "");
-        root.set("cabecalho", cab);
-        root.set("honorariosDataRecebimento", objectMapper.createObjectNode());
-        root.set("titulos", titulos);
-        root.set("parcelas", parcelas);
-        root.putNull("panelConfig");
-        return root;
-    }
-
-    private static String formatBrl(long centavos) {
-        BigDecimal bd = BigDecimal.valueOf(centavos, 2);
-        DecimalFormatSymbols sym = new DecimalFormatSymbols(Locale.of("pt", "BR"));
-        DecimalFormat df = new DecimalFormat("#,##0.00", sym);
-        return "R$ " + df.format(bd);
     }
 }

@@ -1,5 +1,6 @@
 package br.com.vilareal.calculo.application;
 
+import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.calculo.infrastructure.persistence.projection.CalculoRodadaResumoProjection;
 import br.com.vilareal.calculo.infrastructure.persistence.repository.CalculoRodadaRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -15,6 +16,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -146,6 +148,23 @@ class CalculoCobrancaMergeServiceTest {
         verify(calculoApplicationService).salvarRodada(eq(COD8), eq(PROC), eq(0), cap.capture(), eq("imp-3"));
         assertThat(cap.getValue().get("titulos")).hasSize(2);
         assertThat(cap.getValue().get("parcelamentoAceito").booleanValue()).isFalse();
+    }
+
+    @Test
+    void mesclarDebitos_mesmoVencimentoValorDiferente_bloqueiaRevisaoManual() {
+        when(rodadaRepository.findResumoByCodigoClienteAndNumeroProcessoOrderByDimensaoAsc(COD8, PROC))
+                .thenReturn(List.of(resumo(0, false)));
+        when(calculoApplicationService.obterRodada(COD8, PROC, 0))
+                .thenReturn(Optional.of(payloadComTitulo("10/01/2026", "R$ 100,00", "Taxa A")));
+
+        DebitoNovo conflito = new DebitoNovo("10/01/2026", 20_000L, "Taxa A PDF");
+
+        assertThatThrownBy(() -> service.mesclarDebitos(COD8, PROC, List.of(conflito), "imp-x"))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("Revisão manual necessária")
+                .hasMessageContaining("10/01/2026");
+
+        verify(calculoApplicationService, never()).salvarRodada(eq(COD8), eq(PROC), eq(0), any(), any());
     }
 
     @Test

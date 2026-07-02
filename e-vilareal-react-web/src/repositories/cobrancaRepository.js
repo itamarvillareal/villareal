@@ -57,6 +57,18 @@ export async function processarCobranca(payload) {
 }
 
 /**
+ * Pré-importação: compara proprietário efetivo (planilha) com processos legados por unidade.
+ * @param {{
+ *   clienteCodigo: string,
+ *   unidades: unknown[],
+ *   planilhaUnidades?: unknown[],
+ * }} payload
+ */
+export async function diagnosticarProprietariosCobranca(payload) {
+  return request('/api/cobranca/diagnosticar-proprietarios', { method: 'POST', body: payload });
+}
+
+/**
  * Relatório de execução persistido (JSON).
  * @param {string} importacaoId
  */
