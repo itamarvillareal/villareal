@@ -24,10 +24,11 @@ export function SecoesManuais({ values, onChange, errors = {} }) {
   };
 
   return (
-    <div className="grid gap-6">
+    <div className="grid gap-6" data-documento-editores>
       <Field label="Preâmbulo (qualificação das partes) *">
         <HtmlEditor
           ariaLabel="Preâmbulo"
+          editorKey="preambulo"
           value={values.preambulo}
           onChange={(preambulo) => onChange({ preambulo })}
           minHeight="140px"
@@ -72,6 +73,7 @@ export function SecoesManuais({ values, onChange, errors = {} }) {
               <Field label="Conteúdo">
                 <HtmlEditor
                   ariaLabel={`Conteúdo da seção ${secao.titulo || index + 1}`}
+                  editorKey={`secao-${index}-conteudo`}
                   value={secao.conteudo}
                   onChange={(conteudo) => atualizarSecao(index, { conteudo })}
                   minHeight="120px"

@@ -306,6 +306,7 @@ export function HtmlEditor({
   minHeight = '120px',
   surfaceClassName,
   toolbar = 'compacto',
+  editorKey,
 }) {
   const ref = useRef(null);
   const surfaceClass = surfaceClassName || editorSurfaceBaseClass;
@@ -313,6 +314,8 @@ export function HtmlEditor({
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    // Não sobrescrever enquanto o usuário edita — evita perder texto na prévia/PDF.
+    if (el === document.activeElement || el.contains(document.activeElement)) return;
     const html = value || '';
     if (el.innerHTML !== html) {
       el.innerHTML = html;
@@ -322,6 +325,11 @@ export function HtmlEditor({
   const aplicar = (formato, valor) => {
     const html = aplicarFormatoHtmlEditor(ref.current, formato, valor);
     onChange?.(html);
+  };
+
+  const sincronizarHtml = (el) => {
+    if (!el) return;
+    onChange?.(el.innerHTML);
   };
 
   return (
@@ -340,7 +348,9 @@ export function HtmlEditor({
         aria-label={ariaLabel}
         contentEditable
         suppressContentEditableWarning
+        data-html-editor={editorKey || undefined}
         onInput={(e) => onChange?.(e.currentTarget.innerHTML)}
+        onBlur={(e) => sincronizarHtml(e.currentTarget)}
         className={surfaceClass}
         style={{ minHeight }}
       />

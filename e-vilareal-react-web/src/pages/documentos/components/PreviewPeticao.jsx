@@ -13,8 +13,11 @@ function HtmlEditable({ html, onChange, className, ariaLabel }) {
 
   useEffect(() => {
     const el = ref.current;
-    if (el && el.innerHTML !== (html || '')) {
-      el.innerHTML = html || '';
+    if (!el) return;
+    if (el === document.activeElement || el.contains(document.activeElement)) return;
+    const next = html || '';
+    if (el.innerHTML !== next) {
+      el.innerHTML = next;
     }
   }, [html]);
 
@@ -27,6 +30,7 @@ function HtmlEditable({ html, onChange, className, ariaLabel }) {
       contentEditable
       suppressContentEditableWarning
       onInput={(e) => onChange(e.currentTarget.innerHTML)}
+      onBlur={(e) => onChange(e.currentTarget.innerHTML)}
       className={className}
     />
   );

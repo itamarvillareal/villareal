@@ -47,6 +47,12 @@ import { FatosDoCaso, resolveTipoPeca } from './components/FatosDoCaso.jsx';
 import { ConfiguracaoIA } from './components/ConfiguracaoIA.jsx';
 import { SecoesManuais } from './components/SecoesManuais.jsx';
 import { pedidosPreenchidos } from './components/PedidosEspecificos.jsx';
+import {
+  coletarPayloadManualParaPdf,
+  htmlSecaoTemTexto,
+  normalizarPayloadManualPdf,
+  sincronizarFormManualComEditores,
+} from './documentoManualUtils.js';
 import { DocumentosSubmenu } from './components/DocumentosSubmenu.jsx';
 import { dataBRparaISO } from '../../data/peticaoExecucaoBuilder.js';
 import {
@@ -252,11 +258,11 @@ function payloadManualParaForm(payload) {
 
 function montarDocumentoManualRequest(form, processoId, dadosProcesso) {
   const secoes = (form.secoes || [])
-    .map((s) => ({ titulo: s.titulo.trim(), conteudo: s.conteudo.trim() }))
-    .filter((s) => s.titulo && s.conteudo);
+    .map((s) => ({ titulo: s.titulo.trim(), conteudo: String(s.conteudo ?? '').trim() }))
+    .filter((s) => s.titulo && htmlSecaoTemTexto(s.conteudo));
   const pedidos = pedidosPreenchidos(form.pedidos);
 
-  return {
+  return normalizarPayloadManualPdf({
     enderecamento: resolveEnderecamento(form),
     numeroProcesso: opcional(form.numeroProcesso),
     preambulo: form.preambulo.trim(),
@@ -269,7 +275,7 @@ function montarDocumentoManualRequest(form, processoId, dadosProcesso) {
     ...(dadosProcesso?.numeroInterno != null && dadosProcesso?.numeroInterno !== ''
       ? { numeroInterno: Number(dadosProcesso.numeroInterno) }
       : {}),
-  };
+  });
 }
 
 function validarModoIA(form) {
@@ -299,7 +305,9 @@ function validarModoManual(form) {
   const enderecamento = resolveEnderecamento(form);
   if (!enderecamento) errors.enderecamento = 'Selecione ou informe o endereçamento.';
   if (!form.preambulo?.trim()) errors.preambulo = 'Informe o preâmbulo.';
-  const secoesValidas = (form.secoes || []).filter((s) => s.titulo?.trim() && s.conteudo?.trim());
+  const secoesValidas = (form.secoes || []).filter(
+    (s) => s.titulo?.trim() && htmlSecaoTemTexto(s.conteudo),
+  );
   if (!secoesValidas.length) errors.secoes = 'Adicione ao menos uma seção com título e conteúdo.';
   if (!pedidosPreenchidos(form.pedidos).length) errors.pedidos = 'Informe ao menos um pedido.';
   return errors;
@@ -499,26 +507,30 @@ export function GerarDocumento() {
   }, [modoManual, fecharManualPreview]);
 
   const atualizarManualPreviewPdf = async (payload) => {
-    const blob = await previewPdfManual(payload);
+    const normalizado = coletarPayloadManualParaPdf(payload);
+    const blob = await previewPdfManual(normalizado);
     revogarManualPreviewUrl();
     const url = URL.createObjectURL(blob);
     manualPreviewUrlRef.current = url;
     setManualPreviewUrl(url);
+    return normalizado;
   };
 
   const handleIniciarPreviewManual = async () => {
     setMensagemErro('');
-    const errs = validarModoManual(formManual);
+    const formSync = sincronizarFormManualComEditores(formManual);
+    const errs = validarModoManual(formSync);
     if (Object.keys(errs).length) {
       setErrors(errs);
       return;
     }
-    const payload = montarDocumentoManualRequest(formManual, processoApiId, dadosProcesso);
+    const payload = montarDocumentoManualRequest(formSync, processoApiId, dadosProcesso);
     setManualPreviewPayload(payload);
     setManualPreviewVisivel(true);
     setLoadingManualPreview(true);
     try {
-      await atualizarManualPreviewPdf(payload);
+      const normalizado = await atualizarManualPreviewPdf(payload);
+      setManualPreviewPayload(normalizado);
     } catch (e) {
       setMensagemErro(e?.message || 'Falha ao gerar prévia do documento.');
       fecharManualPreview();
@@ -532,7 +544,8 @@ export function GerarDocumento() {
     setMensagemErro('');
     setLoadingManualPreview(true);
     try {
-      await atualizarManualPreviewPdf(manualPreviewPayload);
+      const normalizado = await atualizarManualPreviewPdf(manualPreviewPayload);
+      setManualPreviewPayload(normalizado);
     } catch (e) {
       setMensagemErro(e?.message || 'Falha ao atualizar prévia.');
     } finally {
@@ -543,9 +556,11 @@ export function GerarDocumento() {
   const handleGerarPdfManualFinal = async () => {
     if (!manualPreviewPayload) return;
     setMensagemErro('');
+    const normalizado = coletarPayloadManualParaPdf(manualPreviewPayload);
+    setManualPreviewPayload(normalizado);
     setLoadingManualFinal(true);
     try {
-      await baixarPdf(gerarPdfManual, manualPreviewPayload);
+      await baixarPdf(gerarPdfManual, normalizado);
     } catch (e) {
       setMensagemErro(e?.message || 'Falha ao gerar PDF final.');
     } finally {
@@ -951,9 +966,11 @@ export function GerarDocumento() {
   const handleGerarPdfFromPreview = async () => {
     if (!previewData) return;
     setMensagemErro('');
+    const normalizado = coletarPayloadManualParaPdf(previewData);
+    setPreviewData(normalizado);
     setLoading(true);
     try {
-      await baixarPdf(gerarPdfManual, previewData);
+      await baixarPdf(gerarPdfManual, normalizado);
       setPreviewOpen(false);
     } catch (e) {
       setMensagemErro(e?.message || 'Falha ao gerar PDF.');

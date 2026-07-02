@@ -47,8 +47,15 @@ public record DocumentoRenderContext(
                 if (secao == null) {
                     continue;
                 }
+                String titulo = secao.titulo() != null ? secao.titulo().strip() : "";
+                if (titulo.isBlank()) {
+                    continue;
+                }
+                if (!htmlSecaoTemTexto(secao.conteudo())) {
+                    continue;
+                }
                 secoesNormalizadas.add(new DocumentoGerarRequest.SecaoPeticao(
-                        secao.titulo(),
+                        titulo,
                         DocumentoParagrafoHtmlUtil.normalizarHtmlLegadoCorpo(secao.conteudo())));
             }
         }
@@ -90,5 +97,18 @@ public record DocumentoRenderContext(
             return "";
         }
         return pedido.strip().replaceFirst("(?i)^[a-z]\\)\\s*", "");
+    }
+
+    static boolean htmlSecaoTemTexto(String html) {
+        if (html == null) {
+            return false;
+        }
+        String plain = html
+                .replaceAll("(?i)<br\\s*/?>", " ")
+                .replace("&nbsp;", " ")
+                .replaceAll("<[^>]+>", " ")
+                .replaceAll("\\s+", " ")
+                .strip();
+        return !plain.isEmpty();
     }
 }

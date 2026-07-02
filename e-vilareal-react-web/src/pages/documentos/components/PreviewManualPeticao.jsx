@@ -91,7 +91,7 @@ export function PreviewManualPeticao({
         </div>
       </header>
 
-      <div className="grid lg:grid-cols-2">
+      <div className="grid lg:grid-cols-2" data-documento-editores>
         <div className="max-h-[min(85vh,960px)] space-y-5 overflow-y-auto border-b border-slate-200 px-4 py-4 dark:border-slate-700 lg:border-b-0 lg:border-r">
           <div>
             <label className={labelClass} htmlFor="manual-preview-enderecamento">
@@ -123,6 +123,7 @@ export function PreviewManualPeticao({
             <span className={labelClass}>Preâmbulo</span>
             <HtmlEditor
               ariaLabel="Preâmbulo"
+              editorKey="preambulo"
               value={payload.preambulo || ''}
               onChange={(preambulo) => patch('preambulo', preambulo)}
               minHeight="140px"
@@ -150,6 +151,7 @@ export function PreviewManualPeticao({
               </div>
               <HtmlEditor
                 ariaLabel={`Conteúdo da seção ${i + 1}`}
+                editorKey={`secao-${i}-conteudo`}
                 value={secao.conteudo || ''}
                 onChange={(conteudo) => patchSecao(i, 'conteudo', conteudo)}
                 minHeight="120px"
