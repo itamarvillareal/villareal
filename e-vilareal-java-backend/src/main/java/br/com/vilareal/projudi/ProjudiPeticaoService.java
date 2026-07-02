@@ -281,8 +281,9 @@ public class ProjudiPeticaoService {
                     corpoAvancar,
                     StandardCharsets.ISO_8859_1,
                     REF_PETICIONAMENTO);
+            String corpoP9 = corpoResposta(p9);
             if (pareceFalhaPost(p9)) {
-                return falha("Passo 9 (Avançar) falhou.", corpoResposta(p9));
+                return falha("Passo 9 (Avançar) falhou.", corpoP9);
             }
 
             // 10)
@@ -306,13 +307,33 @@ public class ProjudiPeticaoService {
                         truncarRespostaBruta("nomesUpload=" + nomesGerados.values()));
             }
 
-            // 11) irreversível
+            // 11) irreversível — __Pedido__ é consumido uma vez por sessão; extrair do HTML (lote reutiliza OTP)
             emitir(progresso, "Concluindo o protocolo (irreversível)…");
+            String corpoPasso11 = resolverCorpoPasso11(corpoP9);
+            if (corpoPasso11 == null) {
+                var paginaConfirmacao = sessionService.getAutenticadoComReferer(
+                        credencialId, "Peticionamento?PaginaAtual=5", REF_PETICIONAMENTO);
+                if (pareceFalhaLeitura(paginaConfirmacao.statusCode(), paginaConfirmacao.body())) {
+                    return falha(
+                            "Passo 10b (Peticionamento confirmação p.5) falhou.",
+                            paginaConfirmacao.body());
+                }
+                corpoPasso11 = resolverCorpoPasso11(paginaConfirmacao.body());
+            }
+            if (corpoPasso11 == null) {
+                log.warn(
+                        "PROJUDI: __Pedido__ não encontrado no HTML (processo={}) — corpo fixo passo 11 "
+                                + "(risco de pedido duplicado em lote).",
+                        processo);
+                corpoPasso11 = CORPO_PASSO_11;
+            } else {
+                log.debug("PROJUDI passo 11 (processo={}): __Pedido__ extraído do HTML.", processo);
+            }
             HttpResponse<String> p11 = sessionService.postPeticionamento(
                     credencialId,
                     "Peticionamento",
                     null,
-                    CORPO_PASSO_11,
+                    corpoPasso11,
                     StandardCharsets.ISO_8859_1,
                     REF_PETICIONAMENTO);
             emitir(progresso, "Confirmando o envio…");
@@ -453,6 +474,23 @@ public class ProjudiPeticaoService {
             i += Character.charCount(cp);
         }
         return out.toString();
+    }
+
+    /** Monta o POST Concluir (passo 11) com token {@code __Pedido__} da página de confirmação. */
+    static String montarCorpoPasso11(String pedido) {
+        if (!StringUtils.hasText(pedido)) {
+            return null;
+        }
+        return "PaginaAtual=5&__Pedido__="
+                + encIso8859(pedido.trim())
+                + "&PaginaAnterior=-2&TituloPagina=null&imgConcluir=Concluir";
+    }
+
+    static String resolverCorpoPasso11(String html) {
+        return ProjudiProcessoCivelHtmlUtil.extrairHidden(html, "__Pedido__")
+                .filter(p -> !"null".equalsIgnoreCase(p.trim()))
+                .map(ProjudiPeticaoService::montarCorpoPasso11)
+                .orElse(null);
     }
 
     private static String montarCorpoAvancar(String complementoIso, String nomeP7s, ArquivoPeticao ultimo) {

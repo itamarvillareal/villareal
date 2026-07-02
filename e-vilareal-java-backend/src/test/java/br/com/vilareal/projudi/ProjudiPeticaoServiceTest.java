@@ -35,4 +35,25 @@ class ProjudiPeticaoServiceTest {
                 "https://projudi.tjgo.jus.br/BuscaProcesso?MensagemOk=Peti%C3%A7%C3%A3o+enviada+com+sucesso.";
         assertTrue(ProjudiPeticaoService.protocoloConfirmadoParaTeste(location, ""));
     }
+
+    @Test
+    void resolverCorpoPasso11_extraiPedidoDoHtml() {
+        String html =
+                """
+                <form>
+                <input name="PaginaAtual" type="hidden" value="5">
+                <input id="__Pedido__" name="__Pedido__" type="hidden" value="987654321">
+                </form>
+                """;
+        String corpo = ProjudiPeticaoService.resolverCorpoPasso11(html);
+        assertEquals(
+                "PaginaAtual=5&__Pedido__=987654321&PaginaAnterior=-2&TituloPagina=null&imgConcluir=Concluir",
+                corpo);
+    }
+
+    @Test
+    void resolverCorpoPasso11_ignoraPedidoNull() {
+        String html = "<input name=\"__Pedido__\" type=\"hidden\" value=\"null\" />";
+        assertEquals(null, ProjudiPeticaoService.resolverCorpoPasso11(html));
+    }
 }
