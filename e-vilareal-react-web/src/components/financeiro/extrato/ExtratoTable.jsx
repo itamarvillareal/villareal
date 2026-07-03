@@ -7,6 +7,12 @@ import { ETAPAS } from '../constants/financeiroConstants.js';
 import { contaCodigoExtratoExibicao } from '../shared/financeiroDescricaoContaF.js';
 import { textoObsExtrato } from './extratoMappers.js';
 import { temCodigoEProcExtratoRow, temImovelVinculadoExtratoRow } from './extratoCadastroFiltro.js';
+import { origemExtratoLabel } from '../total/totalFinanceiroMerge.js';
+
+function rowKeyOf(item, rowKeyField) {
+  if (rowKeyField && item?.[rowKeyField]) return item[rowKeyField];
+  return item?.id;
+}
 
 function ExtratoTableInner({
   data = [],
@@ -18,6 +24,7 @@ function ExtratoTableInner({
   sortDataAsc = false,
   onSortDataDoubleClick,
   highlightLancamentoId = null,
+  rowKeyField = null,
   /** Conta Escritório no consolidado: etapa = cod+proc (azul/vermelho) em vez da etapa do workflow. */
   etapaModoEscritorio = false,
   /** Conta Imóveis no consolidado: etapa = imóvel vinculado (azul/vermelho). */
@@ -26,8 +33,13 @@ function ExtratoTableInner({
   modoCartao = false,
   /** Extrato consolidado AUTO-FAT: coluna cartão; data = vencimento (sem coluna venc. duplicada). */
   modoFechamentoFatura = false,
+  /** Total (bancos + cartões): coluna origem (banco/cartão). */
+  modoTotal = false,
 }) {
-  const ids = useMemo(() => data.map((r) => r.id).filter((id) => id != null), [data]);
+  const ids = useMemo(
+    () => data.map((r) => rowKeyOf(r, rowKeyField)).filter((id) => id != null),
+    [data, rowKeyField],
+  );
   const allSelected = useMemo(
     () => ids.length > 0 && ids.every((id) => selectedIds.has(id)),
     [ids, selectedIds],
@@ -35,7 +47,8 @@ function ExtratoTableInner({
   const someSelected = useMemo(() => ids.some((id) => selectedIds.has(id)), [ids, selectedIds]);
 
   const mostrarVencFatura = modoCartao && !modoFechamentoFatura;
-  const colSpan = 7 + (mostrarVencFatura ? 1 : 0) + (modoFechamentoFatura ? 1 : 0);
+  const colSpan =
+    7 + (mostrarVencFatura ? 1 : 0) + (modoFechamentoFatura ? 1 : 0) + (modoTotal ? 1 : 0);
 
   if (isLoading) {
     return <ExtratoSkeleton />;
@@ -47,6 +60,7 @@ function ExtratoTableInner({
         <colgroup>
           <col style={{ width: 36 }} />
           <col style={{ width: 48 }} />
+          {modoTotal ? <col style={{ width: 96 }} /> : null}
           <col style={{ width: 108 }} />
           {modoFechamentoFatura ? <col style={{ width: 100 }} /> : null}
           {mostrarVencFatura ? <col style={{ width: 72 }} /> : null}
@@ -73,6 +87,9 @@ function ExtratoTableInner({
               />
             </th>
             <th className="px-2 py-2 text-left whitespace-nowrap">Conta</th>
+            {modoTotal ? (
+              <th className="px-2 py-2 text-left whitespace-nowrap">Origem</th>
+            ) : null}
             {modoFechamentoFatura ? (
               <th className="px-2 py-2 text-left whitespace-nowrap">Cartão</th>
             ) : null}
@@ -111,7 +128,8 @@ function ExtratoTableInner({
             </tr>
           ) : (
             data.map((item, idx) => {
-              const selected = selectedIds.has(item.id);
+              const rowKey = rowKeyOf(item, rowKeyField);
+              const selected = selectedIds.has(rowKey);
               const destacado = highlightLancamentoId != null && Number(item.id) === Number(highlightLancamentoId);
               const pendente = item.etapa === ETAPAS.IMPORTADO;
               const fechado = item.etapa === ETAPAS.FECHADO;
@@ -122,7 +140,7 @@ function ExtratoTableInner({
 
               return (
                 <tr
-                  key={item.id}
+                  key={rowKey ?? item.id}
                   data-lancamento-id={item.id}
                   className={`group border-b transition-colors cursor-pointer ${
                     fechado ? 'opacity-70' : ''
@@ -145,7 +163,7 @@ function ExtratoTableInner({
                     <input
                       type="checkbox"
                       checked={selected}
-                      onChange={() => onSelect(item.id)}
+                      onChange={() => onSelect(rowKey)}
                       aria-label={`Selecionar lançamento ${item.numeroLancamento}`}
                       className="rounded border-slate-300"
                     />
@@ -153,6 +171,14 @@ function ExtratoTableInner({
                   <td className="px-2 py-2 align-middle overflow-hidden">
                     <ContaBadge codigo={contaCodigoExtratoExibicao(item)} />
                   </td>
+                  {modoTotal ? (
+                    <td
+                      className="px-2 py-2 align-middle text-xs text-slate-600 dark:text-slate-400 truncate"
+                      title={origemExtratoLabel(item)}
+                    >
+                      {origemExtratoLabel(item)}
+                    </td>
+                  ) : null}
                   {modoFechamentoFatura ? (
                     <td className="px-2 py-2 align-middle text-slate-700 dark:text-slate-300 text-xs truncate" title={item.cartaoNome}>
                       {item.cartaoNome || '—'}

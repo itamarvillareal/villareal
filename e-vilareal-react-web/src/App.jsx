@@ -26,6 +26,7 @@ import {
   LazyFinanceiroCompensacao,
   LazyFinanceiroConfig,
   LazyFinanceiroConsolidado,
+  LazyFinanceiroTotal,
   LazyFinanceiroDashboard,
   LazyFinanceiroExtrato,
   LazyFinanceiroFatura,
@@ -508,6 +509,7 @@ function App() {
                 <Route path="inbox/:tipo" element={<LazyFinanceiroInbox />} />
                 <Route path="consolidado" element={<LazyFinanceiroConsolidado />} />
                 <Route path="consolidado/:conta" element={<LazyFinanceiroConsolidado />} />
+                <Route path="total" element={<LazyFinanceiroTotal />} />
                 <Route path="analises" element={<LazyFinanceiroAnalises />} />
                 <Route path="investimentos" element={<LazyFinanceiroInvestimentos />} />
                 <Route path="compensacao" element={<LazyFinanceiroCompensacao />} />

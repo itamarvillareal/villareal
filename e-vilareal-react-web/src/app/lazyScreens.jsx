@@ -108,6 +108,10 @@ export const LazyFinanceiroConsolidado = fromNamed(
   () => import('../components/financeiro/consolidado/ConsolidadoPage.jsx'),
   'ConsolidadoPage',
 );
+export const LazyFinanceiroTotal = fromNamed(
+  () => import('../components/financeiro/total/TotalPage.jsx'),
+  'TotalPage',
+);
 export const LazyFinanceiroAnalises = fromNamed(
   () => import('../components/financeiro/analises/AnalisesPage.jsx'),
   'AnalisesPage',

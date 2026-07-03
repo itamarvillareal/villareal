@@ -5,6 +5,7 @@ import {
   CreditCard,
   FileText,
   Inbox,
+  Layers,
   LayoutDashboard,
   Link2,
   PanelLeftClose,
@@ -182,6 +183,10 @@ function FinanceiroShell({
                 <NavLink to="/financeiro/consolidado" className={navClass}>
                   <BarChart3 className="w-[15px] h-[15px] shrink-0" />
                   Consolidado
+                </NavLink>
+                <NavLink to="/financeiro/total" className={navClass}>
+                  <Layers className="w-[15px] h-[15px] shrink-0" />
+                  Total
                 </NavLink>
                 <NavLink to="/financeiro/analises" className={navClass}>
                   <Sparkles className="w-[15px] h-[15px] shrink-0" />
