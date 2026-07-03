@@ -7,6 +7,10 @@ import {
   fetchCalculoRodadasResumo,
   putCalculoRodada,
 } from '../repositories/calculosRepository.js';
+import { fetchWithCrossTabCache, invalidateCrossTabCache } from '../utils/crossTabFetchCache.js';
+
+const CACHE_KEY_RODADAS_RESUMO = 'calculos.rodadas.resumo';
+const RODADAS_RESUMO_CACHE_TTL_MS = 90_000;
 import { listarProcessosResumoPorCodigoCliente } from '../repositories/processosRepository.js';
 import {
   coletarNumerosInternosUsadosPorCliente,
@@ -272,6 +276,19 @@ function emitRodadasAtualizadas(detail) {
   );
 }
 
+function invalidateRodadasResumoCache() {
+  invalidateCrossTabCache(CACHE_KEY_RODADAS_RESUMO);
+}
+
+function applyRodadasResumoApiData(data) {
+  __resumoParcelamentoAceito.clear();
+  const rows = Array.isArray(data?.rodadas) ? data.rodadas : [];
+  for (const row of rows) {
+    if (row?.chave) __resumoParcelamentoAceito.set(String(row.chave), Boolean(row.parcelamentoAceito));
+  }
+  return rows.length;
+}
+
 /**
  * @param {Record<string, unknown>} rodadas
  * @param {{ persistRodadaKey?: string, persistRodadaKeysComValor?: string[] }} [options]
@@ -309,6 +326,7 @@ export function saveRodadasCalculos(rodadas, options = {}) {
             if (saved && typeof saved === 'object') {
               lruSet(chave, saved);
               __resumoParcelamentoAceito.set(chave, Boolean(saved.parcelamentoAceito));
+              invalidateRodadasResumoCache();
             }
           });
         };
@@ -355,6 +373,7 @@ export function saveRodadasCalculos(rodadas, options = {}) {
             __rodadasApiSaveChain = __rodadasApiSaveChain
               .then(() => putCalculoRodadas(prepared))
               .then(() => {
+                invalidateRodadasResumoCache();
                 rebuildResumoFromFullRodadasMap(prepared);
                 emitRodadasAtualizadas({
                   rodadas: mergeComRodadasTesteVinculacao(pipelineRodadasMap(prepared)),
@@ -396,6 +415,7 @@ function parseRodadasMapLocal() {
 export async function hydrateRodadasCalculosResumoFromApi(options = {}) {
   if (typeof window === 'undefined' || !featureFlags.useApiCalculos) return;
   const silent = options.silent === true;
+  const force = options.force === true;
   if (!silent) {
     __hidratacaoCalculosConcluida = false;
     window.dispatchEvent(new CustomEvent('vilareal:calculos-rodadas-api-hidratacao-iniciada'));
@@ -404,19 +424,19 @@ export async function hydrateRodadasCalculosResumoFromApi(options = {}) {
   try {
     __fullRodadasMapPosAdminSync = null;
     console.info(`${LOG_CALC_API} GET /api/calculos/rodadas/resumo → em curso…`);
-    const data = await fetchCalculoRodadasResumo();
-    __resumoParcelamentoAceito.clear();
-    const rows = Array.isArray(data?.rodadas) ? data.rodadas : [];
-    for (const row of rows) {
-      if (row?.chave) __resumoParcelamentoAceito.set(String(row.chave), Boolean(row.parcelamentoAceito));
-    }
-    console.info(`${LOG_CALC_API} GET /api/calculos/rodadas/resumo → OK, entradas: ${rows.length}`);
+    const data = await fetchWithCrossTabCache(
+      CACHE_KEY_RODADAS_RESUMO,
+      () => fetchCalculoRodadasResumo(),
+      { ttlMs: RODADAS_RESUMO_CACHE_TTL_MS, force }
+    );
+    const nRows = applyRodadasResumoApiData(data);
+    console.info(`${LOG_CALC_API} GET /api/calculos/rodadas/resumo → OK, entradas: ${nRows}`);
     __hidratacaoCalculosConcluida = true;
     emitRodadasAtualizadas();
     if (!silent) {
       window.dispatchEvent(
         new CustomEvent('vilareal:calculos-rodadas-api-hidratacao-concluida', {
-          detail: { ok: true, nRodadas: rows.length, modo: 'resumo' },
+          detail: { ok: true, nRodadas: nRows, modo: 'resumo' },
         })
       );
     }
@@ -445,6 +465,7 @@ export async function hydrateRodadasCalculosResumoFromApi(options = {}) {
 export async function hydrateRodadasCalculosFromApi(options = {}) {
   if (typeof window === 'undefined' || !featureFlags.useApiCalculos) return;
   const preferServer = options.preferServer === true;
+  invalidateRodadasResumoCache();
   __hidratacaoCalculosConcluida = false;
   window.dispatchEvent(new CustomEvent('vilareal:calculos-rodadas-api-hidratacao-iniciada'));
   pushCursorWaitGlobal();

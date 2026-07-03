@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { buildPontosGraficoConsolidado, ultimosNMeses } from './consolidadoUtils.js';
+import { buildPontosGraficoConsolidado, somarLancamentosExtratoRows, ultimosNMeses } from './consolidadoUtils.js';
+
+describe('somarLancamentosExtratoRows', () => {
+  it('soma créditos e débitos dos lançamentos', () => {
+    const r = somarLancamentosExtratoRows([
+      { valor: 100, natureza: 'CREDITO' },
+      { valor: 50, natureza: 'DEBITO' },
+      { valor: 30, natureza: 'DEBITO' },
+    ]);
+    expect(r.creditos).toBe(100);
+    expect(r.debitos).toBe(80);
+    expect(r.saldo).toBe(20);
+  });
+});
 
 describe('ultimosNMeses', () => {
   it('retorna N meses', () => {

@@ -234,6 +234,7 @@ public class FinanceiroController {
             @RequestParam(value = "cadastroPlenitude", required = false) String cadastroPlenitude,
             @RequestParam(value = "codigoCliente", required = false) String codigoCliente,
             @RequestParam(value = "numeroInternoProcesso", required = false) Integer numeroInternoProcesso,
+            @RequestParam(value = "numeroImovel", required = false) String numeroImovel,
             @PageableDefault(size = 20, sort = "dataLancamento", direction = Sort.Direction.ASC) Pageable pageable) {
         EtapaLancamento etapaEnum = null;
         if (etapa != null && !etapa.isBlank()) {
@@ -257,6 +258,7 @@ public class FinanceiroController {
                 cadastroPlenitude,
                 codigoCliente,
                 numeroInternoProcesso,
+                numeroImovel,
                 pageable);
     }
 
@@ -289,6 +291,7 @@ public class FinanceiroController {
             @RequestParam(value = "cadastroPlenitude", required = false) String cadastroPlenitude,
             @RequestParam(value = "codigoCliente", required = false) String codigoCliente,
             @RequestParam(value = "numeroInternoProcesso", required = false) Integer numeroInternoProcesso,
+            @RequestParam(value = "numeroImovel", required = false) String numeroImovel,
             @PageableDefault(size = 20, sort = "dataLancamento", direction = Sort.Direction.ASC) Pageable pageable) {
         EtapaLancamento etapaEnum = null;
         if (etapa != null && !etapa.isBlank()) {
@@ -312,6 +315,7 @@ public class FinanceiroController {
                 cadastroPlenitude,
                 codigoCliente,
                 numeroInternoProcesso,
+                numeroImovel,
                 pageable);
     }
 

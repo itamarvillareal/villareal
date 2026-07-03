@@ -37,6 +37,9 @@ import {
   loadConfigCalculoCliente,
   mergeConfigPainelCalculo,
   refreshConfigCalculoClienteFromApi,
+  editarPercentualFixoCampo,
+  normalizarHonorariosValorFixo,
+  percentualFixoParaCampo,
 } from '../data/clienteConfigCalculoStorage.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
@@ -684,11 +687,6 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     void refreshConfigCalculoClienteFromApi(codigoClienteNorm);
   }, [codigoClienteNorm]);
 
-  const panelConfigKey = useMemo(
-    () => JSON.stringify(rodadasState[rodadaKey]?.panelConfig ?? null),
-    [rodadaKey, rodadasState[rodadaKey]?.panelConfig]
-  );
-
   const updatePainelCampo = useCallback(
     (partial) => {
       if (partial.juros !== undefined) setJuros(partial.juros);
@@ -726,7 +724,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     setIndice(merged.indice);
     setPeriodicidade(merged.periodicidade ?? 'mensal');
     setModeloListaDebitos(merged.modeloListaDebitos ?? '01');
-  }, [rodadaKey, codigoClienteNorm, panelConfigKey]);
+  }, [rodadaKey, codigoClienteNorm]);
 
   useEffect(() => {
     const h = () => {
@@ -1729,17 +1727,15 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       const honorPct = honorariosTipoUsado === 'variaveis' ? honorPctVariavel : honorPctFixoUsado;
       const baseHonor = baseMulta + multaValor;
       const honorariosCalc = trunc2(baseHonor * honorPct);
-      const total = trunc2(atualizado + jurosValor + multaValor + honorariosCalc);
 
-      const nextRow = {
+      const nextRow = calcularTotalLinhaTitulo({
         ...row,
         diasAtraso: String(dias),
         atualizacaoMonetaria: formatBRL(trunc2(atualizacaoMonetariaValor)),
         juros: formatBRL(jurosValor),
         multa: formatBRL(multaValor),
         honorarios: formatBRL(honorariosCalc),
-        total: formatBRL(total),
-      };
+      });
 
       if (
         nextRow.diasAtraso !== row.diasAtraso ||
@@ -3125,12 +3121,29 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-0.5">Multa:</label>
-                <input
-                  type="text"
-                  value={multa}
-                  onChange={(e) => updatePainelCampo({ multa: e.target.value })}
-                  className={inputClass}
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={percentualFixoParaCampo(multa)}
+                    onChange={(e) =>
+                      updatePainelCampo({ multa: editarPercentualFixoCampo(e.target.value) })
+                    }
+                    onBlur={(e) =>
+                      updatePainelCampo({
+                        multa: normalizarHonorariosValorFixo(e.target.value),
+                      })
+                    }
+                    placeholder="2"
+                    className={`${inputClass} pr-7`}
+                  />
+                  <span
+                    className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-500"
+                    aria-hidden
+                  >
+                    %
+                  </span>
+                </div>
               </div>
               <div className="border border-slate-200 rounded p-1.5 bg-white shadow-sm">
                 <p className="text-[11px] font-medium text-slate-700 mb-1">Honorários</p>
@@ -3170,14 +3183,30 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                     />
                   </>
                 )}
-                <input
-                  type="text"
-                  value={honorariosValor}
-                  onChange={(e) => updatePainelCampo({ honorariosValor: e.target.value })}
-                  placeholder={honorariosTipo === 'fixos' ? 'Ex: 10 %' : '—'}
-                  disabled={honorariosTipo !== 'fixos'}
-                  className={`${inputClass} ${honorariosTipo !== 'fixos' ? 'bg-slate-50 text-slate-400' : ''}`}
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={percentualFixoParaCampo(honorariosValor)}
+                    onChange={(e) =>
+                      updatePainelCampo({ honorariosValor: editarPercentualFixoCampo(e.target.value) })
+                    }
+                    onBlur={(e) =>
+                      updatePainelCampo({
+                        honorariosValor: normalizarHonorariosValorFixo(e.target.value),
+                      })
+                    }
+                    placeholder="20"
+                    disabled={honorariosTipo !== 'fixos'}
+                    className={`${inputClass} pr-7 ${honorariosTipo !== 'fixos' ? 'bg-slate-50 text-slate-400' : ''}`}
+                  />
+                  <span
+                    className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-500"
+                    aria-hidden
+                  >
+                    %
+                  </span>
+                </div>
               </div>
               <div className="border border-slate-200 rounded p-1.5 bg-white shadow-sm relative" ref={indicePickerRef}>
                 <p className="text-[11px] font-medium text-slate-700 mb-1">Índice</p>

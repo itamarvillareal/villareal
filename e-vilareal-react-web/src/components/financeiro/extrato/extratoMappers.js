@@ -4,6 +4,7 @@ import {
   loadPersistedContasContabeisExtrasFinanceiro,
   normalizarCodigoClienteFinanceiro,
   normalizarProcFinanceiro,
+  normalizarNumeroImovelFinanceiro,
   obterCodigoClienteFinanceiroPorPessoaId,
 } from '../../../data/financeiroData.js';
 import {
@@ -29,7 +30,15 @@ function codClienteExibicao(l) {
   return codigoClienteExtratoDesdeApiDto(l);
 }
 
-function procExibicao(l) {
+/** Nº do imóvel (col. A do cadastro) persistido em grupo_compensacao na conta I. */
+export function numeroImovelExtratoDesdeApiDto(l, contaCodigo) {
+  if (String(contaCodigo ?? '').trim().toUpperCase() !== 'I') return '';
+  return normalizarNumeroImovelFinanceiro(l.grupoCompensacao ?? l.grupo_compensacao);
+}
+
+function procExibicao(l, contaCodigo) {
+  const cod = String(contaCodigo ?? '').trim().toUpperCase();
+  if (cod === 'I') return '';
   const grupo = String(l.grupoCompensacao ?? '').trim();
   if (grupo) return grupo;
   const ni = l.numeroInternoProcesso ?? l.numero_interno_processo;
@@ -123,11 +132,12 @@ export function mapApiLancamentoToExtratoRow(l, contaToLetra) {
     natureza,
     etapa: String(l.etapa ?? 'IMPORTADO').toUpperCase(),
     observacao: String(l.descricaoDetalhada ?? '').trim(),
-    codCliente: codClienteExibicao(l),
-    proc: procExibicao(l),
-    clienteId: l.clienteId ?? null,
-    pessoaRefId: l.pessoaRefId ?? null,
-    processoId: l.processoId ?? null,
+    codCliente: contaCodigo === 'I' ? '' : codClienteExibicao(l),
+    proc: procExibicao(l, contaCodigo),
+    numeroImovel: numeroImovelExtratoDesdeApiDto(l, contaCodigo),
+    clienteId: contaCodigo === 'I' ? null : l.clienteId ?? null,
+    pessoaRefId: contaCodigo === 'I' ? null : l.pessoaRefId ?? null,
+    processoId: contaCodigo === 'I' ? null : l.processoId ?? null,
     bancoNome: String(l.bancoNome ?? ''),
     numeroBanco: l.numeroBanco ?? null,
     numeroLancamento: String(l.numeroLancamento ?? ''),
@@ -191,10 +201,14 @@ export function extratoRowToUi(row) {
   const grupoMarcador = String(
     row.grupoCompensacao ?? row._financeiroMeta?.grupoCompensacao ?? '',
   ).trim();
+  const numeroImovel =
+    letra === 'I' ? normalizarNumeroImovelFinanceiro(row.numeroImovel ?? grupoMarcador) : '';
   const proc =
-    letra === 'E'
-      ? String(row.proc ?? grupoMarcador).trim()
-      : String(row.proc ?? '').trim() || (grupoMarcador === '0' ? '0' : '');
+    letra === 'I'
+      ? ''
+      : letra === 'E'
+        ? String(row.proc ?? grupoMarcador).trim()
+        : String(row.proc ?? '').trim() || (grupoMarcador === '0' ? '0' : '');
   return {
     apiId: row.id,
     letra: row.contaCodigo,
@@ -204,7 +218,7 @@ export function extratoRowToUi(row) {
     descricao: row.descricao,
     descricaoDetalhada: row.descricaoDetalhada,
     valor: valorAssinado,
-    codCliente: row.codCliente,
+    codCliente: letra === 'I' ? '' : row.codCliente,
     proc,
     ref: row.ref,
     dimensao: row.dimensao,
@@ -215,23 +229,38 @@ export function extratoRowToUi(row) {
     origemImportacao: row.origem,
     origemExtrato: row.origemExtrato ?? 'banco',
     _financeiroMeta: {
-      clienteId: row.clienteId,
-      pessoaRefId: row.pessoaRefId ?? null,
-      processoId: row.processoId,
+      clienteId: letra === 'I' ? null : row.clienteId,
+      pessoaRefId: letra === 'I' ? null : row.pessoaRefId ?? null,
+      processoId: letra === 'I' ? null : row.processoId,
       contaContabilId: row.contaContabilId,
       cartaoId: row.cartaoId ?? null,
       grupoCompensacao:
-        letra === 'E'
-          ? proc || grupoMarcador || null
-          : proc === '0' && !(Number(row.processoId) > 0)
-            ? '0'
-            : grupoMarcador || null,
+        letra === 'I'
+          ? numeroImovel || null
+          : letra === 'E'
+            ? proc || grupoMarcador || null
+            : proc === '0' && !(Number(row.processoId) > 0)
+              ? '0'
+              : grupoMarcador || null,
     },
   };
 }
 
 export function mergeExtratoRowComRespostaApi(row, saved, contaToLetra) {
   const mapped = mapApiLancamentoToExtratoRow(saved, contaToLetra);
+  if (String(mapped.contaCodigo ?? '').trim().toUpperCase() === 'I') {
+    const numeroImovel =
+      normalizarNumeroImovelFinanceiro(row.numeroImovel) || mapped.numeroImovel || '';
+    return {
+      ...mapped,
+      numeroImovel,
+      codCliente: '',
+      proc: '',
+      clienteId: null,
+      pessoaRefId: null,
+      processoId: null,
+    };
+  }
   const clienteId =
     Number(mapped.clienteId) > 0
       ? mapped.clienteId

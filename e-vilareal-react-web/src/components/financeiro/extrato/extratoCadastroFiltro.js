@@ -1,3 +1,5 @@
+import { normalizarNumeroImovelFinanceiro } from '../../../data/financeiroData.js';
+
 export const CADASTRO_TODOS = 'todos';
 export const CADASTRO_PLENO = 'pleno';
 export const CADASTRO_PARCIAL = 'parcial';
@@ -41,7 +43,16 @@ export function classificarCadastroExtratoRow(row) {
     return grupo ? 'pleno' : 'parcial';
   }
 
+  if (cod === 'I') {
+    return temImovelVinculadoExtratoRow(row) ? 'pleno' : 'parcial';
+  }
+
   return 'pleno';
+}
+
+/** Conta Imóveis (I): nº do imóvel (planilha) vinculado. */
+export function temImovelVinculadoExtratoRow(row) {
+  return Boolean(normalizarNumeroImovelFinanceiro(row?.numeroImovel ?? row?.grupoCompensacao));
 }
 
 /** Conta Escritório (A): código de cliente e processo preenchidos. */

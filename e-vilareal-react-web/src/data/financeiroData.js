@@ -1558,6 +1558,12 @@ export function normalizarProcFinanceiro(val) {
   return String(n);
 }
 
+/** Nº do imóvel na planilha (col. A do cadastro de imóveis), usado na conta I. */
+export function normalizarNumeroImovelFinanceiro(valor) {
+  const n = Math.trunc(Number(String(valor ?? '').replace(/\D/g, '')));
+  return Number.isFinite(n) && n >= 1 && n <= 999 ? String(n) : '';
+}
+
 /** Proc. exibido/filtrado na Conta Corrente a partir de linha de extrato (local ou UI). */
 export function procContaCorrenteDeTransacao(t) {
   const proc = normalizarProcFinanceiro(t?.proc);
@@ -1592,6 +1598,10 @@ export function grupoCompensacaoParaSalvarLancamento({ letra, proc, processoId, 
   const pid = Number(processoId) > 0 ? Number(processoId) : null;
   if (cod === 'E') {
     return procNorm || String(grupoAtual ?? '').trim() || null;
+  }
+  if (cod === 'I') {
+    const np = normalizarNumeroImovelFinanceiro(grupoAtual);
+    return np || '';
   }
   if (cod === 'A') {
     if (procNorm === '0' && !pid) return '0';

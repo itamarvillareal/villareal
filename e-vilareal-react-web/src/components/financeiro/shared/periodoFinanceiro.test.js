@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  PERIODO_TOTAL,
   dataNoPeriodo,
   isPeriodoAnoInteiro,
+  isPeriodoTotal,
   modoPeriodo,
   periodoParaIntervalo,
+  periodoParaListagemApi,
   periodoParaQueryApi,
   periodoParaMesRefObrigatorio,
 } from './periodoFinanceiro.js';
@@ -39,5 +42,12 @@ describe('periodoFinanceiro', () => {
   it('modoPeriodo', () => {
     expect(modoPeriodo('2025')).toBe('ano');
     expect(modoPeriodo('2025-03')).toBe('mes');
+    expect(modoPeriodo(PERIODO_TOTAL)).toBe('total');
+  });
+
+  it('periodo total — sem filtro de data na listagem', () => {
+    expect(isPeriodoTotal(PERIODO_TOTAL)).toBe(true);
+    expect(periodoParaListagemApi(PERIODO_TOTAL)).toEqual({});
+    expect(dataNoPeriodo('2014-01-01', PERIODO_TOTAL)).toBe(true);
   });
 });

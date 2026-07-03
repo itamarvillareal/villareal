@@ -4,10 +4,12 @@ import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.financeiro.domain.FinanceiroCadastroPlenitude;
 import br.com.vilareal.financeiro.domain.StatusLancamento;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
+import br.com.vilareal.imovel.application.ImovelLancamentoFiltroCriteria;
 import br.com.vilareal.processo.application.ClienteCodigoPessoaResolver;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -206,12 +208,18 @@ public final class LancamentoFinanceiroSpecifications {
                     cb.isNotNull(root.get("grupoCompensacao")),
                     cb.notEqual(root.get("grupoCompensacao"), ""));
 
+            var iPleno = cb.and(
+                    cb.equal(codigo, "I"),
+                    cb.isNotNull(root.get("grupoCompensacao")),
+                    cb.notEqual(root.get("grupoCompensacao"), ""));
+
             var demaisPleno = cb.and(
                     cb.notEqual(codigo, "N"),
                     cb.notEqual(codigo, "A"),
-                    cb.notEqual(codigo, "E"));
+                    cb.notEqual(codigo, "E"),
+                    cb.notEqual(codigo, "I"));
 
-            return cb.and(notN, cb.or(aPleno, ePleno, demaisPleno));
+            return cb.and(notN, cb.or(aPleno, ePleno, iPleno, demaisPleno));
         };
     }
 
@@ -233,7 +241,13 @@ public final class LancamentoFinanceiroSpecifications {
                             cb.isNull(root.get("grupoCompensacao")),
                             cb.equal(root.get("grupoCompensacao"), "")));
 
-            return cb.or(aParcial, eParcial);
+            var iParcial = cb.and(
+                    cb.equal(codigo, "I"),
+                    cb.or(
+                            cb.isNull(root.get("grupoCompensacao")),
+                            cb.equal(root.get("grupoCompensacao"), "")));
+
+            return cb.or(aParcial, eParcial, iParcial);
         };
     }
 
@@ -477,6 +491,53 @@ public final class LancamentoFinanceiroSpecifications {
                 return cb.disjunction();
             }
             return cb.or(preds.toArray(Predicate[]::new));
+        };
+    }
+
+    /**
+     * Filtro por nº do imóvel na planilha (conta I): valor persistido em {@code grupo_compensacao}.
+     */
+    public static Specification<LancamentoFinanceiroEntity> comNumeroImovel(String numeroImovelNormalizado) {
+        if (numeroImovelNormalizado == null || numeroImovelNormalizado.isBlank()) {
+            return null;
+        }
+        String norm = numeroImovelNormalizado.trim();
+        return (root, query, cb) -> cb.equal(root.get("grupoCompensacao"), norm);
+    }
+
+    /**
+     * Filtro ampliado por imóvel (conta I): grupo_compensacao, processos, repasses e prefixos Cod.+Proc. na Obs.
+     */
+    public static Specification<LancamentoFinanceiroEntity> comFiltroImovelPlanilha(
+            ImovelLancamentoFiltroCriteria criteria) {
+        if (criteria == null || criteria.isEmpty()) {
+            return (root, query, cb) -> cb.disjunction();
+        }
+        return (root, query, cb) -> {
+            List<Predicate> ors = new ArrayList<>();
+            if (StringUtils.hasText(criteria.numeroPlanilha())) {
+                ors.add(cb.equal(root.get("grupoCompensacao"), criteria.numeroPlanilha().trim()));
+            }
+            if (criteria.processoIds() != null && !criteria.processoIds().isEmpty()) {
+                var processoJoin = root.join("processo", JoinType.LEFT);
+                ors.add(processoJoin.get("id").in(criteria.processoIds()));
+            }
+            if (criteria.lancamentoFinanceiroIds() != null && !criteria.lancamentoFinanceiroIds().isEmpty()) {
+                ors.add(root.get("id").in(criteria.lancamentoFinanceiroIds()));
+            }
+            if (criteria.obsPrefixos() != null) {
+                for (String prefixo : criteria.obsPrefixos()) {
+                    if (prefixo == null || prefixo.isBlank()) {
+                        continue;
+                    }
+                    String like = prefixo.trim().toLowerCase(Locale.ROOT) + "%";
+                    ors.add(cb.like(cb.lower(root.get("descricaoDetalhada")), like));
+                }
+            }
+            if (ors.isEmpty()) {
+                return cb.disjunction();
+            }
+            return cb.or(ors.toArray(Predicate[]::new));
         };
     }
 

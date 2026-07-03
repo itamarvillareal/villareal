@@ -3,6 +3,7 @@ import { API_BASE_URL } from '../../../api/config.js';
 import { buildAuditoriaHeaders } from '../../../services/auditoriaCliente.js';
 import { getAccessToken } from '../../../api/authTokenStorage.js';
 import { getWhatsAppUnreadCount } from '../../../repositories/whatsappRepository.js';
+import { getWhatsAppSseTabCoordinator } from '../../../utils/whatsappSseTabCoordinator.js';
 
 const MAX_NOTIFICATIONS = 50;
 const RECONNECT_MS = 5000;
@@ -68,6 +69,8 @@ export function useWhatsAppNotifications({ enabled = true } = {}) {
   const [latestMediaReady, setLatestMediaReady] = useState(null);
   const abortRef = useRef(null);
   const reconnectTimerRef = useRef(null);
+  const isLeaderRef = useRef(false);
+  const coordinatorRef = useRef(null);
 
   const fetchUnreadCount = useCallback(async () => {
     try {
@@ -79,13 +82,15 @@ export function useWhatsAppNotifications({ enabled = true } = {}) {
     }
   }, []);
 
-  const handleInbound = useCallback((data) => {
+  const handleInbound = useCallback((data, { playFeedback = true } = {}) => {
     if (String(data?.direction ?? '').toUpperCase() !== 'INBOUND') return;
     setNotifications((prev) => [data, ...prev].slice(0, MAX_NOTIFICATIONS));
     setUnreadCount((prev) => prev + 1);
     setLatestInbound(data);
-    playNotificationSound();
-    showBrowserNotification(data);
+    if (playFeedback) {
+      playNotificationSound();
+      showBrowserNotification(data);
+    }
   }, []);
 
   useEffect(() => {
@@ -103,10 +108,14 @@ export function useWhatsAppNotifications({ enabled = true } = {}) {
   useEffect(() => {
     if (!enabled) return undefined;
 
+    const coordinator = getWhatsAppSseTabCoordinator();
+    coordinatorRef.current = coordinator;
+    coordinator.start();
+
     let cancelled = false;
 
-    const connect = async () => {
-      if (cancelled) return;
+    const connectAsLeader = async () => {
+      if (cancelled || !isLeaderRef.current) return;
       const token = getAccessToken();
       if (!token) return;
 
@@ -132,31 +141,58 @@ export function useWhatsAppNotifications({ enabled = true } = {}) {
         const decoder = new TextDecoder();
         let buffer = '';
 
-        while (!cancelled) {
+        while (!cancelled && isLeaderRef.current) {
           const { done, value } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
           buffer = parseSseBlocks(buffer, (eventName, data) => {
-            if (eventName === 'whatsapp-message') handleInbound(data);
-            else if (eventName === 'whatsapp-media-ready') setLatestMediaReady(data);
+            if (eventName === 'whatsapp-message') {
+              coordinator.publishFromLeader(eventName, data);
+            } else if (eventName === 'whatsapp-media-ready') {
+              coordinator.publishFromLeader(eventName, data);
+            }
           });
         }
-      } catch (err) {
-        if (controller.signal.aborted || cancelled) return;
+      } catch {
+        if (controller.signal.aborted || cancelled || !isLeaderRef.current) return;
       }
 
-      if (!cancelled) {
-        reconnectTimerRef.current = window.setTimeout(connect, RECONNECT_MS);
+      if (!cancelled && isLeaderRef.current) {
+        reconnectTimerRef.current = window.setTimeout(connectAsLeader, RECONNECT_MS);
       }
     };
 
+    const removeEventListener = coordinator.addEventListener((eventName, data, meta) => {
+      if (eventName === 'whatsapp-message') {
+        handleInbound(data, { playFeedback: !meta.fromBroadcast || isLeaderRef.current });
+      } else if (eventName === 'whatsapp-media-ready') {
+        setLatestMediaReady(data);
+      }
+    });
+
+    const removeLeaderListener = coordinator.addLeaderListener((isLeader) => {
+      isLeaderRef.current = isLeader;
+      if (reconnectTimerRef.current) {
+        window.clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      abortRef.current?.abort();
+      abortRef.current = null;
+      if (isLeader && !cancelled) {
+        void connectAsLeader();
+      }
+    });
+
     void fetchUnreadCount();
-    void connect();
 
     return () => {
       cancelled = true;
+      removeEventListener();
+      removeLeaderListener();
       abortRef.current?.abort();
       if (reconnectTimerRef.current) window.clearTimeout(reconnectTimerRef.current);
+      coordinator.stop();
+      coordinatorRef.current = null;
     };
   }, [enabled, fetchUnreadCount, handleInbound]);
 

@@ -6,6 +6,7 @@ import {
   classificarCadastroExtratoRow,
   parseCadastroFiltroParam,
   temCodigoEProcExtratoRow,
+  temImovelVinculadoExtratoRow,
 } from './extratoCadastroFiltro.js';
 
 describe('extratoCadastroFiltro', () => {
@@ -27,7 +28,17 @@ describe('extratoCadastroFiltro', () => {
     expect(classificarCadastroExtratoRow({ contaCodigo: 'A', codCliente: '1' })).toBe('parcial');
     expect(classificarCadastroExtratoRow({ contaCodigo: 'E', grupoCompensacao: 'G1' })).toBe('pleno');
     expect(classificarCadastroExtratoRow({ contaCodigo: 'E' })).toBe('parcial');
+    expect(classificarCadastroExtratoRow({ contaCodigo: 'I', numeroImovel: '42' })).toBe('pleno');
+    expect(classificarCadastroExtratoRow({ contaCodigo: 'I', grupoCompensacao: '7' })).toBe('pleno');
+    expect(classificarCadastroExtratoRow({ contaCodigo: 'I' })).toBe('parcial');
     expect(classificarCadastroExtratoRow({ contaCodigo: 'F' })).toBe('pleno');
+  });
+
+  it('temImovelVinculadoExtratoRow exige nº do imóvel', () => {
+    expect(temImovelVinculadoExtratoRow({ numeroImovel: '56' })).toBe(true);
+    expect(temImovelVinculadoExtratoRow({ grupoCompensacao: '12' })).toBe(true);
+    expect(temImovelVinculadoExtratoRow({ numeroImovel: '' })).toBe(false);
+    expect(temImovelVinculadoExtratoRow({})).toBe(false);
   });
 
   it('temCodigoEProcExtratoRow exige cliente e processo', () => {

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Pencil, Search, Trash2, Wrench } from 'lucide-react';
 import { useFinanceiroChrome, useFinanceiroFilters } from '../FinanceiroContext.jsx';
 import { PeriodoSelector } from '../shared/PeriodoSelector.jsx';
+import { isPeriodoTotal } from '../shared/periodoFinanceiro.js';
 import { FilterTag } from '../shared/FilterTag.jsx';
 import { EtapaFiltroSelect } from '../shared/EtapaFiltroSelect.jsx';
 import { LimparContaDialog } from '../shared/LimparContaDialog.jsx';
@@ -52,7 +53,7 @@ export function ExtratoFilters({
     <div
       className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0 min-h-11"
     >
-      <PeriodoSelector value={filters.mes} onChange={setMes} />
+      <PeriodoSelector value={filters.mes} onChange={setMes} incluirTotal />
 
       <EtapaFiltroSelect
         value={filters.etapa ?? ''}
@@ -194,7 +195,8 @@ export function ExtratoFilters({
       <span className="text-[11px] text-slate-400 tabular-nums shrink-0 ml-auto text-right">
         {filters.busca?.trim() ? (
           <>
-            {totalGeral.toLocaleString('pt-BR')} encontrado{totalGeral === 1 ? '' : 's'} no período
+            {totalGeral.toLocaleString('pt-BR')} encontrado{totalGeral === 1 ? '' : 's'}{' '}
+            {isPeriodoTotal(filters.mes) ? 'no total' : 'no período'}
             {totalNaPagina > 0 ? (
               <span className="block text-[10px]">
                 exibindo {totalNaPagina.toLocaleString('pt-BR')} nesta página
@@ -204,6 +206,9 @@ export function ExtratoFilters({
         ) : (
           <>
             {totalNaPagina.toLocaleString('pt-BR')} de {totalGeral.toLocaleString('pt-BR')}
+            {isPeriodoTotal(filters.mes) ? (
+              <span className="block text-[10px]">todos os lançamentos</span>
+            ) : null}
           </>
         )}
       </span>

@@ -59,6 +59,32 @@ export function normalizarHonorariosValorFixo(val) {
   return raw;
 }
 
+/** Valor exibido no campo de percentual fixo (sem « % » — símbolo fica fora do input). */
+export function percentualFixoParaCampo(val) {
+  return String(val ?? '')
+    .replace(/%/g, '')
+    .replace(/^R\$\s*/i, '')
+    .trim();
+}
+
+/** Normaliza texto digitado no campo de percentual fixo enquanto o usuário digita. */
+export function editarPercentualFixoCampo(texto) {
+  let t = String(texto ?? '')
+    .replace(/%/g, '')
+    .replace(/^R\$\s*/i, '')
+    .trim();
+  if (!t) return '';
+  t = t.replace(/[^\d.,]/g, '');
+  const sepIndex = t.search(/[.,]/);
+  if (sepIndex < 0) return t;
+  const intPart = t.slice(0, sepIndex).replace(/[.,]/g, '');
+  const decPart = t.slice(sepIndex + 1).replace(/[.,]/g, '').slice(0, 4);
+  if (t.endsWith(',') || t.endsWith('.')) {
+    return `${intPart},`;
+  }
+  return decPart.length > 0 ? `${intPart},${decPart}` : intPart;
+}
+
 function normalizarRowConfigCalculo(row) {
   const out = { ...row };
   if (out.honorariosTipo !== 'variaveis') {

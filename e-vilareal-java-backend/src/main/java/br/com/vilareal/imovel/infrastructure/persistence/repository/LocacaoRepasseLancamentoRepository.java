@@ -47,6 +47,14 @@ public interface LocacaoRepasseLancamentoRepository extends JpaRepository<Locaca
 
     List<LocacaoRepasseLancamentoEntity> findByLancamentoFinanceiro_IdIn(Collection<Long> lancamentoFinanceiroIds);
 
+    @Query(
+            """
+            SELECT DISTINCT v.lancamentoFinanceiro.id FROM LocacaoRepasseLancamentoEntity v
+            WHERE v.contratoLocacao.imovel.numeroPlanilha = :numeroPlanilha
+            """)
+    List<Long> findLancamentoFinanceiroIdsByImovelNumeroPlanilha(
+            @org.springframework.data.repository.query.Param("numeroPlanilha") Integer numeroPlanilha);
+
     boolean existsByLancamentoFinanceiro_IdAndPapel(Long lancamentoFinanceiroId, PapelReconciliacao papel);
 
     @EntityGraph(attributePaths = {"lancamentoFinanceiro", "contratoLocacao", "contratoLocacao.imovel"})

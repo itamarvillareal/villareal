@@ -1,12 +1,19 @@
 /** Utilitários para merge de páginas de títulos (GET paginado) no estado completo da rodada. */
 
-import { formatBRL, parseBRL } from '../components/calculos/calculosTitulosGridUtils.js';
+import { formatBRL } from '../components/calculos/calculosTitulosGridUtils.js';
+import { parseBRLToCentavos } from '../utils/moneyBr.js';
 import { linhaTituloVaziaCalculos } from './calculosTitulosParcelasSync.js';
 
-function trunc2(n) {
-  const v = Number(n);
-  if (!Number.isFinite(v)) return 0;
-  return Math.trunc(v * 100) / 100;
+/** Soma campos monetários pt-BR em centavos inteiros (evita 16,869999… → 16,86). */
+function somaCentavosBRL(...campos) {
+  return campos.reduce((acc, campo) => {
+    const c = parseBRLToCentavos(campo);
+    return acc + (c ?? 0);
+  }, 0);
+}
+
+function formatBRLCentavos(centavos) {
+  return formatBRL(centavos / 100);
 }
 
 export const TITULOS_POR_PAGINA_API = 20;
@@ -69,14 +76,14 @@ export function calcularTotalLinhaTitulo(row) {
   if (principalStr === '') {
     return { ...base, total: '' };
   }
-  const total = trunc2(
-    parseBRL(base.valorInicial) +
-      parseBRL(base.atualizacaoMonetaria) +
-      parseBRL(base.juros) +
-      parseBRL(base.multa) +
-      parseBRL(base.honorarios)
+  const totalCentavos = somaCentavosBRL(
+    base.valorInicial,
+    base.atualizacaoMonetaria,
+    base.juros,
+    base.multa,
+    base.honorarios
   );
-  return { ...base, total: formatBRL(total) };
+  return { ...base, total: formatBRLCentavos(totalCentavos) };
 }
 
 /**
@@ -88,12 +95,19 @@ export function calcularResumoTitulosGrade(lista) {
   const valid = (lista || []).filter((r) => String(r?.valorInicial ?? '').trim() !== '');
   const qtd = valid.length;
 
-  const sumValorInicial = valid.reduce((acc, r) => acc + parseBRL(r.valorInicial), 0);
-  const sumAtualizacao = valid.reduce((acc, r) => acc + parseBRL(r.atualizacaoMonetaria), 0);
-  const sumJuros = valid.reduce((acc, r) => acc + parseBRL(r.juros), 0);
-  const sumMulta = valid.reduce((acc, r) => acc + parseBRL(r.multa), 0);
-  const sumHonorarios = valid.reduce((acc, r) => acc + parseBRL(r.honorarios), 0);
-  const sumTotal = trunc2(sumValorInicial + sumAtualizacao + sumJuros + sumMulta + sumHonorarios);
+  let cValorInicial = 0;
+  let cAtualizacao = 0;
+  let cJuros = 0;
+  let cMulta = 0;
+  let cHonorarios = 0;
+  for (const r of valid) {
+    cValorInicial += parseBRLToCentavos(r.valorInicial) ?? 0;
+    cAtualizacao += parseBRLToCentavos(r.atualizacaoMonetaria) ?? 0;
+    cJuros += parseBRLToCentavos(r.juros) ?? 0;
+    cMulta += parseBRLToCentavos(r.multa) ?? 0;
+    cHonorarios += parseBRLToCentavos(r.honorarios) ?? 0;
+  }
+  const cTotal = cValorInicial + cAtualizacao + cJuros + cMulta + cHonorarios;
 
   const diasNums = valid
     .map((r) => Number(String(r?.diasAtraso ?? '').trim()))
@@ -104,13 +118,13 @@ export function calcularResumoTitulosGrade(lista) {
 
   return {
     qtd: qtdLabel,
-    valorInicial: formatBRL(trunc2(sumValorInicial)),
-    atualizacao: formatBRL(trunc2(sumAtualizacao)),
+    valorInicial: formatBRLCentavos(cValorInicial),
+    atualizacao: formatBRLCentavos(cAtualizacao),
     diasAtraso: `${Math.floor(sumDias)} dias de atraso`,
-    juros: formatBRL(trunc2(sumJuros)),
-    multa: formatBRL(trunc2(sumMulta)),
-    honorarios: formatBRL(trunc2(sumHonorarios)),
-    total: formatBRL(trunc2(sumTotal)),
+    juros: formatBRLCentavos(cJuros),
+    multa: formatBRLCentavos(cMulta),
+    honorarios: formatBRLCentavos(cHonorarios),
+    total: formatBRLCentavos(cTotal),
   };
 }
 

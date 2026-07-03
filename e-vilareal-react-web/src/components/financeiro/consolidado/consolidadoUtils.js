@@ -29,6 +29,18 @@ export function labelContaTab(codigo) {
   return nomeContaPorLetra(codigo) ?? `Conta ${codigo}`;
 }
 
+/** Soma créditos/débitos de linhas do extrato/consolidado (valor sempre positivo + natureza). */
+export function somarLancamentosExtratoRows(rows) {
+  let creditos = 0;
+  let debitos = 0;
+  for (const r of rows ?? []) {
+    const v = Math.abs(Number(r?.valor ?? 0));
+    if (String(r?.natureza ?? '').toUpperCase() === 'DEBITO') debitos += v;
+    else creditos += v;
+  }
+  return { creditos, debitos, saldo: creditos - debitos };
+}
+
 export function mesAtualIso() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;

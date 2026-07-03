@@ -365,6 +365,7 @@ function queryLancamentosPaginados(filtros = {}) {
       filtros.numeroInternoProcesso != null && filtros.numeroInternoProcesso !== ''
         ? Number(filtros.numeroInternoProcesso)
         : undefined,
+    numeroImovel: filtros.numeroImovel ?? undefined,
   };
 }
 
@@ -488,6 +489,37 @@ export async function listarLancamentosFinanceiroPaginados(filtros = {}, opts = 
     query: queryLancamentosPaginados(filtros),
     signal,
   });
+}
+
+/** Totais (créditos/débitos/saldo) de todos os lançamentos que batem com os filtros do consolidado/extrato. */
+export async function obterTotaisLancamentosFiltradosApi(filtros = {}, opts = {}) {
+  const { signal } = opts;
+  if (!featureFlags.useApiFinanceiro) {
+    return { creditos: 0, debitos: 0, saldo: 0, totalLancamentos: 0 };
+  }
+  const size = 500;
+  const maxPaginas = 20;
+  let page = 0;
+  let totalPages = 1;
+  let totalLancamentos = 0;
+  let creditos = 0;
+  let debitos = 0;
+  while (page < totalPages && page < maxPaginas) {
+    const res = await listarLancamentosFinanceiroPaginados(
+      { ...filtros, page, size, sort: 'dataLancamento,desc' },
+      { signal },
+    );
+    if (page === 0) totalLancamentos = Number(res?.totalElements) || 0;
+    totalPages = Math.max(1, Number(res?.totalPages) || 1);
+    for (const l of res?.content ?? []) {
+      const v = Math.abs(Number(l?.valor ?? 0));
+      if (String(l?.natureza ?? '').toUpperCase() === 'DEBITO') debitos += v;
+      else creditos += v;
+    }
+    page += 1;
+    if (!(res?.content?.length)) break;
+  }
+  return { creditos, debitos, saldo: creditos - debitos, totalLancamentos };
 }
 
 /** Contexto leve para importação OFX (total + data de corte), sem paginar todo o extrato. */

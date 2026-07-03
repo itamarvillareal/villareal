@@ -10,13 +10,27 @@ export function anoAtual() {
   return String(new Date().getFullYear());
 }
 
-/** Valor do filtro: YYYY-MM (mês) ou YYYY (ano inteiro). */
+/** Valor especial: sem filtro de data (todos os lançamentos). */
+export const PERIODO_TOTAL = 'TOTAL';
+
+/** Valor do filtro: YYYY-MM (mês), YYYY (ano inteiro) ou {@link PERIODO_TOTAL}. */
 export function isPeriodoAnoInteiro(val) {
   return /^\d{4}$/.test(String(val ?? '').trim());
 }
 
+export function isPeriodoTotal(val) {
+  return String(val ?? '').trim().toUpperCase() === PERIODO_TOTAL;
+}
+
 export function modoPeriodo(val) {
+  if (isPeriodoTotal(val)) return 'total';
   return isPeriodoAnoInteiro(val) ? 'ano' : 'mes';
+}
+
+/** Parâmetros `ano`/`mes` para listagem paginada; vazio = sem filtro de período. */
+export function periodoParaListagemApi(val) {
+  if (isPeriodoTotal(val)) return {};
+  return periodoParaAnoMesApi(val);
 }
 
 /**
@@ -60,6 +74,7 @@ export function periodoParaAnoMesApi(val) {
 }
 
 export function dataNoPeriodo(dataIso, periodoVal) {
+  if (isPeriodoTotal(periodoVal)) return true;
   const intervalo = periodoParaIntervalo(periodoVal);
   if (!intervalo) return true;
   const d = String(dataIso ?? '').slice(0, 10);

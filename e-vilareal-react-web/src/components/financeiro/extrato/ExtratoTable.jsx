@@ -6,7 +6,7 @@ import { ExtratoSkeleton } from '../shared/LoadingSkeleton.jsx';
 import { ETAPAS } from '../constants/financeiroConstants.js';
 import { contaCodigoExtratoExibicao } from '../shared/financeiroDescricaoContaF.js';
 import { textoObsExtrato } from './extratoMappers.js';
-import { temCodigoEProcExtratoRow } from './extratoCadastroFiltro.js';
+import { temCodigoEProcExtratoRow, temImovelVinculadoExtratoRow } from './extratoCadastroFiltro.js';
 
 function ExtratoTableInner({
   data = [],
@@ -20,6 +20,8 @@ function ExtratoTableInner({
   highlightLancamentoId = null,
   /** Conta Escritório no consolidado: etapa = cod+proc (azul/vermelho) em vez da etapa do workflow. */
   etapaModoEscritorio = false,
+  /** Conta Imóveis no consolidado: etapa = imóvel vinculado (azul/vermelho). */
+  etapaModoImoveis = false,
   /** Extrato de cartão: coluna extra de vencimento da fatura. */
   modoCartao = false,
   /** Extrato consolidado AUTO-FAT: coluna cartão; data = vencimento (sem coluna venc. duplicada). */
@@ -185,6 +187,9 @@ function ExtratoTableInner({
                       etapa={item.etapa}
                       cadastroEscritorio={
                         etapaModoEscritorio ? temCodigoEProcExtratoRow(item) : undefined
+                      }
+                      cadastroImoveis={
+                        etapaModoImoveis ? temImovelVinculadoExtratoRow(item) : undefined
                       }
                     />
                   </td>

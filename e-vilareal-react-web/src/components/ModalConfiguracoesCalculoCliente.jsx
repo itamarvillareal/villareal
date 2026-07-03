@@ -6,6 +6,8 @@ import {
   padCliente8Config,
   refreshConfigCalculoClienteFromApi,
   normalizarHonorariosValorFixo,
+  editarPercentualFixoCampo,
+  percentualFixoParaCampo,
 } from '../data/clienteConfigCalculoStorage.js';
 import { normalizarRegraInicioCobrancaDias, descricaoRegraInicio } from '../domain/cobrancaRegraInicio.js';
 import { featureFlags } from '../config/featureFlags.js';
@@ -252,8 +254,12 @@ export function ModalConfiguracoesCalculoCliente({
                           <input
                             id="hon-fix-valor"
                             type="text"
-                            value={honorariosValor}
-                            onChange={(e) => setHonorariosValor(e.target.value)}
+                            inputMode="decimal"
+                            value={percentualFixoParaCampo(honorariosValor)}
+                            onChange={(e) => setHonorariosValor(editarPercentualFixoCampo(e.target.value))}
+                            onBlur={(e) =>
+                              setHonorariosValor(normalizarHonorariosValorFixo(e.target.value))
+                            }
                             readOnly={somenteLeitura}
                             disabled={salvando}
                             className={inputSuffixCls}
@@ -374,12 +380,14 @@ export function ModalConfiguracoesCalculoCliente({
                         <input
                           id="cfg-multa"
                           type="text"
-                          value={multa}
-                          onChange={(e) => setMulta(e.target.value)}
+                          inputMode="decimal"
+                          value={percentualFixoParaCampo(multa)}
+                          onChange={(e) => setMulta(editarPercentualFixoCampo(e.target.value))}
+                          onBlur={(e) => setMulta(normalizarHonorariosValorFixo(e.target.value))}
                           readOnly={somenteLeitura}
                           disabled={salvando}
                           className={inputSuffixCls}
-                          placeholder="0"
+                          placeholder="2"
                         />
                         <span
                           className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-500"

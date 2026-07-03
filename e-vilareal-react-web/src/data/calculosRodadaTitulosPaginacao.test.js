@@ -101,4 +101,49 @@ describe('calculosRodadaTitulosPaginacao', () => {
     expect(r.juros).toContain('83,55');
     expect(r.total).toContain('795,41');
   });
+
+  it('ajuste de R$ 0,01 em honorários altera o total geral exatamente R$ 0,01', () => {
+    const titulosAntes = [
+      {
+        valorInicial: 'R$ 625,49',
+        atualizacaoMonetaria: 'R$ 21,50',
+        juros: 'R$ 6,39',
+        multa: 'R$ 6,53',
+        honorarios: 'R$ 131,98',
+      },
+      {
+        valorInicial: 'R$ 560,07',
+        atualizacaoMonetaria: 'R$ 19,25',
+        juros: 'R$ 3,81',
+        multa: 'R$ 5,83',
+        honorarios: 'R$ 117,79',
+      },
+      {
+        valorInicial: 'R$ 566,32',
+        atualizacaoMonetaria: 'R$ 19,46',
+        juros: 'R$ 3,85',
+        multa: 'R$ 5,89',
+        honorarios: 'R$ 119,10',
+      },
+      {
+        valorInicial: 'R$ 558,27',
+        atualizacaoMonetaria: 'R$ 13,98',
+        juros: 'R$ 2,82',
+        multa: 'R$ 5,74',
+        honorarios: 'R$ 116,16',
+      },
+    ];
+    const titulosDepois = titulosAntes.map((t, i) =>
+      i === 3 ? { ...t, honorarios: 'R$ 116,17' } : t
+    );
+    const antes = calcularResumoTitulosGrade(titulosAntes);
+    const depois = calcularResumoTitulosGrade(titulosDepois);
+    expect(depois.honorarios).toBe('R$ 485,04');
+    expect(antes.honorarios).toBe('R$ 485,03');
+    expect(depois.juros).toBe('R$ 16,87');
+    expect(parseFloat(depois.total.replace(/[^\d,]/g, '').replace(',', '.'))).toBeCloseTo(
+      parseFloat(antes.total.replace(/[^\d,]/g, '').replace(',', '.')) + 0.01,
+      2
+    );
+  });
 });

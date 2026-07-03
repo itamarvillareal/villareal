@@ -29,4 +29,15 @@ class LancamentoFinanceiroSpecificationsChaveNaturalTest {
         assertThat(LancamentoFinanceiroSpecifications.comProcExibicao(0)).isNotNull();
         assertThat(LancamentoFinanceiroSpecifications.comProcExibicao(118)).isNotNull();
     }
+
+    @Test
+    void comNumeroImovel_vazio_retornaNull() {
+        assertThat(LancamentoFinanceiroSpecifications.comNumeroImovel(null)).isNull();
+        assertThat(LancamentoFinanceiroSpecifications.comNumeroImovel("  ")).isNull();
+    }
+
+    @Test
+    void comNumeroImovel_normalizado_retornaSpec() {
+        assertThat(LancamentoFinanceiroSpecifications.comNumeroImovel("57")).isNotNull();
+    }
 }

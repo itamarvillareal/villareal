@@ -123,6 +123,33 @@ describe('extratoMappers', () => {
     ).toBe('');
   });
 
+  it('grupoCompensacaoParaSalvarLancamento persiste nº do imóvel na conta I', () => {
+    expect(
+      grupoCompensacaoParaSalvarLancamento({ letra: 'I', grupoAtual: '56' }),
+    ).toBe('56');
+    expect(grupoCompensacaoParaSalvarLancamento({ letra: 'I', grupoAtual: '' })).toBe('');
+  });
+
+  it('mapApiLancamentoToExtratoRow lê nº do imóvel da conta I em grupo_compensacao', () => {
+    const row = mapApiLancamentoToExtratoRow(
+      {
+        id: 1,
+        contaContabilNome: 'Conta Imóveis',
+        grupoCompensacao: '42',
+        descricao: 'PIX',
+        valor: 100,
+        natureza: 'DEBITO',
+        dataLancamento: '2026-06-22',
+        numeroLancamento: 'x',
+      },
+      { 'Conta Imóveis': 'I' },
+    );
+    expect(row.contaCodigo).toBe('I');
+    expect(row.numeroImovel).toBe('42');
+    expect(row.proc).toBe('');
+    expect(row.codCliente).toBe('');
+  });
+
   it('codigoClienteExtrato prefere codigoCliente retornado pela API', () => {
     registrarCodigoClienteFinanceiroPorPessoaId(6277, '986');
     expect(

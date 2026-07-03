@@ -16,6 +16,8 @@ import br.com.vilareal.financeiro.infrastructure.persistence.repository.Lancamen
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.SaldoInicialBancoRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.CompensacaoParDescarteRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.SemelhanteEscritorioDescarteRepository;
+import br.com.vilareal.imovel.application.ImovelLancamentoFiltroCriteria;
+import br.com.vilareal.imovel.application.ImovelLancamentoFiltroResolver;
 import br.com.vilareal.pessoa.application.ClienteResolverService;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
@@ -70,6 +72,7 @@ public class FinanceiroApplicationService {
     private final ContaBancariaResolverService contaBancariaResolverService;
     private final FinanceiroSaudeService financeiroSaudeService;
     private final FinanceiroExtratoAcessoService extratoAcessoService;
+    private final ImovelLancamentoFiltroResolver imovelLancamentoFiltroResolver;
 
     public FinanceiroApplicationService(
             ContaContabilRepository contaContabilRepository,
@@ -83,7 +86,8 @@ public class FinanceiroApplicationService {
             ClienteResolverService clienteResolverService,
             ContaBancariaResolverService contaBancariaResolverService,
             @Lazy FinanceiroSaudeService financeiroSaudeService,
-            FinanceiroExtratoAcessoService extratoAcessoService) {
+            FinanceiroExtratoAcessoService extratoAcessoService,
+            ImovelLancamentoFiltroResolver imovelLancamentoFiltroResolver) {
         this.contaContabilRepository = contaContabilRepository;
         this.lancamentoRepository = lancamentoRepository;
         this.saldoInicialRepository = saldoInicialRepository;
@@ -96,6 +100,7 @@ public class FinanceiroApplicationService {
         this.contaBancariaResolverService = contaBancariaResolverService;
         this.financeiroSaudeService = financeiroSaudeService;
         this.extratoAcessoService = extratoAcessoService;
+        this.imovelLancamentoFiltroResolver = imovelLancamentoFiltroResolver;
     }
 
     private void invalidarCacheSaude() {
@@ -177,6 +182,7 @@ public class FinanceiroApplicationService {
                 null,
                 null,
                 null,
+                null,
                 PageRequest.of(0, LISTAGEM_SEM_PAGINACAO_MAX, ORDEM_LANCAMENTOS));
         if (page.getTotalElements() > LISTAGEM_SEM_PAGINACAO_MAX) {
             log.warn(
@@ -206,6 +212,7 @@ public class FinanceiroApplicationService {
             String cadastroPlenitude,
             String codigoCliente,
             Integer numeroInternoProcesso,
+            String numeroImovel,
             Pageable pageable) {
         var codigos = LancamentoFinanceiroSpecifications.parseContaCodigosParam(contaCodigos);
         boolean excluir = Boolean.TRUE.equals(contaCodigosExcluir);
@@ -226,6 +233,7 @@ public class FinanceiroApplicationService {
                 excluir,
                 cadastroPlenitude);
         spec = spec.and(comChaveNaturalContaCorrente(codigoCliente, numeroInternoProcesso));
+        spec = spec.and(comFiltroNumeroImovel(numeroImovel));
         return lancamentoRepository.findAll(spec, pageable).map(this::toLancamentoResponse);
     }
 
@@ -248,6 +256,7 @@ public class FinanceiroApplicationService {
             String cadastroPlenitude,
             String codigoCliente,
             Integer numeroInternoProcesso,
+            String numeroImovel,
             Pageable pageable) {
         var codigos = LancamentoFinanceiroSpecifications.parseContaCodigosParam(contaCodigos);
         boolean excluir = Boolean.TRUE.equals(contaCodigosExcluir);
@@ -268,6 +277,7 @@ public class FinanceiroApplicationService {
                 excluir,
                 cadastroPlenitude);
         spec = spec.and(comChaveNaturalContaCorrente(codigoCliente, numeroInternoProcesso));
+        spec = spec.and(comFiltroNumeroImovel(numeroImovel));
         spec = aplicarRestricaoExtratoBancos(spec, numeroBanco);
         return lancamentoRepository.findAll(spec, pageable).map(this::toExtratoListItem);
     }
@@ -831,6 +841,42 @@ public class FinanceiroApplicationService {
             spec = spec.and(LancamentoFinanceiroSpecifications.comProcExibicao(numeroInternoProcesso));
         }
         return spec;
+    }
+
+    /** Filtro por nº do imóvel (col. A do cadastro) na conta I. */
+    private Specification<LancamentoFinanceiroEntity> comFiltroNumeroImovel(String numeroImovel) {
+        String norm = normalizarNumeroImovelFiltro(numeroImovel);
+        if (norm == null) {
+            return (root, query, cb) -> null;
+        }
+        if (norm.isEmpty()) {
+            return (root, query, cb) -> cb.disjunction();
+        }
+        ImovelLancamentoFiltroCriteria criteria = imovelLancamentoFiltroResolver.resolver(Integer.parseInt(norm));
+        if (criteria.isEmpty()) {
+            Specification<LancamentoFinanceiroEntity> spec = LancamentoFinanceiroSpecifications.comNumeroImovel(norm);
+            return spec != null ? spec : (root, query, cb) -> cb.disjunction();
+        }
+        return LancamentoFinanceiroSpecifications.comFiltroImovelPlanilha(criteria);
+    }
+
+    static String normalizarNumeroImovelFiltro(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String digits = raw.trim().replaceAll("\\D", "");
+        if (digits.isEmpty()) {
+            return "";
+        }
+        try {
+            int n = Integer.parseInt(digits);
+            if (n >= 1 && n <= 999) {
+                return String.valueOf(n);
+            }
+        } catch (NumberFormatException ignored) {
+            // fallthrough
+        }
+        return "";
     }
 
     private ContaContabilResponse toContaResponse(ContaContabilEntity e) {

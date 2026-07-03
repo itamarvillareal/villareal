@@ -1,9 +1,11 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronDown, ChevronRight, ExternalLink, FolderOpen, Link2, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, ExternalLink, FolderOpen, Link2, Search, Trash2, X } from 'lucide-react';
 import { ModalVinculoClienteProcFinanceiro } from '../../ModalVinculoClienteProcFinanceiro.jsx';
+import { ModalBuscaImovel } from '../../imoveis/ModalBuscaImovel.jsx';
 import {
   normalizarCodigoClienteFinanceiro,
+  normalizarNumeroImovelFinanceiro,
   normalizarProcFinanceiro,
   registrarCodigoClienteFinanceiroPorPessoaId,
 } from '../../../data/financeiroData.js';
@@ -24,7 +26,9 @@ import {
   promoverContaEscritorioSeVinculado,
   mapApiLancamentoToExtratoRow,
 } from './extratoMappers.js';
+import { temImovelVinculadoExtratoRow } from './extratoCadastroFiltro.js';
 import { buildExtratoUrlParaLancamento } from './extratoDeepLink.js';
+import { carregarImovelCadastroPorNumeroPlanilha } from '../../../repositories/imoveisRepository.js';
 import {
   buildContaToLetraMerge,
   loadPersistedContasContabeisExtrasFinanceiro,
@@ -121,6 +125,39 @@ async function resolverVinculoClienteProcNoDraft(draftBase) {
   };
 }
 
+/** Valida e normaliza nº do imóvel (planilha) para conta I. */
+async function resolverVinculoImovelNoDraft(draftBase) {
+  const npDigitado = normalizarNumeroImovelFinanceiro(draftBase.numeroImovel);
+  if (!npDigitado) {
+    return {
+      ...draftBase,
+      numeroImovel: '',
+      grupoCompensacao: null,
+      codCliente: '',
+      proc: '',
+      clienteId: null,
+      pessoaRefId: null,
+      processoId: null,
+    };
+  }
+  if (featureFlags.useApiImoveis) {
+    const r = await carregarImovelCadastroPorNumeroPlanilha(npDigitado);
+    if (!r?.encontrado) {
+      throw new Error(`Imóvel nº ${npDigitado} não encontrado no cadastro.`);
+    }
+  }
+  return {
+    ...draftBase,
+    numeroImovel: npDigitado,
+    grupoCompensacao: npDigitado,
+    codCliente: '',
+    proc: '',
+    clienteId: null,
+    pessoaRefId: null,
+    processoId: null,
+  };
+}
+
 /** Observação «Parte cliente x Parte oposta» após vínculo cod.+proc. */
 async function buscarObservacaoVinculoCodProc(codGravado, procNorm, clienteResolvido = null, processoResolvido = null) {
   if (!procNorm) return '';
@@ -157,6 +194,9 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
   const [deleting, setDeleting] = useState(false);
   const [confirmExcluir, setConfirmExcluir] = useState(false);
   const [modalVinculoAberto, setModalVinculoAberto] = useState(false);
+  const [modalBuscaImovelAberto, setModalBuscaImovelAberto] = useState(false);
+  const [imovelLegenda, setImovelLegenda] = useState(null);
+  const [imovelLegendaLoading, setImovelLegendaLoading] = useState(false);
   const [processoEmbed, setProcessoEmbed] = useState(null);
   const [partesLegenda, setPartesLegenda] = useState(null);
   const [partesLegendaLoading, setPartesLegendaLoading] = useState(false);
@@ -175,10 +215,12 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
   const procLegenda = normalizarProcFinanceiro(draft.proc);
   const contaCodigoDraft = String(draft.contaCodigo ?? 'N').trim().toUpperCase() || 'N';
   const isContaE = contaCodigoDraft === 'E';
+  const isContaI = contaCodigoDraft === 'I';
+  const numeroImovelLegenda = normalizarNumeroImovelFinanceiro(draft.numeroImovel);
   const grupoElo = String(draft.grupoCompensacao ?? draft.proc ?? '').trim();
 
   useEffect(() => {
-    if (isContaE || !codLegenda || procLegenda === '') {
+    if (isContaE || isContaI || !codLegenda || procLegenda === '') {
       setPartesLegenda(null);
       setPartesLegendaLoading(false);
       return undefined;
@@ -198,10 +240,33 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
     return () => {
       cancelled = true;
     };
-  }, [codLegenda, procLegenda, isContaE]);
+  }, [codLegenda, procLegenda, isContaE, isContaI]);
 
   useEffect(() => {
-    if (isContaE || !codLegenda || procLegenda === '' || partesLegendaLoading || obsEditadaManualRef.current) {
+    if (!isContaI || !numeroImovelLegenda || !featureFlags.useApiImoveis) {
+      setImovelLegenda(null);
+      setImovelLegendaLoading(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setImovelLegendaLoading(true);
+    carregarImovelCadastroPorNumeroPlanilha(numeroImovelLegenda)
+      .then((r) => {
+        if (!cancelled) setImovelLegenda(r?.encontrado ? r.item : null);
+      })
+      .catch(() => {
+        if (!cancelled) setImovelLegenda(null);
+      })
+      .finally(() => {
+        if (!cancelled) setImovelLegendaLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isContaI, numeroImovelLegenda]);
+
+  useEffect(() => {
+    if (isContaE || isContaI || !codLegenda || procLegenda === '' || partesLegendaLoading || obsEditadaManualRef.current) {
       return;
     }
     const obsVinculo = montarObservacaoExtratoVinculo(
@@ -219,7 +284,7 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
       if (d.observacao === obsVinculo && d.descricaoDetalhada === obsVinculo) return d;
       return { ...d, observacao: obsVinculo, descricaoDetalhada: obsVinculo };
     });
-  }, [codLegenda, procLegenda, partesLegenda, partesLegendaLoading, isContaE]);
+  }, [codLegenda, procLegenda, partesLegenda, partesLegendaLoading, isContaE, isContaI]);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -288,14 +353,23 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
         };
       }
       try {
-        draftSalvar = await resolverVinculoClienteProcNoDraft(draftSalvar);
+        draftSalvar =
+          String(draftSalvar.contaCodigo ?? '').trim().toUpperCase() === 'I'
+            ? await resolverVinculoImovelNoDraft(draftSalvar)
+            : await resolverVinculoClienteProcNoDraft(draftSalvar);
       } catch (e) {
-        toast.error(e?.message || 'Falha ao resolver cliente/processo.');
+        toast.error(e?.message || 'Falha ao resolver vínculo.');
         return;
       }
       const codGravado = normalizarCodigoClienteFinanceiro(draftSalvar.codCliente);
       const procNorm = normalizarProcFinanceiro(draftSalvar.proc);
-      if (codGravado && procNorm !== '' && !obsEditadaManualRef.current) {
+      const codContaSalvar = String(draftSalvar.contaCodigo ?? '').trim().toUpperCase();
+      if (
+        codContaSalvar !== 'I' &&
+        codGravado &&
+        procNorm !== '' &&
+        !obsEditadaManualRef.current
+      ) {
         let obsVinculo = montarObservacaoExtratoVinculo(
           partesLegenda?.parteCliente,
           partesLegenda?.parteOposta,
@@ -551,7 +625,7 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
                   Abrir processo
                 </button>
               ) : null}
-              {!isContaE ? (
+              {!isContaE && !isContaI ? (
                 <button
                   type="button"
                   disabled={saving || deleting}
@@ -574,7 +648,23 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
                   contaCodigo: cod,
                   contaContabilId: c?.id ?? draft.contaContabilId,
                   contaContabilNome: c?.nome ?? draft.contaContabilNome,
-                  ...(cod === 'E' ? { codCliente: '', proc: '', clienteId: null, processoId: null } : {}),
+                  ...(cod === 'E'
+                    ? { codCliente: '', proc: '', clienteId: null, processoId: null, numeroImovel: '' }
+                    : {}),
+                  ...(cod === 'I'
+                    ? {
+                        codCliente: '',
+                        proc: '',
+                        clienteId: null,
+                        pessoaRefId: null,
+                        processoId: null,
+                        numeroImovel: normalizarNumeroImovelFinanceiro(draft.numeroImovel ?? draft.grupoCompensacao),
+                        grupoCompensacao: normalizarNumeroImovelFinanceiro(draft.numeroImovel ?? draft.grupoCompensacao) || null,
+                      }
+                    : {}),
+                  ...(contaCodigoDraft === 'I' && cod !== 'I'
+                    ? { numeroImovel: '', grupoCompensacao: null }
+                    : {}),
                 });
               }}
               className="w-full text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5"
@@ -651,6 +741,72 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
                 <p className="text-sm text-slate-500">Sem elo — pareie no Inbox ou em Compensação.</p>
               )}
             </Field>
+          ) : isContaI ? (
+            <>
+              <Field label="Imóvel (nº planilha)">
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={draft.numeroImovel ?? ''}
+                    onChange={(e) => {
+                      const np = normalizarNumeroImovelFinanceiro(e.target.value);
+                      patch({
+                        numeroImovel: e.target.value,
+                        grupoCompensacao: np || null,
+                        codCliente: '',
+                        proc: '',
+                        clienteId: null,
+                        pessoaRefId: null,
+                        processoId: null,
+                      });
+                    }}
+                    className="flex-1 text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5"
+                    placeholder="Nº do imóvel"
+                  />
+                  <button
+                    type="button"
+                    disabled={saving || deleting}
+                    onClick={() => setModalBuscaImovelAberto(true)}
+                    className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
+                    title="Buscar no cadastro de imóveis"
+                  >
+                    <Search className="w-3.5 h-3.5" aria-hidden />
+                    Buscar
+                  </button>
+                </div>
+              </Field>
+              {numeroImovelLegenda ? (
+                <div className="rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-2.5 py-2 space-y-1 text-xs">
+                  {imovelLegendaLoading ? (
+                    <p className="text-slate-500 dark:text-slate-400">Carregando cadastro do imóvel…</p>
+                  ) : imovelLegenda ? (
+                    <>
+                      <p className="text-slate-700 dark:text-slate-200">
+                        <span className="font-medium text-slate-500 dark:text-slate-400">Condomínio: </span>
+                        {imovelLegenda.condominio?.trim() || '—'}
+                      </p>
+                      <p className="text-slate-700 dark:text-slate-200">
+                        <span className="font-medium text-slate-500 dark:text-slate-400">Unidade: </span>
+                        {imovelLegenda.unidade?.trim() || '—'}
+                      </p>
+                      <Link
+                        to="/imoveis"
+                        state={{ numeroPlanilha: Number(numeroImovelLegenda) }}
+                        className="inline-flex items-center gap-1 text-indigo-700 dark:text-indigo-300 font-medium hover:underline"
+                      >
+                        <ExternalLink className="w-3 h-3" aria-hidden />
+                        Abrir cadastro do imóvel
+                      </Link>
+                    </>
+                  ) : (
+                    <p className="text-amber-800 dark:text-amber-200">
+                      Nº {numeroImovelLegenda} não encontrado no cadastro de imóveis.
+                    </p>
+                  )}
+                </div>
+              ) : null}
+            </>
           ) : (
             <>
               <Field label="Cliente (código)">
@@ -703,7 +859,10 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
             </>
           )}
           <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
-            <EtapaDot etapa={draft.etapa} />
+            <EtapaDot
+              etapa={draft.etapa}
+              cadastroImoveis={isContaI ? temImovelVinculadoExtratoRow(draft) : undefined}
+            />
             <span>{etapaLabel}</span>
             <ContaBadge codigo={draft.contaCodigo} size="sm" />
           </div>
@@ -807,6 +966,28 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
         onAplicar={handleAplicarVinculoProcesso}
         modoContaEscritorio
         titulo="Vincular a Processo"
+      />
+
+      <ModalBuscaImovel
+        open={modalBuscaImovelAberto}
+        onClose={() => setModalBuscaImovelAberto(false)}
+        onSelecionar={(im) => {
+          const np = normalizarNumeroImovelFinanceiro(im?.numeroPlanilha);
+          if (!np) {
+            toast.warn('Imóvel selecionado sem nº de planilha válido.');
+            return;
+          }
+          patch({
+            numeroImovel: np,
+            grupoCompensacao: np,
+            codCliente: '',
+            proc: '',
+            clienteId: null,
+            pessoaRefId: null,
+            processoId: null,
+          });
+          setModalBuscaImovelAberto(false);
+        }}
       />
 
       <ConfirmDialog
