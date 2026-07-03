@@ -5,6 +5,17 @@
 
 import { featureFlags } from '../config/featureFlags.js';
 import { fetchCalculoConfigCliente, putCalculoConfigCliente } from '../repositories/calculosRepository.js';
+import {
+  DEFAULT_CONFIG_CALCULO_CLIENTE,
+  normalizarHonorariosValorFixo,
+  normalizarRowConfigCalculo,
+} from './calculosConfigDefaults.js';
+import { propagarConfigClienteNasRodadas } from './calculosPanelConfigSync.js';
+
+export {
+  DEFAULT_CONFIG_CALCULO_CLIENTE,
+  normalizarHonorariosValorFixo,
+} from './calculosConfigDefaults.js';
 
 export const STORAGE_CLIENTE_CONFIG_CALCULO = 'vilareal.cliente.configCalculo.v1';
 
@@ -15,48 +26,12 @@ export function padCliente8Config(val) {
   return String(Math.floor(n)).padStart(8, '0');
 }
 
-/** Valores alinhados ao legado e à tela Cálculos. */
-export const DEFAULT_CONFIG_CALCULO_CLIENTE = {
-  honorariosTipo: 'fixos',
-  /** Percentual fixo (ex.: «20 %») — alinhado ao legado Excel / tela Cálculos */
-  honorariosValor: '0 %',
-  /** Texto livre para faixas (honorários variáveis), ex.: legado Excel */
-  honorariosVariaveisTexto: '> 30 = 0%\n< 30 < 60 = 10%\n< 60 = 20%',
-  juros: '1 %',
-  multa: '0 %',
-  indice: 'INPC',
-  periodicidade: 'mensal',
-  modeloListaDebitos: '01',
-  /** 1 = importar tudo; 61 = 60+1 condicional */
-  regraInicioCobrancaDias: 1,
-};
-
-function dispatchAtualizado() {
+function dispatchAtualizado(detail) {
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('vilareal:cliente-config-calculo-atualizado'));
+    window.dispatchEvent(
+      new CustomEvent('vilareal:cliente-config-calculo-atualizado', detail ? { detail } : undefined)
+    );
   }
-}
-
-/** Honorários «fixos» são percentual (20 %), nunca valor em R$. */
-export function normalizarHonorariosValorFixo(val) {
-  const raw = String(val ?? '').trim();
-  if (!raw) return '0 %';
-  if (/%/.test(raw)) {
-    const n = raw.replace(/%/g, '').trim().replace(',', '.');
-    const num = Number(n);
-    if (Number.isFinite(num)) {
-      const fmt = Number.isInteger(num) ? String(num) : String(num).replace('.', ',');
-      return `${fmt} %`;
-    }
-    return raw;
-  }
-  const semMoeda = raw.replace(/^R\$\s*/i, '').trim();
-  const num = Number(semMoeda.replace(',', '.'));
-  if (Number.isFinite(num)) {
-    const fmt = Number.isInteger(num) ? String(num) : String(num).replace('.', ',');
-    return `${fmt} %`;
-  }
-  return raw;
 }
 
 /** Valor exibido no campo de percentual fixo (sem « % » — símbolo fica fora do input). */
@@ -83,14 +58,6 @@ export function editarPercentualFixoCampo(texto) {
     return `${intPart},`;
   }
   return decPart.length > 0 ? `${intPart},${decPart}` : intPart;
-}
-
-function normalizarRowConfigCalculo(row) {
-  const out = { ...row };
-  if (out.honorariosTipo !== 'variaveis') {
-    out.honorariosValor = normalizarHonorariosValorFixo(out.honorariosValor);
-  }
-  return out;
 }
 
 /** Normaliza resposta `config` da API para o mesmo formato do bag em localStorage. */
@@ -183,7 +150,8 @@ export function saveConfigCalculoCliente(codCliente, config) {
     if (merged.honorariosTipo === 'variaveis') merged.honorariosValor = '';
     bag[key] = normalizarRowConfigCalculo(merged);
     window.localStorage.setItem(STORAGE_CLIENTE_CONFIG_CALCULO, JSON.stringify(bag));
-    dispatchAtualizado();
+    const chavesRodadas = propagarConfigClienteNasRodadas(key, bag[key]);
+    dispatchAtualizado({ codCliente: key, chavesRodadas });
     if (featureFlags.useApiCalculos) {
       return putCalculoConfigCliente(key, bag[key])
         .then((res) => {

@@ -46,22 +46,41 @@ function normalizarDataBRLeve(s) {
  */
 export function extrairParcelasEsperadasDaRodada(rodada) {
   if (!rodada || !Array.isArray(rodada.parcelas)) return [];
-  const nQ = parseQuantidadeParcelasNumero(rodada.quantidadeParcelasInformada);
-  const lista = nQ > 0 ? rodada.parcelas.slice(0, nQ) : rodada.parcelas;
+  const lista = rodada.parcelas;
   const out = [];
-  for (let i = 0; i < lista.length; i++) {
+  const temEnt = temEntradaAtivoRodada(rodada);
+  const nQ = parseQuantidadeParcelasNumero(rodada.quantidadeParcelasInformada);
+  const indices = (() => {
+    if (temEnt) {
+      const idxs = [0];
+      for (let i = 0; i < nQ; i++) idxs.push(i + 1);
+      return idxs;
+    }
+    if (nQ <= 0) return [];
+    return Array.from({ length: nQ }, (_, i) => i);
+  })();
+  for (const i of indices) {
     const p = lista[i];
+    if (!p) continue;
     const data = normalizarDataBRLeve(p?.dataVencimento);
-    const vc = parseBRLToCentavos(p?.valorParcela);
-    if (!data || vc == null || vc <= 0) continue;
+    const vcPrincipal = parseBRLToCentavos(p?.valorParcela) ?? 0;
+    const vcHon = parseBRLToCentavos(p?.honorariosParcela) ?? 0;
+    const vc = vcPrincipal + vcHon;
+    if (!data || vc <= 0) continue;
     out.push({
       indice: i + 1,
       data,
       valorCentavos: vc,
       valorLabel: String(p?.valorParcela ?? '').trim() || `${(vc / 100).toFixed(2)}`,
+      ehEntrada: p?.tipo === 'entrada' || (temEnt && i === 0),
     });
   }
   return out;
+}
+
+function temEntradaAtivoRodada(rodada) {
+  const m = String(rodada?.entradaParcelamentoModo ?? 'nenhuma').toLowerCase();
+  return m === 'reais' || m === 'percentual';
 }
 
 /**

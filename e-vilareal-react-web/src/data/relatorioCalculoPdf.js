@@ -37,6 +37,7 @@ export function construirRelatorioCalculoPdf({
   honorariosTipo,
   honorariosValor,
   indice,
+  planoPagamento,
 }) {
   const lista = Array.isArray(titulos) ? titulos : [];
   const cab = cabecalho || {};
@@ -153,6 +154,31 @@ export function construirRelatorioCalculoPdf({
   doc.text(`Multa: ${res.multa}`, margemX, yResumo + 30);
   doc.text(`Honorários: ${res.honorarios}`, margemX, yResumo + 35);
   doc.text(`Total geral: ${res.total}`, margemX, yResumo + 40);
+
+  if (planoPagamento?.linhas?.length) {
+    const yPlano = yResumo + 48;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('Plano de pagamento', margemX, yPlano);
+    autoTable(doc, {
+      startY: yPlano + 4,
+      head: [['', 'Vencimento', 'Valor', 'Honor. Parc.', 'Total linha']],
+      body: planoPagamento.linhas.map((l) => {
+        const vp = String(l.valorParcela ?? '');
+        const hp = String(l.honorariosParcela ?? '');
+        return [
+          l.rotulo ?? '',
+          l.dataVencimento ?? '',
+          vp,
+          hp,
+          l.totalLinha ?? '',
+        ];
+      }),
+      styles: { fontSize: 8, cellPadding: 1.5 },
+      headStyles: { fillColor: [30, 41, 59], textColor: 255 },
+      margin: { left: margemX, right: margemX },
+    });
+  }
 
   return doc;
 }

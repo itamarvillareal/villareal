@@ -83,11 +83,15 @@ const TitulosGrid = memo(function TitulosGrid({
         </div>
       </div>
 
+      <p className="text-[11px] text-slate-500 mb-1 lg:hidden" aria-hidden>
+        Deslize horizontalmente para ver todas as colunas →
+      </p>
+
       <div
-        className={`overflow-x-auto border border-slate-300 rounded bg-white ${isLoading ? 'opacity-60 pointer-events-none' : ''}`}
+        className={`overflow-x-auto border border-slate-300 rounded bg-white [-webkit-overflow-scrolling:touch] ${isLoading ? 'opacity-60 pointer-events-none' : ''}`}
         aria-busy={isLoading || undefined}
       >
-        <table className="w-full table-fixed text-sm border-collapse">
+        <table className="w-full min-w-[880px] text-sm border-collapse">
           <thead>
             <tr className="bg-slate-100">
               <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 w-12">#</th>
@@ -151,7 +155,7 @@ const TitulosGrid = memo(function TitulosGrid({
                             dataVencimento: normalizarTextoDataBRparaSalvar(e.target.value),
                           })
                         }
-                        className="w-full min-w-0 max-w-full box-border px-1 py-0.5 border border-slate-300 rounded text-sm tabular-nums"
+                        className="w-full min-w-0 max-w-full box-border px-1 py-1 max-lg:py-2 max-lg:text-base border border-slate-300 rounded text-sm tabular-nums"
                       />
                     ) : (
                       <span className="block truncate text-sm tabular-nums" title={row.dataVencimento || undefined}>

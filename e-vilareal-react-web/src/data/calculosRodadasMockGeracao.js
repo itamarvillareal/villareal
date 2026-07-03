@@ -27,6 +27,7 @@ export function gerarTitulosMock() {
 
 export function linhaVaziaParcela() {
   return {
+    tipo: 'parcela',
     dataVencimento: '',
     valorParcela: '',
     honorariosParcela: '',
@@ -54,6 +55,10 @@ export function criarRodadaMockCalculos(codClienteRaw, procRaw, dimensaoRaw, ove
     parcelas: gerarParcelasMock(),
     quantidadeParcelasInformada: '00',
     taxaJurosParcelamento: '0,00',
+    entradaParcelamentoModo: 'nenhuma',
+    entradaParcelamentoValor: '',
+    entradaParcelamentoPercentual: '',
+    entradaParcelamentoDataVenc: '',
     limpezaAtiva: false,
     snapshotAntesLimpeza: null,
     cabecalho: gerarCabecalhoMock(cod8, proc),

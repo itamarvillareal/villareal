@@ -416,6 +416,19 @@ async function listarInboxClassificarPaginaLegada(filtros = {}, opts = {}) {
   };
 }
 
+/** Pesquisa exata por data + valor (ignora sinal; inclui extratos bloqueados ao usuário). */
+export async function pesquisarLancamentosValorDataApi({ data, valor }, opts = {}) {
+  const { signal } = opts;
+  if (!featureFlags.useApiFinanceiro) return [];
+  const dataIso = String(data ?? '').trim();
+  const valorStr = String(valor ?? '').trim();
+  if (!dataIso || !valorStr) return [];
+  return request('/api/financeiro/lancamentos/pesquisa-valor-data', {
+    query: { data: dataIso, valor: valorStr },
+    signal,
+  });
+}
+
 /** Grade do extrato — DTO enxuto (`/extrato/paginada`); fallback para `/paginada` se o backend ainda não foi reiniciado. */
 export async function listarLancamentosExtratoPaginados(filtros = {}, opts = {}) {
   const { signal } = opts;

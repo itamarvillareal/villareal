@@ -41,6 +41,19 @@ import {
   normalizarHonorariosValorFixo,
   percentualFixoParaCampo,
 } from '../data/clienteConfigCalculoStorage.js';
+import {
+  extrairPanelConfig,
+  listarChavesRodadasClienteProc,
+  propagarPanelConfigEmRodadas,
+} from '../data/calculosPanelConfigSync.js';
+import {
+  calcularResumoPlanoPagamento,
+  entradaModoAtivo,
+  montarLinhasPlanoPagamento,
+  normalizarEntradaModo,
+  rotuloLinhaPlanoPagamento,
+  temPlanoPagamento,
+} from '../data/parcelamentoEntrada.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import { buildRouterStateChaveClienteProcesso, extrairIntentNavegacaoProcessos } from '../domain/camposProcessoCliente.js';
@@ -73,7 +86,8 @@ const TABS = ['Títulos', 'Custas Judiciais', 'Parcelamento', 'Pagamento', 'Hono
 
 const INDICES = INDICES_CALCULO;
 
-const inputClass = 'w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white';
+const inputClass =
+  'w-full px-2 py-1.5 max-lg:py-2 max-lg:text-base border border-slate-300 rounded text-sm bg-white';
 const TITULOS_POR_PAGINA = 20;
 
 function normalizarCliente(val) {
@@ -383,6 +397,8 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   /** `${rodadaKey}:page:${n}` → payload normalizado da página */
   const paginasRodadaCacheRef = useRef(new Map());
   const isDirtyRodadaRef = useRef(false);
+  /** Chaves extras para PUT após propagar panelConfig entre dimensões. */
+  const persistRodadaKeysRef = useRef(null);
   const [carregandoRodadaApi, setCarregandoRodadaApi] = useState(false);
   const debitosPlanilhaInputRef = useRef(null);
   const [sincronizandoRodadasApi, setSincronizandoRodadasApi] = useState(false);
@@ -662,7 +678,13 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     if (saveRodadasTimerRef.current) window.clearTimeout(saveRodadasTimerRef.current);
     saveRodadasTimerRef.current = window.setTimeout(() => {
       if (featureFlags.useApiCalculos) {
-        saveRodadasCalculos(rodadasState, { persistRodadaKey: rodadaKey });
+        const keysExtra = persistRodadaKeysRef.current;
+        persistRodadaKeysRef.current = null;
+        if (Array.isArray(keysExtra) && keysExtra.length > 0) {
+          saveRodadasCalculos(rodadasState, { persistRodadaKeysComValor: keysExtra });
+        } else {
+          saveRodadasCalculos(rodadasState, { persistRodadaKey: rodadaKey });
+        }
         for (const k of paginasRodadaCacheRef.current.keys()) {
           if (String(k).startsWith(`${rodadaKey}:`)) {
             paginasRodadaCacheRef.current.delete(k);
@@ -704,12 +726,16 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
         if (!cur) return prev;
         const def = loadConfigCalculoCliente(codigoClienteNorm);
         const mergedBase = mergeConfigPainelCalculo(def, cur.panelConfig);
-        const nextPanel = { ...mergedBase, ...partial };
+        const nextPanel = extrairPanelConfig({ ...mergedBase, ...partial });
+        const chaves = listarChavesRodadasClienteProc(prev, codigoClienteNorm, procNorm);
+        const { nextMap, chavesAlteradas } = propagarPanelConfigEmRodadas(prev, chaves, nextPanel);
+        if (chavesAlteradas.length === 0) return prev;
         isDirtyRodadaRef.current = true;
-        return { ...prev, [rodadaKey]: { ...cur, panelConfig: nextPanel } };
+        persistRodadaKeysRef.current = chavesAlteradas;
+        return nextMap;
       });
     },
-    [rodadaKey, codigoClienteNorm]
+    [rodadaKey, codigoClienteNorm, procNorm]
   );
 
   useEffect(() => {
@@ -727,9 +753,15 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   }, [rodadaKey, codigoClienteNorm]);
 
   useEffect(() => {
-    const h = () => {
+    const h = (ev) => {
+      const detail = ev?.detail;
+      let rodadas = rodadasStateRef.current;
+      if (detail?.chavesRodadas?.length) {
+        rodadas = loadRodadasCalculos();
+        setRodadasState(rodadas);
+      }
       const def = loadConfigCalculoCliente(codigoClienteNorm);
-      const r = rodadasStateRef.current[rodadaKey];
+      const r = rodadas[rodadaKey];
       const merged = mergeConfigPainelCalculo(def, r?.panelConfig);
       setJuros(merged.juros);
       setMulta(merged.multa);
@@ -827,6 +859,10 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
           parcelas: gerarParcelasMock(),
           quantidadeParcelasInformada: '00',
           taxaJurosParcelamento: '0,00',
+          entradaParcelamentoModo: 'nenhuma',
+          entradaParcelamentoValor: '',
+          entradaParcelamentoPercentual: '',
+          entradaParcelamentoDataVenc: '',
           limpezaAtiva: false,
           snapshotAntesLimpeza: null,
           cabecalho: gerarCabecalhoMock(codigoClienteNorm, procNorm),
@@ -908,6 +944,10 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                 parcelas: gerarParcelasMock(),
                 quantidadeParcelasInformada: '00',
                 taxaJurosParcelamento: '0,00',
+                entradaParcelamentoModo: 'nenhuma',
+                entradaParcelamentoValor: '',
+                entradaParcelamentoPercentual: '',
+                entradaParcelamentoDataVenc: '',
                 limpezaAtiva: false,
                 snapshotAntesLimpeza: null,
                 cabecalho: gerarCabecalhoMock(codigoClienteNorm, procNorm),
@@ -997,6 +1037,10 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     parcelas: gerarParcelasMock(),
     quantidadeParcelasInformada: '00',
     taxaJurosParcelamento: '0,00',
+    entradaParcelamentoModo: 'nenhuma',
+    entradaParcelamentoValor: '',
+    entradaParcelamentoPercentual: '',
+    entradaParcelamentoDataVenc: '',
     limpezaAtiva: false,
     snapshotAntesLimpeza: null,
     cabecalho: gerarCabecalhoMock(codigoClienteNorm, procNorm),
@@ -1159,6 +1203,11 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   const parcelas = Array.isArray(rodadaAtual.parcelas) ? rodadaAtual.parcelas : gerarParcelasMock();
   const quantidadeParcelasInformada = rodadaAtual.quantidadeParcelasInformada ?? '00';
   const taxaJurosParcelamento = rodadaAtual.taxaJurosParcelamento ?? '0,00';
+  const entradaParcelamentoModo = rodadaAtual.entradaParcelamentoModo ?? 'nenhuma';
+  const entradaParcelamentoValor = rodadaAtual.entradaParcelamentoValor ?? '';
+  const entradaParcelamentoPercentual = rodadaAtual.entradaParcelamentoPercentual ?? '';
+  const entradaParcelamentoDataVenc = rodadaAtual.entradaParcelamentoDataVenc ?? '';
+  const temEntradaAtiva = entradaModoAtivo(rodadaAtual);
   const limpezaAtiva = rodadaAtual.limpezaAtiva;
 
   /** Valor, vencimento e datas especiais por linha — muda na importação/edição; ignora colunas derivadas (juros, total…) para não re-disparar o recálculo sem necessidade. */
@@ -1340,6 +1389,33 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       honorariosTipo,
       honorariosValor,
       indice,
+      planoPagamento:
+        aceitarPagamento && temPlanoPagamento(rodadaAtual)
+          ? {
+              linhas: (() => {
+                const nParc = parseQuantidadeParcelasNumero(quantidadeParcelasInformada);
+                const temEnt = temEntradaAtiva;
+                const limite = temEnt ? nParc + 1 : nParc;
+                const linhas = [];
+                for (let i = 0; i < limite && i < parcelas.length; i++) {
+                  const p = parcelas[i];
+                  if (!p) continue;
+                  const vp = String(p.valorParcela ?? '').trim();
+                  const hp = String(p.honorariosParcela ?? '').trim();
+                  if (!vp && !hp) continue;
+                  const totalLinha = formatBRL(parseBRL(vp) + parseBRL(hp));
+                  linhas.push({
+                    rotulo: rotuloLinhaPlanoPagamento(p, i, temEnt).replace(/:$/, ''),
+                    dataVencimento: p.dataVencimento ?? '',
+                    valorParcela: vp,
+                    honorariosParcela: hp,
+                    totalLinha,
+                  });
+                }
+                return linhas;
+              })(),
+            }
+          : null,
     });
 
     doc.save(gerarNomeArquivoPdf());
@@ -2053,6 +2129,26 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     });
   }
 
+  function patchEntradaParcelamento(partial) {
+    if (aceitarPagamento && !modoAlteracao) return;
+    setRodadasState((prev) => {
+      const cur = prev[rodadaKey];
+      if (!cur) return prev;
+      isDirtyRodadaRef.current = true;
+      return { ...prev, [rodadaKey]: { ...cur, ...partial } };
+    });
+  }
+
+  function setEntradaParcelamentoModo(modo) {
+    const next = normalizarEntradaModo(modo);
+    const dataPadrao = normalizarTextoDataBRparaSalvar(dataCalculo) || dataCalculo;
+    patchEntradaParcelamento({
+      entradaParcelamentoModo: next,
+      entradaParcelamentoDataVenc:
+        next === 'nenhuma' ? '' : normalizarTextoDataBRparaSalvar(entradaParcelamentoDataVenc) || dataPadrao,
+    });
+  }
+
   function patchParcelaSoDataPagamento(patch) {
     const keys = Object.keys(patch ?? {});
     return keys.length === 1 && keys[0] === 'dataPagamento';
@@ -2096,32 +2192,59 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     });
   }
 
+  const resumoDebitoParcelamento = useMemo(() => {
+    const modo = normalizarEntradaModo(entradaParcelamentoModo);
+    if (modo === 'nenhuma') return resumoGeral;
+    const dataCalcNorm = normalizarTextoDataBRparaSalvar(dataCalculo);
+    const dataEntNorm =
+      normalizarTextoDataBRparaSalvar(String(entradaParcelamentoDataVenc || dataCalculo).trim()) || dataCalcNorm;
+    if (!dataEntNorm || dataEntNorm === dataCalcNorm) return resumoGeral;
+    const gravados = rodadaAtual.titulosGravadosAceito;
+    const temGravadosImutaveis = Array.isArray(gravados) && gravados.length > 0;
+    const baseTitulos = temGravadosImutaveis ? gravados : titulosDimensao;
+    const { next } = recalcularTitulos(baseTitulos, indicesMensaisINPC, indicesMensaisIPCA, dataEntNorm);
+    return calcularResumoTitulosGrade(next);
+  }, [
+    entradaParcelamentoModo,
+    entradaParcelamentoDataVenc,
+    dataCalculo,
+    resumoGeral,
+    titulosDimensao,
+    rodadaAtual.titulosGravadosAceito,
+    indicesMensaisINPC,
+    indicesMensaisIPCA,
+    juros,
+    multa,
+    honorariosTipo,
+    honorariosValor,
+    indice,
+  ]);
+
   const resumoParcelamento = useMemo(() => {
-    /** Soma apenas as N primeiras parcelas (N = quantidade informada), após correção na grade. */
     const nParc = parseQuantidadeParcelasNumero(quantidadeParcelasInformada);
-    let valorFinalParcelas = 0;
-    let valorHonorarios = 0;
-    for (let i = 0; i < nParc && i < parcelas.length; i++) {
-      valorFinalParcelas += parseBRL(parcelas[i]?.valorParcela);
-      valorHonorarios += parseBRL(parcelas[i]?.honorariosParcela);
-    }
-    valorFinalParcelas = trunc2(valorFinalParcelas);
-    valorHonorarios = trunc2(valorHonorarios);
-    const valorTotalPagar = trunc2(valorFinalParcelas + valorHonorarios);
+    const temEnt = temEntradaAtiva;
+    const limite = temEnt ? nParc + 1 : nParc;
+    const baseResumo = calcularResumoPlanoPagamento(parcelas.slice(0, limite), nParc, temEnt);
+    const dataCalcNorm = normalizarTextoDataBRparaSalvar(dataCalculo);
+    const dataEntNorm =
+      normalizarTextoDataBRparaSalvar(String(entradaParcelamentoDataVenc || dataCalculo).trim()) || dataCalcNorm;
     return {
-      parcelasComValor: nParc,
-      valorFinalParcelas: formatBRL(valorFinalParcelas),
-      valorTotalPagar: formatBRL(valorTotalPagar),
-      valorFinalHonorarios: formatBRL(valorHonorarios),
-      valorHonorariosParcela:
-        nParc > 0 ? formatBRL(trunc2(valorHonorarios / nParc)) : formatBRL(0),
-      valorCustasParcela: formatBRL(0),
-      valorFinalCustas: formatBRL(0),
-      /** Débito atualizado da aba Títulos (soma da coluna Total — mesmo valor do rodapé “total geral”). */
-      valorFinalAtualizado: resumoGeral.total,
+      ...baseResumo,
+      valorFinalAtualizado: resumoDebitoParcelamento.total,
       valorFinalAtualizadoCustas: formatBRL(0),
+      debitoDataCalculo: resumoGeral.total,
+      debitoDataEntrada: resumoDebitoParcelamento.total,
+      mostrarDoisDebitos: temEnt && dataEntNorm !== dataCalcNorm,
     };
-  }, [parcelas, quantidadeParcelasInformada, resumoGeral.total]);
+  }, [
+    parcelas,
+    quantidadeParcelasInformada,
+    temEntradaAtiva,
+    resumoDebitoParcelamento,
+    resumoGeral.total,
+    dataCalculo,
+    entradaParcelamentoDataVenc,
+  ]);
 
   const honorariosRecebimentoMap = rodadaAtual.honorariosDataRecebimento || {};
 
@@ -2144,15 +2267,16 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
 
   const linhasHonorariosParcela = useMemo(() => {
     const out = [];
-    if (nParcelasAtivas <= 0) return out;
-    for (let i = 0; i < nParcelasAtivas; i++) {
+    const totalLinhas = temEntradaAtiva ? nParcelasAtivas + 1 : nParcelasAtivas;
+    if (totalLinhas <= 0) return out;
+    for (let i = 0; i < totalLinhas; i++) {
       const p = parcelas[i];
       if (!p) continue;
       const v = parseBRL(p.honorariosParcela);
       if (v > 0) out.push({ indice: i, parcela: p, valor: v });
     }
     return out;
-  }, [parcelas, nParcelasAtivas]);
+  }, [parcelas, nParcelasAtivas, temEntradaAtiva]);
 
   const somaHonorariosComRecebimento = useMemo(() => {
     let s = 0;
@@ -2167,56 +2291,69 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     return trunc2(s);
   }, [linhasHonorariosTitulo, linhasHonorariosParcela, honorariosRecebimentoMap, titulos, parcelas]);
 
-  // Preenche valor da parcela e honorários por parcela: totais da aba Títulos + quantidade + taxa mensal (Price).
-  // Com cálculo aceito/travado, não recalcula automaticamente (parcelas imutáveis até "Modo de Alteração").
+  // Preenche entrada (opcional) + parcelas Price sobre o saldo.
   useEffect(() => {
     if (calculoAceito) return;
 
     const tm = setTimeout(() => {
       const nParc = parseQuantidadeParcelasNumero(quantidadeParcelasInformada);
-      const pvTotal = parseBRL(resumoGeral.total);
-      const pvHonorarios = parseBRL(resumoGeral.honorarios);
-      let taxaM = parsePercentualBR(taxaJurosParcelamento);
-      if (!Number.isFinite(taxaM)) taxaM = 0;
-
-      setRodadasState((prev) => {
-        const cur = prev[rodadaKey];
-        if (!cur) return prev;
-        const listaBase = Array.isArray(cur.parcelas) ? [...cur.parcelas] : gerarParcelasMock();
-
-        if (nParc <= 0) {
+      const temEnt = entradaModoAtivo({ entradaParcelamentoModo });
+      if (nParc <= 0 && !temEnt) {
+        setRodadasState((prev) => {
+          const cur = prev[rodadaKey];
+          if (!cur) return prev;
+          const listaBase = Array.isArray(cur.parcelas) ? [...cur.parcelas] : gerarParcelasMock();
           const next = listaBase.map((l) => ({
             ...l,
+            tipo: 'parcela',
             valorParcela: '',
             honorariosParcela: '',
             dataVencimento: '',
             dataPagamento: '',
           }));
           return { ...prev, [rodadaKey]: { ...cur, parcelas: next } };
-        }
+        });
+        return;
+      }
 
-        const pmtValor =
-          pvTotal > 0 ? calcularParcelaPrecoMensalPrice(pvTotal, taxaM, nParc) : null;
-        const pmtHonor =
-          pvHonorarios > 0 ? calcularParcelaPrecoMensalPrice(pvHonorarios, taxaM, nParc) : null;
+      let taxaM = parsePercentualBR(taxaJurosParcelamento);
+      if (!Number.isFinite(taxaM)) taxaM = 0;
 
-        const valorFmt = pmtValor != null ? formatBRL(trunc2(pmtValor)) : '';
-        const honorFmt = pmtHonor != null ? formatBRL(trunc2(pmtHonor)) : '';
+      const dataCalcNorm = normalizarTextoDataBRparaSalvar(dataCalculo);
+      const dataEntStr =
+        normalizarTextoDataBRparaSalvar(String(entradaParcelamentoDataVenc || dataCalculo).trim()) ||
+        dataCalcNorm;
+      const dataBaseParc = temEnt && dataEntStr !== dataCalcNorm ? dataEntStr : dataCalcNorm;
 
-        while (listaBase.length < nParc) listaBase.push(linhaVaziaParcela());
-        for (let i = 0; i < listaBase.length; i++) {
-          if (i < nParc) {
-            const dataParc = gerarDataParcelaMensalBR(dataCalculo, i);
-            listaBase[i] = {
-              ...listaBase[i],
-              valorParcela: valorFmt,
-              honorariosParcela: honorFmt,
-              dataVencimento: dataParc,
-              dataPagamento: dataParc,
-            };
-          } else {
-            listaBase[i] = {
-              ...listaBase[i],
+      const montado = montarLinhasPlanoPagamento({
+        resumoDebito: resumoDebitoParcelamento,
+        entradaModo: entradaParcelamentoModo,
+        entradaValor: entradaParcelamentoValor,
+        entradaPercentual: entradaParcelamentoPercentual,
+        dataEntrada: dataEntStr,
+        nParcelas: nParc,
+        taxaPercent: taxaM,
+        dataBaseParcelas: dataBaseParc,
+        gerarDataParcela: (base, i) => gerarDataParcelaMensalBR(base, i),
+      });
+
+      setRodadasState((prev) => {
+        const cur = prev[rodadaKey];
+        if (!cur) return prev;
+        const listaBase = Array.isArray(cur.parcelas) ? [...cur.parcelas] : gerarParcelasMock();
+        const linhas = montado.erro ? [] : montado.linhas;
+        const minLen = Math.max(linhas.length, PARCELAS_POR_PAGINA);
+        const next = [];
+        for (let i = 0; i < minLen; i++) {
+          next.push(
+            i < linhas.length
+              ? { ...linhaVaziaParcela(), ...linhas[i] }
+              : { ...linhaVaziaParcela(), ...(listaBase[i] || {}) }
+          );
+          if (i >= linhas.length) {
+            next[i] = {
+              ...next[i],
+              tipo: 'parcela',
               valorParcela: '',
               honorariosParcela: '',
               dataVencimento: '',
@@ -2224,11 +2361,12 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
             };
           }
         }
-        const ultimo = listaBase.length - 1;
-        if (parcelaTemValor(listaBase[ultimo])) {
-          listaBase.push(linhaVaziaParcela());
+        const ultimo = next.length - 1;
+        if (parcelaTemValor(next[ultimo])) {
+          next.push(linhaVaziaParcela());
         }
-        return { ...prev, [rodadaKey]: { ...cur, parcelas: listaBase } };
+        isDirtyRodadaRef.current = true;
+        return { ...prev, [rodadaKey]: { ...cur, parcelas: next } };
       });
     }, 320);
 
@@ -2237,8 +2375,11 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     rodadaKey,
     quantidadeParcelasInformada,
     taxaJurosParcelamento,
-    resumoGeral.total,
-    resumoGeral.honorarios,
+    resumoDebitoParcelamento,
+    entradaParcelamentoModo,
+    entradaParcelamentoValor,
+    entradaParcelamentoPercentual,
+    entradaParcelamentoDataVenc,
     dataCalculo,
     calculoTravadoAceito,
     aceitarPagamento,
@@ -2296,21 +2437,377 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
         </span>
       </div>
 
-      <div className="flex flex-wrap border-b border-slate-200 bg-slate-100 shrink-0 gap-0.5 px-1 pt-1">
+      <div className="flex overflow-x-auto flex-nowrap border-b border-slate-200 bg-slate-100 shrink-0 gap-0.5 px-1 pt-1 [-webkit-overflow-scrolling:touch] [scrollbar-width:thin]">
         {TABS.map((tab) => (
           <button
             key={tab}
             type="button"
             onClick={() => setTabAtiva(tab)}
-            className={`px-2.5 py-1.5 text-xs font-medium rounded-t-md transition-colors ${tabAtiva === tab ? 'bg-white text-slate-900 border border-b-0 border-slate-200 -mb-px shadow-sm' : 'text-slate-600 hover:bg-white/70 border border-transparent'}`}
+            className={`shrink-0 px-2.5 py-1.5 text-xs font-medium rounded-t-md transition-colors ${tabAtiva === tab ? 'bg-white text-slate-900 border border-b-0 border-slate-200 -mb-px shadow-sm' : 'text-slate-600 hover:bg-white/70 border border-transparent'}`}
           >
             {tab}
           </button>
         ))}
       </div>
 
-      <div className="flex-1 min-h-0 flex overflow-hidden">
-        <div className="flex-1 min-w-0 overflow-auto p-2">
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
+        <aside className="order-last lg:order-last w-full shrink-0 lg:w-52 max-lg:max-h-[min(48dvh,420px)] border-t lg:border-t-0 lg:border-l border-slate-200 bg-slate-100/90 p-2 overflow-y-auto overflow-x-hidden space-y-2 [-webkit-overflow-scrolling:touch] [scrollbar-width:thin]">
+          <div className="p-1.5 rounded border border-slate-200 bg-white shadow-sm">
+            <div className="grid grid-cols-3 gap-2 lg:block lg:space-y-2">
+              <div>
+                <label className="block text-[11px] font-medium text-slate-700 mb-0.5">Cod Cliente</label>
+                <SpinnerFieldManual
+                  inputRef={inputCodClienteRodadaRef}
+                  value={codClienteManual}
+                  onChange={(v) => setCodClienteManual(v)}
+                  min={1}
+                  step={1}
+                  className="w-full"
+                  formatDisplay={(n) => String(Math.max(1, Math.floor(Number(n) || 1))).padStart(8, '0')}
+                  parseInput={(s) => Number(String(s).replace(/\D/g, ''))}
+                  onStep={(nextCod) => aplicarClienteProcComValores(nextCod, procManual)}
+                  onBlur={commitClienteProcManual}
+                  onKeyDown={(e) => handleEnterCampoRodada(e, inputProcRodadaRef)}
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-slate-700 mb-0.5">Proc.</label>
+                <SpinnerFieldManual
+                  inputRef={inputProcRodadaRef}
+                  value={procManual}
+                  onChange={(v) => setProcManual(v)}
+                  min={1}
+                  step={1}
+                  className="w-full"
+                  formatDisplay={(n) => String(Math.max(1, Math.floor(Number(n) || 1)))}
+                  parseInput={(s) => Number(String(s).replace(/\D/g, ''))}
+                  onStep={(nextProc) => aplicarClienteProcComValores(codClienteManual, nextProc)}
+                  onBlur={commitClienteProcManual}
+                  onKeyDown={(e) => handleEnterCampoRodada(e, inputDimensaoRodadaRef)}
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-slate-700 mb-0.5">Dimensão</label>
+                <SpinnerField
+                  inputRef={inputDimensaoRodadaRef}
+                  value={dimensao}
+                  onChange={setDimensao}
+                  min={0}
+                  className="w-full"
+                  onKeyDown={(e) =>
+                    handleEnterCampoRodada(e, btnIrRodadaRef, () => {
+                      setDimensao((v) => Math.max(0, Math.floor(Number(v) || 0)));
+                      commitClienteProcManual();
+                    })
+                  }
+                />
+              </div>
+              <button
+                ref={btnIrRodadaRef}
+                type="button"
+                onClick={aplicarClienteProcManual}
+                className="col-span-3 lg:col-span-1 w-full px-2 py-2 lg:py-1.5 rounded bg-blue-600 text-white text-sm lg:text-xs font-medium hover:bg-blue-700"
+              >
+                Ir
+              </button>
+            </div>
+          </div>
+          {tabAtiva === 'Títulos' && (
+            <div className="grid grid-cols-2 gap-2 lg:block lg:space-y-2">
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-0.5">Página</label>
+                <SpinnerField value={pagina} onChange={setPagina} min={1} className="w-full lg:w-24" />
+                <p className="mt-1 text-[11px] text-slate-500">de {String(totalPaginas).padStart(2, '0')}</p>
+              </div>
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (limpezaAtiva) reverterLimpeza();
+                    else setConfirmarLimpeza(true);
+                  }}
+                  className="w-full px-2 py-2 lg:py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50"
+                >
+                  {limpezaAtiva ? 'Reverter limpeza' : 'Limpa Página Toda'}
+                </button>
+              </div>
+              <div className="col-span-2 lg:col-span-1">
+                <label className="block text-xs font-medium text-slate-700 mb-0.5">Data do Cálculo:</label>
+                <input
+                  type="text"
+                  value={dataCalculo}
+                  disabled={calculoAceito && !modoAlteracao}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    const next = resolverAliasHojeEmTexto(v, 'br') ?? v;
+                    setDataCalculo(next);
+                    if (!calculoAceito || modoAlteracao) persistirDataCalculoRodada(next);
+                  }}
+                  onBlur={(e) => {
+                    const next = normalizarTextoDataBRparaSalvar(e.target.value);
+                    setDataCalculo(next);
+                    if (!calculoAceito || modoAlteracao) persistirDataCalculoRodada(next);
+                  }}
+                  placeholder="dd/mm/aaaa ou hj"
+                  className={`${inputClass} disabled:bg-slate-100 disabled:text-slate-500`}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-0.5">Juros:</label>
+                <input
+                  type="text"
+                  value={juros}
+                  onChange={(e) => updatePainelCampo({ juros: e.target.value })}
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-0.5">Multa:</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={percentualFixoParaCampo(multa)}
+                    onChange={(e) =>
+                      updatePainelCampo({ multa: editarPercentualFixoCampo(e.target.value) })
+                    }
+                    onBlur={(e) =>
+                      updatePainelCampo({
+                        multa: normalizarHonorariosValorFixo(e.target.value),
+                      })
+                    }
+                    placeholder="2"
+                    className={`${inputClass} pr-7`}
+                  />
+                  <span
+                    className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-500"
+                    aria-hidden
+                  >
+                    %
+                  </span>
+                </div>
+              </div>
+              <div className="col-span-2 lg:col-span-1 border border-slate-200 rounded p-1.5 bg-white shadow-sm">
+                <p className="text-[11px] font-medium text-slate-700 mb-1">Honorários</p>
+                <div className="flex gap-2 mb-0.5">
+                  <label className="flex items-center gap-1 text-xs cursor-pointer">
+                    <input
+                      type="radio"
+                      name="honorarios"
+                      checked={honorariosTipo === 'fixos'}
+                      onChange={() => updatePainelCampo({ honorariosTipo: 'fixos' })}
+                      className="text-slate-600"
+                    />
+                    Fixos
+                  </label>
+                  <label className="flex items-center gap-1 text-xs cursor-pointer">
+                    <input
+                      type="radio"
+                      name="honorarios"
+                      checked={honorariosTipo === 'variaveis'}
+                      onChange={() => updatePainelCampo({ honorariosTipo: 'variaveis' })}
+                      className="text-slate-600"
+                    />
+                    Variáveis
+                  </label>
+                </div>
+                {honorariosTipo === 'variaveis' && (
+                  <>
+                    <p className="text-xs text-slate-500 mb-1">
+                      Padrão sugerido: ≤ 30 dias = 0% &nbsp;|&nbsp; 31–60 dias = 10% &nbsp;|&nbsp; &gt; 60 dias = 20%
+                    </p>
+                    <textarea
+                      value={honorariosVariaveisTexto}
+                      onChange={(e) => updatePainelCampo({ honorariosVariaveisTexto: e.target.value })}
+                      rows={3}
+                      placeholder="Regras personalizadas (texto livre; padrão do cliente em Cadastro de Clientes)"
+                      className="w-full text-sm border border-slate-300 rounded px-2 py-1 mb-1 font-mono"
+                    />
+                  </>
+                )}
+                <div className="relative">
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={percentualFixoParaCampo(honorariosValor)}
+                    onChange={(e) =>
+                      updatePainelCampo({ honorariosValor: editarPercentualFixoCampo(e.target.value) })
+                    }
+                    onBlur={(e) =>
+                      updatePainelCampo({
+                        honorariosValor: normalizarHonorariosValorFixo(e.target.value),
+                      })
+                    }
+                    placeholder="20"
+                    disabled={honorariosTipo !== 'fixos'}
+                    className={`${inputClass} pr-7 ${honorariosTipo !== 'fixos' ? 'bg-slate-50 text-slate-400' : ''}`}
+                  />
+                  <span
+                    className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-500"
+                    aria-hidden
+                  >
+                    %
+                  </span>
+                </div>
+              </div>
+              <div className="col-span-2 lg:col-span-1 border border-slate-200 rounded p-1.5 bg-white shadow-sm relative" ref={indicePickerRef}>
+                <p className="text-[11px] font-medium text-slate-700 mb-1">Índice</p>
+                <button
+                  type="button"
+                  onClick={() => setIndiceMenuAberto((v) => !v)}
+                  onDoubleClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIndiceMenuAberto(false);
+                    setModalIndicesConferencia(true);
+                  }}
+                  title="Clique para escolher; duplo clique para conferir índices mês a mês"
+                  className="w-full flex items-center justify-between gap-1.5 px-2 py-2 lg:py-1.5 rounded border border-slate-200 bg-white text-left text-[11px] font-medium text-slate-800 hover:bg-slate-50"
+                  aria-expanded={indiceMenuAberto}
+                  aria-haspopup="listbox"
+                  aria-label={`Índice: ${indice}. Abrir lista; duplo clique confere valores mensais`}
+                >
+                  <span className="flex items-center gap-1 min-w-0 truncate">
+                    {indice}
+                    {indice === 'INPC' && <BarChart2 className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden />}
+                  </span>
+                  {indiceMenuAberto ? (
+                    <ChevronUp className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden />
+                  ) : (
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden />
+                  )}
+                </button>
+                {indiceMenuAberto ? (
+                  <ul
+                    className="absolute left-1.5 right-1.5 top-full z-30 mt-0.5 max-h-44 overflow-y-auto rounded border border-slate-200 bg-white py-0.5 shadow-lg"
+                    role="listbox"
+                    aria-label="Escolher índice"
+                  >
+                    {INDICES.map((nome) => (
+                      <li key={nome} role="presentation">
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={indice === nome}
+                          onClick={() => {
+                            updatePainelCampo({ indice: nome });
+                            setIndiceMenuAberto(false);
+                          }}
+                          className={`w-full text-left px-2 py-1.5 text-[11px] flex items-center gap-1.5 hover:bg-slate-50 ${
+                            indice === nome ? 'bg-blue-50 text-blue-900 font-medium' : 'text-slate-800'
+                          }`}
+                        >
+                          <span className="w-3.5 h-3.5 shrink-0 flex items-center justify-center">
+                            {indice === nome ? <Check className="w-3 h-3 text-blue-600" strokeWidth={3} aria-hidden /> : null}
+                          </span>
+                          <span className="truncate">{nome}</span>
+                          {nome === 'INPC' && <BarChart2 className="w-3.5 h-3.5 text-slate-500 shrink-0 ml-auto" aria-hidden />}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+              <div className="col-span-2 lg:col-span-1 border border-slate-200 rounded p-1.5 bg-white shadow-sm">
+                <p className="text-[11px] font-medium text-slate-700 mb-0.5">Periodicidade (sugestão)</p>
+                <select
+                  value={periodicidade}
+                  onChange={(e) => updatePainelCampo({ periodicidade: e.target.value })}
+                  className={inputClass}
+                >
+                  {PERIODICIDADE_OPCOES.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+          <div className="space-y-1 pt-1.5 border-t border-slate-200">
+            <button type="button" className="w-full px-2 py-2 lg:py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50">Cancelar</button>
+            <button type="button" className="w-full px-2 py-2 lg:py-1.5 rounded border border-slate-200 bg-blue-600 text-white text-xs font-medium hover:bg-blue-700">Configurações</button>
+            <label className="flex items-center gap-2 text-xs cursor-pointer py-0.5">
+              <input
+                type="checkbox"
+                checked={aceitarPagamento}
+                onChange={(e) => {
+                  const next = e.target.checked;
+                  const ok = confirmarAlternarAceitarPagamento(next);
+                  if (!ok) return;
+                  setAceitarPagamento(next);
+                  if (next) {
+                    aplicarValorCausaProcessoAoAceitarPagamento(resumoGeral.total);
+                  } else {
+                    setIndicesRefreshToken((t) => t + 1);
+                    setPaginaParcelamento(1);
+                  }
+                  setRodadasState((prev) => {
+                    const cur = prev[rodadaKey];
+                    if (!cur) return prev;
+                    const patch = next
+                      ? patchRodadaAoAceitarPagamento(cur, dataCalculo)
+                      : patchRodadaAoDesfazerAceitarPagamento(cur, titulos);
+                    isDirtyRodadaRef.current = true;
+                    paginasRodadaCacheRef.current = new Map();
+                    return { ...prev, [rodadaKey]: { ...cur, ...patch } };
+                  });
+                }}
+                className="rounded border-slate-300"
+              />
+              Aceitar Pagamento
+            </label>
+            <label className="flex items-center gap-2 text-xs cursor-pointer py-0.5">
+              <input type="checkbox" checked={modoAlteracao} onChange={(e) => setModoAlteracao(e.target.checked)} className="rounded border-slate-300" />
+              Modo de Alteração
+            </label>
+            <input
+              ref={debitosPlanilhaInputRef}
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              className="hidden"
+              aria-hidden="true"
+              onChange={handleDebitosPlanilhaFileChange}
+            />
+            <button
+              type="button"
+              onClick={handleImportarDebitosPlanilhaClick}
+              className="w-full px-2 py-2 lg:py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50 text-left"
+            >
+              Importar débitos (Excel)
+            </button>
+            {featureFlags.useApiCalculos && (
+              <button
+                type="button"
+                disabled={sincronizandoRodadasApi}
+                onClick={() => void handleSincronizarRodadasComBanco()}
+                className="w-full px-2 py-2 lg:py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50 text-left flex items-center gap-1.5 disabled:opacity-60"
+              >
+                <RefreshCw className={`w-4 h-4 shrink-0 ${sincronizandoRodadasApi ? 'animate-spin' : ''}`} aria-hidden />
+                Sincronizar com banco
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => void gerarPdfCalculo()}
+              className="w-full px-2 py-2 lg:py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50 text-left"
+            >
+              Salvar Formulário em PDF
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void gerarWordListaDebitos();
+              }}
+              className="w-full px-2 py-2 lg:py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50"
+            >
+              Gerar no Word
+            </button>
+            <button type="button" className="w-full px-2 py-2 lg:py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50">Email Automático</button>
+          </div>
+        </aside>
+
+        <div className="order-first flex-1 min-w-0 min-h-0 overflow-auto p-2 [-webkit-overflow-scrolling:touch]">
           {tabAtiva === 'Títulos' && (
             <TitulosGrid
               titulosPaginaCompletos={titulosPaginaCompletos}
@@ -2388,8 +2885,8 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                 </div>
               </div>
               <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-3">
-                <div className="overflow-x-auto border border-slate-300">
-                  <table className="w-full text-sm border-collapse table-fixed">
+                <div className="overflow-x-auto border border-slate-300 [-webkit-overflow-scrolling:touch]">
+                  <table className="w-full min-w-[520px] text-sm border-collapse">
                     <thead>
                       <tr className="bg-slate-100">
                         <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-24">Parcela</th>
@@ -2406,7 +2903,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                         return (
                           <tr key={`parcela-${globalIdx}`} className={globalIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
                             <td className="border border-slate-200 px-2 py-1 text-slate-700">
-                              Parcela {String(globalIdx + 1).padStart(2, '0')}:
+                              {rotuloLinhaPlanoPagamento(row, globalIdx, temEntradaAtiva)}
                             </td>
                             <td className="border border-slate-200 px-2 py-1">
                               {podeEditar ? (
@@ -2490,6 +2987,101 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                   <div className="border border-slate-300 bg-white p-2">
                     <p className="text-sm font-semibold text-slate-700 mb-2">Parcelamentos</p>
                     <div className="space-y-1.5 text-sm">
+                      <fieldset
+                        className="space-y-1.5 pb-2 border-b border-slate-200"
+                        disabled={aceitarPagamento && !modoAlteracao}
+                      >
+                        <legend className="text-xs font-medium text-slate-600 mb-1">Entrada</legend>
+                        <div className="flex flex-wrap gap-2 text-xs">
+                          {[
+                            ['nenhuma', 'Sem entrada'],
+                            ['reais', 'R$'],
+                            ['percentual', '%'],
+                          ].map(([modo, label]) => (
+                            <label key={modo} className="inline-flex items-center gap-1 cursor-pointer">
+                              <input
+                                type="radio"
+                                name={`entrada-modo-${rodadaKey}`}
+                                checked={normalizarEntradaModo(entradaParcelamentoModo) === modo}
+                                onChange={() => setEntradaParcelamentoModo(modo)}
+                              />
+                              {label}
+                            </label>
+                          ))}
+                        </div>
+                        {normalizarEntradaModo(entradaParcelamentoModo) === 'reais' && (
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={entradaParcelamentoValor}
+                            onChange={(e) => patchEntradaParcelamento({ entradaParcelamentoValor: e.target.value })}
+                            onBlur={(e) =>
+                              patchEntradaParcelamento({
+                                entradaParcelamentoValor: formatValorMoedaCampo(e.target.value),
+                              })
+                            }
+                            placeholder="0,00"
+                            className="w-full px-2 py-1 border border-slate-300 rounded text-sm"
+                          />
+                        )}
+                        {normalizarEntradaModo(entradaParcelamentoModo) === 'percentual' && (
+                          <div className="relative">
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={entradaParcelamentoPercentual}
+                              onChange={(e) =>
+                                patchEntradaParcelamento({ entradaParcelamentoPercentual: e.target.value })
+                              }
+                              placeholder="10"
+                              className="w-full px-2 py-1 border border-slate-300 rounded text-sm pr-7"
+                            />
+                            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-500">
+                              %
+                            </span>
+                          </div>
+                        )}
+                        {temEntradaAtiva && (
+                          <label className="block text-xs text-slate-600">
+                            Data da entrada
+                            <input
+                              type="text"
+                              value={entradaParcelamentoDataVenc || dataCalculo}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                const next = resolverAliasHojeEmTexto(v, 'br') ?? v;
+                                patchEntradaParcelamento({ entradaParcelamentoDataVenc: next });
+                              }}
+                              onBlur={(e) =>
+                                patchEntradaParcelamento({
+                                  entradaParcelamentoDataVenc: normalizarTextoDataBRparaSalvar(e.target.value),
+                                })
+                              }
+                              placeholder="dd/mm/aaaa"
+                              className="mt-0.5 w-full px-2 py-1 border border-slate-300 rounded text-sm"
+                            />
+                          </label>
+                        )}
+                        {resumoParcelamento.mostrarDoisDebitos && (
+                          <p className="text-[11px] text-slate-600 leading-snug">
+                            Débito na data do cálculo: <b>{resumoParcelamento.debitoDataCalculo}</b>
+                            <br />
+                            Débito na data da entrada: <b>{resumoParcelamento.debitoDataEntrada}</b>
+                          </p>
+                        )}
+                        {temEntradaAtiva && (
+                          <>
+                            <p className="flex justify-between gap-2">
+                              <span>Entrada:</span>
+                              <b>{resumoParcelamento.entradaTotal}</b>
+                            </p>
+                            <p className="flex justify-between gap-2">
+                              <span>Saldo a parcelar:</span>
+                              <b>{formatBRL(Math.max(0, parseBRL(resumoParcelamento.debitoDataEntrada) - parseBRL(resumoParcelamento.entradaTotal)))}</b>
+                            </p>
+                          </>
+                        )}
+                      </fieldset>
                       <div className="flex justify-between items-center gap-2">
                         <span>Quantidade de Parcelas:</span>
                         <input
@@ -2572,8 +3164,8 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                   </button>
                 </div>
               </div>
-              <div className="overflow-x-auto border border-slate-300">
-                <table className="w-full text-sm border-collapse table-fixed">
+              <div className="overflow-x-auto border border-slate-300 [-webkit-overflow-scrolling:touch]">
+                <table className="w-full min-w-[640px] text-sm border-collapse">
                   <thead>
                     <tr className="bg-slate-100">
                       <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-24">Parcela</th>
@@ -2591,7 +3183,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                       return (
                         <tr key={`pagamento-parcela-${globalIdx}`} className={globalIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
                           <td className="border border-slate-200 px-2 py-1 text-slate-700">
-                            Parcela {String(globalIdx + 1).padStart(2, '0')}:
+                            {rotuloLinhaPlanoPagamento(row, globalIdx, temEntradaAtiva)}
                           </td>
                           <td className="border border-slate-200 px-2 py-1">
                             {podeEditar ? (
@@ -2937,8 +3529,8 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                   </button>
                 </div>
               </div>
-              <div className="overflow-x-auto border border-slate-300 rounded">
-                <table className="w-full table-fixed text-sm border-collapse">
+              <div className="overflow-x-auto border border-slate-300 rounded [-webkit-overflow-scrolling:touch]">
+                <table className="w-full min-w-[480px] text-sm border-collapse">
                   <thead>
                     <tr className="bg-slate-100">
                       <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 w-14">#</th>
@@ -3010,361 +3602,6 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
             </div>
           )}
         </div>
-
-        <aside className="w-52 shrink-0 border-l border-slate-200 bg-slate-100/90 p-2 overflow-y-auto overflow-x-hidden space-y-2 [scrollbar-width:thin]">
-          <div className="p-1.5 rounded border border-slate-200 bg-white shadow-sm">
-            <div className="space-y-2">
-              <div>
-                <label className="block text-[11px] font-medium text-slate-700 mb-0.5">Cod Cliente</label>
-                <SpinnerFieldManual
-                  inputRef={inputCodClienteRodadaRef}
-                  value={codClienteManual}
-                  onChange={(v) => setCodClienteManual(v)}
-                  min={1}
-                  step={1}
-                  className="w-full"
-                  formatDisplay={(n) => String(Math.max(1, Math.floor(Number(n) || 1))).padStart(8, '0')}
-                  parseInput={(s) => Number(String(s).replace(/\D/g, ''))}
-                  onStep={(nextCod) => aplicarClienteProcComValores(nextCod, procManual)}
-                  onBlur={commitClienteProcManual}
-                  onKeyDown={(e) => handleEnterCampoRodada(e, inputProcRodadaRef)}
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-slate-700 mb-0.5">Proc.</label>
-                <SpinnerFieldManual
-                  inputRef={inputProcRodadaRef}
-                  value={procManual}
-                  onChange={(v) => setProcManual(v)}
-                  min={1}
-                  step={1}
-                  className="w-full"
-                  formatDisplay={(n) => String(Math.max(1, Math.floor(Number(n) || 1)))}
-                  parseInput={(s) => Number(String(s).replace(/\D/g, ''))}
-                  onStep={(nextProc) => aplicarClienteProcComValores(codClienteManual, nextProc)}
-                  onBlur={commitClienteProcManual}
-                  onKeyDown={(e) => handleEnterCampoRodada(e, inputDimensaoRodadaRef)}
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-slate-700 mb-0.5">Dimensão</label>
-                <SpinnerField
-                  inputRef={inputDimensaoRodadaRef}
-                  value={dimensao}
-                  onChange={setDimensao}
-                  min={0}
-                  className="w-full"
-                  onKeyDown={(e) =>
-                    handleEnterCampoRodada(e, btnIrRodadaRef, () => {
-                      setDimensao((v) => Math.max(0, Math.floor(Number(v) || 0)));
-                      commitClienteProcManual();
-                    })
-                  }
-                />
-              </div>
-              <button
-                ref={btnIrRodadaRef}
-                type="button"
-                onClick={aplicarClienteProcManual}
-                className="w-full px-2 py-1.5 rounded bg-blue-600 text-white text-xs font-medium hover:bg-blue-700"
-              >
-                Ir
-              </button>
-            </div>
-          </div>
-          {tabAtiva === 'Títulos' && (
-            <>
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-0.5">Página</label>
-                <SpinnerField value={pagina} onChange={setPagina} min={1} className="w-24" />
-                <p className="mt-1 text-[11px] text-slate-500">de {String(totalPaginas).padStart(2, '0')}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  if (limpezaAtiva) reverterLimpeza();
-                  else setConfirmarLimpeza(true);
-                }}
-                className="w-full px-2 py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50"
-              >
-                {limpezaAtiva ? 'Reverter limpeza' : 'Limpa Página Toda'}
-              </button>
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-0.5">Data do Cálculo:</label>
-                <input
-                  type="text"
-                  value={dataCalculo}
-                  disabled={calculoAceito && !modoAlteracao}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    const next = resolverAliasHojeEmTexto(v, 'br') ?? v;
-                    setDataCalculo(next);
-                    if (!calculoAceito || modoAlteracao) persistirDataCalculoRodada(next);
-                  }}
-                  onBlur={(e) => {
-                    const next = normalizarTextoDataBRparaSalvar(e.target.value);
-                    setDataCalculo(next);
-                    if (!calculoAceito || modoAlteracao) persistirDataCalculoRodada(next);
-                  }}
-                  placeholder="dd/mm/aaaa ou hj"
-                  className={`${inputClass} disabled:bg-slate-100 disabled:text-slate-500`}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-0.5">Juros:</label>
-                <input
-                  type="text"
-                  value={juros}
-                  onChange={(e) => updatePainelCampo({ juros: e.target.value })}
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-0.5">Multa:</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={percentualFixoParaCampo(multa)}
-                    onChange={(e) =>
-                      updatePainelCampo({ multa: editarPercentualFixoCampo(e.target.value) })
-                    }
-                    onBlur={(e) =>
-                      updatePainelCampo({
-                        multa: normalizarHonorariosValorFixo(e.target.value),
-                      })
-                    }
-                    placeholder="2"
-                    className={`${inputClass} pr-7`}
-                  />
-                  <span
-                    className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-500"
-                    aria-hidden
-                  >
-                    %
-                  </span>
-                </div>
-              </div>
-              <div className="border border-slate-200 rounded p-1.5 bg-white shadow-sm">
-                <p className="text-[11px] font-medium text-slate-700 mb-1">Honorários</p>
-                <div className="flex gap-2 mb-0.5">
-                  <label className="flex items-center gap-1 text-xs cursor-pointer">
-                    <input
-                      type="radio"
-                      name="honorarios"
-                      checked={honorariosTipo === 'fixos'}
-                      onChange={() => updatePainelCampo({ honorariosTipo: 'fixos' })}
-                      className="text-slate-600"
-                    />
-                    Fixos
-                  </label>
-                  <label className="flex items-center gap-1 text-xs cursor-pointer">
-                    <input
-                      type="radio"
-                      name="honorarios"
-                      checked={honorariosTipo === 'variaveis'}
-                      onChange={() => updatePainelCampo({ honorariosTipo: 'variaveis' })}
-                      className="text-slate-600"
-                    />
-                    Variáveis
-                  </label>
-                </div>
-                {honorariosTipo === 'variaveis' && (
-                  <>
-                    <p className="text-xs text-slate-500 mb-1">
-                      Padrão sugerido: ≤ 30 dias = 0% &nbsp;|&nbsp; 31–60 dias = 10% &nbsp;|&nbsp; &gt; 60 dias = 20%
-                    </p>
-                    <textarea
-                      value={honorariosVariaveisTexto}
-                      onChange={(e) => updatePainelCampo({ honorariosVariaveisTexto: e.target.value })}
-                      rows={3}
-                      placeholder="Regras personalizadas (texto livre; padrão do cliente em Cadastro de Clientes)"
-                      className="w-full text-sm border border-slate-300 rounded px-2 py-1 mb-1 font-mono"
-                    />
-                  </>
-                )}
-                <div className="relative">
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={percentualFixoParaCampo(honorariosValor)}
-                    onChange={(e) =>
-                      updatePainelCampo({ honorariosValor: editarPercentualFixoCampo(e.target.value) })
-                    }
-                    onBlur={(e) =>
-                      updatePainelCampo({
-                        honorariosValor: normalizarHonorariosValorFixo(e.target.value),
-                      })
-                    }
-                    placeholder="20"
-                    disabled={honorariosTipo !== 'fixos'}
-                    className={`${inputClass} pr-7 ${honorariosTipo !== 'fixos' ? 'bg-slate-50 text-slate-400' : ''}`}
-                  />
-                  <span
-                    className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-500"
-                    aria-hidden
-                  >
-                    %
-                  </span>
-                </div>
-              </div>
-              <div className="border border-slate-200 rounded p-1.5 bg-white shadow-sm relative" ref={indicePickerRef}>
-                <p className="text-[11px] font-medium text-slate-700 mb-1">Índice</p>
-                <button
-                  type="button"
-                  onClick={() => setIndiceMenuAberto((v) => !v)}
-                  onDoubleClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setIndiceMenuAberto(false);
-                    setModalIndicesConferencia(true);
-                  }}
-                  title="Clique para escolher; duplo clique para conferir índices mês a mês"
-                  className="w-full flex items-center justify-between gap-1.5 px-2 py-1.5 rounded border border-slate-200 bg-white text-left text-[11px] font-medium text-slate-800 hover:bg-slate-50"
-                  aria-expanded={indiceMenuAberto}
-                  aria-haspopup="listbox"
-                  aria-label={`Índice: ${indice}. Abrir lista; duplo clique confere valores mensais`}
-                >
-                  <span className="flex items-center gap-1 min-w-0 truncate">
-                    {indice}
-                    {indice === 'INPC' && <BarChart2 className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden />}
-                  </span>
-                  {indiceMenuAberto ? (
-                    <ChevronUp className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden />
-                  ) : (
-                    <ChevronDown className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden />
-                  )}
-                </button>
-                {indiceMenuAberto ? (
-                  <ul
-                    className="absolute left-1.5 right-1.5 top-full z-30 mt-0.5 max-h-44 overflow-y-auto rounded border border-slate-200 bg-white py-0.5 shadow-lg"
-                    role="listbox"
-                    aria-label="Escolher índice"
-                  >
-                    {INDICES.map((nome) => (
-                      <li key={nome} role="presentation">
-                        <button
-                          type="button"
-                          role="option"
-                          aria-selected={indice === nome}
-                          onClick={() => {
-                            updatePainelCampo({ indice: nome });
-                            setIndiceMenuAberto(false);
-                          }}
-                          className={`w-full text-left px-2 py-1.5 text-[11px] flex items-center gap-1.5 hover:bg-slate-50 ${
-                            indice === nome ? 'bg-blue-50 text-blue-900 font-medium' : 'text-slate-800'
-                          }`}
-                        >
-                          <span className="w-3.5 h-3.5 shrink-0 flex items-center justify-center">
-                            {indice === nome ? <Check className="w-3 h-3 text-blue-600" strokeWidth={3} aria-hidden /> : null}
-                          </span>
-                          <span className="truncate">{nome}</span>
-                          {nome === 'INPC' && <BarChart2 className="w-3.5 h-3.5 text-slate-500 shrink-0 ml-auto" aria-hidden />}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-              <div className="border border-slate-200 rounded p-1.5 bg-white shadow-sm">
-                <p className="text-[11px] font-medium text-slate-700 mb-0.5">Periodicidade (sugestão)</p>
-                <select
-                  value={periodicidade}
-                  onChange={(e) => updatePainelCampo({ periodicidade: e.target.value })}
-                  className={inputClass}
-                >
-                  {PERIODICIDADE_OPCOES.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </>
-          )}
-          <div className="space-y-1 pt-1.5 border-t border-slate-200">
-            <button type="button" className="w-full px-2 py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50">Cancelar</button>
-            <button type="button" className="w-full px-2 py-1.5 rounded border border-slate-200 bg-blue-600 text-white text-xs font-medium hover:bg-blue-700">Configurações</button>
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <input
-                type="checkbox"
-                checked={aceitarPagamento}
-                onChange={(e) => {
-                  const next = e.target.checked;
-                  const ok = confirmarAlternarAceitarPagamento(next);
-                  if (!ok) return;
-                  setAceitarPagamento(next);
-                  if (next) {
-                    aplicarValorCausaProcessoAoAceitarPagamento(resumoGeral.total);
-                  } else {
-                    // Liberar: recálculo automático com a data do painel; débitos editáveis e plano apagado.
-                    setIndicesRefreshToken((t) => t + 1);
-                    setPaginaParcelamento(1);
-                  }
-                  setRodadasState((prev) => {
-                    const cur = prev[rodadaKey];
-                    if (!cur) return prev;
-                    const patch = next
-                      ? patchRodadaAoAceitarPagamento(cur, dataCalculo)
-                      : patchRodadaAoDesfazerAceitarPagamento(cur, titulos);
-                    isDirtyRodadaRef.current = true;
-                    paginasRodadaCacheRef.current = new Map();
-                    return { ...prev, [rodadaKey]: { ...cur, ...patch } };
-                  });
-                }}
-                className="rounded border-slate-300"
-              />
-              Aceitar Pagamento
-            </label>
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <input type="checkbox" checked={modoAlteracao} onChange={(e) => setModoAlteracao(e.target.checked)} className="rounded border-slate-300" />
-              Modo de Alteração
-            </label>
-            <input
-              ref={debitosPlanilhaInputRef}
-              type="file"
-              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              className="hidden"
-              aria-hidden="true"
-              onChange={handleDebitosPlanilhaFileChange}
-            />
-            <button
-              type="button"
-              onClick={handleImportarDebitosPlanilhaClick}
-              className="w-full px-2 py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50 text-left"
-            >
-              Importar débitos (Excel)
-            </button>
-            {featureFlags.useApiCalculos && (
-              <button
-                type="button"
-                disabled={sincronizandoRodadasApi}
-                onClick={() => void handleSincronizarRodadasComBanco()}
-                className="w-full px-2 py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50 text-left flex items-center gap-1.5 disabled:opacity-60"
-              >
-                <RefreshCw className={`w-4 h-4 shrink-0 ${sincronizandoRodadasApi ? 'animate-spin' : ''}`} aria-hidden />
-                Sincronizar com banco
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => void gerarPdfCalculo()}
-              className="w-full px-2 py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50 text-left"
-            >
-              Salvar Formulário em PDF
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                void gerarWordListaDebitos();
-              }}
-              className="w-full px-2 py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50"
-            >
-              Gerar no Word
-            </button>
-            <button type="button" className="w-full px-2 py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50">Email Automático</button>
-          </div>
-        </aside>
       </div>
 
       {modalDatasEspeciais && linhaModalIdx != null && (

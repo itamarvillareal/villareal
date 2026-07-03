@@ -11,6 +11,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Receipt,
+  Search,
   Settings,
   Sparkles,
   TrendingUp,
@@ -24,6 +25,7 @@ import { FinanceiroToastProvider } from './shared/Toast.jsx';
 import { DashboardSkeleton } from './shared/LoadingSkeleton.jsx';
 import { BancoItem } from './shared/BancoItem.jsx';
 import { ExtratoImportModal } from './extrato/ExtratoImportModal.jsx';
+import { ModalPesquisaValorLancamento } from './pesquisa/ModalPesquisaValorLancamento.jsx';
 import { FaturaCartaoImportModal } from './cartao/FaturaCartaoImportModal.jsx';
 import {
   FINANCEIRO_REFRESH_PENDENTES,
@@ -50,6 +52,9 @@ function FinanceiroShell({
   cartaoParaFaturaImport,
   onRequestFaturaImport,
   onFaturaImportSuccess,
+  pesquisaValorOpen,
+  onOpenPesquisaValor,
+  onClosePesquisaValor,
 }) {
   const navigate = useNavigate();
   const cartaoRouteMatch = useMatch('/financeiro/cartao/:id');
@@ -121,6 +126,15 @@ function FinanceiroShell({
           ) : null}
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800"
+            onClick={onOpenPesquisaValor}
+            title="Pesquisar lançamento por data e valor exatos"
+          >
+            <Search className="w-3.5 h-3.5" aria-hidden />
+            Pesquisar valor
+          </button>
           <button
             type="button"
             className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800"
@@ -285,6 +299,8 @@ function FinanceiroShell({
         onClose={onCloseFaturaImport}
         onSuccess={onFaturaImportSuccess}
       />
+
+      <ModalPesquisaValorLancamento open={pesquisaValorOpen} onClose={onClosePesquisaValor} />
     </div>
   );
 }
@@ -298,6 +314,7 @@ export function FinanceiroLayout() {
 
   const [meta, setMeta] = useState({ totalPendentes: 0, contadores: {} });
   const [importOpen, setImportOpen] = useState(false);
+  const [pesquisaValorOpen, setPesquisaValorOpen] = useState(false);
   const [faturaImportOpen, setFaturaImportOpen] = useState(false);
   const [faturaCartaoNumero, setFaturaCartaoNumero] = useState(null);
   const [cartoesApi, setCartoesApi] = useState([]);
@@ -414,6 +431,9 @@ export function FinanceiroLayout() {
           cartaoParaFaturaImport={cartaoParaFaturaImport}
           onRequestFaturaImport={onRequestFaturaImport}
           onFaturaImportSuccess={handleFaturaImportSuccess}
+          pesquisaValorOpen={pesquisaValorOpen}
+          onOpenPesquisaValor={() => setPesquisaValorOpen(true)}
+          onClosePesquisaValor={() => setPesquisaValorOpen(false)}
         />
       </FinanceiroProvider>
     </FinanceiroToastProvider>

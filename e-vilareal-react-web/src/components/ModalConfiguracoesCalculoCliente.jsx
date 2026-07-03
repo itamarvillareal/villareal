@@ -195,8 +195,9 @@ export function ModalConfiguracoesCalculoCliente({
               id="sec-calculos-titulo"
               className="mb-2 text-[11px] leading-snug text-slate-600"
             >
-              Padrão na tela <strong className="text-slate-800">Cálculos</strong> para todos os processos deste
-              cliente (editável por processo depois).
+              Padrão na tela <strong className="text-slate-800">Cálculos</strong> para todos os processos e{' '}
+              <strong className="text-slate-800">todas as dimensões</strong> deste cliente (juros, multa, honorários e
+              índice ficam iguais ao trocar a dimensão).
             </p>
 
             <div className="grid grid-cols-1 gap-2.5 md:grid-cols-3 md:items-stretch">
