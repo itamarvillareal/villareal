@@ -16,6 +16,7 @@ public class ProcessoDiagnosticoPessoaItemResponse {
     private String numeroProcessoNovo;
     private String papeis;
     private String observacaoFase;
+    private String unidade;
 
     @Schema(description = "PK do processo na tabela processo")
     public Long getProcessoId() {
@@ -93,5 +94,14 @@ public class ProcessoDiagnosticoPessoaItemResponse {
 
     public void setObservacaoFase(String observacaoFase) {
         this.observacaoFase = observacaoFase;
+    }
+
+    @Schema(description = "Código da unidade vinculada ao processo (ex.: condomínio)")
+    public String getUnidade() {
+        return unidade;
+    }
+
+    public void setUnidade(String unidade) {
+        this.unidade = unidade;
     }
 }

@@ -4,14 +4,26 @@ import { montarVinculosCodProc } from './buscarVinculosPorTelefoneConversa.js';
 describe('montarVinculosCodProc', () => {
   it('deduplica e ordena pares código + proc.', () => {
     const rows = montarVinculosCodProc([
-      { codCliente: '928', proc: '244', papeis: 'Réu' },
+      { codCliente: '928', proc: '244', papeis: 'Réu', parteOposta: 'Condomínio X', unidade: 'A-101' },
       { codCliente: '00000928', proc: 244, papeis: 'Réu duplicado' },
-      { codCliente: '299', proc: '12', papeis: 'Cliente' },
+      { codCliente: '299', proc: '12', papeis: 'Cliente', parteOposta: 'Fulano', unidade: 'B-202' },
     ]);
 
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toMatchObject({ codigoCliente: '00000299', numeroInterno: 12, papeis: 'Cliente' });
-    expect(rows[1]).toMatchObject({ codigoCliente: '00000928', numeroInterno: 244, papeis: 'Réu' });
+    expect(rows[0]).toMatchObject({
+      codigoCliente: '00000299',
+      numeroInterno: 12,
+      papeis: 'Cliente',
+      parteOposta: 'Fulano',
+      unidade: 'B-202',
+    });
+    expect(rows[1]).toMatchObject({
+      codigoCliente: '00000928',
+      numeroInterno: 244,
+      papeis: 'Réu',
+      parteOposta: 'Condomínio X',
+      unidade: 'A-101',
+    });
   });
 
   it('ignora linhas sem proc. válido', () => {

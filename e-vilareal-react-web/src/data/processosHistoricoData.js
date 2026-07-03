@@ -1305,6 +1305,7 @@ export function listarProcessosPorIdPessoa(idPessoa, nomeCadastro) {
       cliente: reg.cliente,
       parteCliente: reg.parteCliente,
       parteOposta: reg.parteOposta,
+      unidade: reg.unidade || '',
       numeroProcessoNovo: reg.numeroProcessoNovo,
       papeis: [...new Set(papeis)].join(' · '),
     });

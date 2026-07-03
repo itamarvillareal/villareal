@@ -21,8 +21,8 @@ function chaveVinculo(codigoCliente, numeroInterno) {
 
 /**
  * Normaliza linhas de processo em pares código + proc. únicos.
- * @param {Array<{ codCliente?: string, codigoCliente?: string, proc?: string|number, numeroInterno?: string|number, papeis?: string, cliente?: string }>} processos
- * @returns {Array<{ codigoCliente: string, numeroInterno: number, papeis: string, cliente: string }>}
+ * @param {Array<{ codCliente?: string, codigoCliente?: string, proc?: string|number, numeroInterno?: string|number, papeis?: string, cliente?: string, parteOposta?: string, unidade?: string }>} processos
+ * @returns {Array<{ codigoCliente: string, numeroInterno: number, papeis: string, cliente: string, parteOposta: string, unidade: string }>}
  */
 export function montarVinculosCodProc(processos) {
   const map = new Map();
@@ -33,14 +33,23 @@ export function montarVinculosCodProc(processos) {
     const numeroInterno = Math.floor(Number(String(row.proc ?? row.numeroInterno ?? '').replace(/\D/g, '')) || 0);
     if (!codigoCliente || numeroInterno < 1) continue;
     const key = chaveVinculo(codigoCliente, numeroInterno);
+    const parteOposta = String(row.parteOposta ?? '').trim();
+    const unidade = String(row.unidade ?? '').trim();
     if (!map.has(key)) {
       map.set(key, {
         codigoCliente,
         numeroInterno,
         papeis: String(row.papeis ?? '').trim(),
         cliente: String(row.cliente ?? '').trim(),
+        parteOposta,
+        unidade,
       });
+      continue;
     }
+    const existente = map.get(key);
+    if (!existente.parteOposta && parteOposta) existente.parteOposta = parteOposta;
+    if (!existente.unidade && unidade) existente.unidade = unidade;
+    if (!existente.papeis && row.papeis) existente.papeis = String(row.papeis).trim();
   }
   return [...map.values()].sort((a, b) => chaveVinculo(a.codigoCliente, a.numeroInterno).localeCompare(chaveVinculo(b.codigoCliente, b.numeroInterno)));
 }

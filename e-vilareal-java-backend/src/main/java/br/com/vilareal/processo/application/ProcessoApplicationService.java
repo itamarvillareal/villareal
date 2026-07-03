@@ -648,9 +648,15 @@ public class ProcessoApplicationService {
             r.setParteOposta(parteOpostaTxt);
             r.setNumeroProcessoNovo(cnj == null ? "" : Utf8MojibakeUtil.corrigir(cnj));
             r.setPapeis(String.join(" · ", papeis));
+            r.setUnidade(textoUnidadeProcesso(e));
             out.add(r);
         }
         return out;
+    }
+
+    private static String textoUnidadeProcesso(ProcessoEntity e) {
+        String u = trimToNull(e == null ? null : e.getUnidade());
+        return u == null ? "" : Utf8MojibakeUtil.corrigir(u);
     }
 
     private static String papelPartePorPolo(String polo) {
@@ -869,6 +875,7 @@ public class ProcessoApplicationService {
             r.setPapeis(papeisRotulo);
             String obsFase = trimToNull(e.getObservacaoFase());
             r.setObservacaoFase(obsFase == null ? "" : Utf8MojibakeUtil.corrigir(obsFase));
+            r.setUnidade(textoUnidadeProcesso(e));
             out.add(r);
         }
         return out;

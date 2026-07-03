@@ -631,11 +631,6 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     return `${dd}/${mm}/${yyyy}`;
   }
 
-  // Ao abrir a tela: se não estiver travado, atualiza a data do cálculo para hoje
-  useEffect(() => {
-    if (!aceitarPagamento) setDataCalculo(hojeBR());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const dimensaoNorm = Math.max(0, Math.floor(Number(dimensao) || 0));
   useEffect(() => {
@@ -645,6 +640,17 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   const codigoClienteNorm = padCliente8(codigoCliente);
   const procNorm = normalizarProc(proc);
   const rodadaKey = `${codigoClienteNorm}:${procNorm}:${dimensaoNorm}`;
+
+  function persistirDataCalculoRodada(dataBr) {
+    const next = String(dataBr ?? '').trim();
+    setRodadasState((prev) => {
+      const cur = prev[rodadaKey];
+      if (!cur) return prev;
+      if (String(cur.dataCalculoRodada ?? '').trim() === next) return prev;
+      isDirtyRodadaRef.current = true;
+      return { ...prev, [rodadaKey]: { ...cur, dataCalculoRodada: next } };
+    });
+  }
 
   /** Persiste rodadas no navegador (Financeiro usa para buscar parcelas no extrato). PUT na API só após hidratação GET (ver `hidratacaoConcluida` + `calculosRodadasStorage`). */
   useEffect(() => {
@@ -1007,7 +1013,8 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
 
   useEffect(() => {
     const dc = String(rodadaAtual.dataCalculoRodada ?? '').trim();
-    if (calculoAceito && dc) setDataCalculo(dc);
+    if (dc) setDataCalculo(dc);
+    else if (!calculoAceito) setDataCalculo(hojeBR());
   }, [rodadaKey, calculoAceito, rodadaAtual.dataCalculoRodada]);
 
   // Preenche cabecalho.autor / .reu a partir de Processos + Cliente (API) ou histórico local, sem sobrescrever texto já salvo na rodada.
@@ -1644,10 +1651,8 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     const jurosPct = parsePercent(juros);
     const multaPct = parsePercent(multa);
     // dataOverride (quando informada) força a data do cálculo sem mexer no estado do aceite.
-    // Sem override: travado usa a data do painel; liberado usa a data corrente (regra de negócio).
     const dataCalcGlobal =
-      dataOverride ??
-      (calculoAceito ? parseDateBR(dataCalculo) : parseDateBR(hojeBR()));
+      dataOverride ?? parseDateBR(dataCalculo) ?? parseDateBR(hojeBR());
     const honorPctFixo = parsePercent(honorariosValor);
 
     let changed = false;
@@ -1755,8 +1760,6 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   useEffect(() => {
     if (calculoAceito) return;
     if (featureFlags.useApiCalculos && !rodadaExisteNoEstado) return;
-    const hoje = hojeBR();
-    setDataCalculo((prev) => (prev !== hoje ? hoje : prev));
     const idxUpperGeral = String(indice).toUpperCase();
     const precisaINPC =
       idxUpperGeral === 'INPC' ||
@@ -1823,7 +1826,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       return;
     }
 
-    const dataCalcDate = parseDateBR(calculoAceito ? dataCalculo : hojeBR());
+    const dataCalcDate = parseDateBR(dataCalculo) ?? parseDateBR(hojeBR());
     if (!dataCalcDate) return;
 
     // Busca o intervalo monetário coberto pelas “Datas Especiais” (por linha) e pela data geral.
@@ -1877,7 +1880,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       return;
     }
 
-    const dataCalcDate = parseDateBR(calculoAceito ? dataCalculo : hojeBR());
+    const dataCalcDate = parseDateBR(dataCalculo) ?? parseDateBR(hojeBR());
     if (!dataCalcDate) return;
 
     // Busca o intervalo monetário coberto pelas “Datas Especiais” (por linha) e pela data geral.
@@ -2054,8 +2057,13 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     });
   }
 
+  function patchParcelaSoDataPagamento(patch) {
+    const keys = Object.keys(patch ?? {});
+    return keys.length === 1 && keys[0] === 'dataPagamento';
+  }
+
   function atualizarParcelaNaRodada(indexGlobal, patch) {
-    if (aceitarPagamento && !modoAlteracao) return;
+    if (aceitarPagamento && !modoAlteracao && !patchParcelaSoDataPagamento(patch)) return;
     setRodadasState((prev) => {
       const cur = prev[rodadaKey];
       if (!cur) return prev;
@@ -2202,7 +2210,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
         while (listaBase.length < nParc) listaBase.push(linhaVaziaParcela());
         for (let i = 0; i < listaBase.length; i++) {
           if (i < nParc) {
-            const dataParc = gerarDataParcelaMensalBR(hojeBR(), i);
+            const dataParc = gerarDataParcelaMensalBR(dataCalculo, i);
             listaBase[i] = {
               ...listaBase[i],
               valorParcela: valorFmt,
@@ -2544,7 +2552,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                 A aba <strong>Pagamento</strong> mostra as mesmas parcelas da aba <strong>Parcelamento</strong> para a{' '}
                 <strong>dimensão {dimensaoNorm}</strong> (cliente {codigoClienteNorm}, proc. {procNorm}), sem os painéis de resumo
                 lateral. Os valores acompanham o parcelamento; use a coluna <strong>Data de Pagamento</strong> para registrar quando
-                cada parcela foi quitada.
+                cada parcela foi quitada (sempre editável, mesmo com cálculo aceito).
               </p>
               <div className="flex items-center justify-between mb-2">
                 <p className="text-sm text-slate-600">
@@ -2660,28 +2668,24 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                             )}
                           </td>
                           <td className="border border-slate-200 px-2 py-1">
-                            {podeEditar ? (
-                              <input
-                                type="text"
-                                inputMode="numeric"
-                                placeholder=""
-                                autoComplete="off"
-                                value={row.dataPagamento ?? ''}
-                                onChange={(e) => {
-                                  const v = e.target.value;
-                                  const r = resolverAliasHojeEmTexto(v, 'br');
-                                  atualizarParcelaNaRodada(globalIdx, { dataPagamento: r ?? v });
-                                }}
-                                onBlur={(e) =>
-                                  atualizarParcelaNaRodada(globalIdx, {
-                                    dataPagamento: normalizarTextoDataBRparaSalvar(e.target.value),
-                                  })
-                                }
-                                className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
-                              />
-                            ) : (
-                              row.dataPagamento ?? ''
-                            )}
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              placeholder=""
+                              autoComplete="off"
+                              value={row.dataPagamento ?? ''}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                const r = resolverAliasHojeEmTexto(v, 'br');
+                                atualizarParcelaNaRodada(globalIdx, { dataPagamento: r ?? v });
+                              }}
+                              onBlur={(e) =>
+                                atualizarParcelaNaRodada(globalIdx, {
+                                  dataPagamento: normalizarTextoDataBRparaSalvar(e.target.value),
+                                })
+                              }
+                              className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
+                            />
                           </td>
                         </tr>
                       );
@@ -3094,12 +3098,20 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                 <input
                   type="text"
                   value={dataCalculo}
+                  disabled={calculoAceito && !modoAlteracao}
                   onChange={(e) => {
                     const v = e.target.value;
-                    setDataCalculo(resolverAliasHojeEmTexto(v, 'br') ?? v);
+                    const next = resolverAliasHojeEmTexto(v, 'br') ?? v;
+                    setDataCalculo(next);
+                    if (!calculoAceito || modoAlteracao) persistirDataCalculoRodada(next);
+                  }}
+                  onBlur={(e) => {
+                    const next = normalizarTextoDataBRparaSalvar(e.target.value);
+                    setDataCalculo(next);
+                    if (!calculoAceito || modoAlteracao) persistirDataCalculoRodada(next);
                   }}
                   placeholder="dd/mm/aaaa ou hj"
-                  className={inputClass}
+                  className={`${inputClass} disabled:bg-slate-100 disabled:text-slate-500`}
                 />
               </div>
               <div>
@@ -3256,8 +3268,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                   if (next) {
                     aplicarValorCausaProcessoAoAceitarPagamento(resumoGeral.total);
                   } else {
-                    // Liberar: recálculo automático para hoje, débitos editáveis e plano de pagamento apagado.
-                    setDataCalculo(hojeBR());
+                    // Liberar: recálculo automático com a data do painel; débitos editáveis e plano apagado.
                     setIndicesRefreshToken((t) => t + 1);
                     setPaginaParcelamento(1);
                   }

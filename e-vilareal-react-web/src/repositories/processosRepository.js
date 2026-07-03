@@ -492,6 +492,7 @@ export async function listarProcessosVinculoPessoaDiagnostico(pessoaId) {
       cliente: String(row.cliente ?? ''),
       parteCliente: String(row.parteCliente ?? row.cliente ?? ''),
       parteOposta: String(row.parteOposta ?? ''),
+      unidade: String(row.unidade ?? ''),
       numeroProcessoNovo: String(row.numeroProcessoNovo ?? ''),
       papeis: String(row.papeis ?? ''),
     };
