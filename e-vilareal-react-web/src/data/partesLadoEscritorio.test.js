@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   ajustarPartesPublicacaoUi,
+  parteApiEhLadoCliente,
   primeiraPessoaIdParteCliente,
   textosPartesFromListaPartesApi,
 } from './partesLadoEscritorio.js';
@@ -54,6 +55,15 @@ describe('partesLadoEscritorio', () => {
     expect(out.parteCliente).toContain('LANA');
     expect(out.parteOposta).toContain('RANDERSON');
     expect(out.papelParte).toBe('requerido');
+  });
+
+  it('parteApiEhLadoCliente: REQUERIDO com qualificacao certa e polo legado invertido', () => {
+    const partes = [
+      { polo: 'AUTOR', qualificacao: 'Parte cliente', nomeExibicao: 'M&S EIRELI', pessoaId: 4069 },
+      { polo: 'REU', qualificacao: 'Parte oposta', nomeExibicao: 'MARCIO MARLON', pessoaId: 7202 },
+    ];
+    expect(parteApiEhLadoCliente(partes[0], 'requerido', partes)).toBe(true);
+    expect(parteApiEhLadoCliente(partes[1], 'requerido', partes)).toBe(false);
   });
 
   it('primeiraPessoaIdParteCliente: REQUERIDO → pessoa no polo REU', () => {

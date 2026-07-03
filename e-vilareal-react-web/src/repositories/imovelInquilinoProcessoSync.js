@@ -183,8 +183,8 @@ export async function sincronizarInquilinosImovelParaProcesso(uiItem, inquilinos
     ...linhasCliente.map((p, ordem) => ({
       pessoaId: p.pessoaId != null ? Number(p.pessoaId) : null,
       nomeLivre: p.pessoaId != null ? null : p.nomeLivre ?? p.nomeExibicao ?? null,
-      polo: p.polo || poloCliente,
-      qualificacao: p.qualificacao || qualCliente,
+      polo: poloCliente,
+      qualificacao: qualCliente,
       ordem,
       advogadoPessoaIds: [],
     })),

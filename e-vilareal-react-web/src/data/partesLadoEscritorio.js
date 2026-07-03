@@ -120,6 +120,18 @@ function montarPorPapelJuridico(partes, papelParte) {
   };
 }
 
+/** Classifica uma linha de GET /partes como lado cliente (true) ou oposta (false). */
+export function parteApiEhLadoCliente(p, papelParte = 'requerente', todasPartes = null) {
+  const lista = todasPartes ?? (p ? [p] : []);
+  const q = normQualificacao(p?.qualificacao);
+  if (q.includes('PARTE CLIENTE')) return true;
+  if (q.includes('PARTE OPOSTA')) return false;
+  if (importPoloJuridicoInvertidoParteCliente(papelParte, lista)) {
+    return temMarcadorParteClienteImport(p);
+  }
+  return poloEhLadoEscritorio(p?.polo, poloJuridicoEscritorioEhAutor(papelParte, lista));
+}
+
 export function textosPartesFromListaPartesApi(partes, papelParte = 'requerente') {
   const porQualCliente = [];
   const porQualOposta = [];

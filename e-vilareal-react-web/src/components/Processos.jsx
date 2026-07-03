@@ -63,6 +63,7 @@ import {
   salvarPrazoFatalDoProcesso,
   seedHistoricoDoProcesso,
 } from '../data/processosHistoricoData';
+import { parteApiEhLadoCliente } from '../data/partesLadoEscritorio.js';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import {
   agendarAudienciaParaTodosUsuarios,
@@ -2722,24 +2723,13 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
   /** Aplica resposta de GET /partes: entradas, rótulos e cache de nomes (mantém UI alinhada ao servidor). */
   function aplicarListaPartesApiNaUi(partes, papelParteAtual = papelParte) {
-    const ladoClienteAutor = papelParteAtual !== 'requerido';
     const entradasCliente = [];
     const entradasOposta = [];
     const nomesCliente = [];
     const nomesOposta = [];
     const cacheNomesPartes = [];
     for (const p of partes || []) {
-      const poloNorm = String(p.polo ?? '')
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toUpperCase();
-      const poloAutor =
-        poloNorm.includes('AUTOR') ||
-        poloNorm.includes('REQUERENTE') ||
-        poloNorm.includes('CLIENTE');
-      const poloReu = poloNorm.includes('REU') || poloNorm.includes('REQUERIDO');
-      const alvoCliente = ladoClienteAutor ? poloAutor && !poloReu : poloReu;
-      const alvoOposta = !alvoCliente;
+      const alvoCliente = parteApiEhLadoCliente(p, papelParteAtual, partes);
       const nomeApi = String(p.nomeExibicao || p.nomeLivre || '').trim();
       const adv = Array.isArray(p.advogadoPessoaIds)
         ? p.advogadoPessoaIds.map(Number).filter((x) => Number.isFinite(x) && x > 0)
@@ -2755,7 +2745,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         entradasCliente.push({ pessoaId: pessoaNum, advogadoPessoaIds: adv });
         if (rotulo) nomesCliente.push(rotulo);
       }
-      if (alvoOposta && temPessoa) {
+      if (!alvoCliente && temPessoa) {
         entradasOposta.push({ pessoaId: pessoaNum, advogadoPessoaIds: adv });
         if (rotulo) nomesOposta.push(rotulo);
       }
