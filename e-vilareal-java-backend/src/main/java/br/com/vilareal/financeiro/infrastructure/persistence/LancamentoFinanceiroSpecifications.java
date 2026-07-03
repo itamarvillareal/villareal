@@ -303,6 +303,15 @@ public final class LancamentoFinanceiroSpecifications {
         return (root, query, cb) -> numeroBanco == null ? null : cb.equal(root.get("numeroBanco"), numeroBanco);
     }
 
+    public static Specification<LancamentoFinanceiroEntity> comDataLancamentoExata(LocalDate data) {
+        return (root, query, cb) -> data == null ? null : cb.equal(root.get("dataLancamento"), data);
+    }
+
+    /** Valor já armazenado como módulo (≥ 0); natureza define débito/crédito. */
+    public static Specification<LancamentoFinanceiroEntity> comValorExato(java.math.BigDecimal valor) {
+        return (root, query, cb) -> valor == null ? null : cb.equal(root.get("valor"), valor);
+    }
+
     public static Specification<LancamentoFinanceiroEntity> comNumerosBanco(java.util.Collection<Integer> numeros) {
         return (root, query, cb) -> {
             if (numeros == null || numeros.isEmpty()) {

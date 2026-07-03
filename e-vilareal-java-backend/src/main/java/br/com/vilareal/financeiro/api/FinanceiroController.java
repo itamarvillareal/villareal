@@ -262,6 +262,17 @@ public class FinanceiroController {
                 pageable);
     }
 
+    @GetMapping("/lancamentos/pesquisa-valor-data")
+    @Operation(description =
+            "Pesquisa lançamentos bancários por data e valor exatos (módulo do valor). "
+                    + "Ignora restrição de extrato por banco — ex.: Karla encontra BTG. "
+                    + "Após vincular à Conta Escritório, o lançamento fica acessível no consolidado A.")
+    public List<LancamentoPesquisaValorDataItemResponse> pesquisarLancamentosValorData(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate data,
+            @RequestParam String valor) {
+        return financeiroService.pesquisarLancamentosValorDataExatos(data, valor);
+    }
+
     @GetMapping("/lancamentos/nao-vinculados-pagamento")
     @Operation(description = "Débitos ATIVOS do extrato ainda não vinculados a pagamento operacional.")
     public List<LancamentoNaoVinculadoPagamentoResponse> listarLancamentosNaoVinculadosPagamento(

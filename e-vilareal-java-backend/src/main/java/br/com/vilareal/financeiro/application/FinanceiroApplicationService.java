@@ -118,9 +118,7 @@ public class FinanceiroApplicationService {
     }
 
     private void assertAcessoExtratoLancamento(LancamentoFinanceiroEntity lancamento) {
-        if (lancamento != null) {
-            extratoAcessoService.assertAcessoExtratoBanco(lancamento.getNumeroBanco());
-        }
+        extratoAcessoService.assertAcessoLeituraLancamento(lancamento);
     }
 
     @Transactional(readOnly = true)
@@ -511,6 +509,29 @@ public class FinanceiroApplicationService {
     }
 
     @Transactional(readOnly = true)
+    public List<LancamentoPesquisaValorDataItemResponse> pesquisarLancamentosValorDataExatos(
+            LocalDate data, String valorRaw) {
+        if (data == null) {
+            throw new br.com.vilareal.common.exception.BusinessRuleException("Informe a data do lançamento.");
+        }
+        java.math.BigDecimal valor =
+                br.com.vilareal.financeiro.domain.FinanceiroValorExatoUtil.parseValorAbsolutoExato(valorRaw);
+        var spec = LancamentoFinanceiroSpecifications.comDataLancamentoExata(data)
+                .and(LancamentoFinanceiroSpecifications.comValorExato(valor))
+                .and(LancamentoFinanceiroSpecifications.somenteAtivos());
+        return lancamentoRepository.findAll(spec, org.springframework.data.domain.Sort.by("dataLancamento").ascending()
+                        .and(org.springframework.data.domain.Sort.by("id").ascending()))
+                .stream()
+                .map(e -> {
+                    LancamentoPesquisaValorDataItemResponse item = new LancamentoPesquisaValorDataItemResponse();
+                    item.setLancamento(toExtratoListItem(e));
+                    item.setExtratoBloqueado(extratoAcessoService.extratoBloqueadoParaUsuario(e.getNumeroBanco()));
+                    return item;
+                })
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public LancamentoFinanceiroResponse buscarLancamento(Long id) {
         LancamentoFinanceiroEntity lancamento = lancamentoRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Lançamento não encontrado: " + id));
@@ -542,8 +563,7 @@ public class FinanceiroApplicationService {
     public LancamentoFinanceiroResponse atualizarLancamento(Long id, LancamentoFinanceiroWriteRequest req) {
         LancamentoFinanceiroEntity e = lancamentoRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Lançamento não encontrado: " + id));
-        assertAcessoExtratoLancamento(e);
-        extratoAcessoService.assertAcessoExtratoBanco(req.getNumeroBanco());
+        extratoAcessoService.assertAcessoAlteracaoLancamento(e, req.getContaContabilId());
         aplicarLancamento(e, req, false);
         LancamentoFinanceiroResponse saved = toLancamentoResponse(lancamentoRepository.save(e));
         invalidarCacheSaude();

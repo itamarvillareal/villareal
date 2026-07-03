@@ -1,5 +1,6 @@
 package br.com.vilareal.financeiro.application;
 
+import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaContabilRepository;
 import br.com.vilareal.usuario.infrastructure.persistence.entity.UsuarioEntity;
 import br.com.vilareal.usuario.infrastructure.persistence.repository.UsuarioRepository;
 import org.springframework.security.access.AccessDeniedException;
@@ -25,15 +26,21 @@ public class FinanceiroExtratoAcessoService {
     /** Cora */
     public static final int NUMERO_BANCO_CORA = 26;
 
+    /** Conta Escritório — lançamentos vinculados aqui são visíveis/editáveis sem acesso ao extrato do banco. */
+    public static final String CODIGO_CONTA_ESCRITORIO = "A";
+
     private static final Set<Integer> BANCOS_KARLA =
             Set.of(NUMERO_BANCO_BB, NUMERO_BANCO_CEF, NUMERO_BANCO_CORA);
     private static final long USUARIO_ITAMAR_ID = 1L;
     private static final long USUARIO_KARLA_ID = 2L;
 
     private final UsuarioRepository usuarioRepository;
+    private final ContaContabilRepository contaContabilRepository;
 
-    public FinanceiroExtratoAcessoService(UsuarioRepository usuarioRepository) {
+    public FinanceiroExtratoAcessoService(
+            UsuarioRepository usuarioRepository, ContaContabilRepository contaContabilRepository) {
         this.usuarioRepository = usuarioRepository;
+        this.contaContabilRepository = contaContabilRepository;
     }
 
     /** Vazio = acesso a todos os bancos; presente = conjunto permitido. */
@@ -57,6 +64,66 @@ public class FinanceiroExtratoAcessoService {
                 throw new AccessDeniedException("Sem permissão para acessar o extrato deste banco.");
             }
         });
+    }
+
+    /** Leitura: extrato do banco permitido ou lançamento já na Conta Escritório (consolidado A). */
+    public void assertAcessoLeituraLancamento(br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity lancamento) {
+        if (lancamento == null) {
+            return;
+        }
+        if (lancamentoContaEscritorio(lancamento)) {
+            return;
+        }
+        assertAcessoExtratoBanco(lancamento.getNumeroBanco());
+    }
+
+    /**
+     * Alteração: extrato permitido, lançamento já em Escritório, ou vínculo para Conta Escritório
+     * (ex.: Karla classifica lançamento BTG → A sem abrir extrato BTG).
+     */
+    public void assertAcessoAlteracaoLancamento(
+            br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity lancamento,
+            Long novaContaContabilId) {
+        if (lancamento == null) {
+            return;
+        }
+        if (numerosBancosPermitidos().isEmpty()) {
+            return;
+        }
+        if (lancamentoContaEscritorio(lancamento)) {
+            return;
+        }
+        if (contaContabilEhEscritorio(novaContaContabilId)) {
+            return;
+        }
+        assertAcessoExtratoBanco(lancamento.getNumeroBanco());
+    }
+
+    public boolean lancamentoContaEscritorio(
+            br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity lancamento) {
+        if (lancamento == null || lancamento.getContaContabil() == null) {
+            return false;
+        }
+        return CODIGO_CONTA_ESCRITORIO.equalsIgnoreCase(
+                String.valueOf(lancamento.getContaContabil().getCodigo()).trim());
+    }
+
+    public boolean contaContabilEhEscritorio(Long contaContabilId) {
+        if (contaContabilId == null) {
+            return false;
+        }
+        return contaContabilRepository
+                .findById(contaContabilId)
+                .map(c -> CODIGO_CONTA_ESCRITORIO.equalsIgnoreCase(String.valueOf(c.getCodigo()).trim()))
+                .orElse(false);
+    }
+
+    public boolean extratoBloqueadoParaUsuario(Integer numeroBanco) {
+        if (numeroBanco == null) {
+            return false;
+        }
+        Optional<Set<Integer>> permitidos = numerosBancosPermitidos();
+        return permitidos.isPresent() && !permitidos.get().contains(numeroBanco);
     }
 
     public boolean temAcessoTotalExtratos(UsuarioEntity u) {
