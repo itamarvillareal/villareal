@@ -105,6 +105,52 @@ function MediaPendingContent({ message }) {
   );
 }
 
+function OutboundMediaSendFailedContent({ message, linkClass, onRetry, retrying }) {
+  return (
+    <div className="chat-media chat-media-send-failed space-y-1.5">
+      <span>{message.content || 'Mídia'}</span>
+      <p className="text-xs flex items-start gap-1.5 opacity-90 mt-1">
+        <AlertTriangle className="h-4 w-4 shrink-0 text-amber-200" aria-hidden />
+        {message.sendError || 'Não foi possível enviar esta mídia.'}
+      </p>
+      {onRetry ? (
+        <button
+          type="button"
+          onClick={onRetry}
+          disabled={retrying}
+          className={`text-[11px] font-semibold underline underline-offset-2 disabled:opacity-50 ${linkClass}`}
+        >
+          {retrying ? (
+            <span className="inline-flex items-center gap-1">
+              <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+              Reenviando…
+            </span>
+          ) : (
+            'Reenviar'
+          )}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function MediaLocalDocumentPreview({ message, filename }) {
+  return (
+    <div className="chat-media chat-media-document space-y-1">
+      <div className="flex items-start gap-2">
+        <FileText className="h-5 w-5 shrink-0 opacity-80 mt-0.5" aria-hidden />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium break-words">{filename}</p>
+          <span className="block text-xs opacity-75 mt-1 flex items-center gap-1">
+            <Loader2 className="h-3 w-3 animate-spin shrink-0" aria-hidden />
+            Enviando…
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MediaFailedContent({
   message,
   driveUrl,
@@ -166,10 +212,16 @@ function InlineErrorHint({ text }) {
   return <p className="text-[11px] opacity-70 mt-1">{text}</p>;
 }
 
-function MediaBubbleContent({ message, isOutbound }) {
+function MediaBubbleContent({
+  message,
+  isOutbound,
+  onRetryOutboundMedia,
+  onLocalPreviewConsumed,
+}) {
   const type = String(message.messageType ?? '').toUpperCase();
   const driveUrl = message.mediaDriveUrl;
   const mediaProxyUrl = resolverMediaProxyUrl(message);
+  const localPreviewUrl = message.localPreviewUrl;
   const linkClass = isOutbound
     ? 'text-white underline underline-offset-2 hover:text-white/90'
     : 'text-emerald-700 dark:text-emerald-300 underline underline-offset-2 hover:opacity-90';
@@ -181,6 +233,7 @@ function MediaBubbleContent({ message, isOutbound }) {
   const [localMediaStatus, setLocalMediaStatus] = useState(null);
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState('');
+  const [retryingSend, setRetryingSend] = useState(false);
 
   const effectiveMediaStatus = localMediaStatus ?? normalizarMediaStatus(message);
 
@@ -191,7 +244,15 @@ function MediaBubbleContent({ message, isOutbound }) {
     }
   }, [message.mediaStatus, message.mediaDriveUrl, localMediaStatus]);
 
-  const { url, loading, error } = useWhatsAppMediaUrl(message);
+  const { url: proxyUrl, loading, error } = useWhatsAppMediaUrl(message);
+
+  useEffect(() => {
+    if (!proxyUrl || !localPreviewUrl || !onLocalPreviewConsumed) return;
+    if (!mediaProxyUrl) return;
+    onLocalPreviewConsumed(message.id);
+  }, [proxyUrl, localPreviewUrl, mediaProxyUrl, message.id, onLocalPreviewConsumed]);
+
+  const displayUrl = mediaProxyUrl && proxyUrl ? proxyUrl : localPreviewUrl || null;
 
   const filename = useMemo(() => resolverNomeArquivoMidia(message), [message]);
   const sticker = type === 'IMAGE' && isStickerMessage(message);
@@ -229,6 +290,16 @@ function MediaBubbleContent({ message, isOutbound }) {
     }
   }, [message?.id, retrying]);
 
+  const handleRetrySend = useCallback(async () => {
+    if (!onRetryOutboundMedia || retryingSend) return;
+    setRetryingSend(true);
+    try {
+      await onRetryOutboundMedia(message);
+    } finally {
+      setRetryingSend(false);
+    }
+  }, [message, onRetryOutboundMedia, retryingSend]);
+
   const accessBar = (
     <MediaAccessBar
       message={message}
@@ -243,6 +314,61 @@ function MediaBubbleContent({ message, isOutbound }) {
       }
     />
   );
+
+  if (message.sendFailed) {
+    return (
+      <OutboundMediaSendFailedContent
+        message={message}
+        linkClass={linkClass}
+        onRetry={onRetryOutboundMedia ? () => void handleRetrySend() : null}
+        retrying={retryingSend}
+      />
+    );
+  }
+
+  if (localPreviewUrl && !mediaProxyUrl) {
+    if (type === 'DOCUMENT') {
+      return <MediaLocalDocumentPreview message={message} filename={filename} />;
+    }
+    if (type === 'IMAGE') {
+      return (
+        <div className="chat-media chat-media-image space-y-1">
+          <img
+            src={localPreviewUrl}
+            alt={filename}
+            className={`rounded-lg object-contain max-w-full ${sticker ? 'max-h-40' : 'max-h-80'}`}
+          />
+        </div>
+      );
+    }
+    if (type === 'VIDEO') {
+      return (
+        <div className="chat-media chat-media-video space-y-1">
+          <video
+            src={localPreviewUrl}
+            controls
+            preload="metadata"
+            className="rounded-lg max-w-full max-h-80"
+          >
+            Seu navegador não suporta vídeo inline.
+          </video>
+        </div>
+      );
+    }
+    if (type === 'AUDIO') {
+      return (
+        <div className="chat-media chat-media-audio space-y-1 min-w-[220px]">
+          {!audioInlineBlocked ? (
+            <audio src={localPreviewUrl} controls preload="metadata" className="w-full max-w-sm">
+              Seu navegador não suporta áudio inline.
+            </audio>
+          ) : (
+            <InlineErrorHint text="Seu navegador não reproduz este áudio." />
+          )}
+        </div>
+      );
+    }
+  }
 
   if (!mediaProxyUrl) {
     if (MEDIA_TYPES.includes(type) || Boolean(message.mediaId)) {
@@ -264,7 +390,7 @@ function MediaBubbleContent({ message, isOutbound }) {
     return null;
   }
 
-  const showLoadingShell = loading && !url && !tagError && type !== 'DOCUMENT';
+  const showLoadingShell = loading && !displayUrl && !tagError && type !== 'DOCUMENT';
 
   if (showLoadingShell) {
     return (
@@ -298,15 +424,15 @@ function MediaBubbleContent({ message, isOutbound }) {
   if (type === 'IMAGE') {
     return (
       <div className="chat-media chat-media-image space-y-1">
-        {!tagError && url ? (
+        {!tagError && displayUrl ? (
           <button
             type="button"
             className="block p-0 border-0 bg-transparent cursor-pointer rounded-lg overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-            onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
+            onClick={() => window.open(displayUrl, '_blank', 'noopener,noreferrer')}
             title="Abrir imagem em nova aba"
           >
             <img
-              src={url}
+              src={displayUrl}
               alt={filename}
               className={`rounded-lg object-contain max-w-full ${
                 sticker ? 'max-h-40' : 'max-h-80'
@@ -325,9 +451,9 @@ function MediaBubbleContent({ message, isOutbound }) {
   if (type === 'VIDEO') {
     return (
       <div className="chat-media chat-media-video space-y-1">
-        {!tagError && url ? (
+        {!tagError && displayUrl ? (
           <video
-            src={url}
+            src={displayUrl}
             controls
             preload="metadata"
             className="rounded-lg max-w-full max-h-80"
@@ -344,12 +470,12 @@ function MediaBubbleContent({ message, isOutbound }) {
   }
 
   if (type === 'AUDIO') {
-    const showPlayer = url && !audioInlineBlocked && !audioPlayError && !tagError;
+    const showPlayer = displayUrl && !audioInlineBlocked && !audioPlayError && !tagError;
     return (
       <div className="chat-media chat-media-audio space-y-1 min-w-[220px]">
         {showPlayer ? (
           <audio
-            src={url}
+            src={displayUrl}
             controls
             preload="metadata"
             className="w-full max-w-sm"
@@ -454,13 +580,25 @@ function formatTemplateContent(message) {
   return raw || '—';
 }
 
-export function ChatBubble({ message }) {
+export function ChatBubble({ message, onRetryOutboundMedia, onLocalPreviewConsumed }) {
   const isOutbound = String(message.direction ?? '').toUpperCase() === 'OUTBOUND';
   const hasTemplate = Boolean(message.templateName);
   const type = String(message.messageType ?? '').toUpperCase();
   const isContact = type === 'CONTACT';
-  const isMedia = !isContact && (MEDIA_TYPES.includes(type) || Boolean(message.mediaId));
-  const mediaContent = isMedia ? <MediaBubbleContent message={message} isOutbound={isOutbound} /> : null;
+  const isMedia =
+    !isContact &&
+    (MEDIA_TYPES.includes(type) ||
+      Boolean(message.mediaId) ||
+      Boolean(message.localPreviewUrl) ||
+      message.sendFailed);
+  const mediaContent = isMedia ? (
+    <MediaBubbleContent
+      message={message}
+      isOutbound={isOutbound}
+      onRetryOutboundMedia={onRetryOutboundMedia}
+      onLocalPreviewConsumed={onLocalPreviewConsumed}
+    />
+  ) : null;
   const contactContent = isContact ? <ContactBubbleContent message={message} isOutbound={isOutbound} /> : null;
 
   return (

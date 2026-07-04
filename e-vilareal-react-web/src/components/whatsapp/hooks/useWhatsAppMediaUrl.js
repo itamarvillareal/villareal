@@ -23,6 +23,10 @@ export function useWhatsAppMediaUrl(message) {
   }));
 
   useEffect(() => {
+    if (message?.localPreviewUrl) {
+      setState({ url: null, blob: null, loading: false, error: null });
+      return undefined;
+    }
     if (!mediaProxyUrl || messageId == null) {
       setState({ url: null, blob: null, loading: false, error: null });
       return undefined;

@@ -13,8 +13,10 @@ import { useWhatsAppNotificationContext } from './WhatsAppNotificationProvider.j
 import { getWhatsAppConversationContext } from '../../repositories/whatsappRepository.js';
 import { formatPhoneDisplay, formatTimeBR, isValidBrazilPhone, normalizePhoneForApi } from '../../utils/whatsappFormat.js';
 import { FREE_TEXT_DELIVERY_ERROR, FREE_TEXT_WINDOW_HINT } from '../../utils/whatsappTemplateUtils.js';
-import { isWhatsAppMediaPending, mergeMediaReady } from './utils/whatsappMediaUtils.js';
+import { isWhatsAppMediaPending, mergeMediaReady, consumirLocalPreview, revogarPreviewsLocaisEmLista } from './utils/whatsappMediaUtils.js';
 import { validarArquivoWhatsAppMedia } from './utils/whatsappMediaSendUtils.js';
+import { useOptimisticMediaSend } from './hooks/useOptimisticMediaSend.js';
+import { sendWhatsAppMedia } from '../../repositories/whatsappRepository.js';
 import { resumoContactCardContent } from './utils/whatsappContactCard.js';
 
 const PAGE_SIZE = 20;
@@ -135,7 +137,7 @@ function PainelContextoChat({ contextos, indice, onIndiceChange }) {
 }
 
 export function WhatsAppConversas() {
-  const { getConversations, getMessages, sendText, sendMedia } = useWhatsApp();
+  const { getConversations, getMessages, sendText } = useWhatsApp();
   const toast = useWhatsAppToast();
   const { clearNotifications, latestInbound, latestMediaReady } = useWhatsAppNotificationContext() ?? {};
   const [searchParams, setSearchParams] = useSearchParams();
@@ -147,6 +149,10 @@ export function WhatsAppConversas() {
   const [loadingMoreConversations, setLoadingMoreConversations] = useState(false);
   const [activePhone, setActivePhone] = useState('');
   const [messages, setMessages] = useState([]);
+  const { sendOptimisticMedia, retryOptimisticMedia } = useOptimisticMediaSend({
+    setMessages,
+    sendMediaApi: sendWhatsAppMedia,
+  });
   const [contactName, setContactName] = useState('');
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
@@ -288,6 +294,33 @@ export function WhatsAppConversas() {
     }
   };
 
+  const handleLocalPreviewConsumed = useCallback((messageId) => {
+    setMessages((prev) => consumirLocalPreview(prev, messageId));
+  }, []);
+
+  const handleRetryOutboundMedia = useCallback(
+    async (message) => {
+      const result = await retryOptimisticMedia(message);
+      if (!result.ok) {
+        toast.error(result.error || 'Falha ao reenviar mídia.');
+      } else {
+        toast.success('Mídia reenviada.');
+        window.setTimeout(scrollToBottom, 50);
+        loadConversations({ silent: true });
+      }
+    },
+    [retryOptimisticMedia, toast, loadConversations],
+  );
+
+  useEffect(() => {
+    return () => {
+      setMessages((prev) => {
+        revogarPreviewsLocaisEmLista(prev);
+        return prev;
+      });
+    };
+  }, [activePhone]);
+
   const handleSend = async (e) => {
     e.preventDefault();
     if (!activePhone || sending) return;
@@ -300,15 +333,18 @@ export function WhatsAppConversas() {
       }
       setSending(true);
       try {
-        const res = await sendMedia(activePhone, selectedFile, mediaCaption.trim() || undefined);
-        if (res?.success === false) {
-          toast.error(res.error || 'Falha ao enviar mídia.');
+        const result = await sendOptimisticMedia({
+          phone: activePhone,
+          file: selectedFile,
+          caption: mediaCaption.trim() || undefined,
+        });
+        if (!result.ok) {
+          toast.error(result.error || 'Falha ao enviar mídia.');
           return;
         }
         setSelectedFile(null);
         setMediaCaption('');
-        toast.success('Mídia enviada. A exibição aparecerá quando o arquivo estiver pronto.');
-        await fetchPage(activePhone, 0, false);
+        toast.success('Mídia enviada.');
         window.setTimeout(scrollToBottom, 50);
         loadConversations({ silent: true });
       } catch (err) {
@@ -554,7 +590,12 @@ export function WhatsAppConversas() {
                 </div>
               ) : null}
               {messages.map((msg) => (
-                <ChatBubble key={msg.id ?? msg.waMessageId} message={msg} />
+                <ChatBubble
+                  key={msg.id ?? msg.waMessageId}
+                  message={msg}
+                  onRetryOutboundMedia={handleRetryOutboundMedia}
+                  onLocalPreviewConsumed={handleLocalPreviewConsumed}
+                />
               ))}
               <div ref={bottomRef} />
             </div>

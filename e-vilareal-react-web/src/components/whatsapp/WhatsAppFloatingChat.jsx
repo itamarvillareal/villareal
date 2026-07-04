@@ -11,9 +11,9 @@ import {
 } from '../../repositories/whatsappRepository.js';
 import { formatPhoneDisplay, formatTimeBR } from '../../utils/whatsappFormat.js';
 import { FREE_TEXT_DELIVERY_ERROR } from '../../utils/whatsappTemplateUtils.js';
-import { isWhatsAppMediaPending, mergeMediaReady } from './utils/whatsappMediaUtils.js';
-import { validarArquivoWhatsAppMedia } from './utils/whatsappMediaSendUtils.js';
-import { WHATSAPP_MEDIA_ACCEPT, categoriaAceitaCaption } from './utils/whatsappMediaSendUtils.js';
+import { isWhatsAppMediaPending, mergeMediaReady, consumirLocalPreview, revogarPreviewsLocaisEmLista } from './utils/whatsappMediaUtils.js';
+import { validarArquivoWhatsAppMedia, WHATSAPP_MEDIA_ACCEPT, categoriaAceitaCaption } from './utils/whatsappMediaSendUtils.js';
+import { useOptimisticMediaSend } from './hooks/useOptimisticMediaSend.js';
 
 function previewConversa(conv) {
   const type = String(conv?.lastMessageType ?? '').toUpperCase();
@@ -107,6 +107,34 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
   const bottomRef = useRef(null);
   const phone = conversation.phoneNumber;
 
+  const { sendOptimisticMedia, retryOptimisticMedia } = useOptimisticMediaSend({
+    setMessages,
+    sendMediaApi: sendWhatsAppMedia,
+  });
+
+  const handleLocalPreviewConsumed = useCallback((messageId) => {
+    setMessages((prev) => consumirLocalPreview(prev, messageId));
+  }, []);
+
+  const handleRetryOutboundMedia = useCallback(
+    async (message) => {
+      const result = await retryOptimisticMedia(message);
+      if (!result.ok) {
+        setError(result.error || 'Falha ao reenviar mídia.');
+      }
+    },
+    [retryOptimisticMedia],
+  );
+
+  useEffect(() => {
+    return () => {
+      setMessages((prev) => {
+        revogarPreviewsLocaisEmLista(prev);
+        return prev;
+      });
+    };
+  }, [phone]);
+
   const loadMessages = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
@@ -175,14 +203,17 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
       setSending(true);
       setError('');
       try {
-        const res = await sendWhatsAppMedia(phone, selectedFile, mediaCaption.trim() || undefined);
-        if (res?.success === false) {
-          setError(res.error || 'Falha ao enviar mídia.');
+        const result = await sendOptimisticMedia({
+          phone,
+          file: selectedFile,
+          caption: mediaCaption.trim() || undefined,
+        });
+        if (!result.ok) {
+          setError(result.error || 'Falha ao enviar mídia.');
           return;
         }
         setSelectedFile(null);
         setMediaCaption('');
-        await loadMessages(true);
       } catch (err) {
         setError(String(err?.message ?? 'Falha ao enviar mídia.'));
       } finally {
@@ -241,7 +272,14 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
             <Loader2 className="h-5 w-5 animate-spin text-slate-500" />
           </div>
         ) : (
-          messages.map((m) => <ChatBubble key={m.id ?? m.waMessageId} message={m} />)
+          messages.map((m) => (
+            <ChatBubble
+              key={m.id ?? m.waMessageId}
+              message={m}
+              onRetryOutboundMedia={handleRetryOutboundMedia}
+              onLocalPreviewConsumed={handleLocalPreviewConsumed}
+            />
+          ))
         )}
         <div ref={bottomRef} />
       </div>

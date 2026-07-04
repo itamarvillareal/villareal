@@ -70,3 +70,28 @@ export function validarArquivoWhatsAppMedia(file) {
 export function categoriaAceitaCaption(categoria) {
   return categoria === 'image' || categoria === 'video' || categoria === 'document';
 }
+
+export function categoriaParaMessageType(categoria) {
+  switch (categoria) {
+    case 'image':
+      return 'IMAGE';
+    case 'audio':
+      return 'AUDIO';
+    case 'video':
+      return 'VIDEO';
+    default:
+      return 'DOCUMENT';
+  }
+}
+
+export function placeholderConteudoMidia(messageType, filename, caption) {
+  if (String(caption ?? '').trim()) return String(caption).trim();
+  const type = String(messageType ?? '').toUpperCase();
+  if (type === 'IMAGE') return '📷 Imagem';
+  if (type === 'AUDIO') return '🎵 Áudio';
+  if (type === 'VIDEO') return '🎥 Vídeo';
+  if (type === 'DOCUMENT' && filename) return `📄 ${filename}`;
+  return '📄 Documento';
+}
+
+export { resolverCategoria, normalizarMime, inferirMimeDoNome };
