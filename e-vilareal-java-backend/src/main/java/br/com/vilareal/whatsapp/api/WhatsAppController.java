@@ -10,6 +10,7 @@ import br.com.vilareal.whatsapp.WhatsAppMediaMimeUtil;
 import br.com.vilareal.whatsapp.WhatsAppMessageDtoMapper;
 import br.com.vilareal.whatsapp.WhatsAppMessageDirection;
 import br.com.vilareal.whatsapp.WhatsAppMessageStatus;
+import br.com.vilareal.whatsapp.dto.CreateTemplateRequest;
 import br.com.vilareal.whatsapp.dto.IniciarTelefonesResponseDTO;
 import br.com.vilareal.whatsapp.dto.JanelaAbertaResponseDTO;
 import br.com.vilareal.whatsapp.dto.ScheduleMessageRequest;
@@ -39,6 +40,7 @@ import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppMe
 import br.com.vilareal.whatsapp.dto.WhatsAppTemplateDTO;
 import br.com.vilareal.whatsapp.service.WhatsAppAgendamentosFeedService;
 import br.com.vilareal.whatsapp.service.WhatsAppContactResolverService;
+import br.com.vilareal.whatsapp.service.WhatsAppConversationReadService;
 import br.com.vilareal.whatsapp.service.WhatsAppConversationWindowService;
 import br.com.vilareal.whatsapp.service.WhatsAppIniciarConversaService;
 import br.com.vilareal.whatsapp.service.WhatsAppConversationContextService;
