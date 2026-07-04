@@ -1,11 +1,14 @@
 package br.com.vilareal.whatsapp.service;
 
+import br.com.vilareal.whatsapp.dto.WhatsAppMarcarLidasLoteResultDTO;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppConversationReadRepository;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppMessageRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.Instant;
+import java.util.List;
 
 @Service
 public class WhatsAppConversationReadService {
@@ -33,6 +36,28 @@ public class WhatsAppConversationReadService {
         Instant now = Instant.now();
         readRepository.upsertLastReadAt(normalized, now);
         whatsAppNotificationService.notifyConversationRead(normalized, now);
+    }
+
+    @Transactional
+    public WhatsAppMarcarLidasLoteResultDTO marcarComoLidaLote(List<String> phones) {
+        if (phones == null || phones.isEmpty()) {
+            return new WhatsAppMarcarLidasLoteResultDTO(0, 0);
+        }
+        int marcados = 0;
+        int pulados = 0;
+        for (String phone : phones) {
+            if (!StringUtils.hasText(phone)) {
+                pulados++;
+                continue;
+            }
+            try {
+                marcarComoLida(phone);
+                marcados++;
+            } catch (IllegalArgumentException e) {
+                pulados++;
+            }
+        }
+        return new WhatsAppMarcarLidasLoteResultDTO(marcados, pulados);
     }
 
     @Transactional(readOnly = true)

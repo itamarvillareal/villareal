@@ -1,14 +1,13 @@
 import { useRef } from 'react';
-import { Loader2, Paperclip, X } from 'lucide-react';
+import { Loader2, Paperclip } from 'lucide-react';
 import {
   WHATSAPP_MEDIA_ACCEPT,
-  categoriaAceitaCaption,
   handleAttachSelect,
-  validarArquivoWhatsAppMedia,
 } from '../utils/whatsappMediaSendUtils.js';
+import { WhatsAppMediaAttachPreview } from './WhatsAppMediaAttachPreview.jsx';
 
 /**
- * Botão de anexo + seleção de arquivo + caption opcional (sem preview otimista — Passo 4).
+ * Botão de anexo + seleção de arquivo + caption opcional + preview com thumbnail.
  */
 export function WhatsAppMediaAttachComposer({
   selectedFile,
@@ -23,9 +22,6 @@ export function WhatsAppMediaAttachComposer({
   showPreview = true,
 }) {
   const fileInputRef = useRef(null);
-  const validation = selectedFile ? validarArquivoWhatsAppMedia(selectedFile) : null;
-  const categoria = validation?.ok ? validation.categoria : null;
-  const showCaption = categoria && categoriaAceitaCaption(categoria);
 
   const handlePick = () => {
     if (!disabled) fileInputRef.current?.click();
@@ -69,45 +65,20 @@ export function WhatsAppMediaAttachComposer({
         </button>
       ) : null}
       {showPreview && selectedFile ? (
-        <div className="rounded-lg border border-emerald-200/80 bg-emerald-50/60 dark:border-emerald-900/40 dark:bg-emerald-950/20 px-2.5 py-2 space-y-1.5">
-          <div className="flex items-center gap-2 min-w-0">
-            <span
-              className="flex-1 min-w-0 text-xs font-medium text-emerald-900 dark:text-emerald-100 truncate"
-              title={selectedFile.name}
-            >
-              {selectedFile.name}
-            </span>
-            <button
-              type="button"
-              onClick={onClearFile}
-              disabled={disabled}
-              className="shrink-0 rounded p-0.5 text-emerald-800 hover:bg-emerald-100/80 dark:text-emerald-200 disabled:opacity-50"
-              aria-label="Remover anexo"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-          {validation && !validation.ok ? (
-            <p className="text-[11px] text-red-600 dark:text-red-400">{validation.erro}</p>
-          ) : null}
-          {showCaption ? (
-            <input
-              type="text"
-              className={
-                inputClass ||
-                'w-full rounded-lg border border-emerald-200/80 bg-white px-2.5 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100'
-              }
-              value={mediaCaption}
-              onChange={(e) => onMediaCaptionChange?.(e.target.value)}
-              placeholder="Legenda (opcional)"
-              disabled={disabled}
-            />
-          ) : null}
-        </div>
+        <WhatsAppMediaAttachPreview
+          selectedFile={selectedFile}
+          onClearFile={onClearFile}
+          mediaCaption={mediaCaption}
+          onMediaCaptionChange={onMediaCaptionChange}
+          disabled={disabled}
+          inputClass={inputClass}
+        />
       ) : null}
     </>
   );
 }
+
+export { WhatsAppMediaAttachPreview } from './WhatsAppMediaAttachPreview.jsx';
 
 export function WhatsAppMediaSendingIndicator({ sending }) {
   if (!sending) return null;

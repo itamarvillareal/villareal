@@ -2,7 +2,9 @@ package br.com.vilareal.whatsapp.service;
 
 import br.com.vilareal.whatsapp.WhatsAppMessageDirection;
 import br.com.vilareal.whatsapp.WhatsAppMessageDtoMapper;
+import br.com.vilareal.whatsapp.WhatsAppMessageSearchSupport;
 import br.com.vilareal.whatsapp.dto.WhatsAppMessageDTO;
+import br.com.vilareal.whatsapp.dto.WhatsAppMessageSearchResultDTO;
 import br.com.vilareal.whatsapp.infrastructure.persistence.entity.CobrancaWhatsAppEntity;
 import br.com.vilareal.whatsapp.infrastructure.persistence.entity.WhatsAppMessageEntity;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.CobrancaWhatsAppRepository;
@@ -50,7 +52,41 @@ public class WhatsAppConversationFeedService {
             return Page.empty(pageable);
         }
 
+        List<WhatsAppMessageDTO> feed = montarFeedCompleto(normalized, suffix);
+
+        int start = (int) pageable.getOffset();
+        if (start >= feed.size()) {
+            return new PageImpl<>(List.of(), pageable, feed.size());
+        }
+        int end = Math.min(start + pageable.getPageSize(), feed.size());
+        return new PageImpl<>(feed.subList(start, end), pageable, feed.size());
+    }
+
+    @Transactional(readOnly = true)
+    public WhatsAppMessageSearchResultDTO buscarMensagens(String phoneNumber, String termo) {
+        if (!WhatsAppMessageSearchSupport.termoValido(termo)) {
+            return new WhatsAppMessageSearchResultDTO(0, List.of(), List.of());
+        }
+        String normalized = WhatsAppService.formatPhoneNumber(phoneNumber);
+        String suffix = WhatsAppConversationContextService.sufixo11(normalized);
+        if (!StringUtils.hasText(suffix)) {
+            return new WhatsAppMessageSearchResultDTO(0, List.of(), List.of());
+        }
+
+        List<WhatsAppMessageDTO> matches = montarFeedCompleto(normalized, suffix).stream()
+                .filter(m -> WhatsAppMessageSearchSupport.matches(m, termo))
+                .sorted(Comparator.comparing(WhatsAppMessageDTO::createdAt, Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+
+        List<Long> ids = matches.stream().map(WhatsAppMessageDTO::id).toList();
+        return new WhatsAppMessageSearchResultDTO(matches.size(), ids, matches);
+    }
+
+    private List<WhatsAppMessageDTO> montarFeedCompleto(String normalized, String suffix) {
         List<WhatsAppMessageEntity> entities = messageRepository.findByPhoneSuffixOrderByCreatedAtDesc(suffix);
+        if (entities.isEmpty()) {
+            return List.of();
+        }
         Set<String> waIdsPresentes = new HashSet<>();
         List<WhatsAppMessageDTO> feed = new ArrayList<>();
 
@@ -75,12 +111,7 @@ public class WhatsAppConversationFeedService {
 
         feed.sort(Comparator.comparing(WhatsAppMessageDTO::createdAt, Comparator.nullsLast(Comparator.reverseOrder())));
 
-        int start = (int) pageable.getOffset();
-        if (start >= feed.size()) {
-            return new PageImpl<>(List.of(), pageable, feed.size());
-        }
-        int end = Math.min(start + pageable.getPageSize(), feed.size());
-        return new PageImpl<>(feed.subList(start, end), pageable, feed.size());
+        return feed;
     }
 
     private boolean deveExibirCobranca(CobrancaWhatsAppEntity cobranca, Set<String> waIdsPresentes) {

@@ -7,6 +7,7 @@ import br.com.vilareal.whatsapp.infrastructure.persistence.entity.WhatsAppMessag
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -52,6 +53,24 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
         Integer getPinned();
     }
 
+    @Modifying
+    @Query(
+            "UPDATE WhatsAppMessageEntity m SET m.deletedAt = :when WHERE m.id = :id AND m.deletedAt IS NULL")
+    int softDeleteById(@Param("id") Long id, @Param("when") Instant when);
+
+    @Modifying
+    @Query(
+            value =
+                    """
+                    UPDATE whatsapp_messages m
+                    SET m.deleted_at = :when
+                    WHERE m.deleted_at IS NULL
+                      AND (RIGHT(m.phone_number, 11) = :suffix11
+                           OR RIGHT(m.phone_number, 10) = RIGHT(:suffix11, 10))
+                    """,
+            nativeQuery = true)
+    int softDeleteByPhoneSuffix(@Param("suffix11") String suffix11, @Param("when") Instant when);
+
     @Query(
             value =
                     """
@@ -60,6 +79,7 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                                SELECT w2.contact_name
                                FROM whatsapp_messages w2
                                WHERE w2.phone_number = w.phone_number
+                                 AND w2.deleted_at IS NULL
                                  AND w2.contact_name IS NOT NULL
                                  AND TRIM(w2.contact_name) <> ''
                                ORDER BY w2.created_at DESC
@@ -69,6 +89,7 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                                SELECT w3.direction
                                FROM whatsapp_messages w3
                                WHERE w3.phone_number = w.phone_number
+                                 AND w3.deleted_at IS NULL
                                ORDER BY w3.created_at DESC
                                LIMIT 1
                            ) AS lastMessageDirection,
@@ -76,6 +97,7 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                                SELECT w4.content
                                FROM whatsapp_messages w4
                                WHERE w4.phone_number = w.phone_number
+                                 AND w4.deleted_at IS NULL
                                ORDER BY w4.created_at DESC
                                LIMIT 1
                            ) AS lastMessageContent,
@@ -83,6 +105,7 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                                SELECT w5.message_type
                                FROM whatsapp_messages w5
                                WHERE w5.phone_number = w.phone_number
+                                 AND w5.deleted_at IS NULL
                                ORDER BY w5.created_at DESC
                                LIMIT 1
                            ) AS lastMessageType,
@@ -90,10 +113,11 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                            MAX(CASE WHEN pin.phone_number IS NOT NULL THEN 1 ELSE 0 END) AS pinned
                     FROM whatsapp_messages w
                     LEFT JOIN whatsapp_conversation_pin pin ON pin.phone_number = w.phone_number
+                    WHERE w.deleted_at IS NULL
                     GROUP BY w.phone_number
                     ORDER BY pinned DESC, lastMessageAt DESC
                     """,
-            countQuery = "SELECT COUNT(DISTINCT w.phone_number) FROM whatsapp_messages w",
+            countQuery = "SELECT COUNT(DISTINCT w.phone_number) FROM whatsapp_messages w WHERE w.deleted_at IS NULL",
             nativeQuery = true)
     Page<ConversationSummaryRow> findConversationSummaries(Pageable pageable);
 
@@ -105,6 +129,7 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                                SELECT w2.contact_name
                                FROM whatsapp_messages w2
                                WHERE w2.phone_number = w.phone_number
+                                 AND w2.deleted_at IS NULL
                                  AND w2.contact_name IS NOT NULL
                                  AND TRIM(w2.contact_name) <> ''
                                ORDER BY w2.created_at DESC
@@ -114,6 +139,7 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                                SELECT w3.direction
                                FROM whatsapp_messages w3
                                WHERE w3.phone_number = w.phone_number
+                                 AND w3.deleted_at IS NULL
                                ORDER BY w3.created_at DESC
                                LIMIT 1
                            ) AS lastMessageDirection,
@@ -121,6 +147,7 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                                SELECT w4.content
                                FROM whatsapp_messages w4
                                WHERE w4.phone_number = w.phone_number
+                                 AND w4.deleted_at IS NULL
                                ORDER BY w4.created_at DESC
                                LIMIT 1
                            ) AS lastMessageContent,
@@ -128,6 +155,7 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                                SELECT w5.message_type
                                FROM whatsapp_messages w5
                                WHERE w5.phone_number = w.phone_number
+                                 AND w5.deleted_at IS NULL
                                ORDER BY w5.created_at DESC
                                LIMIT 1
                            ) AS lastMessageType,
@@ -136,6 +164,7 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                                SELECT COUNT(*)
                                FROM whatsapp_messages wi
                                WHERE wi.phone_number = w.phone_number
+                                 AND wi.deleted_at IS NULL
                                  AND wi.direction = 'INBOUND'
                                  AND wi.message_type <> 'REACTION'
                                  AND wi.created_at > COALESCE(
@@ -147,9 +176,11 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                            MAX(CASE WHEN pin.phone_number IS NOT NULL THEN 1 ELSE 0 END) AS pinned
                     FROM whatsapp_messages w
                     LEFT JOIN whatsapp_conversation_pin pin ON pin.phone_number = w.phone_number
-                    WHERE w.phone_number NOT IN (
+                    WHERE w.deleted_at IS NULL
+                      AND w.phone_number NOT IN (
                         SELECT wm.phone_number
                         FROM whatsapp_messages wm
+                        WHERE wm.deleted_at IS NULL
                         GROUP BY wm.phone_number
                         HAVING SUM(CASE WHEN wm.direction = 'INBOUND' THEN 1 ELSE 0 END) = 0
                            AND SUM(CASE WHEN wm.template_name IS NULL
@@ -167,10 +198,26 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                       )
                       AND (
                           :clienteCodigo = ''
-                          OR EXISTS (
-                              SELECT 1 FROM whatsapp_conversa_cliente wcc
-                              WHERE wcc.phone_number = w.phone_number
-                                AND wcc.cliente_codigo = :clienteCodigo
+                          OR (
+                              (
+                                  EXISTS (
+                                      SELECT 1 FROM whatsapp_conversa_cliente wcc
+                                      WHERE wcc.phone_number = w.phone_number
+                                        AND wcc.cliente_codigo = :clienteCodigo
+                                  )
+                                  AND NOT EXISTS (
+                                      SELECT 1 FROM whatsapp_conversa_cliente_manual m
+                                      WHERE m.phone_number = w.phone_number
+                                        AND m.cliente_codigo = :clienteCodigo
+                                        AND m.acao = 'EXCLUIR'
+                                  )
+                              )
+                              OR EXISTS (
+                                  SELECT 1 FROM whatsapp_conversa_cliente_manual m
+                                  WHERE m.phone_number = w.phone_number
+                                    AND m.cliente_codigo = :clienteCodigo
+                                    AND m.acao = 'INCLUIR'
+                              )
                           )
                       )
                     GROUP BY w.phone_number
@@ -185,9 +232,11 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                     SELECT COUNT(*) FROM (
                         SELECT w.phone_number
                         FROM whatsapp_messages w
-                        WHERE w.phone_number NOT IN (
+                        WHERE w.deleted_at IS NULL
+                          AND w.phone_number NOT IN (
                             SELECT wm.phone_number
                             FROM whatsapp_messages wm
+                            WHERE wm.deleted_at IS NULL
                             GROUP BY wm.phone_number
                             HAVING SUM(CASE WHEN wm.direction = 'INBOUND' THEN 1 ELSE 0 END) = 0
                                AND SUM(CASE WHEN wm.template_name IS NULL
@@ -205,10 +254,26 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                           )
                           AND (
                               :clienteCodigo = ''
-                              OR EXISTS (
-                                  SELECT 1 FROM whatsapp_conversa_cliente wcc
-                                  WHERE wcc.phone_number = w.phone_number
-                                    AND wcc.cliente_codigo = :clienteCodigo
+                              OR (
+                                  (
+                                      EXISTS (
+                                          SELECT 1 FROM whatsapp_conversa_cliente wcc
+                                          WHERE wcc.phone_number = w.phone_number
+                                            AND wcc.cliente_codigo = :clienteCodigo
+                                      )
+                                      AND NOT EXISTS (
+                                          SELECT 1 FROM whatsapp_conversa_cliente_manual m
+                                          WHERE m.phone_number = w.phone_number
+                                            AND m.cliente_codigo = :clienteCodigo
+                                            AND m.acao = 'EXCLUIR'
+                                      )
+                                  )
+                                  OR EXISTS (
+                                      SELECT 1 FROM whatsapp_conversa_cliente_manual m
+                                      WHERE m.phone_number = w.phone_number
+                                        AND m.cliente_codigo = :clienteCodigo
+                                        AND m.acao = 'INCLUIR'
+                                  )
                               )
                           )
                         GROUP BY w.phone_number
@@ -228,6 +293,7 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                                SELECT w2.contact_name
                                FROM whatsapp_messages w2
                                WHERE w2.phone_number = w.phone_number
+                                 AND w2.deleted_at IS NULL
                                  AND w2.contact_name IS NOT NULL
                                  AND TRIM(w2.contact_name) <> ''
                                ORDER BY w2.created_at DESC
@@ -237,6 +303,7 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                                SELECT w3.content
                                FROM whatsapp_messages w3
                                WHERE w3.phone_number = w.phone_number
+                                 AND w3.deleted_at IS NULL
                                ORDER BY w3.created_at DESC
                                LIMIT 1
                            ) AS lastMessageContent,
@@ -244,6 +311,7 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                                SELECT w4.message_type
                                FROM whatsapp_messages w4
                                WHERE w4.phone_number = w.phone_number
+                                 AND w4.deleted_at IS NULL
                                ORDER BY w4.created_at DESC
                                LIMIT 1
                            ) AS lastMessageType,
@@ -253,6 +321,7 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                                SELECT COUNT(*)
                                FROM whatsapp_messages wi
                                WHERE wi.phone_number = w.phone_number
+                                 AND wi.deleted_at IS NULL
                                  AND wi.direction = 'INBOUND'
                                  AND wi.message_type <> 'REACTION'
                                  AND wi.created_at > COALESCE(
@@ -264,10 +333,12 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                            MAX(CASE WHEN pin.phone_number IS NOT NULL THEN 1 ELSE 0 END) AS pinned
                     FROM whatsapp_messages w
                     LEFT JOIN whatsapp_conversation_pin pin ON pin.phone_number = w.phone_number
-                    WHERE EXISTS (
+                    WHERE w.deleted_at IS NULL
+                      AND EXISTS (
                         SELECT 1
                         FROM whatsapp_messages wi
                         WHERE wi.phone_number = w.phone_number
+                          AND wi.deleted_at IS NULL
                           AND wi.direction = 'INBOUND'
                     )
                       AND NOT EXISTS (
@@ -289,7 +360,8 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                     """
                     SELECT COUNT(DISTINCT wi.phone_number)
                     FROM whatsapp_messages wi
-                    WHERE wi.direction = 'INBOUND'
+                    WHERE wi.deleted_at IS NULL
+                      AND wi.direction = 'INBOUND'
                       AND wi.message_type <> 'REACTION'
                       AND wi.created_at > COALESCE(
                           (SELECT r.last_read_at
@@ -306,8 +378,9 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
             value =
                     """
                     SELECT m.* FROM whatsapp_messages m
-                    WHERE RIGHT(m.phone_number, 11) = :suffix11
-                       OR RIGHT(m.phone_number, 10) = RIGHT(:suffix11, 10)
+                    WHERE m.deleted_at IS NULL
+                      AND (RIGHT(m.phone_number, 11) = :suffix11
+                           OR RIGHT(m.phone_number, 10) = RIGHT(:suffix11, 10))
                     ORDER BY m.created_at DESC
                     """,
             nativeQuery = true)
@@ -317,7 +390,8 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
             value =
                     """
                     SELECT m.* FROM whatsapp_messages m
-                    WHERE m.direction = 'INBOUND'
+                    WHERE m.deleted_at IS NULL
+                      AND m.direction = 'INBOUND'
                       AND m.created_at > :since
                       AND (RIGHT(m.phone_number, 11) = :suffix11
                            OR RIGHT(m.phone_number, 10) = RIGHT(:suffix11, 10))
@@ -355,6 +429,7 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
             SELECT m FROM WhatsAppMessageEntity m
             WHERE m.mediaId IS NOT NULL
               AND m.mediaId <> ''
+              AND m.deletedAt IS NULL
               AND m.mediaStatus = :status
               AND m.direction = :direction
               AND (m.mediaLastAttemptAt IS NULL OR m.mediaLastAttemptAt < :tentativaAntesDe)
@@ -366,6 +441,6 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
             @Param("tentativaAntesDe") Instant tentativaAntesDe,
             Pageable pageable);
 
-    @Query("SELECT DISTINCT w.phoneNumber FROM WhatsAppMessageEntity w ORDER BY w.phoneNumber ASC")
+    @Query("SELECT DISTINCT w.phoneNumber FROM WhatsAppMessageEntity w WHERE w.deletedAt IS NULL ORDER BY w.phoneNumber ASC")
     List<String> findDistinctPhoneNumbers();
 }

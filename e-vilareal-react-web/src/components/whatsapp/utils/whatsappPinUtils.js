@@ -32,3 +32,14 @@ export function togglePinInConversationList(conversations, phone, pinned) {
   );
   return sortConversationsByPinAndRecency(next);
 }
+
+export function pinMultipleInConversationList(conversations, phones) {
+  const normalizedSet = new Set(
+    (Array.isArray(phones) ? phones : []).map(normalizePhoneForApi).filter(Boolean),
+  );
+  if (!normalizedSet.size || !Array.isArray(conversations)) return conversations ?? [];
+  const next = conversations.map((c) =>
+    normalizedSet.has(normalizePhoneForApi(c.phoneNumber)) ? { ...c, pinned: true } : c,
+  );
+  return sortConversationsByPinAndRecency(next);
+}

@@ -3,6 +3,7 @@ package br.com.vilareal.whatsapp.service;
 import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.processo.application.CodigoClienteUtil;
 import br.com.vilareal.whatsapp.dto.WhatsAppGrupoDTO;
+import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppConversaClienteManualRepository;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppConversaClienteRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,15 +14,15 @@ import java.util.List;
 @Service
 public class WhatsAppGrupoListService {
 
-    private final WhatsAppConversaClienteRepository conversaClienteRepository;
+    private final WhatsAppConversaClienteManualRepository manualRepository;
 
-    public WhatsAppGrupoListService(WhatsAppConversaClienteRepository conversaClienteRepository) {
-        this.conversaClienteRepository = conversaClienteRepository;
+    public WhatsAppGrupoListService(WhatsAppConversaClienteManualRepository manualRepository) {
+        this.manualRepository = manualRepository;
     }
 
     @Transactional(readOnly = true)
     public List<WhatsAppGrupoDTO> listarGrupos() {
-        return conversaClienteRepository.listarGruposComContagem().stream()
+        return manualRepository.listarGruposEfetivosComContagem().stream()
                 .map(row -> new WhatsAppGrupoDTO(
                         CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(row.getClienteCodigo()),
                         Utf8MojibakeUtil.corrigir(StringUtils.trimWhitespace(row.getClienteNome())),

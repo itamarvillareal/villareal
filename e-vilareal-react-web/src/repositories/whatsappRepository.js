@@ -75,6 +75,13 @@ export async function getWhatsAppMessages(phoneNumber, page = 0, size = 20, sign
   });
 }
 
+export async function searchWhatsAppMessages(phoneNumber, q, signal) {
+  return request('/api/whatsapp/messages/search', {
+    query: { phoneNumber, q },
+    signal,
+  });
+}
+
 export async function getWhatsAppConversations(page = 0, size = 50, opts = {}) {
   const { arquivadas = false, clienteCodigo, signal } = opts;
   const query = { page, size, arquivadas };
@@ -87,6 +94,24 @@ export async function getWhatsAppConversations(page = 0, size = 50, opts = {}) {
 
 export async function getWhatsAppGrupos(signal) {
   return request('/api/whatsapp/grupos', { signal });
+}
+
+export async function getWhatsAppConversationGrupos(phoneNumber, signal) {
+  return request(`/api/whatsapp/conversations/${encodeURIComponent(phoneNumber)}/grupos`, { signal });
+}
+
+export async function incluirConversaGrupo(phoneNumber, clienteCodigo, signal) {
+  return request(
+    `/api/whatsapp/conversations/${encodeURIComponent(phoneNumber)}/grupos/${encodeURIComponent(clienteCodigo)}`,
+    { method: 'POST', signal },
+  );
+}
+
+export async function excluirConversaGrupo(phoneNumber, clienteCodigo, signal) {
+  return request(
+    `/api/whatsapp/conversations/${encodeURIComponent(phoneNumber)}/grupos/${encodeURIComponent(clienteCodigo)}`,
+    { method: 'DELETE', signal },
+  );
 }
 
 export async function getWhatsAppConversationContext(phoneNumber, signal) {
@@ -240,12 +265,34 @@ export async function marcarConversaLida(phoneNumber) {
   });
 }
 
+/** Marca várias conversas como lidas (POST, telefones inválidos são pulados no servidor). */
+export async function marcarLidasLote(phoneNumbers) {
+  const phones = Array.isArray(phoneNumbers)
+    ? phoneNumbers.map((p) => String(p ?? '').trim()).filter(Boolean)
+    : [];
+  return request('/api/whatsapp/conversations/marcar-lida-lote', {
+    method: 'POST',
+    body: { phones },
+  });
+}
+
 /** Fixa conversa no topo globalmente (POST 204, idempotente). */
 export async function fixarConversa(phoneNumber) {
   const phone = String(phoneNumber ?? '').trim();
   if (!phone) throw new Error('Telefone ausente.');
   return request(`/api/whatsapp/conversations/${encodeURIComponent(phone)}/fixar`, {
     method: 'POST',
+  });
+}
+
+/** Fixa várias conversas (POST, telefones inválidos são pulados no servidor). */
+export async function fixarConversasLote(phoneNumbers) {
+  const phones = Array.isArray(phoneNumbers)
+    ? phoneNumbers.map((p) => String(p ?? '').trim()).filter(Boolean)
+    : [];
+  return request('/api/whatsapp/conversations/fixar-lote', {
+    method: 'POST',
+    body: { phones },
   });
 }
 
@@ -274,6 +321,48 @@ export async function desarquivarConversa(phoneNumber) {
   return request(`/api/whatsapp/conversations/${encodeURIComponent(phone)}/arquivar`, {
     method: 'DELETE',
   });
+}
+
+/** Arquiva várias conversas (POST, telefones inválidos são pulados no servidor). */
+export async function arquivarConversasLote(phoneNumbers) {
+  const phones = Array.isArray(phoneNumbers)
+    ? phoneNumbers.map((p) => String(p ?? '').trim()).filter(Boolean)
+    : [];
+  return request('/api/whatsapp/conversations/arquivar-lote', {
+    method: 'POST',
+    body: { phones },
+  });
+}
+
+/** Apaga mensagem da inbox do sistema (soft delete — não remove do WhatsApp do contato). */
+export async function apagarMensagem(messageId) {
+  const id = messageId != null ? String(messageId).trim() : '';
+  if (!id) throw new Error('ID da mensagem ausente.');
+  return request(`/api/whatsapp/messages/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+/** Apaga conversa inteira da inbox do sistema (soft delete das mensagens). */
+export async function apagarConversa(phoneNumber) {
+  const phone = String(phoneNumber ?? '').trim();
+  if (!phone) throw new Error('Telefone ausente.');
+  return request(`/api/whatsapp/conversations/${encodeURIComponent(phone)}`, { method: 'DELETE' });
+}
+
+/** Define foto manual do contato (POST multipart). Retorna { contactPhotoUrl }. */
+export async function definirFotoContato(phoneNumber, file) {
+  const phone = String(phoneNumber ?? '').trim();
+  if (!phone) throw new Error('Telefone ausente.');
+  if (!file) throw new Error('Selecione uma imagem.');
+  const form = new FormData();
+  form.append('arquivo', file);
+  return postFormData(`/api/whatsapp/conversations/${encodeURIComponent(phone)}/photo`, form);
+}
+
+/** Remove foto manual do contato. */
+export async function removerFotoContato(phoneNumber) {
+  const phone = String(phoneNumber ?? '').trim();
+  if (!phone) throw new Error('Telefone ausente.');
+  return request(`/api/whatsapp/conversations/${encodeURIComponent(phone)}/photo`, { method: 'DELETE' });
 }
 
 /** Número de conversas com INBOUND não lida (leitura interna global). */

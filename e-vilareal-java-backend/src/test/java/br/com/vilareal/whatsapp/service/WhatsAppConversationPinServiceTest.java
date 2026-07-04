@@ -9,14 +9,19 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class WhatsAppConversationPinServiceTest {
+
+    private static final String PHONE = "5562983452868";
+    private static final String PHONE2 = "556293191778";
 
     @Mock
     private WhatsAppConversationPinRepository pinRepository;
@@ -40,5 +45,34 @@ class WhatsAppConversationPinServiceTest {
         service.desfixar(input);
 
         verify(pinRepository).deleteByPhoneNumber(input);
+    }
+
+    @Test
+    void fixarLote_fixaVariosTelefones() {
+        var result = service.fixarLote(List.of(PHONE, PHONE2));
+
+        assertThat(result.fixados()).isEqualTo(2);
+        assertThat(result.pulados()).isZero();
+        verify(pinRepository, times(2)).upsertPinnedAt(any(), any(Instant.class));
+    }
+
+    @Test
+    void fixarLote_pulaTelefoneInvalidoSemAbortar() {
+        var result = service.fixarLote(List.of(PHONE, "invalido", "", PHONE2));
+
+        assertThat(result.fixados()).isEqualTo(2);
+        assertThat(result.pulados()).isEqualTo(2);
+        verify(pinRepository, times(2)).upsertPinnedAt(any(), any(Instant.class));
+    }
+
+    @Test
+    void fixarLote_idempotenteParaMesmoTelefone() {
+        var result = service.fixarLote(List.of(PHONE, PHONE));
+
+        assertThat(result.fixados()).isEqualTo(2);
+        assertThat(result.pulados()).isZero();
+        ArgumentCaptor<String> phones = ArgumentCaptor.forClass(String.class);
+        verify(pinRepository, times(2)).upsertPinnedAt(phones.capture(), any(Instant.class));
+        assertThat(phones.getAllValues()).containsOnly(PHONE);
     }
 }

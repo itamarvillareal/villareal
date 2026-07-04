@@ -80,3 +80,18 @@ export function zeroUnreadAndReportHadUnread(conversations, phone) {
   });
   return { conversations: next, hadUnread };
 }
+
+/** Zera unread de vários telefones; retorna quantas conversas tinham não-lidas. */
+export function zeroUnreadMultipleAndReport(conversations, phones) {
+  const normalizedSet = new Set(
+    (Array.isArray(phones) ? phones : []).map(normalizePhoneForApi).filter(Boolean),
+  );
+  if (!normalizedSet.size) return { conversations: conversations ?? [], unreadClearedCount: 0 };
+  let unreadClearedCount = 0;
+  const next = (conversations ?? []).map((c) => {
+    if (!normalizedSet.has(normalizePhoneForApi(c.phoneNumber))) return c;
+    if (unreadCountOf(c) > 0) unreadClearedCount++;
+    return { ...c, unreadCount: 0 };
+  });
+  return { conversations: next, unreadClearedCount };
+}

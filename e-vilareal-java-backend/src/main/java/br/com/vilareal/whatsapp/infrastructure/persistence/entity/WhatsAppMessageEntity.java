@@ -95,6 +95,9 @@ public class WhatsAppMessageEntity {
     @Column(name = "created_at")
     private Instant createdAt;
 
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Instant updatedAt;
 

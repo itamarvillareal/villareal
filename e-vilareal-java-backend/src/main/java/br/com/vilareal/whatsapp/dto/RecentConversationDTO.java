@@ -11,4 +11,5 @@ public record RecentConversationDTO(
         Instant lastMessageAt,
         long totalMessages,
         long unreadCount,
-        boolean pinned) {}
+        boolean pinned,
+        String contactPhotoUrl) {}

@@ -13,4 +13,5 @@ public record WhatsAppConversationDTO(
         long unreadCount,
         boolean pinned,
         WhatsAppProcessoContextItemDTO contextoPrincipal,
-        List<WhatsAppProcessoContextItemDTO> contextos) {}
+        List<WhatsAppProcessoContextItemDTO> contextos,
+        String contactPhotoUrl) {}

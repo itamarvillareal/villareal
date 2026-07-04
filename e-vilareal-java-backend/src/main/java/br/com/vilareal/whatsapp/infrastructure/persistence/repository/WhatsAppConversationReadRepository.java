@@ -22,4 +22,8 @@ public interface WhatsAppConversationReadRepository extends JpaRepository<WhatsA
                     """,
             nativeQuery = true)
     void upsertLastReadAt(@Param("phoneNumber") String phoneNumber, @Param("lastReadAt") Instant lastReadAt);
+
+    @Modifying
+    @Query(value = "DELETE FROM whatsapp_conversation_read WHERE phone_number = :phoneNumber", nativeQuery = true)
+    int deleteByPhoneNumber(@Param("phoneNumber") String phoneNumber);
 }

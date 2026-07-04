@@ -17,6 +17,8 @@ public interface WhatsAppConversaClienteRepository extends JpaRepository<WhatsAp
 
     int deleteByPhoneNumber(String phoneNumber);
 
+    List<WhatsAppConversaClienteEntity> findByPhoneNumber(String phoneNumber);
+
     List<WhatsAppConversaClienteEntity> findByPhoneNumberIn(Collection<String> phoneNumbers);
 
     @Query(

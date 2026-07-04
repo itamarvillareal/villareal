@@ -1,7 +1,7 @@
 package br.com.vilareal.whatsapp.service;
 
 import br.com.vilareal.whatsapp.dto.WhatsAppGrupoDTO;
-import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppConversaClienteRepository;
+import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppConversaClienteManualRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -17,14 +17,14 @@ import static org.mockito.Mockito.when;
 class WhatsAppGrupoListServiceTest {
 
     @Mock
-    private WhatsAppConversaClienteRepository conversaClienteRepository;
+    private WhatsAppConversaClienteManualRepository manualRepository;
 
     @InjectMocks
     private WhatsAppGrupoListService service;
 
     @Test
     void listarGrupos_retornaCodigoNomeEQtd() {
-        when(conversaClienteRepository.listarGruposComContagem())
+        when(manualRepository.listarGruposEfetivosComContagem())
                 .thenReturn(List.of(row("00000001", "Farol", 5L), row("00000002", "Terra Mundi", 3L)));
 
         List<WhatsAppGrupoDTO> grupos = service.listarGrupos();
@@ -42,9 +42,9 @@ class WhatsAppGrupoListServiceTest {
         assertThat(WhatsAppGrupoListService.normalizarFiltroClienteCodigo("1")).isEqualTo("00000001");
     }
 
-    private static WhatsAppConversaClienteRepository.GrupoClienteRow row(
+    private static WhatsAppConversaClienteManualRepository.GrupoClienteRow row(
             String codigo, String nome, Long qtd) {
-        return new WhatsAppConversaClienteRepository.GrupoClienteRow() {
+        return new WhatsAppConversaClienteManualRepository.GrupoClienteRow() {
             @Override
             public String getClienteCodigo() {
                 return codigo;

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from 'react';
 import { Link } from 'react-router-dom';
 import { Loader2, MessageCircle, Paperclip, Search, Send, X } from 'lucide-react';
+import { WhatsAppMediaAttachPreview } from './components/WhatsAppMediaAttachPreview.jsx';
 import { useWhatsAppNotificationContext } from './WhatsAppNotificationProvider.jsx';
 import { ChatBubble } from './components/ChatBubble.jsx';
 import { DaySeparator } from './components/DaySeparator.jsx';
@@ -24,7 +25,6 @@ import { FREE_TEXT_DELIVERY_ERROR } from '../../utils/whatsappTemplateUtils.js';
 import { isWhatsAppMediaPending, mergeMediaReady, consumirLocalPreview, revogarPreviewsLocaisEmLista } from './utils/whatsappMediaUtils.js';
 import {
   criarOnPasteCompositor,
-  categoriaAceitaCaption,
   handleAttachSelect,
   validarArquivoWhatsAppMedia,
   WHATSAPP_MEDIA_ACCEPT,
@@ -37,6 +37,7 @@ import { WhatsAppConversationPinButton } from './components/WhatsAppConversation
 import { WhatsAppConversationArchiveButton } from './components/WhatsAppConversationArchiveButton.jsx';
 import { marcarConversaLidaAsync, applyInboundToConversationList, zeroUnreadAndReportHadUnread, zeroUnreadInConversations } from './utils/whatsappReadUtils.js';
 import { sortConversationsByPinAndRecency, togglePinInConversationList } from './utils/whatsappPinUtils.js';
+import { enrichMessagesWithReactions } from './utils/whatsappReactionAttach.js';
 
 function previewConversa(conv) {
   const type = String(conv?.lastMessageType ?? '').toUpperCase();
@@ -101,6 +102,7 @@ function FloatingConversationList({ conversations, loading, query, onQueryChange
               <WhatsAppContactAvatar
                 nome={conv.contactName}
                 telefone={conv.phoneNumber}
+                contactPhotoUrl={conv.contactPhotoUrl}
                 size="sm"
                 className="mt-0.5"
               />
@@ -322,10 +324,6 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
     }
   };
 
-  const mediaValidation = selectedFile ? validarArquivoWhatsAppMedia(selectedFile) : null;
-  const showMediaCaption =
-    mediaValidation?.ok && categoriaAceitaCaption(mediaValidation.categoria);
-
   const applyMediaAttach = useCallback((file) => {
     const result = handleAttachSelect(file);
     if (!result.ok) {
@@ -348,6 +346,8 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
     [phoneApi, applyMediaAttach, sending],
   );
 
+  const displayMessages = useMemo(() => enrichMessagesWithReactions(messages), [messages]);
+
   return (
     <>
       <div className="flex items-center gap-2 px-3 py-2.5 bg-[#075E54] text-white shrink-0">
@@ -357,6 +357,7 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
         <WhatsAppContactAvatar
           nome={conversation.contactName}
           telefone={conversation.phoneNumber}
+          contactPhotoUrl={conversation.contactPhotoUrl}
           size="sm"
         />
         <span className="flex-1 min-w-0 truncate text-sm font-semibold">
@@ -372,8 +373,8 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
             <Loader2 className="h-5 w-5 animate-spin text-slate-500" />
           </div>
         ) : (
-          messages.map((m, idx) => {
-            const prevKey = idx > 0 ? dateKeyBR(messages[idx - 1].createdAt) : null;
+          displayMessages.map((m, idx) => {
+            const prevKey = idx > 0 ? dateKeyBR(displayMessages[idx - 1].createdAt) : null;
             const curKey = dateKeyBR(m.createdAt);
             const showDaySep = idx === 0 || curKey !== prevKey;
             return (
@@ -392,34 +393,19 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
       </div>
       {error ? <p className="px-3 text-xs text-red-600 shrink-0">{error}</p> : null}
       {selectedFile ? (
-        <div className="px-3 py-2 border-t border-slate-100 dark:border-slate-800 shrink-0 space-y-1.5">
-          <div className="flex items-center gap-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 px-2 py-1.5">
-            <span className="flex-1 min-w-0 text-xs truncate text-emerald-900 dark:text-emerald-100" title={selectedFile.name}>
-              {selectedFile.name}
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedFile(null);
-                setMediaCaption('');
-              }}
-              disabled={sending}
-              className="shrink-0 text-emerald-800 dark:text-emerald-200"
-              aria-label="Remover anexo"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-          {showMediaCaption ? (
-            <input
-              type="text"
-              value={mediaCaption}
-              onChange={(e) => setMediaCaption(e.target.value)}
-              placeholder="Legenda (opcional)"
-              disabled={sending}
-              className="w-full rounded-lg border border-slate-200 dark:border-slate-600 px-2.5 py-1.5 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-emerald-400"
-            />
-          ) : null}
+        <div className="px-3 py-2 border-t border-slate-100 dark:border-slate-800 shrink-0">
+          <WhatsAppMediaAttachPreview
+            selectedFile={selectedFile}
+            onClearFile={() => {
+              setSelectedFile(null);
+              setMediaCaption('');
+            }}
+            mediaCaption={mediaCaption}
+            onMediaCaptionChange={setMediaCaption}
+            disabled={sending}
+            containerClass="rounded-lg bg-emerald-50 dark:bg-emerald-950/30 px-2 py-1.5 space-y-1.5"
+            inputClass="w-full rounded-lg border border-slate-200 dark:border-slate-600 px-2.5 py-1.5 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-emerald-400"
+          />
         </div>
       ) : null}
       <div className="flex items-center gap-2 px-3 py-2 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shrink-0">

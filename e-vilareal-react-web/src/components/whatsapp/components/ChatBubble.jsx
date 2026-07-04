@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, FileText, Loader2, UserRound } from 'lucide-react';
+import { AlertTriangle, FileText, Loader2, Trash2, UserRound } from 'lucide-react';
 import { formatTimeBR, formatPhoneDisplay, formatDateTimeBR } from '../../../utils/whatsappFormat.js';
 import { reprocessarWhatsAppMedia } from '../../../repositories/whatsappRepository.js';
 import { useWhatsAppMediaUrl } from '../hooks/useWhatsAppMediaUrl.js';
@@ -19,6 +19,13 @@ import {
 import { mapsUrl, parseLocationContent } from '../utils/whatsappLocation.js';
 import { labelReactionThread } from '../utils/whatsappReaction.js';
 import { parseInteractiveReplyContent } from '../utils/whatsappInteractiveReply.js';
+import { highlightText } from '../../../utils/highlightText.jsx';
+
+function BubbleText({ text, highlightTerm, active }) {
+  const rendered = highlightText(text, highlightTerm, { active });
+  if (typeof rendered === 'string') return rendered;
+  return rendered;
+}
 
 function MessageStatusIcon({ status }) {
   const s = String(status ?? '').toUpperCase();
@@ -95,10 +102,12 @@ function MediaAccessBar({
   );
 }
 
-function MediaPendingContent({ message }) {
+function MediaPendingContent({ message, highlightTerm, activeHighlight }) {
   return (
     <div className="chat-media chat-media-pending">
-      <span>{message.content || 'Mídia recebida'}</span>
+      <span>
+        <BubbleText text={message.content || 'Mídia recebida'} highlightTerm={highlightTerm} active={activeHighlight} />
+      </span>
       <span className="block text-xs opacity-75 mt-1 flex items-center gap-1">
         <Loader2 className="h-3 w-3 animate-spin shrink-0" aria-hidden />
         Salvando no Drive…
@@ -108,10 +117,12 @@ function MediaPendingContent({ message }) {
   );
 }
 
-function OutboundMediaSendFailedContent({ message, linkClass, onRetry, retrying }) {
+function OutboundMediaSendFailedContent({ message, linkClass, onRetry, retrying, highlightTerm, activeHighlight }) {
   return (
     <div className="chat-media chat-media-send-failed space-y-1.5">
-      <span>{message.content || 'Mídia'}</span>
+      <span>
+        <BubbleText text={message.content || 'Mídia'} highlightTerm={highlightTerm} active={activeHighlight} />
+      </span>
       <p className="text-xs flex items-start gap-1.5 opacity-90 mt-1">
         <AlertTriangle className="h-4 w-4 shrink-0 text-amber-200" aria-hidden />
         {message.sendError || 'Não foi possível enviar esta mídia.'}
@@ -162,13 +173,17 @@ function MediaFailedContent({
   onRetry,
   retrying,
   retryError,
+  highlightTerm,
+  activeHighlight,
 }) {
   return (
     <div
       className="chat-media chat-media-failed space-y-1.5"
       title={mediaError ? String(mediaError) : undefined}
     >
-      <span>{message.content || 'Mídia recebida'}</span>
+      <span>
+        <BubbleText text={message.content || 'Mídia recebida'} highlightTerm={highlightTerm} active={activeHighlight} />
+      </span>
       <p className="text-xs flex items-start gap-1.5 opacity-90 mt-1">
         <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500 dark:text-amber-400" aria-hidden />
         Não foi possível baixar esta mídia.
@@ -198,10 +213,12 @@ function MediaFailedContent({
   );
 }
 
-function MediaLoadingContent({ message }) {
+function MediaLoadingContent({ message, highlightTerm, activeHighlight }) {
   return (
     <div className="chat-media chat-media-loading">
-      <span>{message.content || 'Mídia recebida'}</span>
+      <span>
+        <BubbleText text={message.content || 'Mídia recebida'} highlightTerm={highlightTerm} active={activeHighlight} />
+      </span>
       <span className="block text-xs opacity-75 mt-1 flex items-center gap-1">
         <Loader2 className="h-3 w-3 animate-spin shrink-0" aria-hidden />
         Carregando mídia…
@@ -215,11 +232,23 @@ function InlineErrorHint({ text }) {
   return <p className="text-[11px] opacity-70 mt-1">{text}</p>;
 }
 
+function renderMediaCaption(message, highlightTerm, activeHighlight) {
+  const caption = String(message.content ?? '').trim();
+  if (!caption) return null;
+  return (
+    <p className="text-sm whitespace-pre-wrap break-words mt-1.5">
+      <BubbleText text={caption} highlightTerm={highlightTerm} active={activeHighlight} />
+    </p>
+  );
+}
+
 function MediaBubbleContent({
   message,
   isOutbound,
   onRetryOutboundMedia,
   onLocalPreviewConsumed,
+  highlightTerm,
+  activeHighlight,
 }) {
   const type = String(message.messageType ?? '').toUpperCase();
   const driveUrl = message.mediaDriveUrl;
@@ -325,6 +354,8 @@ function MediaBubbleContent({
         linkClass={linkClass}
         onRetry={onRetryOutboundMedia ? () => void handleRetrySend() : null}
         retrying={retryingSend}
+        highlightTerm={highlightTerm}
+        activeHighlight={activeHighlight}
       />
     );
   }
@@ -385,10 +416,12 @@ function MediaBubbleContent({
             onRetry={() => void handleRetry()}
             retrying={retrying}
             retryError={retryError}
+            highlightTerm={highlightTerm}
+            activeHighlight={activeHighlight}
           />
         );
       }
-      return <MediaPendingContent message={message} />;
+      return <MediaPendingContent message={message} highlightTerm={highlightTerm} activeHighlight={activeHighlight} />;
     }
     return null;
   }
@@ -398,7 +431,7 @@ function MediaBubbleContent({
   if (showLoadingShell) {
     return (
       <div className="chat-media space-y-1">
-        <MediaLoadingContent message={message} />
+        <MediaLoadingContent message={message} highlightTerm={highlightTerm} activeHighlight={activeHighlight} />
         {accessBar}
       </div>
     );
@@ -446,6 +479,7 @@ function MediaBubbleContent({
         ) : (
           <InlineErrorHint text={inlineError || 'Imagem indisponível inline.'} />
         )}
+        {renderMediaCaption(message, highlightTerm, activeHighlight)}
         {accessBar}
       </div>
     );
@@ -467,6 +501,7 @@ function MediaBubbleContent({
         ) : (
           <InlineErrorHint text={inlineError || 'Vídeo indisponível inline.'} />
         )}
+        {renderMediaCaption(message, highlightTerm, activeHighlight)}
         {accessBar}
       </div>
     );
@@ -502,7 +537,9 @@ function MediaBubbleContent({
 
   return (
     <div className="chat-media space-y-1">
-      <span className="text-sm">{message.content || 'Mídia recebida'}</span>
+      <span className="text-sm">
+        <BubbleText text={message.content || 'Mídia recebida'} highlightTerm={highlightTerm} active={activeHighlight} />
+      </span>
       <InlineErrorHint text={inlineError} />
       {accessBar}
     </div>
@@ -619,6 +656,24 @@ function ContactBubbleContent({ message, isOutbound }) {
   );
 }
 
+function ReactionBadge({ emojis, isOutbound }) {
+  if (!Array.isArray(emojis) || emojis.length === 0) return null;
+  return (
+    <div
+      className={`absolute -bottom-2.5 ${isOutbound ? 'left-2' : 'right-2'} z-10 pointer-events-none`}
+      aria-label={`Reações: ${emojis.join(' ')}`}
+    >
+      <span className="inline-flex items-center gap-0.5 rounded-full border border-slate-200/90 bg-white px-1.5 py-0.5 text-[13px] leading-none shadow-sm dark:border-slate-600 dark:bg-slate-700">
+        {emojis.map((emoji) => (
+          <span key={emoji} aria-hidden>
+            {emoji}
+          </span>
+        ))}
+      </span>
+    </div>
+  );
+}
+
 function formatTemplateContent(message) {
   const template = String(message.templateName ?? '').toLowerCase();
   const raw = String(message.content ?? '').trim();
@@ -634,13 +689,23 @@ function formatTemplateContent(message) {
   return raw || '—';
 }
 
-export function ChatBubble({ message, onRetryOutboundMedia, onLocalPreviewConsumed }) {
+export function ChatBubble({
+  message,
+  onRetryOutboundMedia,
+  onLocalPreviewConsumed,
+  highlightTerm = '',
+  isActiveSearchMatch = false,
+  onDeleteMessage,
+}) {
   const isOutbound = String(message.direction ?? '').toUpperCase() === 'OUTBOUND';
   const hasTemplate = Boolean(message.templateName);
   const type = String(message.messageType ?? '').toUpperCase();
   const isReaction = type === 'REACTION';
 
   if (isReaction) {
+    if (message._reactionAttachedToTarget) {
+      return null;
+    }
     const label = labelReactionThread(message.content);
     return (
       <div className="flex justify-center py-0.5" role="status" aria-label={label}>
@@ -673,6 +738,8 @@ export function ChatBubble({ message, onRetryOutboundMedia, onLocalPreviewConsum
       isOutbound={isOutbound}
       onRetryOutboundMedia={onRetryOutboundMedia}
       onLocalPreviewConsumed={onLocalPreviewConsumed}
+      highlightTerm={highlightTerm}
+      activeHighlight={isActiveSearchMatch}
     />
   ) : null;
   const contactContent = isContact ? <ContactBubbleContent message={message} isOutbound={isOutbound} /> : null;
@@ -682,15 +749,38 @@ export function ChatBubble({ message, onRetryOutboundMedia, onLocalPreviewConsum
     <InteractiveReplyBubbleContent reply={parsedInteractive} />
   ) : null;
 
+  const canDelete =
+    typeof onDeleteMessage === 'function' && typeof message?.id === 'number' && message.id > 0;
+  const attachedReactions = Array.isArray(message.attachedReactions) ? message.attachedReactions : [];
+  const hasReactionBadge = attachedReactions.length > 0;
+
   return (
-    <div className={`flex ${isOutbound ? 'justify-end' : 'justify-start'}`}>
+    <div
+      id={message.id != null ? `msg-${message.id}` : undefined}
+      className={`group/msg relative flex ${isOutbound ? 'justify-end' : 'justify-start'} ${
+        hasReactionBadge ? 'mb-2' : ''
+      } ${
+        isActiveSearchMatch ? 'rounded-2xl ring-2 ring-amber-500 ring-offset-2 ring-offset-[#e5ddd5] dark:ring-offset-slate-800/50' : ''
+      }`}
+    >
       <div
-        className={`max-w-[85%] sm:max-w-[70%] rounded-2xl px-3 py-2 shadow-sm ${
+        className={`relative max-w-[85%] sm:max-w-[70%] rounded-2xl px-3 py-2 shadow-sm ${
           isOutbound
             ? 'bg-[#25D366] text-white rounded-br-md'
             : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-bl-md'
         } ${isMedia ? 'bg-opacity-95' : ''}`}
       >
+        {canDelete ? (
+          <button
+            type="button"
+            onClick={() => onDeleteMessage(message)}
+            className={`absolute -top-2 ${isOutbound ? '-left-2' : '-right-2'} z-10 inline-flex items-center gap-0.5 rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-red-600 shadow-sm opacity-0 transition-opacity group-hover/msg:opacity-100 focus:opacity-100 dark:border-slate-600 dark:bg-slate-800 dark:text-red-400`}
+            title="Apagar da sua inbox (não apaga no WhatsApp do contato)"
+          >
+            <Trash2 className="h-3 w-3" aria-hidden />
+            Apagar
+          </button>
+        ) : null}
         {hasTemplate ? (
           <span
             className={`inline-block mb-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${
@@ -701,7 +791,13 @@ export function ChatBubble({ message, onRetryOutboundMedia, onLocalPreviewConsum
           </span>
         ) : null}
         {contactContent ?? locationContent ?? interactiveContent ?? mediaContent ?? (
-          <p className="text-sm whitespace-pre-wrap break-words">{formatTemplateContent(message)}</p>
+          <p className="text-sm whitespace-pre-wrap break-words">
+            <BubbleText
+              text={formatTemplateContent(message)}
+              highlightTerm={highlightTerm}
+              active={isActiveSearchMatch}
+            />
+          </p>
         )}
         <div className={`flex items-center justify-end gap-1 mt-1 ${isOutbound ? 'text-white/80' : 'text-slate-500'}`}>
           <span className="text-[11px]" title={formatDateTimeBR(message.createdAt)}>
@@ -709,6 +805,7 @@ export function ChatBubble({ message, onRetryOutboundMedia, onLocalPreviewConsum
           </span>
           {isOutbound ? <MessageStatusIcon status={message.status} /> : null}
         </div>
+        {hasReactionBadge ? <ReactionBadge emojis={attachedReactions} isOutbound={isOutbound} /> : null}
       </div>
     </div>
   );

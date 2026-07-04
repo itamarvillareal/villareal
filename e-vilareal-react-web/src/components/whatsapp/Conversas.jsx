@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ExternalLink, Link2, Loader2, MessageCircle, MessageSquarePlus, Search, Send } from 'lucide-react';
+import { ExternalLink, Link2, Loader2, MessageCircle, MessageSquarePlus, Search, Send, ChevronUp, ChevronDown, X, Trash2, Camera, ImageMinus } from 'lucide-react';
+import { ConfirmDialog } from '../financeiro/shared/ConfirmDialog.jsx';
 import { ChatBubble } from './components/ChatBubble.jsx';
 import { DaySeparator } from './components/DaySeparator.jsx';
 import {
@@ -12,7 +13,7 @@ import { ModalVinculosTelefoneConversa } from './components/ModalVinculosTelefon
 import { useWhatsApp } from './hooks/useWhatsApp.js';
 import { useWhatsAppToast } from './WhatsAppToast.jsx';
 import { useWhatsAppNotificationContext } from './WhatsAppNotificationProvider.jsx';
-import { getWhatsAppConversationContext, fixarConversa, desfixarConversa, arquivarConversa, desarquivarConversa, getWhatsAppGrupos } from '../../repositories/whatsappRepository.js';
+import { getWhatsAppConversationContext, fixarConversa, desfixarConversa, arquivarConversa, desarquivarConversa, arquivarConversasLote, fixarConversasLote, marcarLidasLote, apagarMensagem, apagarConversa, getWhatsAppGrupos, definirFotoContato, removerFotoContato } from '../../repositories/whatsappRepository.js';
 import {
   formatDateTimeBR,
   formatPhoneDisplay,
@@ -32,11 +33,18 @@ import { useOptimisticMediaSend } from './hooks/useOptimisticMediaSend.js';
 import { sendWhatsAppMedia } from '../../repositories/whatsappRepository.js';
 import { resumoWhatsAppMessageContent } from './utils/whatsappMessagePreview.js';
 import { WhatsAppContactAvatar } from './components/WhatsAppContactAvatar.jsx';
+import { WhatsAppMediaAttachPreview } from './components/WhatsAppMediaAttachPreview.jsx';
+import { invalidateWhatsAppContactPhotoObjectUrl } from './utils/whatsappContactPhotoUrlCache.js';
 import { WhatsAppUnreadBadge, unreadCountOf } from './components/WhatsAppUnreadBadge.jsx';
 import { WhatsAppConversationPinButton } from './components/WhatsAppConversationPinButton.jsx';
 import { WhatsAppConversationArchiveButton } from './components/WhatsAppConversationArchiveButton.jsx';
-import { marcarConversaLidaAsync, applyInboundToConversationList, zeroUnreadAndReportHadUnread } from './utils/whatsappReadUtils.js';
-import { sortConversationsByPinAndRecency, togglePinInConversationList } from './utils/whatsappPinUtils.js';
+import { WhatsAppConversationGruposPanel } from './components/WhatsAppConversationGruposPanel.jsx';
+import { WhatsAppConversationSelectionBar } from './components/WhatsAppConversationSelectionBar.jsx';
+import { WhatsAppConversationDeleteButton } from './components/WhatsAppConversationDeleteButton.jsx';
+import { WHATSAPP_DELETE_CONVERSATION_CONFIRM, WHATSAPP_DELETE_MESSAGE_CONFIRM } from './utils/whatsappDeleteCopy.js';
+import { marcarConversaLidaAsync, applyInboundToConversationList, zeroUnreadAndReportHadUnread, zeroUnreadMultipleAndReport } from './utils/whatsappReadUtils.js';
+import { enrichMessagesWithReactions } from './utils/whatsappReactionAttach.js';
+import { sortConversationsByPinAndRecency, togglePinInConversationList, pinMultipleInConversationList } from './utils/whatsappPinUtils.js';
 
 const PAGE_SIZE = 20;
 const CONVERSATIONS_PAGE_SIZE = 50;
@@ -64,6 +72,19 @@ function tituloContato(nome, telefone) {
   const nomeLimpo = String(nome ?? '').trim();
   if (nomeLimpo) return nomeLimpo;
   return formatPhoneDisplay(telefone);
+}
+
+function contactPhotoProxyUrl(phone) {
+  const normalized = normalizePhoneForApi(phone);
+  if (!normalized) return null;
+  return `/api/whatsapp/conversations/${normalized}/photo`;
+}
+
+function updateContactPhotoInList(list, phone, url) {
+  const normalized = normalizePhoneForApi(phone);
+  return list.map((c) =>
+    normalizePhoneForApi(c.phoneNumber) === normalized ? { ...c, contactPhotoUrl: url ?? null } : c,
+  );
 }
 
 function resumoContexto(ctx) {
@@ -153,8 +174,84 @@ function PainelContextoChat({ contextos, indice, onIndiceChange }) {
   );
 }
 
+function ConversationMessageSearchBar({
+  query,
+  onQueryChange,
+  onClose,
+  total,
+  currentIndex,
+  onPrev,
+  onNext,
+  loading,
+  inputRef,
+}) {
+  const showCounter = query.trim().length >= 2;
+  return (
+    <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+      <Search className="h-4 w-4 shrink-0 text-slate-500" aria-hidden />
+      <input
+        ref={inputRef}
+        type="search"
+        value={query}
+        onChange={(e) => onQueryChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && e.shiftKey) {
+            e.preventDefault();
+            onPrev();
+          } else if (e.key === 'Enter' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            onNext();
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            onPrev();
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            onClose();
+          }
+        }}
+        placeholder="Buscar na conversa…"
+        className="flex-1 min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+        autoComplete="off"
+        spellCheck={false}
+      />
+      <span className="text-xs tabular-nums text-slate-500 shrink-0 min-w-[2.5rem] text-center">
+        {loading ? '…' : showCounter ? (total > 0 ? `${currentIndex + 1}/${total}` : '0/0') : '—'}
+      </span>
+      <button
+        type="button"
+        onClick={onPrev}
+        disabled={total === 0}
+        className="inline-flex shrink-0 items-center justify-center rounded-md border border-slate-200 p-1 text-slate-600 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+        title="Ocorrência anterior (Shift+Enter)"
+        aria-label="Ocorrência anterior"
+      >
+        <ChevronUp className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={onNext}
+        disabled={total === 0}
+        className="inline-flex shrink-0 items-center justify-center rounded-md border border-slate-200 p-1 text-slate-600 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+        title="Próxima ocorrência (Enter)"
+        aria-label="Próxima ocorrência"
+      >
+        <ChevronDown className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={onClose}
+        className="inline-flex shrink-0 items-center justify-center rounded-md border border-slate-200 p-1 text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+        title="Fechar busca"
+        aria-label="Fechar busca"
+      >
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
 export function WhatsAppConversas() {
-  const { getConversations, getMessages, sendText } = useWhatsApp();
+  const { getConversations, getMessages, sendText, searchMessages } = useWhatsApp();
   const toast = useWhatsAppToast();
   const { clearNotifications, latestInbound, latestMediaReady, latestConversationRead, adjustUnreadConversations } =
     useWhatsAppNotificationContext() ?? {};
@@ -175,6 +272,10 @@ export function WhatsAppConversas() {
     sendMediaApi: sendWhatsAppMedia,
   });
   const [contactName, setContactName] = useState('');
+  const [contactPhotoUrl, setContactPhotoUrl] = useState(null);
+  const [contactPhotoMenuOpen, setContactPhotoMenuOpen] = useState(false);
+  const [pendingContactPhotoFile, setPendingContactPhotoFile] = useState(null);
+  const [contactPhotoBusy, setContactPhotoBusy] = useState(false);
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -187,7 +288,19 @@ export function WhatsAppConversas() {
   const [indiceContexto, setIndiceContexto] = useState(0);
   const [modalVinculosAberto, setModalVinculosAberto] = useState(false);
   const [iniciarModalOpen, setIniciarModalOpen] = useState(false);
+  const [conversationSearchOpen, setConversationSearchOpen] = useState(false);
+  const [conversationSearchQuery, setConversationSearchQuery] = useState('');
+  const [conversationSearchMatches, setConversationSearchMatches] = useState([]);
+  const [conversationSearchIndex, setConversationSearchIndex] = useState(0);
+  const [conversationSearchLoading, setConversationSearchLoading] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedPhones, setSelectedPhones] = useState(() => new Set());
+  const [bulkSelectionBusy, setBulkSelectionBusy] = useState(false);
+  const [pendingDeleteMessage, setPendingDeleteMessage] = useState(null);
+  const [pendingDeleteConversationPhone, setPendingDeleteConversationPhone] = useState('');
   const bottomRef = useRef(null);
+  const conversationSearchInputRef = useRef(null);
+  const contactPhotoFileInputRef = useRef(null);
   const openedFromUrl = useRef(false);
   const lastListInboundIdRef = useRef(null);
   const archiveViewInitialized = useRef(false);
@@ -196,6 +309,64 @@ export function WhatsAppConversas() {
   const scrollToBottom = () => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  const resetConversationSearch = useCallback(() => {
+    setConversationSearchOpen(false);
+    setConversationSearchQuery('');
+    setConversationSearchMatches([]);
+    setConversationSearchIndex(0);
+    setConversationSearchLoading(false);
+  }, []);
+
+  const exitSelectionMode = useCallback(() => {
+    setSelectionMode(false);
+    setSelectedPhones(new Set());
+    setBulkSelectionBusy(false);
+  }, []);
+
+  const scrollToMessageId = useCallback((id) => {
+    window.requestAnimationFrame(() => {
+      document.getElementById(`msg-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }, []);
+
+  const ensureMessageInThread = useCallback((msg) => {
+    if (!msg?.id) return;
+    setMessages((prev) => {
+      if (prev.some((m) => m.id === msg.id)) return prev;
+      return [...prev, msg].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    });
+  }, []);
+
+  const goToConversationMatch = useCallback(
+    (delta) => {
+      setConversationSearchIndex((prevIdx) => {
+        const total = conversationSearchMatches.length;
+        if (!total) return 0;
+        const next = delta === 'next' ? (prevIdx + 1) % total : (prevIdx - 1 + total) % total;
+        const match = conversationSearchMatches[next];
+        if (match?.id) {
+          ensureMessageInThread(match);
+          scrollToMessageId(match.id);
+        }
+        return next;
+      });
+    },
+    [conversationSearchMatches, ensureMessageInThread, scrollToMessageId],
+  );
+
+  const searchMatchIds = useMemo(
+    () => new Set(conversationSearchMatches.map((m) => m.id).filter((id) => id != null)),
+    [conversationSearchMatches],
+  );
+
+  const activeSearchMessageId =
+    conversationSearchOpen && conversationSearchMatches.length
+      ? conversationSearchMatches[conversationSearchIndex]?.id
+      : null;
+
+  const searchHighlightTerm =
+    conversationSearchOpen && conversationSearchQuery.trim().length >= 2 ? conversationSearchQuery.trim() : '';
 
   const loadConversations = useCallback(
     async ({ silent = false } = {}) => {
@@ -261,6 +432,7 @@ export function WhatsAppConversas() {
       archiveViewInitialized.current = true;
       return;
     }
+    exitSelectionMode();
     setActivePhone('');
     setMessages([]);
     setConversationsPageLoaded(0);
@@ -275,6 +447,16 @@ export function WhatsAppConversas() {
     setConversationsPageLoaded(0);
     void loadConversations();
   }, [selectedClienteCodigo]); // eslint-disable-line react-hooks/exhaustive-deps -- refetch ao trocar cliente
+
+  const recarregarGruposAbas = useCallback(async () => {
+    try {
+      const list = await getWhatsAppGrupos();
+      setGrupos(Array.isArray(list) ? list : []);
+    } catch {
+      /* mantém abas atuais */
+    }
+    void loadConversations({ silent: true });
+  }, [loadConversations]);
 
   useEffect(() => {
     let cancelled = false;
@@ -356,13 +538,178 @@ export function WhatsAppConversas() {
     [activePhone, loadConversations],
   );
 
+  const requestDeleteMessage = useCallback((message) => {
+    if (!message?.id || message.id <= 0) return;
+    setPendingDeleteMessage(message);
+  }, []);
+
+  const confirmDeleteMessage = useCallback(async () => {
+    const message = pendingDeleteMessage;
+    if (!message?.id) return;
+    setPendingDeleteMessage(null);
+    setMessages((prev) => prev.filter((m) => m.id !== message.id));
+    setConversationSearchMatches((prev) => prev.filter((m) => m.id !== message.id));
+    try {
+      await apagarMensagem(message.id);
+    } catch (err) {
+      toast.error(err?.message || 'Falha ao apagar mensagem.');
+      if (activePhone) await fetchPage(activePhone, 0, false);
+    }
+  }, [pendingDeleteMessage, toast, activePhone, fetchPage]);
+
+  const requestDeleteConversation = useCallback((phone) => {
+    const normalized = normalizePhoneForApi(phone);
+    if (!normalized) return;
+    setPendingDeleteConversationPhone(normalized);
+  }, []);
+
+  const confirmDeleteConversation = useCallback(async () => {
+    const normalized = pendingDeleteConversationPhone;
+    if (!normalized) return;
+    setPendingDeleteConversationPhone('');
+    setConversations((prev) => prev.filter((c) => normalizePhoneForApi(c.phoneNumber) !== normalized));
+    if (normalizePhoneForApi(activePhone) === normalized) {
+      setActivePhone('');
+      setMessages([]);
+      setContactName('');
+      resetConversationSearch();
+    }
+    try {
+      await apagarConversa(normalized);
+    } catch (err) {
+      toast.error(err?.message || 'Falha ao apagar conversa.');
+      void loadConversations();
+    }
+  }, [pendingDeleteConversationPhone, activePhone, resetConversationSearch, loadConversations, toast]);
+
+  const filteredConversations = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return conversations;
+    const digits = q.replace(/\D/g, '');
+    return conversations.filter((conv) => {
+      const phone = formatPhoneDisplay(conv.phoneNumber).toLowerCase();
+      const name = String(conv.contactName ?? '').toLowerCase();
+      return name.includes(q) || phone.includes(q) || conv.phoneNumber.includes(digits);
+    });
+  }, [conversations, query]);
+
+  const toggleSelectedPhone = useCallback((phone) => {
+    const normalized = normalizePhoneForApi(phone);
+    if (!normalized) return;
+    setSelectedPhones((prev) => {
+      const next = new Set(prev);
+      if (next.has(normalized)) next.delete(normalized);
+      else next.add(normalized);
+      return next;
+    });
+  }, []);
+
+  const selectAllVisiblePhones = useCallback(() => {
+    setSelectedPhones(
+      new Set(filteredConversations.map((c) => normalizePhoneForApi(c.phoneNumber)).filter(Boolean)),
+    );
+  }, [filteredConversations]);
+
+  const handleBulkMarkRead = useCallback(async () => {
+    const phones = [...selectedPhones];
+    if (!phones.length || bulkSelectionBusy) return;
+    setBulkSelectionBusy(true);
+    setConversations((prev) => {
+      const { conversations: next, unreadClearedCount } = zeroUnreadMultipleAndReport(prev, phones);
+      if (unreadClearedCount) adjustUnreadConversations?.(-unreadClearedCount);
+      return next;
+    });
+    exitSelectionMode();
+    try {
+      await marcarLidasLote(phones);
+    } catch (err) {
+      console.warn('[WhatsApp] marcar-lida lote falhou:', err?.message ?? err);
+      void loadConversations();
+    }
+  }, [selectedPhones, bulkSelectionBusy, exitSelectionMode, loadConversations, adjustUnreadConversations]);
+
+  const handleBulkPin = useCallback(async () => {
+    const phones = [...selectedPhones];
+    if (!phones.length || bulkSelectionBusy) return;
+    setBulkSelectionBusy(true);
+    setConversations((prev) => pinMultipleInConversationList(prev, phones));
+    exitSelectionMode();
+    try {
+      await fixarConversasLote(phones);
+    } catch (err) {
+      console.warn('[WhatsApp] fixar lote falhou:', err?.message ?? err);
+      void loadConversations();
+    }
+  }, [selectedPhones, bulkSelectionBusy, exitSelectionMode, loadConversations]);
+
+  const handleBulkArchive = useCallback(async () => {
+    const phones = [...selectedPhones];
+    if (!phones.length || bulkSelectionBusy) return;
+    setBulkSelectionBusy(true);
+    setConversations((prev) =>
+      prev.filter((c) => !selectedPhones.has(normalizePhoneForApi(c.phoneNumber))),
+    );
+    if (selectedPhones.has(normalizePhoneForApi(activePhone))) {
+      setActivePhone('');
+      setMessages([]);
+      setContactName('');
+      resetConversationSearch();
+    }
+    exitSelectionMode();
+    try {
+      await arquivarConversasLote(phones);
+    } catch (err) {
+      console.warn('[WhatsApp] arquivar lote falhou:', err?.message ?? err);
+      void loadConversations();
+    }
+  }, [
+    selectedPhones,
+    bulkSelectionBusy,
+    activePhone,
+    exitSelectionMode,
+    loadConversations,
+    resetConversationSearch,
+  ]);
+
+  const selectionBulkActions = useMemo(
+    () => [
+      {
+        id: 'read',
+        label: 'Lidas',
+        title: 'Marcar selecionadas como lidas',
+        onClick: () => void handleBulkMarkRead(),
+        disabled: selectedPhones.size === 0,
+      },
+      {
+        id: 'pin',
+        label: 'Fixar',
+        title: 'Fixar selecionadas no topo',
+        onClick: () => void handleBulkPin(),
+        disabled: selectedPhones.size === 0,
+      },
+      {
+        id: 'archive',
+        label: 'Arquivar',
+        title: 'Arquivar selecionadas',
+        onClick: () => void handleBulkArchive(),
+        primary: true,
+        disabled: selectedPhones.size === 0,
+      },
+    ],
+    [selectedPhones.size, handleBulkMarkRead, handleBulkPin, handleBulkArchive],
+  );
+
   const openConversation = useCallback(
-    async (phone, nameHint = '', contextosHint = null) => {
+    async (phone, nameHint = '', contextosHint = null, photoHint = null) => {
       const normalized = normalizePhoneForApi(phone);
       if (!normalized) return;
       markConversationReadLocal(normalized);
+      resetConversationSearch();
       setActivePhone(normalized);
       setContactName(nameHint || '');
+      setContactPhotoUrl(photoHint ?? null);
+      setContactPhotoMenuOpen(false);
+      setPendingContactPhotoFile(null);
       setIndiceContexto(0);
       const hintList = Array.isArray(contextosHint) ? contextosHint : [];
       setContextosAtivos(hintList);
@@ -388,8 +735,56 @@ export function WhatsAppConversas() {
         setLoading(false);
       }
     },
-    [fetchPage, setSearchParams, toast, markConversationReadLocal],
+    [fetchPage, setSearchParams, toast, markConversationReadLocal, resetConversationSearch],
   );
+
+  useEffect(() => {
+    if (!conversationSearchOpen || !activePhone) return undefined;
+    const term = conversationSearchQuery.trim();
+    if (term.length < 2) {
+      setConversationSearchMatches([]);
+      setConversationSearchIndex(0);
+      return undefined;
+    }
+    const ac = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setConversationSearchLoading(true);
+      try {
+        const res = await searchMessages(normalizePhoneForApi(activePhone), term, ac.signal);
+        const matches = Array.isArray(res?.matches) ? res.matches : [];
+        setConversationSearchMatches(matches);
+        setConversationSearchIndex(0);
+        if (matches[0]?.id) {
+          ensureMessageInThread(matches[0]);
+          scrollToMessageId(matches[0].id);
+        }
+      } catch (err) {
+        if (err?.name !== 'AbortError') {
+          console.warn('[WhatsApp] busca na conversa falhou:', err?.message ?? err);
+        }
+        setConversationSearchMatches([]);
+        setConversationSearchIndex(0);
+      } finally {
+        setConversationSearchLoading(false);
+      }
+    }, 300);
+    return () => {
+      window.clearTimeout(timer);
+      ac.abort();
+    };
+  }, [
+    conversationSearchOpen,
+    conversationSearchQuery,
+    activePhone,
+    searchMessages,
+    ensureMessageInThread,
+    scrollToMessageId,
+  ]);
+
+  useEffect(() => {
+    if (!conversationSearchOpen) return;
+    window.setTimeout(() => conversationSearchInputRef.current?.focus(), 0);
+  }, [conversationSearchOpen]);
 
   const handleIniciarConversaSuccess = useCallback(
     async (phone, name) => {
@@ -539,6 +934,8 @@ export function WhatsAppConversas() {
     [activePhone, applyMediaAttach, sending],
   );
 
+  const displayMessages = useMemo(() => enrichMessagesWithReactions(messages), [messages]);
+
   useEffect(() => {
     if (!activePhone) return;
     const conv = conversations.find((c) => normalizePhoneForApi(c.phoneNumber) === activePhone);
@@ -549,7 +946,72 @@ export function WhatsAppConversas() {
     if (nomeLista) {
       setContactName((prev) => prev || nomeLista);
     }
+    if (conv) {
+      setContactPhotoUrl(conv.contactPhotoUrl ?? null);
+    }
   }, [conversations, activePhone]);
+
+  const handleContactPhotoFileSelect = useCallback(
+    (file) => {
+      const result = handleAttachSelect(file);
+      if (!result.ok) {
+        toast.error(result.erro);
+        return;
+      }
+      if (result.categoria !== 'image') {
+        toast.error('Selecione uma imagem JPEG ou PNG.');
+        return;
+      }
+      setContactPhotoMenuOpen(false);
+      setPendingContactPhotoFile(result.file);
+    },
+    [toast],
+  );
+
+  const confirmContactPhotoUpload = useCallback(async () => {
+    if (!activePhone || !pendingContactPhotoFile || contactPhotoBusy) return;
+    const file = pendingContactPhotoFile;
+    const optimisticUrl = contactPhotoProxyUrl(activePhone);
+    setPendingContactPhotoFile(null);
+    setContactPhotoBusy(true);
+    invalidateWhatsAppContactPhotoObjectUrl(activePhone);
+    setContactPhotoUrl(optimisticUrl);
+    setConversations((prev) => updateContactPhotoInList(prev, activePhone, optimisticUrl));
+    try {
+      const res = await definirFotoContato(activePhone, file);
+      const url = res?.contactPhotoUrl || optimisticUrl;
+      invalidateWhatsAppContactPhotoObjectUrl(activePhone);
+      setContactPhotoUrl(url);
+      setConversations((prev) => updateContactPhotoInList(prev, activePhone, url));
+      toast.success('Foto atualizada.');
+    } catch (err) {
+      invalidateWhatsAppContactPhotoObjectUrl(activePhone);
+      setContactPhotoUrl(null);
+      setConversations((prev) => updateContactPhotoInList(prev, activePhone, null));
+      toast.error(err?.message || 'Erro ao definir foto.');
+      void loadConversations();
+    } finally {
+      setContactPhotoBusy(false);
+    }
+  }, [activePhone, pendingContactPhotoFile, contactPhotoBusy, toast, loadConversations]);
+
+  const removeContactPhoto = useCallback(async () => {
+    if (!activePhone || contactPhotoBusy) return;
+    setContactPhotoMenuOpen(false);
+    setContactPhotoBusy(true);
+    invalidateWhatsAppContactPhotoObjectUrl(activePhone);
+    setContactPhotoUrl(null);
+    setConversations((prev) => updateContactPhotoInList(prev, activePhone, null));
+    try {
+      await removerFotoContato(activePhone);
+      toast.success('Foto removida.');
+    } catch (err) {
+      toast.error(err?.message || 'Erro ao remover foto.');
+      void loadConversations();
+    } finally {
+      setContactPhotoBusy(false);
+    }
+  }, [activePhone, contactPhotoBusy, toast, loadConversations]);
 
   useEffect(() => {
     void loadConversations();
@@ -633,22 +1095,13 @@ export function WhatsAppConversas() {
       openedFromUrl.current = true;
       const normalized = normalizePhoneForApi(fromUrl);
       const conv = conversations.find((c) => normalizePhoneForApi(c.phoneNumber) === normalized);
-      openConversation(fromUrl, conv?.contactName, conv?.contextos);
+      openConversation(fromUrl, conv?.contactName, conv?.contextos, conv?.contactPhotoUrl);
     }
   }, [conversations, openConversation, searchParams]);
 
   useEffect(() => {
     if (messages.length && !loadingMore) scrollToBottom();
   }, [messages.length, loadingMore]);
-
-  const filteredConversations = conversations.filter((conv) => {
-    const q = query.trim().toLowerCase();
-    if (!q) return true;
-    const phone = formatPhoneDisplay(conv.phoneNumber).toLowerCase();
-    const name = String(conv.contactName ?? '').toLowerCase();
-    const digits = q.replace(/\D/g, '');
-    return name.includes(q) || phone.includes(q) || conv.phoneNumber.includes(digits);
-  });
 
   return (
     <div className="flex flex-col lg:flex-row gap-0 h-[calc(100dvh-12rem)] max-w-6xl mx-auto rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900 shadow-sm">
@@ -686,6 +1139,34 @@ export function WhatsAppConversas() {
               Arquivadas
             </button>
           </div>
+          {!showArchivedView ? (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectionMode) exitSelectionMode();
+                  else setSelectionMode(true);
+                }}
+                className={`flex-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                  selectionMode
+                    ? 'border-emerald-600 bg-emerald-50 text-emerald-800 dark:border-emerald-500 dark:bg-emerald-950/40 dark:text-emerald-200'
+                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+                }`}
+              >
+                {selectionMode ? 'Sair da seleção' : 'Selecionar'}
+              </button>
+              {selectionMode ? (
+                <button
+                  type="button"
+                  onClick={selectAllVisiblePhones}
+                  className="shrink-0 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                  title="Selecionar todas as conversas visíveis"
+                >
+                  Todas
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           <form onSubmit={handleSearch} className="flex items-center gap-2">
             <input
               type="search"
@@ -763,60 +1244,109 @@ export function WhatsAppConversas() {
           ) : (
             <ul className="divide-y divide-slate-200 dark:divide-slate-700">
               {filteredConversations.map((conv) => {
-                const selected = normalizePhoneForApi(conv.phoneNumber) === activePhone;
+                const normalizedPhone = normalizePhoneForApi(conv.phoneNumber);
+                const selected = normalizedPhone === activePhone;
                 const hasUnread = unreadCountOf(conv) > 0;
                 const isPinned = Boolean(conv.pinned);
-                return (
-                  <li key={conv.phoneNumber}>
-                    <button
-                      type="button"
-                      onClick={() => openConversation(conv.phoneNumber, conv.contactName, conv.contextos)}
-                      className={`group w-full text-left px-3 py-3 hover:bg-white dark:hover:bg-slate-800 transition-colors flex gap-2.5 ${
-                        selected ? 'bg-white dark:bg-slate-800 border-l-4 border-emerald-600' : 'border-l-4 border-transparent'
-                      } ${isPinned ? 'bg-amber-50/60 dark:bg-amber-950/20' : ''}`}
-                    >
-                      <WhatsAppContactAvatar
-                        nome={conv.contactName}
-                        telefone={conv.phoneNumber}
-                        size="sm"
-                        className="mt-0.5"
+                const isChecked = selectedPhones.has(normalizedPhone);
+                const rowClassName = `group w-full text-left px-3 py-3 hover:bg-white dark:hover:bg-slate-800 transition-colors flex gap-2.5 ${
+                  selected && !selectionMode
+                    ? 'bg-white dark:bg-slate-800 border-l-4 border-emerald-600'
+                    : 'border-l-4 border-transparent'
+                } ${isPinned && !selectionMode ? 'bg-amber-50/60 dark:bg-amber-950/20' : ''} ${
+                  selectionMode && isChecked ? 'bg-emerald-50/80 dark:bg-emerald-950/30' : ''
+                }`;
+
+                const rowContent = (
+                  <>
+                    {selectionMode ? (
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        readOnly
+                        tabIndex={-1}
+                        className="mt-2 h-4 w-4 shrink-0 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                        aria-label={`Selecionar ${tituloContato(conv.contactName, conv.phoneNumber)}`}
                       />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-2">
-                          <p
-                            className={`text-sm text-slate-900 dark:text-slate-100 truncate ${
-                              hasUnread ? 'font-semibold' : 'font-medium'
-                            }`}
-                          >
-                            {tituloContato(conv.contactName, conv.phoneNumber)}
-                          </p>
-                          <div className="flex items-center gap-1 shrink-0">
-                            {!showArchivedView ? (
-                              <WhatsAppConversationPinButton
-                                pinned={isPinned}
-                                onToggle={() => toggleConversationPin(conv.phoneNumber, isPinned)}
-                              />
-                            ) : null}
+                    ) : null}
+                    <WhatsAppContactAvatar
+                      nome={conv.contactName}
+                      telefone={conv.phoneNumber}
+                      contactPhotoUrl={conv.contactPhotoUrl}
+                      size="sm"
+                      className="mt-0.5"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <p
+                          className={`text-sm text-slate-900 dark:text-slate-100 truncate ${
+                            hasUnread ? 'font-semibold' : 'font-medium'
+                          }`}
+                        >
+                          {tituloContato(conv.contactName, conv.phoneNumber)}
+                        </p>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {!selectionMode && !showArchivedView ? (
+                            <WhatsAppConversationPinButton
+                              pinned={isPinned}
+                              onToggle={() => toggleConversationPin(conv.phoneNumber, isPinned)}
+                            />
+                          ) : null}
+                          {!selectionMode ? (
                             <WhatsAppConversationArchiveButton
                               archivedView={showArchivedView}
                               onToggle={() => toggleConversationArchive(conv.phoneNumber, !showArchivedView)}
                             />
-                            <WhatsAppUnreadBadge count={conv.unreadCount} />
-                            <span
-                              className="text-[10px] text-slate-400"
-                              title={formatDateTimeBR(conv.lastMessageAt)}
-                            >
-                              {formatRelativeConversationTime(conv.lastMessageAt)}
-                            </span>
-                          </div>
+                          ) : null}
+                          {!selectionMode && !showArchivedView ? (
+                            <WhatsAppConversationDeleteButton
+                              onDelete={() => requestDeleteConversation(conv.phoneNumber)}
+                            />
+                          ) : null}
+                          <WhatsAppUnreadBadge count={conv.unreadCount} />
+                          <span
+                            className="text-[10px] text-slate-400"
+                            title={formatDateTimeBR(conv.lastMessageAt)}
+                          >
+                            {formatRelativeConversationTime(conv.lastMessageAt)}
+                          </span>
                         </div>
-                        {String(conv.contactName ?? '').trim() ? (
-                          <p className="text-xs text-slate-500 truncate">{formatPhoneDisplay(conv.phoneNumber)}</p>
-                        ) : null}
-                        <ContextoProcessoLinha ctx={conv.contextoPrincipal} className="mt-0.5" />
-                        <p className="text-xs text-slate-500 truncate mt-0.5">{previewText(conv)}</p>
                       </div>
-                    </button>
+                      {String(conv.contactName ?? '').trim() ? (
+                        <p className="text-xs text-slate-500 truncate">{formatPhoneDisplay(conv.phoneNumber)}</p>
+                      ) : null}
+                      <ContextoProcessoLinha ctx={conv.contextoPrincipal} className="mt-0.5" />
+                      <p className="text-xs text-slate-500 truncate mt-0.5">{previewText(conv)}</p>
+                    </div>
+                  </>
+                );
+
+                return (
+                  <li key={conv.phoneNumber}>
+                    {selectionMode ? (
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => toggleSelectedPhone(conv.phoneNumber)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            toggleSelectedPhone(conv.phoneNumber);
+                          }
+                        }}
+                        className={`${rowClassName} cursor-pointer`}
+                      >
+                        {rowContent}
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => openConversation(conv.phoneNumber, conv.contactName, conv.contextos, conv.contactPhotoUrl)}
+                        className={rowClassName}
+                      >
+                        {rowContent}
+                      </button>
+                    )}
                   </li>
                 );
               })}
@@ -835,6 +1365,12 @@ export function WhatsAppConversas() {
             </div>
           ) : null}
         </div>
+        <WhatsAppConversationSelectionBar
+          selectedCount={selectionMode ? selectedPhones.size : 0}
+          actions={selectionBulkActions}
+          onCancel={exitSelectionMode}
+          busy={bulkSelectionBusy}
+        />
       </aside>
 
       <section className="flex-1 min-w-0 flex flex-col min-h-[280px]">
@@ -853,7 +1389,60 @@ export function WhatsAppConversas() {
             <div className="shrink-0 px-3 py-2 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-start gap-2.5 min-w-0 flex-1">
-                  <WhatsAppContactAvatar nome={contactName} telefone={activePhone} size="md" />
+                  <div className="relative shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setContactPhotoMenuOpen((open) => !open)}
+                      disabled={contactPhotoBusy}
+                      className="rounded-full focus:outline-none focus:ring-2 focus:ring-emerald-400 disabled:opacity-50"
+                      title="Foto do contato"
+                      aria-label="Foto do contato"
+                      aria-expanded={contactPhotoMenuOpen}
+                    >
+                      <WhatsAppContactAvatar
+                        nome={contactName}
+                        telefone={activePhone}
+                        contactPhotoUrl={contactPhotoUrl}
+                        size="md"
+                      />
+                    </button>
+                    {contactPhotoMenuOpen ? (
+                      <div className="absolute top-full left-0 z-30 mt-1 min-w-[10rem] rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800">
+                        <button
+                          type="button"
+                          onClick={() => contactPhotoFileInputRef.current?.click()}
+                          disabled={contactPhotoBusy}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-700 disabled:opacity-50"
+                        >
+                          <Camera className="h-3.5 w-3.5 shrink-0" />
+                          Definir foto
+                        </button>
+                        {contactPhotoUrl ? (
+                          <button
+                            type="button"
+                            onClick={() => void removeContactPhoto()}
+                            disabled={contactPhotoBusy}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950/40 disabled:opacity-50"
+                          >
+                            <ImageMinus className="h-3.5 w-3.5 shrink-0" />
+                            Remover foto
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    <input
+                      ref={contactPhotoFileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png"
+                      className="hidden"
+                      disabled={contactPhotoBusy}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] ?? null;
+                        e.target.value = '';
+                        if (file) handleContactPhotoFileSelect(file);
+                      }}
+                    />
+                  </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 min-w-0 flex-wrap">
                       <p className="font-medium text-slate-900 dark:text-slate-100 tabular-nums shrink-0">
@@ -870,20 +1459,89 @@ export function WhatsAppConversas() {
                     </div>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setModalVinculosAberto(true)}
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-white dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                  title="Buscar pessoas e vínculos (cód. + proc.) deste telefone"
-                >
-                  <Link2 className="h-3.5 w-3.5" />
-                  Vínculos
-                </button>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setConversationSearchOpen(true)}
+                    className={`inline-flex items-center justify-center rounded-lg border p-1.5 text-xs font-semibold hover:bg-white dark:hover:bg-slate-700 ${
+                      conversationSearchOpen
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-800 dark:border-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-200'
+                        : 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200'
+                    }`}
+                    title="Buscar no histórico da conversa"
+                    aria-label="Buscar no histórico da conversa"
+                  >
+                    <Search className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModalVinculosAberto(true)}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-white dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                    title="Buscar pessoas e vínculos (cód. + proc.) deste telefone"
+                  >
+                    <Link2 className="h-3.5 w-3.5" />
+                    Vínculos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => requestDeleteConversation(activePhone)}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300 dark:hover:bg-red-950/50"
+                    title="Apagar conversa da inbox (não apaga no WhatsApp do contato)"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Apagar
+                  </button>
+                </div>
               </div>
+              {pendingContactPhotoFile ? (
+                <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50/80 px-2.5 py-2 dark:border-emerald-900/50 dark:bg-emerald-950/30">
+                  <WhatsAppMediaAttachPreview
+                    selectedFile={pendingContactPhotoFile}
+                    onClearFile={() => setPendingContactPhotoFile(null)}
+                    disabled={contactPhotoBusy}
+                    containerClass="space-y-2"
+                  />
+                  <div className="mt-2 flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPendingContactPhotoFile(null)}
+                      disabled={contactPhotoBusy}
+                      className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-white dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800 disabled:opacity-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void confirmContactPhotoUpload()}
+                      disabled={contactPhotoBusy}
+                      className="rounded-lg bg-emerald-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-600 disabled:opacity-50"
+                    >
+                      {contactPhotoBusy ? 'Salvando…' : 'Salvar foto'}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              {conversationSearchOpen ? (
+                <ConversationMessageSearchBar
+                  query={conversationSearchQuery}
+                  onQueryChange={setConversationSearchQuery}
+                  onClose={resetConversationSearch}
+                  total={conversationSearchMatches.length}
+                  currentIndex={conversationSearchIndex}
+                  onPrev={() => goToConversationMatch('prev')}
+                  onNext={() => goToConversationMatch('next')}
+                  loading={conversationSearchLoading}
+                  inputRef={conversationSearchInputRef}
+                />
+              ) : null}
               <PainelContextoChat
                 contextos={contextosAtivos}
                 indice={indiceContexto}
                 onIndiceChange={setIndiceContexto}
+              />
+              <WhatsAppConversationGruposPanel
+                phoneNumber={activePhone}
+                onChanged={() => void recarregarGruposAbas()}
               />
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto px-3 py-4 space-y-3 bg-[#e5ddd5] dark:bg-slate-800/50">
@@ -899,8 +1557,8 @@ export function WhatsAppConversas() {
                   </button>
                 </div>
               ) : null}
-              {messages.map((msg, idx) => {
-                const prevKey = idx > 0 ? dateKeyBR(messages[idx - 1].createdAt) : null;
+              {displayMessages.map((msg, idx) => {
+                const prevKey = idx > 0 ? dateKeyBR(displayMessages[idx - 1].createdAt) : null;
                 const curKey = dateKeyBR(msg.createdAt);
                 const showDaySep = idx === 0 || curKey !== prevKey;
                 return (
@@ -910,6 +1568,9 @@ export function WhatsAppConversas() {
                       message={msg}
                       onRetryOutboundMedia={handleRetryOutboundMedia}
                       onLocalPreviewConsumed={handleLocalPreviewConsumed}
+                      highlightTerm={searchMatchIds.has(msg.id) ? searchHighlightTerm : ''}
+                      isActiveSearchMatch={msg.id != null && msg.id === activeSearchMessageId}
+                      onDeleteMessage={requestDeleteMessage}
                     />
                   </Fragment>
                 );
@@ -987,6 +1648,24 @@ export function WhatsAppConversas() {
         open={iniciarModalOpen}
         onClose={() => setIniciarModalOpen(false)}
         onSuccess={handleIniciarConversaSuccess}
+      />
+      <ConfirmDialog
+        open={Boolean(pendingDeleteMessage)}
+        title={WHATSAPP_DELETE_MESSAGE_CONFIRM.title}
+        message={WHATSAPP_DELETE_MESSAGE_CONFIRM.message}
+        confirmLabel={WHATSAPP_DELETE_MESSAGE_CONFIRM.confirmLabel}
+        onConfirm={() => void confirmDeleteMessage()}
+        onCancel={() => setPendingDeleteMessage(null)}
+        danger
+      />
+      <ConfirmDialog
+        open={Boolean(pendingDeleteConversationPhone)}
+        title={WHATSAPP_DELETE_CONVERSATION_CONFIRM.title}
+        message={WHATSAPP_DELETE_CONVERSATION_CONFIRM.message}
+        confirmLabel={WHATSAPP_DELETE_CONVERSATION_CONFIRM.confirmLabel}
+        onConfirm={() => void confirmDeleteConversation()}
+        onCancel={() => setPendingDeleteConversationPhone('')}
+        danger
       />
     </div>
   );

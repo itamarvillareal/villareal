@@ -11,6 +11,13 @@ import br.com.vilareal.whatsapp.WhatsAppMediaMimeUtil;
 import br.com.vilareal.whatsapp.WhatsAppMessageDtoMapper;
 import br.com.vilareal.whatsapp.WhatsAppMessageDirection;
 import br.com.vilareal.whatsapp.WhatsAppMessageStatus;
+import br.com.vilareal.whatsapp.dto.WhatsAppApagarConversaResultDTO;
+import br.com.vilareal.whatsapp.dto.WhatsAppArquivarConversasLoteRequest;
+import br.com.vilareal.whatsapp.dto.WhatsAppArquivarConversasLoteResultDTO;
+import br.com.vilareal.whatsapp.dto.WhatsAppFixarConversasLoteRequest;
+import br.com.vilareal.whatsapp.dto.WhatsAppFixarConversasLoteResultDTO;
+import br.com.vilareal.whatsapp.dto.WhatsAppMarcarLidasLoteRequest;
+import br.com.vilareal.whatsapp.dto.WhatsAppMarcarLidasLoteResultDTO;
 import br.com.vilareal.whatsapp.dto.CreateTemplateRequest;
 import br.com.vilareal.whatsapp.dto.IniciarTelefonesResponseDTO;
 import br.com.vilareal.whatsapp.dto.JanelaAbertaResponseDTO;
@@ -28,8 +35,10 @@ import br.com.vilareal.whatsapp.dto.SendTextRequest;
 import br.com.vilareal.whatsapp.dto.ScheduledMessageDTO;
 import br.com.vilareal.whatsapp.dto.RecentConversationDTO;
 import br.com.vilareal.whatsapp.dto.WhatsAppIaHabilitadaDTO;
+import br.com.vilareal.whatsapp.dto.WhatsAppConversaGrupoItemDTO;
 import br.com.vilareal.whatsapp.dto.WhatsAppConversationDTO;
 import br.com.vilareal.whatsapp.dto.WhatsAppMessageDTO;
+import br.com.vilareal.whatsapp.dto.WhatsAppMessageSearchResultDTO;
 import br.com.vilareal.whatsapp.dto.WhatsAppProcessoContextItemDTO;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppMessageRepository.ConversationSummaryRow;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppMessageRepository.RecentConversationRow;
@@ -41,13 +50,16 @@ import br.com.vilareal.whatsapp.infrastructure.persistence.repository.ScheduledW
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppMessageRepository;
 import br.com.vilareal.whatsapp.dto.WhatsAppTemplateDTO;
 import br.com.vilareal.whatsapp.service.WhatsAppAgendamentosFeedService;
+import br.com.vilareal.whatsapp.service.WhatsAppContactPhotoService;
 import br.com.vilareal.whatsapp.service.WhatsAppConversationArchiveService;
+import br.com.vilareal.whatsapp.service.WhatsAppConversaGrupoManualService;
 import br.com.vilareal.whatsapp.service.WhatsAppConversationPinService;
 import br.com.vilareal.whatsapp.service.WhatsAppConversationReadService;
 import br.com.vilareal.whatsapp.service.WhatsAppConversationWindowService;
 import br.com.vilareal.whatsapp.service.WhatsAppIniciarConversaService;
 import br.com.vilareal.whatsapp.service.WhatsAppConversationContextService;
 import br.com.vilareal.whatsapp.service.WhatsAppConversationFeedService;
+import br.com.vilareal.whatsapp.service.WhatsAppMessageDeleteService;
 import br.com.vilareal.whatsapp.service.WhatsAppNomeExibicaoService;
 import br.com.vilareal.whatsapp.service.WhatsAppGrupoListService;
 import br.com.vilareal.whatsapp.service.WhatsAppIAConfigService;
@@ -119,13 +131,16 @@ public class WhatsAppController {
     private final WhatsAppIAConfigService whatsAppIAConfigService;
     private final WhatsAppConversationContextService conversationContextService;
     private final WhatsAppConversationFeedService conversationFeedService;
+    private final WhatsAppMessageDeleteService messageDeleteService;
     private final WhatsAppOutboundMediaService outboundMediaService;
     private final WhatsAppConversationReadService conversationReadService;
     private final WhatsAppConversationPinService conversationPinService;
     private final WhatsAppConversationArchiveService conversationArchiveService;
+    private final WhatsAppConversaGrupoManualService conversaGrupoManualService;
     private final WhatsAppIniciarConversaService iniciarConversaService;
     private final WhatsAppConversationWindowService conversationWindowService;
     private final WhatsAppNomeExibicaoService nomeExibicaoService;
+    private final WhatsAppContactPhotoService contactPhotoService;
 
     public WhatsAppController(
             WhatsAppService whatsAppService,
@@ -140,13 +155,16 @@ public class WhatsAppController {
             WhatsAppIAConfigService whatsAppIAConfigService,
             WhatsAppConversationContextService conversationContextService,
             WhatsAppConversationFeedService conversationFeedService,
+            WhatsAppMessageDeleteService messageDeleteService,
             WhatsAppOutboundMediaService outboundMediaService,
             WhatsAppConversationReadService conversationReadService,
             WhatsAppConversationPinService conversationPinService,
             WhatsAppConversationArchiveService conversationArchiveService,
+            WhatsAppConversaGrupoManualService conversaGrupoManualService,
             WhatsAppIniciarConversaService iniciarConversaService,
             WhatsAppConversationWindowService conversationWindowService,
-            WhatsAppNomeExibicaoService nomeExibicaoService) {
+            WhatsAppNomeExibicaoService nomeExibicaoService,
+            WhatsAppContactPhotoService contactPhotoService) {
         this.whatsAppService = whatsAppService;
         this.whatsAppSchedulerService = whatsAppSchedulerService;
         this.whatsAppMessageRepository = whatsAppMessageRepository;
@@ -159,13 +177,16 @@ public class WhatsAppController {
         this.whatsAppIAConfigService = whatsAppIAConfigService;
         this.conversationContextService = conversationContextService;
         this.conversationFeedService = conversationFeedService;
+        this.messageDeleteService = messageDeleteService;
         this.outboundMediaService = outboundMediaService;
         this.conversationReadService = conversationReadService;
         this.conversationPinService = conversationPinService;
         this.conversationArchiveService = conversationArchiveService;
+        this.conversaGrupoManualService = conversaGrupoManualService;
         this.iniciarConversaService = iniciarConversaService;
         this.conversationWindowService = conversationWindowService;
         this.nomeExibicaoService = nomeExibicaoService;
+        this.contactPhotoService = contactPhotoService;
     }
 
     @GetMapping("/iniciar/telefones")
@@ -317,8 +338,9 @@ public class WhatsAppController {
         Map<String, List<WhatsAppProcessoContextItemDTO>> contextosPorTelefone =
                 conversationContextService.resolverPorTelefones(phones);
         Map<String, String> nomesCadastro = nomeExibicaoService.resolverNomesPorTelefone(phones);
+        Map<String, String> fotosPorTelefone = contactPhotoService.resolverUrlsPorTelefone(phones);
         return ResponseEntity.ok(rows.map(row -> toConversationDto(
-                row, contextosPorTelefone.getOrDefault(row.getPhoneNumber(), List.of()), nomesCadastro)));
+                row, contextosPorTelefone.getOrDefault(row.getPhoneNumber(), List.of()), nomesCadastro, fotosPorTelefone)));
     }
 
     @GetMapping("/conversations/context")
@@ -361,6 +383,14 @@ public class WhatsAppController {
         }
     }
 
+    @PostMapping("/conversations/marcar-lida-lote")
+    @Operation(summary = "Marca várias conversas como lidas (telefones inválidos são pulados)")
+    public ResponseEntity<WhatsAppMarcarLidasLoteResultDTO> marcarConversasLidasLote(
+            @RequestBody WhatsAppMarcarLidasLoteRequest body) {
+        List<String> phones = body != null && body.phones() != null ? body.phones() : List.of();
+        return ResponseEntity.ok(conversationReadService.marcarComoLidaLote(phones));
+    }
+
     @PostMapping("/conversations/{phoneNumber}/fixar")
     @Operation(summary = "Fixa conversa no topo da lista globalmente (estado interno do escritório)")
     public ResponseEntity<Void> fixarConversa(@PathVariable String phoneNumber) {
@@ -372,6 +402,14 @@ public class WhatsAppController {
         }
     }
 
+    @PostMapping("/conversations/fixar-lote")
+    @Operation(summary = "Fixa várias conversas de uma vez (telefones inválidos são pulados)")
+    public ResponseEntity<WhatsAppFixarConversasLoteResultDTO> fixarConversasLote(
+            @RequestBody WhatsAppFixarConversasLoteRequest body) {
+        List<String> phones = body != null && body.phones() != null ? body.phones() : List.of();
+        return ResponseEntity.ok(conversationPinService.fixarLote(phones));
+    }
+
     @DeleteMapping("/conversations/{phoneNumber}/fixar")
     @Operation(summary = "Remove fixação da conversa globalmente")
     public ResponseEntity<Void> desfixarConversa(@PathVariable String phoneNumber) {
@@ -381,6 +419,14 @@ public class WhatsAppController {
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
         }
+    }
+
+    @PostMapping("/conversations/arquivar-lote")
+    @Operation(summary = "Arquiva várias conversas de uma vez (telefones inválidos são pulados)")
+    public ResponseEntity<WhatsAppArquivarConversasLoteResultDTO> arquivarConversasLote(
+            @RequestBody WhatsAppArquivarConversasLoteRequest body) {
+        List<String> phones = body != null && body.phones() != null ? body.phones() : List.of();
+        return ResponseEntity.ok(conversationArchiveService.arquivarLote(phones));
     }
 
     @PostMapping("/conversations/{phoneNumber}/arquivar")
@@ -405,6 +451,38 @@ public class WhatsAppController {
         }
     }
 
+    @GetMapping("/conversations/{phoneNumber}/grupos")
+    @Operation(summary = "Grupos (clientes) efetivos da conversa — auto ± manual")
+    public ResponseEntity<List<WhatsAppConversaGrupoItemDTO>> listarGruposConversa(@PathVariable String phoneNumber) {
+        try {
+            return ResponseEntity.ok(conversaGrupoManualService.listarGrupos(phoneNumber));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @PostMapping("/conversations/{phoneNumber}/grupos/{clienteCodigo}")
+    @Operation(summary = "Incluir conversa manualmente em um grupo de cliente")
+    public ResponseEntity<List<WhatsAppConversaGrupoItemDTO>> incluirGrupoConversa(
+            @PathVariable String phoneNumber, @PathVariable String clienteCodigo) {
+        try {
+            return ResponseEntity.ok(conversaGrupoManualService.incluirManualmente(phoneNumber, clienteCodigo));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @DeleteMapping("/conversations/{phoneNumber}/grupos/{clienteCodigo}")
+    @Operation(summary = "Excluir conversa manualmente de um grupo de cliente")
+    public ResponseEntity<List<WhatsAppConversaGrupoItemDTO>> excluirGrupoConversa(
+            @PathVariable String phoneNumber, @PathVariable String clienteCodigo) {
+        try {
+            return ResponseEntity.ok(conversaGrupoManualService.excluirManualmente(phoneNumber, clienteCodigo));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
     @GetMapping("/conversations/recent")
     @Operation(summary = "Conversas recentes com mensagens recebidas (para chat flutuante)")
     public ResponseEntity<List<RecentConversationDTO>> getRecentConversations(
@@ -414,8 +492,9 @@ public class WhatsAppController {
                 whatsAppMessageRepository.findRecentConversationsWithInbound(PageRequest.of(0, safeLimit));
         List<String> phones = rows.stream().map(RecentConversationRow::getPhoneNumber).toList();
         Map<String, String> nomesCadastro = nomeExibicaoService.resolverNomesPorTelefone(phones);
+        Map<String, String> fotosPorTelefone = contactPhotoService.resolverUrlsPorTelefone(phones);
         return ResponseEntity.ok(
-                rows.stream().map(row -> toRecentConversationDto(row, nomesCadastro)).toList());
+                rows.stream().map(row -> toRecentConversationDto(row, nomesCadastro, fotosPorTelefone)).toList());
     }
 
     @GetMapping(value = "/notifications/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -441,6 +520,38 @@ public class WhatsAppController {
             @RequestParam(defaultValue = "20") int size) {
         try {
             return ResponseEntity.ok(conversationFeedService.listarMensagens(phoneNumber, PageRequest.of(page, size)));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @GetMapping("/messages/search")
+    @Operation(summary = "Buscar mensagens no histórico completo da conversa")
+    public ResponseEntity<WhatsAppMessageSearchResultDTO> searchMessages(
+            @RequestParam String phoneNumber, @RequestParam(name = "q") String termo) {
+        try {
+            return ResponseEntity.ok(conversationFeedService.buscarMensagens(phoneNumber, termo));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @DeleteMapping("/messages/{messageId}")
+    @Operation(summary = "Apaga mensagem da inbox do sistema (soft delete — não remove do WhatsApp do contato)")
+    public ResponseEntity<Void> apagarMensagem(@PathVariable Long messageId) {
+        try {
+            messageDeleteService.apagarMensagem(messageId);
+            return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @DeleteMapping("/conversations/{phoneNumber}")
+    @Operation(summary = "Apaga conversa inteira da inbox do sistema (soft delete das mensagens)")
+    public ResponseEntity<WhatsAppApagarConversaResultDTO> apagarConversa(@PathVariable String phoneNumber) {
+        try {
+            return ResponseEntity.ok(messageDeleteService.apagarConversa(phoneNumber));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
         }
@@ -672,7 +783,8 @@ public class WhatsAppController {
     private WhatsAppConversationDTO toConversationDto(
             ConversationSummaryRow row,
             List<WhatsAppProcessoContextItemDTO> contextos,
-            Map<String, String> nomesCadastro) {
+            Map<String, String> nomesCadastro,
+            Map<String, String> fotosPorTelefone) {
         String preview = previewFromRow(row);
         if (StringUtils.hasText(preview) && preview.length() > 120) {
             preview = preview.substring(0, 117) + "...";
@@ -692,7 +804,8 @@ public class WhatsAppController {
                 unreadCountOf(row.getUnreadCount()),
                 pinnedOf(row.getPinned()),
                 principal,
-                safeContextos);
+                safeContextos,
+                contactPhotoUrlOf(row.getPhoneNumber(), fotosPorTelefone));
     }
 
     private static String previewFromRow(ConversationSummaryRow row) {
@@ -721,7 +834,7 @@ public class WhatsAppController {
     }
 
     private RecentConversationDTO toRecentConversationDto(
-            RecentConversationRow row, Map<String, String> nomesCadastro) {
+            RecentConversationRow row, Map<String, String> nomesCadastro, Map<String, String> fotosPorTelefone) {
         String preview = previewFromRecentRow(row);
         if (StringUtils.hasText(preview) && preview.length() > 120) {
             preview = preview.substring(0, 117) + "...";
@@ -736,7 +849,15 @@ public class WhatsAppController {
                 row.getLastMessageAt(),
                 row.getTotalMessages() != null ? row.getTotalMessages() : 0L,
                 unreadCountOf(row.getUnreadCount()),
-                pinnedOf(row.getPinned()));
+                pinnedOf(row.getPinned()),
+                contactPhotoUrlOf(row.getPhoneNumber(), fotosPorTelefone));
+    }
+
+    private static String contactPhotoUrlOf(String phoneNumber, Map<String, String> fotosPorTelefone) {
+        if (phoneNumber == null || fotosPorTelefone == null || fotosPorTelefone.isEmpty()) {
+            return null;
+        }
+        return fotosPorTelefone.get(phoneNumber);
     }
 
     private static String previewFromRecentRow(RecentConversationRow row) {
