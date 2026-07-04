@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Loader2, X } from 'lucide-react';
 import { processosBtnPrimary, processosInputClass } from '../../processos/ProcessosAdminLayout.jsx';
+import { MessageComposePreview } from './MessageComposePreview.jsx';
 import { TemplateParamsForm, TemplateSelect } from './TemplateParamsForm.jsx';
 import { useWhatsApp } from '../hooks/useWhatsApp.js';
 import { useWhatsAppToast } from '../WhatsAppToast.jsx';
@@ -13,6 +14,7 @@ import {
 import { findWhatsAppTemplate } from '../../../data/whatsappTemplates.js';
 import { useWhatsAppTemplates } from '../hooks/useWhatsAppTemplates.js';
 import { useCloseOnEscape } from '../../../hooks/useCloseOnEscape.js';
+import { buildComposePreviewText } from '../../../utils/whatsappTemplateUtils.js';
 
 export function ScheduleModal({ open, onClose, onSuccess }) {
   const { createSchedule } = useWhatsApp();
@@ -45,6 +47,21 @@ export function ScheduleModal({ open, onClose, onSuccess }) {
       templates.find((t) => t.value === templateName) ?? findWhatsAppTemplate(templateName);
     setParams(tpl ? tpl.params.map(() => '') : []);
   }, [templateName, templates]);
+
+  const selectedTemplate = useMemo(
+    () => templates.find((t) => t.value === templateName) ?? findWhatsAppTemplate(templateName),
+    [templates, templateName],
+  );
+
+  const previewText = useMemo(
+    () =>
+      buildComposePreviewText({
+        mode: 'template',
+        template: selectedTemplate,
+        params,
+      }),
+    [selectedTemplate, params],
+  );
 
   if (!open) return null;
 
@@ -106,7 +123,7 @@ export function ScheduleModal({ open, onClose, onSuccess }) {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl dark:bg-slate-900 sm:rounded-2xl"
+        className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl dark:bg-slate-900 sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
@@ -138,6 +155,12 @@ export function ScheduleModal({ open, onClose, onSuccess }) {
             values={params}
             onChange={setParams}
             templates={templates}
+          />
+          <MessageComposePreview
+            compact
+            text={previewText}
+            templateName={templateName || null}
+            emptyHint="Selecione um template e preencha os parâmetros para ver o preview."
           />
           <div>
             <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">

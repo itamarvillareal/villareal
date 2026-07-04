@@ -25,6 +25,7 @@ export function MessageComposePreview({
   text,
   templateName,
   emptyHint = 'A mensagem aparecerá aqui conforme você preenche os campos.',
+  compact = false,
 }) {
   const timeLabel = formatPreviewTime();
   const content = String(text ?? '').trim();
@@ -32,14 +33,16 @@ export function MessageComposePreview({
 
   return (
     <aside
-      className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900 lg:sticky lg:top-4"
+      className={`rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900 ${
+        compact ? 'p-3' : 'p-4 lg:sticky lg:top-4'
+      }`}
       aria-label="Pré-visualização da mensagem"
     >
       <p className="mb-3 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
         Preview
       </p>
       <div
-        className="min-h-[220px] rounded-lg p-4"
+        className={`rounded-lg p-4 ${compact ? 'min-h-[160px]' : 'min-h-[220px]'}`}
         style={{
           backgroundColor: '#e5ddd5',
           backgroundImage:

@@ -28,6 +28,8 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
         String getLastMessageType();
 
         Instant getLastMessageAt();
+
+        Long getUnreadCount();
     }
 
     interface RecentConversationRow {
@@ -42,6 +44,8 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
         Instant getLastMessageAt();
 
         Long getTotalMessages();
+
+        Long getUnreadCount();
     }
 
     @Query(
@@ -121,7 +125,18 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                                ORDER BY w5.created_at DESC
                                LIMIT 1
                            ) AS lastMessageType,
-                           MAX(w.created_at) AS lastMessageAt
+                           MAX(w.created_at) AS lastMessageAt,
+                           (
+                               SELECT COUNT(*)
+                               FROM whatsapp_messages wi
+                               WHERE wi.phone_number = w.phone_number
+                                 AND wi.direction = 'INBOUND'
+                                 AND wi.created_at > COALESCE(
+                                     (SELECT r.last_read_at
+                                      FROM whatsapp_conversation_read r
+                                      WHERE r.phone_number = w.phone_number),
+                                     TIMESTAMP('1970-01-01 00:00:00.000'))
+                           ) AS unreadCount
                     FROM whatsapp_messages w
                     WHERE w.phone_number NOT IN (
                         SELECT wm.phone_number
@@ -185,7 +200,18 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                                LIMIT 1
                            ) AS lastMessageType,
                            MAX(w.created_at) AS lastMessageAt,
-                           COUNT(*) AS totalMessages
+                           COUNT(*) AS totalMessages,
+                           (
+                               SELECT COUNT(*)
+                               FROM whatsapp_messages wi
+                               WHERE wi.phone_number = w.phone_number
+                                 AND wi.direction = 'INBOUND'
+                                 AND wi.created_at > COALESCE(
+                                     (SELECT r.last_read_at
+                                      FROM whatsapp_conversation_read r
+                                      WHERE r.phone_number = w.phone_number),
+                                     TIMESTAMP('1970-01-01 00:00:00.000'))
+                           ) AS unreadCount
                     FROM whatsapp_messages w
                     WHERE EXISTS (
                         SELECT 1
