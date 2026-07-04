@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ExternalLink, Link2, Loader2, MessageCircle, Search, Send } from 'lucide-react';
+import { ExternalLink, Link2, Loader2, MessageCircle, MessageSquarePlus, Search, Send } from 'lucide-react';
 import { ChatBubble } from './components/ChatBubble.jsx';
 import {
   WhatsAppMediaAttachComposer,
   WhatsAppMediaSendingIndicator,
 } from './components/WhatsAppMediaAttachComposer.jsx';
+import { IniciarConversaModal } from './components/IniciarConversaModal.jsx';
 import { ModalVinculosTelefoneConversa } from './components/ModalVinculosTelefoneConversa.jsx';
 import { useWhatsApp } from './hooks/useWhatsApp.js';
 import { useWhatsAppToast } from './WhatsAppToast.jsx';
@@ -167,6 +168,7 @@ export function WhatsAppConversas() {
   const [contextosAtivos, setContextosAtivos] = useState([]);
   const [indiceContexto, setIndiceContexto] = useState(0);
   const [modalVinculosAberto, setModalVinculosAberto] = useState(false);
+  const [iniciarModalOpen, setIniciarModalOpen] = useState(false);
   const bottomRef = useRef(null);
   const openedFromUrl = useRef(false);
   const lastListInboundIdRef = useRef(null);
@@ -290,6 +292,19 @@ export function WhatsAppConversas() {
       }
     },
     [fetchPage, setSearchParams, toast, markConversationReadLocal],
+  );
+
+  const handleIniciarConversaSuccess = useCallback(
+    async (phone, name) => {
+      setIniciarModalOpen(false);
+      try {
+        await loadConversations({ silent: true });
+      } catch {
+        // lista pode estar desatualizada; conversa abre mesmo assim
+      }
+      await openConversation(phone, name);
+    },
+    [loadConversations, openConversation],
   );
 
   const handleSearch = async (e) => {
@@ -517,18 +532,28 @@ export function WhatsAppConversas() {
   return (
     <div className="flex flex-col lg:flex-row gap-0 h-[calc(100dvh-12rem)] max-w-6xl mx-auto rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900 shadow-sm">
       <aside className="w-full lg:w-80 shrink-0 flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/80">
-        <form onSubmit={handleSearch} className="flex items-center gap-2 p-3 shrink-0 border-b border-slate-200 dark:border-slate-700">
-          <input
-            type="search"
-            className={chatComposeInputClass}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar conversa ou telefone"
-          />
-          <button type="submit" className={chatComposeBtnClass} disabled={loading} title="Buscar telefone">
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+        <div className="p-3 shrink-0 border-b border-slate-200 dark:border-slate-700 space-y-2">
+          <button
+            type="button"
+            onClick={() => setIniciarModalOpen(true)}
+            className="w-full inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-emerald-700 to-green-800 hover:from-emerald-600 hover:to-green-700 shadow-md shadow-emerald-500/25 ring-1 ring-white/15 transition-all duration-150"
+          >
+            <MessageSquarePlus className="w-4 h-4" aria-hidden />
+            Nova conversa
           </button>
-        </form>
+          <form onSubmit={handleSearch} className="flex items-center gap-2">
+            <input
+              type="search"
+              className={chatComposeInputClass}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar conversa ou telefone"
+            />
+            <button type="submit" className={chatComposeBtnClass} disabled={loading} title="Buscar telefone">
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+            </button>
+          </form>
+        </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto">
           {loadingConversations ? (
@@ -741,6 +766,11 @@ export function WhatsAppConversas() {
         open={modalVinculosAberto}
         telefone={activePhone}
         onClose={() => setModalVinculosAberto(false)}
+      />
+      <IniciarConversaModal
+        open={iniciarModalOpen}
+        onClose={() => setIniciarModalOpen(false)}
+        onSuccess={handleIniciarConversaSuccess}
       />
     </div>
   );

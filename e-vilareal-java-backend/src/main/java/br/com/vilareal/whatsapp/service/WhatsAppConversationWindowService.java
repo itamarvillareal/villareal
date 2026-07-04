@@ -1,6 +1,5 @@
 package br.com.vilareal.whatsapp.service;
 
-import br.com.vilareal.whatsapp.WhatsAppMessageDirection;
 import br.com.vilareal.whatsapp.dto.JanelaAbertaResponseDTO;
 import br.com.vilareal.whatsapp.infrastructure.persistence.entity.WhatsAppMessageEntity;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppMessageRepository;

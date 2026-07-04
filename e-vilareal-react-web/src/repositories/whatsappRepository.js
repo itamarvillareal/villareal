@@ -102,10 +102,13 @@ export async function getWhatsAppScheduled(status, page = 0, size = 20, signal) 
   return request('/api/whatsapp/scheduled', { query, signal });
 }
 
-export async function sendWhatsAppText(phoneNumber, message) {
+export async function sendWhatsAppText(phoneNumber, message, opts = {}) {
+  const body = { phoneNumber, message };
+  if (opts.clienteId != null) body.clienteId = Number(opts.clienteId);
+  if (opts.processoId != null) body.processoId = Number(opts.processoId);
   return request('/api/whatsapp/send', {
     method: 'POST',
-    body: { phoneNumber, message },
+    body,
   });
 }
 
@@ -120,11 +123,34 @@ export async function sendWhatsAppMedia(phoneNumber, file, caption, opts = {}) {
   return postFormData('/api/whatsapp/send-media', fd, opts);
 }
 
-export async function sendWhatsAppTemplate(phoneNumber, templateName, languageCode, parameters) {
+export async function sendWhatsAppTemplate(
+  phoneNumber,
+  templateName,
+  languageCode,
+  parameters,
+  opts = {},
+) {
+  const body = { phoneNumber, templateName, languageCode, parameters };
+  if (opts.clienteId != null) body.clienteId = Number(opts.clienteId);
+  if (opts.processoId != null) body.processoId = Number(opts.processoId);
   return request('/api/whatsapp/send-template', {
     method: 'POST',
-    body: { phoneNumber, templateName, languageCode, parameters },
+    body,
   });
+}
+
+/** Telefones canônicos de uma pessoa/cliente para iniciar conversa. */
+export async function getTelefonesIniciarConversa({ pessoaId, clienteId } = {}, signal) {
+  const query = {};
+  if (pessoaId != null) query.pessoaId = pessoaId;
+  if (clienteId != null) query.clienteId = clienteId;
+  return request('/api/whatsapp/iniciar/telefones', { query, signal });
+}
+
+/** Janela de 24h da Meta (texto livre vs template). */
+export async function getJanelaAberta(phoneNumber, signal) {
+  const phone = encodeURIComponent(String(phoneNumber ?? '').trim());
+  return request(`/api/whatsapp/conversations/${phone}/janela-aberta`, { signal });
 }
 
 export async function createWhatsAppSchedule(data) {
