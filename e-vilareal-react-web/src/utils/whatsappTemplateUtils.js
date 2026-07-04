@@ -11,10 +11,20 @@ export function fillTemplatePreview(bodyText, exampleValues) {
   if (!bodyText) return '';
   let result = bodyText;
   detectTemplateParameters(bodyText).forEach((index, i) => {
-    const value = exampleValues[i] ?? `{{${index}}}`;
+    const trimmed = String(exampleValues[i] ?? '').trim();
+    const value = trimmed || `{{${index}}}`;
     result = result.replaceAll(`{{${index}}}`, value);
   });
   return result;
+}
+
+/** Monta o texto exibido no preview da tela Enviar mensagem. */
+export function buildComposePreviewText({ mode, message, template, params }) {
+  if (mode === 'texto') return String(message ?? '').trim();
+  if (!template) return '';
+  const body = String(template.bodyText ?? '').trim();
+  if (!body) return '';
+  return fillTemplatePreview(body, params ?? []);
 }
 
 /** Valida nome de template Meta (minúsculas, números, underscore). */
