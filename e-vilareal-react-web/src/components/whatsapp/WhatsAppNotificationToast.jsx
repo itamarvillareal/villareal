@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { useWhatsAppNotificationContext } from './WhatsAppNotificationProvider.jsx';
 import { formatPhoneDisplay } from '../../utils/whatsappFormat.js';
+import { resumoWhatsAppMessageContent } from './utils/whatsappMessagePreview.js';
 
 const MAX_VISIBLE = 3;
 const AUTO_DISMISS_MS = 5000;
@@ -14,7 +15,7 @@ function NotificationToast({ item, onDismiss, onOpen }) {
   }, [item.messageId, onDismiss]);
 
   const title = item.contactName || item.phoneNumberFormatted || formatPhoneDisplay(item.phoneNumber);
-  const preview = String(item.content ?? '').trim() || 'Nova mensagem';
+  const preview = resumoWhatsAppMessageContent(item.messageType, item.content);
 
   return (
     <button

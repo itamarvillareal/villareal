@@ -81,7 +81,10 @@ public record WhatsAppWebhookPayload(
             @JsonProperty("audio") MediaContent audio,
             @JsonProperty("video") MediaContent video,
             @JsonProperty("sticker") MediaContent sticker,
-            @JsonProperty("contacts") List<SharedContact> contacts) {}
+            @JsonProperty("contacts") List<SharedContact> contacts,
+            @JsonProperty("location") LocationContent location,
+            @JsonProperty("interactive") InteractiveContent interactive,
+            @JsonProperty("button") ButtonContent button) {}
 
     /**
      * Conteúdo textual de uma mensagem recebida.
@@ -129,6 +132,39 @@ public record WhatsAppWebhookPayload(
     @JsonIgnoreProperties(ignoreUnknown = true)
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record SharedContactEmail(@JsonProperty("email") String email, @JsonProperty("type") String type) {}
+
+    /** Localização compartilhada pelo contato. */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record LocationContent(
+            @JsonProperty("latitude") Double latitude,
+            @JsonProperty("longitude") Double longitude,
+            @JsonProperty("name") String name,
+            @JsonProperty("address") String address) {}
+
+    /** Resposta a menu/botões interativos enviados pelo business. */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record InteractiveContent(
+            @JsonProperty("type") String type,
+            @JsonProperty("button_reply") ButtonReply buttonReply,
+            @JsonProperty("list_reply") ListReply listReply) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record ButtonReply(@JsonProperty("id") String id, @JsonProperty("title") String title) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record ListReply(
+            @JsonProperty("id") String id,
+            @JsonProperty("title") String title,
+            @JsonProperty("description") String description) {}
+
+    /** Quick reply de template (legado). */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record ButtonContent(@JsonProperty("payload") String payload, @JsonProperty("text") String text) {}
 
     /**
      * Atualização de status de entrega/leitura de mensagem enviada.

@@ -4,6 +4,7 @@ import { buildAuditoriaHeaders } from '../../../services/auditoriaCliente.js';
 import { getAccessToken } from '../../../api/authTokenStorage.js';
 import { getWhatsAppUnreadCount } from '../../../repositories/whatsappRepository.js';
 import { getWhatsAppSseTabCoordinator } from '../../../utils/whatsappSseTabCoordinator.js';
+import { resumoWhatsAppMessageContent } from '../utils/whatsappMessagePreview.js';
 
 const MAX_NOTIFICATIONS = 50;
 const RECONNECT_MS = 5000;
@@ -30,7 +31,8 @@ function playNotificationSound() {
 function showBrowserNotification(data) {
   if (!('Notification' in window)) return;
   if (Notification.permission === 'granted') {
-    const body = `${data.contactName || data.phoneNumberFormatted || data.phoneNumber || 'Contato'}: ${data.content || ''}`;
+    const resumo = resumoWhatsAppMessageContent(data.messageType, data.content);
+    const body = `${data.contactName || data.phoneNumberFormatted || data.phoneNumber || 'Contato'}: ${resumo}`;
     new Notification('Nova mensagem WhatsApp', {
       body,
       icon: '/favicon.ico',

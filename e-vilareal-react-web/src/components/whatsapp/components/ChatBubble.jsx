@@ -16,6 +16,8 @@ import {
   telefoneCartaoParaApi,
   tituloContatoCartao,
 } from '../utils/whatsappContactCard.js';
+import { mapsUrl, parseLocationContent } from '../utils/whatsappLocation.js';
+import { parseInteractiveReplyContent } from '../utils/whatsappInteractiveReply.js';
 
 function MessageStatusIcon({ status }) {
   const s = String(status ?? '').toUpperCase();
@@ -506,6 +508,57 @@ function MediaBubbleContent({
   );
 }
 
+function LocationBubbleContent({ location, isOutbound }) {
+  const linkClass = isOutbound
+    ? 'text-white underline underline-offset-2 hover:text-white/90 font-semibold'
+    : 'text-emerald-700 dark:text-emerald-300 underline underline-offset-2 hover:opacity-90 font-semibold';
+
+  return (
+    <div
+      className={`rounded-lg border px-2.5 py-2 ${
+        isOutbound
+          ? 'border-white/25 bg-white/10'
+          : 'border-slate-200 dark:border-slate-600 bg-slate-50/80 dark:bg-slate-900/40'
+      }`}
+    >
+      <p className="inline-flex items-center gap-1.5 text-sm font-semibold">
+        <span aria-hidden>📍</span>
+        {location.name || 'Localização'}
+      </p>
+      {location.address ? (
+        <p className="text-xs opacity-90 mt-1 break-words">{location.address}</p>
+      ) : null}
+      <a
+        href={mapsUrl(location.latitude, location.longitude)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`inline-block text-[11px] mt-2 ${linkClass}`}
+      >
+        Ver no mapa
+      </a>
+    </div>
+  );
+}
+
+function InteractiveReplyBubbleContent({ reply }) {
+  const titulo = reply.title || reply.id || reply.payload || 'Resposta';
+  return (
+    <div className="text-sm space-y-1">
+      <p className="inline-flex items-start gap-1.5 font-medium">
+        <span className="shrink-0" aria-hidden>
+          ↩️
+        </span>
+        <span>
+          Respondeu: <span className="font-semibold">{titulo}</span>
+        </span>
+      </p>
+      {reply.description ? (
+        <p className="text-xs opacity-80 pl-6 break-words">{reply.description}</p>
+      ) : null}
+    </div>
+  );
+}
+
 function ContactBubbleContent({ message, isOutbound }) {
   const contatos = parseContactCardContent(message.content);
   const btnClass = isOutbound
@@ -585,8 +638,14 @@ export function ChatBubble({ message, onRetryOutboundMedia, onLocalPreviewConsum
   const hasTemplate = Boolean(message.templateName);
   const type = String(message.messageType ?? '').toUpperCase();
   const isContact = type === 'CONTACT';
+  const isLocation = type === 'LOCATION';
+  const isInteractive = type === 'INTERACTIVE' || type === 'BUTTON';
+  const parsedLocation = isLocation ? parseLocationContent(message.content) : null;
+  const parsedInteractive = isInteractive ? parseInteractiveReplyContent(message.content) : null;
   const isMedia =
     !isContact &&
+    !isLocation &&
+    !isInteractive &&
     (MEDIA_TYPES.includes(type) ||
       Boolean(message.mediaId) ||
       Boolean(message.localPreviewUrl) ||
@@ -600,6 +659,11 @@ export function ChatBubble({ message, onRetryOutboundMedia, onLocalPreviewConsum
     />
   ) : null;
   const contactContent = isContact ? <ContactBubbleContent message={message} isOutbound={isOutbound} /> : null;
+  const locationContent =
+    parsedLocation ? <LocationBubbleContent location={parsedLocation} isOutbound={isOutbound} /> : null;
+  const interactiveContent = parsedInteractive ? (
+    <InteractiveReplyBubbleContent reply={parsedInteractive} />
+  ) : null;
 
   return (
     <div className={`flex ${isOutbound ? 'justify-end' : 'justify-start'}`}>
@@ -619,7 +683,7 @@ export function ChatBubble({ message, onRetryOutboundMedia, onLocalPreviewConsum
             Template: {message.templateName}
           </span>
         ) : null}
-        {contactContent ?? mediaContent ?? (
+        {contactContent ?? locationContent ?? interactiveContent ?? mediaContent ?? (
           <p className="text-sm whitespace-pre-wrap break-words">{formatTemplateContent(message)}</p>
         )}
         <div className={`flex items-center justify-end gap-1 mt-1 ${isOutbound ? 'text-white/80' : 'text-slate-500'}`}>

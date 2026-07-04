@@ -14,14 +14,14 @@ import { FREE_TEXT_DELIVERY_ERROR } from '../../utils/whatsappTemplateUtils.js';
 import { isWhatsAppMediaPending, mergeMediaReady, consumirLocalPreview, revogarPreviewsLocaisEmLista } from './utils/whatsappMediaUtils.js';
 import { validarArquivoWhatsAppMedia, WHATSAPP_MEDIA_ACCEPT, categoriaAceitaCaption } from './utils/whatsappMediaSendUtils.js';
 import { useOptimisticMediaSend } from './hooks/useOptimisticMediaSend.js';
+import { resumoWhatsAppMessageContent } from './utils/whatsappMessagePreview.js';
 
 function previewConversa(conv) {
   const type = String(conv?.lastMessageType ?? '').toUpperCase();
-  if (type === 'IMAGE') return '📷 Imagem';
-  if (type === 'DOCUMENT') return '📎 Documento';
-  if (type === 'AUDIO') return '🎤 Áudio';
-  if (type === 'VIDEO') return '🎬 Vídeo';
-  return conv?.lastMessageContent || '—';
+  if (['IMAGE', 'DOCUMENT', 'AUDIO', 'VIDEO', 'CONTACT', 'LOCATION', 'INTERACTIVE', 'BUTTON'].includes(type)) {
+    return resumoWhatsAppMessageContent(type, conv?.lastMessageContent ?? conv?.lastMessagePreview);
+  }
+  return conv?.lastMessageContent || conv?.lastMessagePreview || '—';
 }
 
 function FloatingConversationList({ conversations, loading, query, onQueryChange, onSelect, onClose }) {

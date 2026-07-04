@@ -11,6 +11,7 @@ public enum WhatsAppMessageType {
     AUDIO,
     VIDEO,
     CONTACT,
+    LOCATION,
     INTERACTIVE,
     BUTTON,
     UNKNOWN

@@ -365,7 +365,7 @@ public class WhatsAppService {
         }
 
         boolean hasText = body != null && !body.isBlank();
-        boolean acionarIa = messageType != WhatsAppMessageType.CONTACT && (hasText || StringUtils.hasText(mediaId));
+        boolean acionarIa = !isMensagemEstruturadaSemIa(messageType) && (hasText || StringUtils.hasText(mediaId));
         if (acionarIa && whatsAppIAConfigService.isIaHabilitada()) {
             try {
                 String aiInput = hasText ? body : content;
@@ -397,8 +397,18 @@ public class WhatsAppService {
             case CONTACT -> body != null && !body.isBlank()
                     ? body
                     : "👤 Cartão de contato";
+            case LOCATION -> "📍 Localização";
+            case INTERACTIVE, BUTTON -> "↩️ Resposta";
             default -> "📩 Mídia recebida";
         };
+    }
+
+    /** Tipos cujo {@code content} é JSON estruturado — não enviar à IA como prompt. */
+    private static boolean isMensagemEstruturadaSemIa(WhatsAppMessageType messageType) {
+        return messageType == WhatsAppMessageType.CONTACT
+                || messageType == WhatsAppMessageType.LOCATION
+                || messageType == WhatsAppMessageType.INTERACTIVE
+                || messageType == WhatsAppMessageType.BUTTON;
     }
 
     private static String suffixFilename(String filename) {
@@ -716,6 +726,7 @@ public class WhatsAppService {
             case "audio" -> WhatsAppMessageType.AUDIO;
             case "video" -> WhatsAppMessageType.VIDEO;
             case "contacts" -> WhatsAppMessageType.CONTACT;
+            case "location" -> WhatsAppMessageType.LOCATION;
             case "sticker" -> WhatsAppMessageType.IMAGE;
             case "interactive" -> WhatsAppMessageType.INTERACTIVE;
             case "button" -> WhatsAppMessageType.BUTTON;

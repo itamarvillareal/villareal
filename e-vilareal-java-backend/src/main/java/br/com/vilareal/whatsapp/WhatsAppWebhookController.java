@@ -184,6 +184,10 @@ public class WhatsAppWebhookController {
                     }
                 }
                 case "contacts" -> body = WhatsAppContactCardSupport.toContentJson(message.contacts());
+                case "location" -> body = WhatsAppLocationSupport.toContentJson(message.location());
+                case "interactive" ->
+                        body = WhatsAppInteractiveReplySupport.toContentJson(message.interactive());
+                case "button" -> body = WhatsAppInteractiveReplySupport.toContentJson(message.button());
                 default -> { }
             }
 

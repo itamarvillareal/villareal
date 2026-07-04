@@ -17,7 +17,7 @@ import { isWhatsAppMediaPending, mergeMediaReady, consumirLocalPreview, revogarP
 import { validarArquivoWhatsAppMedia } from './utils/whatsappMediaSendUtils.js';
 import { useOptimisticMediaSend } from './hooks/useOptimisticMediaSend.js';
 import { sendWhatsAppMedia } from '../../repositories/whatsappRepository.js';
-import { resumoContactCardContent } from './utils/whatsappContactCard.js';
+import { resumoWhatsAppMessageContent } from './utils/whatsappMessagePreview.js';
 
 const PAGE_SIZE = 20;
 const CONVERSATIONS_PAGE_SIZE = 50;
@@ -33,11 +33,9 @@ const chatComposeBtnClass =
 
 function previewText(conv) {
   const type = String(conv?.lastMessageType ?? '').toUpperCase();
-  if (type === 'IMAGE') return '📷 Imagem';
-  if (type === 'DOCUMENT') return '📎 Documento';
-  if (type === 'AUDIO') return '🎤 Áudio';
-  if (type === 'VIDEO') return '🎬 Vídeo';
-  if (type === 'CONTACT') return `👤 ${resumoContactCardContent(conv?.lastMessagePreview)}`;
+  if (['IMAGE', 'DOCUMENT', 'AUDIO', 'VIDEO', 'CONTACT', 'LOCATION', 'INTERACTIVE', 'BUTTON'].includes(type)) {
+    return resumoWhatsAppMessageContent(type, conv?.lastMessagePreview);
+  }
   const raw = String(conv?.lastMessagePreview ?? '').trim();
   if (raw) return raw;
   return conv?.lastMessageDirection === 'INBOUND' ? 'Mensagem recebida' : 'Mensagem enviada';
