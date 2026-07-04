@@ -20,7 +20,7 @@ import { sendWhatsAppMedia } from '../../repositories/whatsappRepository.js';
 import { resumoWhatsAppMessageContent } from './utils/whatsappMessagePreview.js';
 import { WhatsAppContactAvatar } from './components/WhatsAppContactAvatar.jsx';
 import { WhatsAppUnreadBadge, unreadCountOf } from './components/WhatsAppUnreadBadge.jsx';
-import { marcarConversaLidaAsync, zeroUnreadInConversations } from './utils/whatsappReadUtils.js';
+import { marcarConversaLidaAsync, applyInboundToConversationList, zeroUnreadAndReportHadUnread } from './utils/whatsappReadUtils.js';
 
 const PAGE_SIZE = 20;
 const CONVERSATIONS_PAGE_SIZE = 50;
@@ -140,7 +140,8 @@ function PainelContextoChat({ contextos, indice, onIndiceChange }) {
 export function WhatsAppConversas() {
   const { getConversations, getMessages, sendText } = useWhatsApp();
   const toast = useWhatsAppToast();
-  const { clearNotifications, latestInbound, latestMediaReady } = useWhatsAppNotificationContext() ?? {};
+  const { clearNotifications, latestInbound, latestMediaReady, latestConversationRead, adjustUnreadConversations } =
+    useWhatsAppNotificationContext() ?? {};
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState('');
   const [conversations, setConversations] = useState([]);
@@ -168,6 +169,7 @@ export function WhatsAppConversas() {
   const [modalVinculosAberto, setModalVinculosAberto] = useState(false);
   const bottomRef = useRef(null);
   const openedFromUrl = useRef(false);
+  const lastListInboundIdRef = useRef(null);
 
   const scrollToBottom = () => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -242,15 +244,22 @@ export function WhatsAppConversas() {
     [getMessages],
   );
 
-  const zeroUnreadLocal = useCallback((phone) => {
-    setConversations((prev) => zeroUnreadInConversations(prev, phone));
-  }, []);
+  const markConversationReadLocal = useCallback(
+    (phone) => {
+      setConversations((prev) => {
+        const { conversations: next, hadUnread } = zeroUnreadAndReportHadUnread(prev, phone);
+        if (hadUnread) adjustUnreadConversations?.(-1);
+        return next;
+      });
+    },
+    [adjustUnreadConversations],
+  );
 
   const openConversation = useCallback(
     async (phone, nameHint = '', contextosHint = null) => {
       const normalized = normalizePhoneForApi(phone);
       if (!normalized) return;
-      zeroUnreadLocal(normalized);
+      markConversationReadLocal(normalized);
       setActivePhone(normalized);
       setContactName(nameHint || '');
       setIndiceContexto(0);
@@ -268,7 +277,7 @@ export function WhatsAppConversas() {
           }
         }
         await fetchPage(normalized, 0, false);
-        zeroUnreadLocal(normalized);
+        markConversationReadLocal(normalized);
         marcarConversaLidaAsync(normalized);
         window.setTimeout(scrollToBottom, 100);
       } catch (err) {
@@ -278,7 +287,7 @@ export function WhatsAppConversas() {
         setLoading(false);
       }
     },
-    [fetchPage, setSearchParams, toast, zeroUnreadLocal],
+    [fetchPage, setSearchParams, toast, markConversationReadLocal],
   );
 
   const handleSearch = async (e) => {
@@ -408,6 +417,28 @@ export function WhatsAppConversas() {
   }, [loadConversations, clearNotifications]);
 
   useEffect(() => {
+    if (!latestInbound?.messageId) return;
+    if (lastListInboundIdRef.current === latestInbound.messageId) return;
+    if (String(latestInbound.direction ?? '').toUpperCase() !== 'INBOUND') return;
+    lastListInboundIdRef.current = latestInbound.messageId;
+
+    setConversations((prev) => {
+      const result = applyInboundToConversationList(prev, latestInbound, activePhone);
+      if (!result.found) {
+        void loadConversations({ silent: true });
+        return prev;
+      }
+      if (result.becameUnread) adjustUnreadConversations?.(1);
+      return result.conversations;
+    });
+  }, [latestInbound, activePhone, loadConversations, adjustUnreadConversations]);
+
+  useEffect(() => {
+    if (!latestConversationRead?.phoneNumber) return;
+    markConversationReadLocal(latestConversationRead.phoneNumber);
+  }, [latestConversationRead, markConversationReadLocal]);
+
+  useEffect(() => {
     if (!latestInbound || !activePhone) return;
     if (normalizePhoneForApi(latestInbound.phoneNumber) !== activePhone) return;
     setMessages((prev) => {
@@ -425,10 +456,9 @@ export function WhatsAppConversas() {
         },
       ];
     });
-    zeroUnreadLocal(activePhone);
+    markConversationReadLocal(activePhone);
     marcarConversaLidaAsync(activePhone);
-    void loadConversations({ silent: true }).then(() => zeroUnreadLocal(activePhone));
-  }, [latestInbound, activePhone, loadConversations, zeroUnreadLocal]);
+  }, [latestInbound, activePhone, markConversationReadLocal]);
 
   useEffect(() => {
     if (!latestMediaReady?.mediaDriveUrl || !activePhone) return;

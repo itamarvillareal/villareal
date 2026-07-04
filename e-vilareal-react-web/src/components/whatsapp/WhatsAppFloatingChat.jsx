@@ -17,7 +17,7 @@ import { useOptimisticMediaSend } from './hooks/useOptimisticMediaSend.js';
 import { resumoWhatsAppMessageContent } from './utils/whatsappMessagePreview.js';
 import { WhatsAppContactAvatar } from './components/WhatsAppContactAvatar.jsx';
 import { WhatsAppUnreadBadge, unreadCountOf } from './components/WhatsAppUnreadBadge.jsx';
-import { marcarConversaLidaAsync, zeroUnreadInConversations } from './utils/whatsappReadUtils.js';
+import { marcarConversaLidaAsync, applyInboundToConversationList, zeroUnreadAndReportHadUnread, zeroUnreadInConversations } from './utils/whatsappReadUtils.js';
 
 function previewConversa(conv) {
   const type = String(conv?.lastMessageType ?? '').toUpperCase();
@@ -420,6 +420,11 @@ export function WhatsAppFloatingChat() {
   const unreadCount = ctx?.unreadCount ?? 0;
   const latestInbound = ctx?.latestInbound ?? null;
   const latestMediaReady = ctx?.latestMediaReady ?? null;
+  const latestConversationRead = ctx?.latestConversationRead ?? null;
+  const adjustUnreadConversations = ctx?.adjustUnreadConversations;
+  const lastListInboundIdRef = useRef(null);
+
+  const activePhone = selectedConversation?.phoneNumber ?? '';
 
   const loadConversations = useCallback(async () => {
     setLoadingConversations(true);
@@ -440,40 +445,49 @@ export function WhatsAppFloatingChat() {
   }, [isOpen, selectedConversation, loadConversations]);
 
   useEffect(() => {
-    if (isOpen && latestInbound) {
-      setConversations((prev) => {
-        const exists = prev.some((c) => c.phoneNumber === latestInbound.phoneNumber);
-        if (exists) {
-          return prev.map((c) =>
-            c.phoneNumber === latestInbound.phoneNumber
-              ? {
-                  ...c,
-                  lastMessageContent: latestInbound.content,
-                  lastMessageType: latestInbound.messageType,
-                  lastMessageAt: latestInbound.createdAt,
-                }
-              : c,
-          );
-        }
-        return [
-          {
-            phoneNumber: latestInbound.phoneNumber,
-            phoneNumberFormatted: latestInbound.phoneNumberFormatted,
-            contactName: latestInbound.contactName,
-            lastMessageContent: latestInbound.content,
-            lastMessageType: latestInbound.messageType,
-            lastMessageAt: latestInbound.createdAt,
-          },
-          ...prev,
-        ].slice(0, 10);
-      });
-    }
-  }, [isOpen, latestInbound]);
+    if (!isOpen || !latestInbound?.messageId) return;
+    if (lastListInboundIdRef.current === latestInbound.messageId) return;
+    if (String(latestInbound.direction ?? '').toUpperCase() !== 'INBOUND') return;
+    lastListInboundIdRef.current = latestInbound.messageId;
 
-  const handleSelectConversation = useCallback((conv) => {
-    setConversations((prev) => zeroUnreadInConversations(prev, conv.phoneNumber));
-    setSelectedConversation({ ...conv, unreadCount: 0 });
-  }, []);
+    setConversations((prev) => {
+      const result = applyInboundToConversationList(prev, latestInbound, activePhone);
+      if (!result.found) {
+        if (!selectedConversation) void loadConversations();
+        return prev;
+      }
+      if (result.becameUnread) adjustUnreadConversations?.(1);
+      return result.conversations;
+    });
+  }, [isOpen, latestInbound, activePhone, selectedConversation, loadConversations, adjustUnreadConversations]);
+
+  useEffect(() => {
+    if (!isOpen || !latestConversationRead?.phoneNumber) return;
+    setConversations((prev) => {
+      const { conversations: next, hadUnread } = zeroUnreadAndReportHadUnread(prev, latestConversationRead.phoneNumber);
+      if (hadUnread) adjustUnreadConversations?.(-1);
+      return next;
+    });
+    if (
+      selectedConversation &&
+      normalizePhoneForApi(selectedConversation.phoneNumber) ===
+        normalizePhoneForApi(latestConversationRead.phoneNumber)
+    ) {
+      setSelectedConversation((prev) => (prev ? { ...prev, unreadCount: 0 } : prev));
+    }
+  }, [isOpen, latestConversationRead, selectedConversation, adjustUnreadConversations]);
+
+  const handleSelectConversation = useCallback(
+    (conv) => {
+      setConversations((prev) => {
+        const { conversations: next, hadUnread } = zeroUnreadAndReportHadUnread(prev, conv.phoneNumber);
+        if (hadUnread) adjustUnreadConversations?.(-1);
+        return next;
+      });
+      setSelectedConversation({ ...conv, unreadCount: 0 });
+    },
+    [adjustUnreadConversations],
+  );
 
   const handleMarkConversationRead = useCallback((phone) => {
     setConversations((prev) => zeroUnreadInConversations(prev, phone));

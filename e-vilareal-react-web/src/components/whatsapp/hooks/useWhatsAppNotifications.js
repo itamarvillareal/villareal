@@ -2,12 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { API_BASE_URL } from '../../../api/config.js';
 import { buildAuditoriaHeaders } from '../../../services/auditoriaCliente.js';
 import { getAccessToken } from '../../../api/authTokenStorage.js';
-import { getWhatsAppUnreadCount } from '../../../repositories/whatsappRepository.js';
+import { getUnreadTotal } from '../../../repositories/whatsappRepository.js';
 import { getWhatsAppSseTabCoordinator } from '../../../utils/whatsappSseTabCoordinator.js';
 import { resumoWhatsAppMessageContent } from '../utils/whatsappMessagePreview.js';
 
 const MAX_NOTIFICATIONS = 50;
 const RECONNECT_MS = 5000;
+const UNREAD_REVALIDATE_MS = 60_000;
+const UNREAD_INBOUND_DEBOUNCE_MS = 800;
 
 function playNotificationSound() {
   try {
@@ -69,31 +71,62 @@ export function useWhatsAppNotifications({ enabled = true } = {}) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [latestInbound, setLatestInbound] = useState(null);
   const [latestMediaReady, setLatestMediaReady] = useState(null);
+  const [latestConversationRead, setLatestConversationRead] = useState(null);
   const abortRef = useRef(null);
   const reconnectTimerRef = useRef(null);
+  const revalidateTimerRef = useRef(null);
   const isLeaderRef = useRef(false);
   const coordinatorRef = useRef(null);
 
-  const fetchUnreadCount = useCallback(async () => {
+  const fetchUnreadTotal = useCallback(async () => {
     try {
-      const res = await getWhatsAppUnreadCount();
-      const count = Number(res?.unreadCount ?? 0);
+      const res = await getUnreadTotal();
+      const count = Number(res?.unreadConversations ?? 0);
       if (Number.isFinite(count)) setUnreadCount(count);
     } catch {
       // silencioso
     }
   }, []);
 
-  const handleInbound = useCallback((data, { playFeedback = true } = {}) => {
-    if (String(data?.direction ?? '').toUpperCase() !== 'INBOUND') return;
-    setNotifications((prev) => [data, ...prev].slice(0, MAX_NOTIFICATIONS));
-    setUnreadCount((prev) => prev + 1);
-    setLatestInbound(data);
-    if (playFeedback) {
-      playNotificationSound();
-      showBrowserNotification(data);
-    }
+  const scheduleRevalidateUnreadTotal = useCallback(() => {
+    if (revalidateTimerRef.current) window.clearTimeout(revalidateTimerRef.current);
+    revalidateTimerRef.current = window.setTimeout(() => {
+      void fetchUnreadTotal();
+    }, UNREAD_INBOUND_DEBOUNCE_MS);
+  }, [fetchUnreadTotal]);
+
+  /** Ajuste otimista do total global (nº de conversas não lidas). Revalidação periódica corrige divergência. */
+  const adjustUnreadConversations = useCallback((delta) => {
+    if (!delta) return;
+    setUnreadCount((prev) => Math.max(0, prev + delta));
   }, []);
+
+  const handleInbound = useCallback(
+    (data, { playFeedback = true } = {}) => {
+      if (String(data?.direction ?? '').toUpperCase() !== 'INBOUND') return;
+      setNotifications((prev) => [data, ...prev].slice(0, MAX_NOTIFICATIONS));
+      setLatestInbound(data);
+      scheduleRevalidateUnreadTotal();
+      if (playFeedback) {
+        playNotificationSound();
+        showBrowserNotification(data);
+      }
+    },
+    [scheduleRevalidateUnreadTotal],
+  );
+
+  const handleConversationRead = useCallback(
+    (data) => {
+      if (!data?.phoneNumber) return;
+      setLatestConversationRead({
+        phoneNumber: data.phoneNumber,
+        lastReadAt: data.lastReadAt ?? null,
+        token: Date.now(),
+      });
+      void fetchUnreadTotal();
+    },
+    [fetchUnreadTotal],
+  );
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -148,9 +181,7 @@ export function useWhatsAppNotifications({ enabled = true } = {}) {
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
           buffer = parseSseBlocks(buffer, (eventName, data) => {
-            if (eventName === 'whatsapp-message') {
-              coordinator.publishFromLeader(eventName, data);
-            } else if (eventName === 'whatsapp-media-ready') {
+            if (eventName === 'whatsapp-message' || eventName === 'whatsapp-media-ready' || eventName === 'conversation-read') {
               coordinator.publishFromLeader(eventName, data);
             }
           });
@@ -169,6 +200,8 @@ export function useWhatsAppNotifications({ enabled = true } = {}) {
         handleInbound(data, { playFeedback: !meta.fromBroadcast || isLeaderRef.current });
       } else if (eventName === 'whatsapp-media-ready') {
         setLatestMediaReady(data);
+      } else if (eventName === 'conversation-read') {
+        handleConversationRead(data);
       }
     });
 
@@ -185,7 +218,15 @@ export function useWhatsAppNotifications({ enabled = true } = {}) {
       }
     });
 
-    void fetchUnreadCount();
+    void fetchUnreadTotal();
+
+    const onFocus = () => void fetchUnreadTotal();
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void fetchUnreadTotal();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    const interval = window.setInterval(() => void fetchUnreadTotal(), UNREAD_REVALIDATE_MS);
 
     return () => {
       cancelled = true;
@@ -193,13 +234,16 @@ export function useWhatsAppNotifications({ enabled = true } = {}) {
       removeLeaderListener();
       abortRef.current?.abort();
       if (reconnectTimerRef.current) window.clearTimeout(reconnectTimerRef.current);
+      if (revalidateTimerRef.current) window.clearTimeout(revalidateTimerRef.current);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.clearInterval(interval);
       coordinator.stop();
       coordinatorRef.current = null;
     };
-  }, [enabled, fetchUnreadCount, handleInbound]);
+  }, [enabled, fetchUnreadTotal, handleConversationRead, handleInbound]);
 
   const clearNotifications = useCallback(() => {
-    setUnreadCount(0);
     setNotifications([]);
   }, []);
 
@@ -212,8 +256,10 @@ export function useWhatsAppNotifications({ enabled = true } = {}) {
     unreadCount,
     latestInbound,
     latestMediaReady,
+    latestConversationRead,
     clearNotifications,
     dismissNotification,
-    refreshUnreadCount: fetchUnreadCount,
+    refreshUnreadCount: fetchUnreadTotal,
+    adjustUnreadConversations,
   };
 }
