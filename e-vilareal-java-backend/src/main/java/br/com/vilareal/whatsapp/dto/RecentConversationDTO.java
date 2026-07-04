@@ -9,4 +9,5 @@ public record RecentConversationDTO(
         String lastMessageContent,
         String lastMessageType,
         Instant lastMessageAt,
-        long totalMessages) {}
+        long totalMessages,
+        long unreadCount) {}

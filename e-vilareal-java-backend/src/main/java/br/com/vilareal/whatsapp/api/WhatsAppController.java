@@ -34,6 +34,7 @@ import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppMe
 import br.com.vilareal.whatsapp.dto.WhatsAppTemplateDTO;
 import br.com.vilareal.whatsapp.service.WhatsAppAgendamentosFeedService;
 import br.com.vilareal.whatsapp.service.WhatsAppContactResolverService;
+import br.com.vilareal.whatsapp.service.WhatsAppConversationReadService;
 import br.com.vilareal.whatsapp.service.WhatsAppConversationContextService;
 import br.com.vilareal.whatsapp.service.WhatsAppConversationFeedService;
 import br.com.vilareal.whatsapp.service.WhatsAppIAConfigService;
@@ -102,6 +103,7 @@ public class WhatsAppController {
     private final WhatsAppConversationContextService conversationContextService;
     private final WhatsAppConversationFeedService conversationFeedService;
     private final WhatsAppOutboundMediaService outboundMediaService;
+    private final WhatsAppConversationReadService conversationReadService;
 
     public WhatsAppController(
             WhatsAppService whatsAppService,
@@ -117,7 +119,8 @@ public class WhatsAppController {
             WhatsAppIAConfigService whatsAppIAConfigService,
             WhatsAppConversationContextService conversationContextService,
             WhatsAppConversationFeedService conversationFeedService,
-            WhatsAppOutboundMediaService outboundMediaService) {
+            WhatsAppOutboundMediaService outboundMediaService,
+            WhatsAppConversationReadService conversationReadService) {
         this.whatsAppService = whatsAppService;
         this.whatsAppSchedulerService = whatsAppSchedulerService;
         this.whatsAppMessageRepository = whatsAppMessageRepository;
@@ -132,6 +135,7 @@ public class WhatsAppController {
         this.conversationContextService = conversationContextService;
         this.conversationFeedService = conversationFeedService;
         this.outboundMediaService = outboundMediaService;
+        this.conversationReadService = conversationReadService;
     }
 
     @GetMapping("/ia/habilitada")
@@ -272,6 +276,24 @@ public class WhatsAppController {
         try {
             String normalized = WhatsAppService.formatPhoneNumber(phoneNumber);
             return ResponseEntity.ok(conversationContextService.resolverContextos(normalized));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @GetMapping("/conversations/unread-total")
+    @Operation(summary = "Número de conversas com mensagens recebidas não lidas (leitura interna global)")
+    public ResponseEntity<Map<String, Long>> getConversationsUnreadTotal() {
+        long total = conversationReadService.contarConversasNaoLidas();
+        return ResponseEntity.ok(Map.of("unreadConversations", total));
+    }
+
+    @PostMapping("/conversations/{phoneNumber}/marcar-lida")
+    @Operation(summary = "Marca conversa como lida globalmente (estado interno do escritório)")
+    public ResponseEntity<Void> marcarConversaComoLida(@PathVariable String phoneNumber) {
+        try {
+            conversationReadService.marcarComoLida(phoneNumber);
+            return ResponseEntity.noContent().build();
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
         }
@@ -474,6 +496,7 @@ public class WhatsAppController {
                 row.getLastMessageDirection(),
                 row.getLastMessageType(),
                 row.getLastMessageAt(),
+                unreadCountOf(row.getUnreadCount()),
                 principal,
                 safeContextos);
     }
@@ -514,7 +537,8 @@ public class WhatsAppController {
                 preview,
                 row.getLastMessageType(),
                 row.getLastMessageAt(),
-                row.getTotalMessages() != null ? row.getTotalMessages() : 0L);
+                row.getTotalMessages() != null ? row.getTotalMessages() : 0L,
+                unreadCountOf(row.getUnreadCount()));
     }
 
     private static String previewFromRecentRow(RecentConversationRow row) {
@@ -537,6 +561,10 @@ public class WhatsAppController {
 
     private static String previewContato(String content) {
         return "👤 " + WhatsAppContactCardSupport.resumoLegivel(content);
+    }
+
+    private static long unreadCountOf(Long unreadCount) {
+        return unreadCount != null ? unreadCount : 0L;
     }
 
     private WhatsAppMessageDTO toMessageDto(WhatsAppMessageEntity entity) {

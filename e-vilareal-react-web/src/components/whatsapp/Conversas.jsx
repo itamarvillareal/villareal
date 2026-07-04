@@ -19,6 +19,8 @@ import { useOptimisticMediaSend } from './hooks/useOptimisticMediaSend.js';
 import { sendWhatsAppMedia } from '../../repositories/whatsappRepository.js';
 import { resumoWhatsAppMessageContent } from './utils/whatsappMessagePreview.js';
 import { WhatsAppContactAvatar } from './components/WhatsAppContactAvatar.jsx';
+import { WhatsAppUnreadBadge, unreadCountOf } from './components/WhatsAppUnreadBadge.jsx';
+import { marcarConversaLidaAsync, zeroUnreadInConversations } from './utils/whatsappReadUtils.js';
 
 const PAGE_SIZE = 20;
 const CONVERSATIONS_PAGE_SIZE = 50;
@@ -240,10 +242,15 @@ export function WhatsAppConversas() {
     [getMessages],
   );
 
+  const zeroUnreadLocal = useCallback((phone) => {
+    setConversations((prev) => zeroUnreadInConversations(prev, phone));
+  }, []);
+
   const openConversation = useCallback(
     async (phone, nameHint = '', contextosHint = null) => {
       const normalized = normalizePhoneForApi(phone);
       if (!normalized) return;
+      zeroUnreadLocal(normalized);
       setActivePhone(normalized);
       setContactName(nameHint || '');
       setIndiceContexto(0);
@@ -261,6 +268,8 @@ export function WhatsAppConversas() {
           }
         }
         await fetchPage(normalized, 0, false);
+        zeroUnreadLocal(normalized);
+        marcarConversaLidaAsync(normalized);
         window.setTimeout(scrollToBottom, 100);
       } catch (err) {
         toast.error(err?.message || 'Erro ao buscar mensagens.');
@@ -269,7 +278,7 @@ export function WhatsAppConversas() {
         setLoading(false);
       }
     },
-    [fetchPage, setSearchParams, toast],
+    [fetchPage, setSearchParams, toast, zeroUnreadLocal],
   );
 
   const handleSearch = async (e) => {
@@ -416,8 +425,10 @@ export function WhatsAppConversas() {
         },
       ];
     });
-    loadConversations({ silent: true });
-  }, [latestInbound, activePhone, loadConversations]);
+    zeroUnreadLocal(activePhone);
+    marcarConversaLidaAsync(activePhone);
+    void loadConversations({ silent: true }).then(() => zeroUnreadLocal(activePhone));
+  }, [latestInbound, activePhone, loadConversations, zeroUnreadLocal]);
 
   useEffect(() => {
     if (!latestMediaReady?.mediaDriveUrl || !activePhone) return;
@@ -497,6 +508,7 @@ export function WhatsAppConversas() {
             <ul className="divide-y divide-slate-200 dark:divide-slate-700">
               {filteredConversations.map((conv) => {
                 const selected = normalizePhoneForApi(conv.phoneNumber) === activePhone;
+                const hasUnread = unreadCountOf(conv) > 0;
                 return (
                   <li key={conv.phoneNumber}>
                     <button
@@ -514,10 +526,17 @@ export function WhatsAppConversas() {
                       />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between gap-2">
-                          <p className="font-medium text-sm text-slate-900 dark:text-slate-100 truncate">
+                          <p
+                            className={`text-sm text-slate-900 dark:text-slate-100 truncate ${
+                              hasUnread ? 'font-semibold' : 'font-medium'
+                            }`}
+                          >
                             {tituloContato(conv.contactName, conv.phoneNumber)}
                           </p>
-                          <span className="text-[10px] text-slate-400 shrink-0">{formatTimeBR(conv.lastMessageAt)}</span>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <WhatsAppUnreadBadge count={conv.unreadCount} />
+                            <span className="text-[10px] text-slate-400">{formatTimeBR(conv.lastMessageAt)}</span>
+                          </div>
                         </div>
                         {String(conv.contactName ?? '').trim() ? (
                           <p className="text-xs text-slate-500 truncate">{formatPhoneDisplay(conv.phoneNumber)}</p>

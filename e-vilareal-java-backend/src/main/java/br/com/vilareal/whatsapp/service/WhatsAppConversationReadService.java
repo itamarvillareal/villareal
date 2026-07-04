@@ -12,11 +12,15 @@ public class WhatsAppConversationReadService {
 
     private final WhatsAppConversationReadRepository readRepository;
     private final WhatsAppMessageRepository messageRepository;
+    private final WhatsAppNotificationService whatsAppNotificationService;
 
     public WhatsAppConversationReadService(
-            WhatsAppConversationReadRepository readRepository, WhatsAppMessageRepository messageRepository) {
+            WhatsAppConversationReadRepository readRepository,
+            WhatsAppMessageRepository messageRepository,
+            WhatsAppNotificationService whatsAppNotificationService) {
         this.readRepository = readRepository;
         this.messageRepository = messageRepository;
+        this.whatsAppNotificationService = whatsAppNotificationService;
     }
 
     /**
@@ -28,7 +32,7 @@ public class WhatsAppConversationReadService {
         String normalized = WhatsAppService.formatPhoneNumber(phoneNumber);
         Instant now = Instant.now();
         readRepository.upsertLastReadAt(normalized, now);
-        // Passo 3 (front/SSE): whatsAppNotificationService.emitConversationRead(normalized, now);
+        whatsAppNotificationService.notifyConversationRead(normalized, now);
     }
 
     @Transactional(readOnly = true)

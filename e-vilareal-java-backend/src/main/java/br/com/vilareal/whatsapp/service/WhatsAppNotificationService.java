@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -54,6 +55,15 @@ public class WhatsAppNotificationService {
                         "waMessageId", waMessageId != null ? waMessageId : "",
                         "mediaDriveUrl", mediaDriveUrl != null ? mediaDriveUrl : "",
                         "mediaFilename", mediaFilename != null ? mediaFilename : ""));
+    }
+
+    /** Broadcast quando uma conversa é marcada como lida globalmente (sync entre abas/atendentes). */
+    public void notifyConversationRead(String phoneNumber, Instant lastReadAt) {
+        broadcast(
+                "conversation-read",
+                Map.of(
+                        "phoneNumber", phoneNumber != null ? phoneNumber : "",
+                        "lastReadAt", lastReadAt != null ? lastReadAt.toString() : ""));
     }
 
     private void broadcast(String eventName, Object data) {

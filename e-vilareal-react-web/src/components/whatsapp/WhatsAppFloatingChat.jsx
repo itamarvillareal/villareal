@@ -9,13 +9,15 @@ import {
   sendWhatsAppMedia,
   sendWhatsAppText,
 } from '../../repositories/whatsappRepository.js';
-import { formatPhoneDisplay, formatTimeBR } from '../../utils/whatsappFormat.js';
+import { formatPhoneDisplay, formatTimeBR, normalizePhoneForApi } from '../../utils/whatsappFormat.js';
 import { FREE_TEXT_DELIVERY_ERROR } from '../../utils/whatsappTemplateUtils.js';
 import { isWhatsAppMediaPending, mergeMediaReady, consumirLocalPreview, revogarPreviewsLocaisEmLista } from './utils/whatsappMediaUtils.js';
 import { validarArquivoWhatsAppMedia, WHATSAPP_MEDIA_ACCEPT, categoriaAceitaCaption } from './utils/whatsappMediaSendUtils.js';
 import { useOptimisticMediaSend } from './hooks/useOptimisticMediaSend.js';
 import { resumoWhatsAppMessageContent } from './utils/whatsappMessagePreview.js';
 import { WhatsAppContactAvatar } from './components/WhatsAppContactAvatar.jsx';
+import { WhatsAppUnreadBadge, unreadCountOf } from './components/WhatsAppUnreadBadge.jsx';
+import { marcarConversaLidaAsync, zeroUnreadInConversations } from './utils/whatsappReadUtils.js';
 
 function previewConversa(conv) {
   const type = String(conv?.lastMessageType ?? '').toUpperCase();
@@ -65,7 +67,9 @@ function FloatingConversationList({ conversations, loading, query, onQueryChange
         ) : filtered.length === 0 ? (
           <p className="text-sm text-slate-500 text-center py-8 px-4">Nenhuma conversa recente.</p>
         ) : (
-          filtered.map((conv) => (
+          filtered.map((conv) => {
+            const hasUnread = unreadCountOf(conv) > 0;
+            return (
             <button
               key={conv.phoneNumber}
               type="button"
@@ -80,15 +84,23 @@ function FloatingConversationList({ conversations, loading, query, onQueryChange
               />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                  <span
+                    className={`text-sm truncate text-slate-900 dark:text-slate-100 ${
+                      hasUnread ? 'font-semibold' : 'font-medium'
+                    }`}
+                  >
                     {tituloFromNomeTelefone(conv.contactName, conv.phoneNumber)}
                   </span>
-                  <span className="text-[10px] text-slate-400 shrink-0">{formatTimeBR(conv.lastMessageAt)}</span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <WhatsAppUnreadBadge count={conv.unreadCount} />
+                    <span className="text-[10px] text-slate-400">{formatTimeBR(conv.lastMessageAt)}</span>
+                  </div>
                 </div>
                 <p className="text-xs text-slate-500 truncate mt-0.5">{previewConversa(conv)}</p>
               </div>
             </button>
-          ))
+            );
+          })
         )}
       </div>
       <div className="px-3 py-2 border-t border-slate-200 dark:border-slate-700 shrink-0">
@@ -104,7 +116,7 @@ function FloatingConversationList({ conversations, loading, query, onQueryChange
   );
 }
 
-function FloatingChatView({ conversation, onBack, onClose, latestInbound, latestMediaReady }) {
+function FloatingChatView({ conversation, onBack, onClose, latestInbound, latestMediaReady, onMarkRead }) {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState('');
@@ -158,11 +170,20 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
   }, [phone]);
 
   useEffect(() => {
-    void loadMessages();
-  }, [loadMessages]);
+    let cancelled = false;
+    void (async () => {
+      await loadMessages();
+      if (cancelled) return;
+      onMarkRead?.(phone);
+      marcarConversaLidaAsync(phone);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadMessages, phone, onMarkRead]);
 
   useEffect(() => {
-    if (!latestInbound || latestInbound.phoneNumber !== phone) return;
+    if (!latestInbound || normalizePhoneForApi(latestInbound.phoneNumber) !== normalizePhoneForApi(phone)) return;
     setMessages((prev) => {
       if (prev.some((m) => m.messageId === latestInbound.messageId || m.id === latestInbound.messageId)) {
         return prev;
@@ -180,7 +201,9 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
         },
       ];
     });
-  }, [latestInbound, phone]);
+    onMarkRead?.(phone);
+    marcarConversaLidaAsync(phone);
+  }, [latestInbound, phone, onMarkRead]);
 
   useEffect(() => {
     if (!latestMediaReady?.mediaDriveUrl) return;
@@ -447,6 +470,15 @@ export function WhatsAppFloatingChat() {
     }
   }, [isOpen, latestInbound]);
 
+  const handleSelectConversation = useCallback((conv) => {
+    setConversations((prev) => zeroUnreadInConversations(prev, conv.phoneNumber));
+    setSelectedConversation({ ...conv, unreadCount: 0 });
+  }, []);
+
+  const handleMarkConversationRead = useCallback((phone) => {
+    setConversations((prev) => zeroUnreadInConversations(prev, phone));
+  }, []);
+
   const openPanel = () => {
     ctx?.clearNotifications();
     setIsOpen(true);
@@ -485,6 +517,7 @@ export function WhatsAppFloatingChat() {
               onClose={closePanel}
               latestInbound={latestInbound}
               latestMediaReady={latestMediaReady}
+              onMarkRead={handleMarkConversationRead}
             />
           ) : (
             <FloatingConversationList
@@ -492,7 +525,7 @@ export function WhatsAppFloatingChat() {
               loading={loadingConversations}
               query={query}
               onQueryChange={setQuery}
-              onSelect={setSelectedConversation}
+              onSelect={handleSelectConversation}
               onClose={closePanel}
             />
           )}

@@ -181,6 +181,20 @@ export async function getWhatsAppUnreadCount(signal) {
   return request('/api/whatsapp/notifications/unread-count', { signal });
 }
 
+/** Marca conversa como lida globalmente (POST 204, idempotente). */
+export async function marcarConversaLida(phoneNumber) {
+  const phone = String(phoneNumber ?? '').trim();
+  if (!phone) throw new Error('Telefone ausente.');
+  return request(`/api/whatsapp/conversations/${encodeURIComponent(phone)}/marcar-lida`, {
+    method: 'POST',
+  });
+}
+
+/** Número de conversas com INBOUND não lida (leitura interna global). */
+export async function getUnreadTotal(signal) {
+  return request('/api/whatsapp/conversations/unread-total', { signal });
+}
+
 export async function getWhatsAppRecentConversations(limit = 10, signal) {
   return request('/api/whatsapp/conversations/recent', {
     query: { limit },

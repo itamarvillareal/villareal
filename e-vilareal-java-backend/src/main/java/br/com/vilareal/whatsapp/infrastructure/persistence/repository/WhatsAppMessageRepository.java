@@ -225,6 +225,25 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
             nativeQuery = true)
     List<RecentConversationRow> findRecentConversationsWithInbound(Pageable pageable);
 
+    /**
+     * Número de conversas (telefones distintos) com ao menos uma INBOUND não lida
+     * (created_at posterior a last_read_at global da conversa).
+     */
+    @Query(
+            value =
+                    """
+                    SELECT COUNT(DISTINCT wi.phone_number)
+                    FROM whatsapp_messages wi
+                    WHERE wi.direction = 'INBOUND'
+                      AND wi.created_at > COALESCE(
+                          (SELECT r.last_read_at
+                           FROM whatsapp_conversation_read r
+                           WHERE r.phone_number = wi.phone_number),
+                          TIMESTAMP('1970-01-01 00:00:00.000'))
+                    """,
+            nativeQuery = true)
+    Long countConversasComInboundNaoLido();
+
     Page<WhatsAppMessageEntity> findByPhoneNumberOrderByCreatedAtDesc(String phoneNumber, Pageable pageable);
 
     @Query(
