@@ -1,9 +1,10 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FileText, Loader2, UserRound } from 'lucide-react';
+import { AlertTriangle, FileText, Loader2, UserRound } from 'lucide-react';
 import { formatTimeBR, formatPhoneDisplay } from '../../../utils/whatsappFormat.js';
+import { reprocessarWhatsAppMedia } from '../../../repositories/whatsappRepository.js';
 import { useWhatsAppMediaUrl } from '../hooks/useWhatsAppMediaUrl.js';
-import { resolverMediaProxyUrl } from '../utils/whatsappMediaUtils.js';
+import { normalizarMediaStatus, resolverMediaProxyUrl } from '../utils/whatsappMediaUtils.js';
 import {
   baixarWhatsAppMediaViaProxy,
   navegadorReproduzAudioInline,
@@ -104,6 +105,50 @@ function MediaPendingContent({ message }) {
   );
 }
 
+function MediaFailedContent({
+  message,
+  driveUrl,
+  linkClass,
+  mediaError,
+  onRetry,
+  retrying,
+  retryError,
+}) {
+  return (
+    <div
+      className="chat-media chat-media-failed space-y-1.5"
+      title={mediaError ? String(mediaError) : undefined}
+    >
+      <span>{message.content || 'Mídia recebida'}</span>
+      <p className="text-xs flex items-start gap-1.5 opacity-90 mt-1">
+        <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500 dark:text-amber-400" aria-hidden />
+        Não foi possível baixar esta mídia.
+      </p>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+        <button
+          type="button"
+          onClick={onRetry}
+          disabled={retrying}
+          className={`text-[11px] font-semibold underline underline-offset-2 disabled:opacity-50 ${linkClass}`}
+        >
+          {retrying ? (
+            <span className="inline-flex items-center gap-1">
+              <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+              Tentando…
+            </span>
+          ) : (
+            'Tentar novamente'
+          )}
+        </button>
+        <DriveLinkTertiary driveUrl={driveUrl} linkClass={linkClass} />
+      </div>
+      {retryError ? (
+        <p className="text-[10px] opacity-70">{retryError}</p>
+      ) : null}
+    </div>
+  );
+}
+
 function MediaLoadingContent({ message }) {
   return (
     <div className="chat-media chat-media-loading">
@@ -133,6 +178,18 @@ function MediaBubbleContent({ message, isOutbound }) {
   const [audioPlayError, setAudioPlayError] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
+  const [localMediaStatus, setLocalMediaStatus] = useState(null);
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState('');
+
+  const effectiveMediaStatus = localMediaStatus ?? normalizarMediaStatus(message);
+
+  useEffect(() => {
+    const st = normalizarMediaStatus(message);
+    if (st === 'DONE' || (st === 'FAILED' && localMediaStatus !== 'PENDING')) {
+      setLocalMediaStatus(null);
+    }
+  }, [message.mediaStatus, message.mediaDriveUrl, localMediaStatus]);
 
   const { url, loading, error } = useWhatsAppMediaUrl(message);
 
@@ -157,6 +214,21 @@ function MediaBubbleContent({ message, isOutbound }) {
     }
   }, [message, mediaProxyUrl]);
 
+  const handleRetry = useCallback(async () => {
+    const id = message?.id;
+    if (id == null || id === '' || retrying) return;
+    setRetrying(true);
+    setRetryError('');
+    try {
+      await reprocessarWhatsAppMedia(id);
+      setLocalMediaStatus('PENDING');
+    } catch (err) {
+      setRetryError(err?.message || 'Não foi possível iniciar o reprocessamento.');
+    } finally {
+      setRetrying(false);
+    }
+  }, [message?.id, retrying]);
+
   const accessBar = (
     <MediaAccessBar
       message={message}
@@ -174,6 +246,19 @@ function MediaBubbleContent({ message, isOutbound }) {
 
   if (!mediaProxyUrl) {
     if (MEDIA_TYPES.includes(type) || Boolean(message.mediaId)) {
+      if (effectiveMediaStatus === 'FAILED') {
+        return (
+          <MediaFailedContent
+            message={message}
+            driveUrl={driveUrl}
+            linkClass={linkClass}
+            mediaError={message.mediaError}
+            onRetry={() => void handleRetry()}
+            retrying={retrying}
+            retryError={retryError}
+          />
+        );
+      }
       return <MediaPendingContent message={message} />;
     }
     return null;

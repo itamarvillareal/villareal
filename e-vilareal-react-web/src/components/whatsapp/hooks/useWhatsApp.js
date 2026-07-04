@@ -8,6 +8,7 @@ import {
   getWhatsAppStats,
   sendWhatsAppTemplate,
   sendWhatsAppText,
+  sendWhatsAppMedia,
 } from '../../../repositories/whatsappRepository.js';
 
 /** Camada fina sobre o repositório — mesmo contrato pedido no prompt. */
@@ -19,6 +20,7 @@ export function useWhatsApp() {
     getMessagesByCliente: getWhatsAppMessagesByCliente,
     getScheduled: getWhatsAppScheduled,
     sendText: sendWhatsAppText,
+    sendMedia: sendWhatsAppMedia,
     sendTemplate: sendWhatsAppTemplate,
     createSchedule: createWhatsAppSchedule,
     cancelSchedule: cancelWhatsAppSchedule,

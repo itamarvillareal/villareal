@@ -4,12 +4,14 @@ import br.com.vilareal.config.WhatsAppConfig;
 import br.com.vilareal.whatsapp.ScheduledMessageStatus;
 import br.com.vilareal.whatsapp.WhatsAppApiException;
 import br.com.vilareal.whatsapp.WhatsAppContactCardSupport;
+import br.com.vilareal.whatsapp.WhatsAppMediaMimeUtil;
 import br.com.vilareal.whatsapp.WhatsAppMessageDtoMapper;
 import br.com.vilareal.whatsapp.WhatsAppMessageDirection;
 import br.com.vilareal.whatsapp.WhatsAppMessageStatus;
 import br.com.vilareal.whatsapp.dto.CreateTemplateRequest;
 import br.com.vilareal.whatsapp.dto.ScheduleMessageRequest;
 import br.com.vilareal.whatsapp.dto.ScheduleMessageResponse;
+import br.com.vilareal.whatsapp.dto.SendMediaMessageResponse;
 import br.com.vilareal.whatsapp.dto.SendMessageResponse;
 import br.com.vilareal.whatsapp.dto.SendTemplateRequest;
 import br.com.vilareal.whatsapp.dto.SendTextRequest;
@@ -35,6 +37,7 @@ import br.com.vilareal.whatsapp.service.WhatsAppConversationFeedService;
 import br.com.vilareal.whatsapp.service.WhatsAppIAConfigService;
 import br.com.vilareal.whatsapp.service.WhatsAppNotificationService;
 import br.com.vilareal.whatsapp.service.WhatsAppTemplateService;
+import br.com.vilareal.whatsapp.service.WhatsAppOutboundMediaService;
 import br.com.vilareal.whatsapp.service.WhatsAppSchedulerService;
 import br.com.vilareal.whatsapp.service.WhatsAppService;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -61,7 +64,11 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -92,6 +99,7 @@ public class WhatsAppController {
     private final WhatsAppIAConfigService whatsAppIAConfigService;
     private final WhatsAppConversationContextService conversationContextService;
     private final WhatsAppConversationFeedService conversationFeedService;
+    private final WhatsAppOutboundMediaService outboundMediaService;
 
     public WhatsAppController(
             WhatsAppService whatsAppService,
@@ -106,7 +114,8 @@ public class WhatsAppController {
             WhatsAppAgendamentosFeedService agendamentosFeedService,
             WhatsAppIAConfigService whatsAppIAConfigService,
             WhatsAppConversationContextService conversationContextService,
-            WhatsAppConversationFeedService conversationFeedService) {
+            WhatsAppConversationFeedService conversationFeedService,
+            WhatsAppOutboundMediaService outboundMediaService) {
         this.whatsAppService = whatsAppService;
         this.whatsAppSchedulerService = whatsAppSchedulerService;
         this.whatsAppMessageRepository = whatsAppMessageRepository;
@@ -120,6 +129,7 @@ public class WhatsAppController {
         this.whatsAppIAConfigService = whatsAppIAConfigService;
         this.conversationContextService = conversationContextService;
         this.conversationFeedService = conversationFeedService;
+        this.outboundMediaService = outboundMediaService;
     }
 
     @GetMapping("/ia/habilitada")
@@ -148,6 +158,76 @@ public class WhatsAppController {
             return ResponseEntity.status(mapWhatsAppHttpStatus(e))
                     .body(new SendMessageResponse(false, null, e.getMessage()));
         }
+    }
+
+    @PostMapping(value = "/send-media", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Enviar mídia (imagem, documento, áudio ou vídeo)")
+    public ResponseEntity<SendMediaMessageResponse> sendMedia(
+            @RequestParam String phoneNumber,
+            @RequestParam(value = "caption", required = false) String caption,
+            @RequestParam("arquivo") MultipartFile arquivo) {
+        if (arquivo == null || arquivo.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(new SendMediaMessageResponse(false, null, null, null, "Arquivo de mídia ausente."));
+        }
+        if (!StringUtils.hasText(phoneNumber)) {
+            return ResponseEntity.badRequest()
+                    .body(new SendMediaMessageResponse(false, null, null, null, "Telefone é obrigatório."));
+        }
+
+        String filename = WhatsAppMediaMimeUtil.sanitizarFilename(arquivo.getOriginalFilename());
+        String mime = WhatsAppMediaMimeUtil.resolverMime(arquivo, filename);
+        Path tempPath = null;
+
+        try {
+            String suffix = inferirSufixoTemp(filename);
+            tempPath = Files.createTempFile("wa-out-upload-", suffix);
+            arquivo.transferTo(tempPath);
+
+            var result = outboundMediaService.enviarMidia(phoneNumber, tempPath, filename, mime, caption);
+            tempPath = null;
+
+            return ResponseEntity.ok(new SendMediaMessageResponse(
+                    true,
+                    result.messageId(),
+                    result.waMessageId(),
+                    result.mediaStatus() != null ? result.mediaStatus().name() : null,
+                    null));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest()
+                    .body(new SendMediaMessageResponse(false, null, null, null, e.getMessage()));
+        } catch (WhatsAppApiException e) {
+            return ResponseEntity.status(mapWhatsAppHttpStatus(e))
+                    .body(new SendMediaMessageResponse(false, null, null, null, e.getMessage()));
+        } catch (Exception e) {
+            log.error("Falha ao enviar mídia WhatsApp: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new SendMediaMessageResponse(
+                            false, null, null, null, "Falha ao processar envio de mídia."));
+        } finally {
+            if (tempPath != null) {
+                try {
+                    Files.deleteIfExists(tempPath);
+                } catch (Exception e) {
+                    log.warn("Falha ao remover temp de upload send-media: {}", e.getMessage());
+                }
+            }
+        }
+    }
+
+    private static String inferirSufixoTemp(String filename) {
+        if (!StringUtils.hasText(filename)) {
+            return ".bin";
+        }
+        int dot = filename.lastIndexOf('.');
+        if (dot < 0 || dot >= filename.length() - 1) {
+            return ".bin";
+        }
+        String ext = filename.substring(dot).replaceAll("[^a-zA-Z0-9.]", "");
+        if (ext.length() > 12) {
+            ext = ext.substring(0, 12);
+        }
+        return StringUtils.hasText(ext) ? ext : ".bin";
     }
 
     @PostMapping("/send-template")

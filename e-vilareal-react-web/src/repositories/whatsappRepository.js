@@ -1,4 +1,4 @@
-import { request } from '../api/httpClient.js';
+import { request, postFormData } from '../api/httpClient.js';
 import { API_BASE_URL } from '../api/config.js';
 import { buildAuditoriaHeaders } from '../services/auditoriaCliente.js';
 import { getAccessToken } from '../api/authTokenStorage.js';
@@ -42,6 +42,15 @@ export async function buscarWhatsAppMediaBlob(mediaProxyUrl, opts = {}) {
     throw new Error(await parseWhatsAppMediaError(res));
   }
   return res.blob();
+}
+
+/** Dispara reprocessamento manual de mídia inbound (POST /api/whatsapp/media/{id}/reprocessar). */
+export async function reprocessarWhatsAppMedia(messageId) {
+  const id = messageId != null ? String(messageId).trim() : '';
+  if (!id) throw new Error('ID da mensagem ausente.');
+  return request(`/api/whatsapp/media/${encodeURIComponent(id)}/reprocessar`, {
+    method: 'POST',
+  });
 }
 
 export async function getWhatsAppStats(signal) {
@@ -98,6 +107,17 @@ export async function sendWhatsAppText(phoneNumber, message) {
     method: 'POST',
     body: { phoneNumber, message },
   });
+}
+
+/** Envia mídia outbound (multipart). Retorno inclui messageId (DB) e waMessageId. */
+export async function sendWhatsAppMedia(phoneNumber, file, caption, opts = {}) {
+  if (!file) throw new Error('Arquivo ausente.');
+  const fd = new FormData();
+  fd.append('phoneNumber', String(phoneNumber ?? '').trim());
+  fd.append('arquivo', file, file.name || 'arquivo');
+  const cap = String(caption ?? '').trim();
+  if (cap) fd.append('caption', cap);
+  return postFormData('/api/whatsapp/send-media', fd, opts);
 }
 
 export async function sendWhatsAppTemplate(phoneNumber, templateName, languageCode, parameters) {

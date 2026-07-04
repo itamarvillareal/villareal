@@ -5,10 +5,20 @@ import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepos
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteWhatsAppRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaContatoRepository;
 import br.com.vilareal.whatsapp.WhatsAppApiException;
+import br.com.vilareal.whatsapp.WhatsAppMediaStatus;
 import br.com.vilareal.whatsapp.WhatsAppMessageDirection;
 import br.com.vilareal.whatsapp.WhatsAppMessageStatus;
 import br.com.vilareal.whatsapp.WhatsAppMessageType;
+import br.com.vilareal.whatsapp.WhatsAppMediaCategory;
 import br.com.vilareal.whatsapp.dto.WhatsAppErrorResponse;
+import br.com.vilareal.whatsapp.dto.WhatsAppMediaMessageRequests.AudioBody;
+import br.com.vilareal.whatsapp.dto.WhatsAppMediaMessageRequests.AudioMessageRequest;
+import br.com.vilareal.whatsapp.dto.WhatsAppMediaMessageRequests.DocumentBody;
+import br.com.vilareal.whatsapp.dto.WhatsAppMediaMessageRequests.DocumentMessageRequest;
+import br.com.vilareal.whatsapp.dto.WhatsAppMediaMessageRequests.ImageBody;
+import br.com.vilareal.whatsapp.dto.WhatsAppMediaMessageRequests.ImageMessageRequest;
+import br.com.vilareal.whatsapp.dto.WhatsAppMediaMessageRequests.VideoBody;
+import br.com.vilareal.whatsapp.dto.WhatsAppMediaMessageRequests.VideoMessageRequest;
 import br.com.vilareal.whatsapp.dto.WhatsAppNotificationDTO;
 import br.com.vilareal.whatsapp.dto.WhatsAppSendResponse;
 import br.com.vilareal.whatsapp.dto.WhatsAppTemplateMessageRequest;
@@ -41,7 +51,6 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * Envio de mensagens via WhatsApp Business Cloud API (Meta Graph).
@@ -63,7 +72,7 @@ public class WhatsAppService {
     private final CobrancaWhatsAppRepository cobrancaWhatsAppRepository;
     private final WhatsAppAIService whatsAppAIService;
     private final WhatsAppIAConfigService whatsAppIAConfigService;
-    private final WhatsAppMediaService whatsAppMediaService;
+    private final WhatsAppMediaProcessingService whatsAppMediaProcessingService;
     private final WhatsAppNotificationService whatsAppNotificationService;
     private final WhatsAppConversationContextService conversationContextService;
 
@@ -79,7 +88,7 @@ public class WhatsAppService {
             CobrancaWhatsAppRepository cobrancaWhatsAppRepository,
             @Lazy WhatsAppAIService whatsAppAIService,
             WhatsAppIAConfigService whatsAppIAConfigService,
-            WhatsAppMediaService whatsAppMediaService,
+            WhatsAppMediaProcessingService whatsAppMediaProcessingService,
             WhatsAppNotificationService whatsAppNotificationService,
             WhatsAppConversationContextService conversationContextService) {
         this.whatsAppConfig = whatsAppConfig;
@@ -92,7 +101,7 @@ public class WhatsAppService {
         this.cobrancaWhatsAppRepository = cobrancaWhatsAppRepository;
         this.whatsAppAIService = whatsAppAIService;
         this.whatsAppIAConfigService = whatsAppIAConfigService;
-        this.whatsAppMediaService = whatsAppMediaService;
+        this.whatsAppMediaProcessingService = whatsAppMediaProcessingService;
         this.whatsAppNotificationService = whatsAppNotificationService;
         this.conversationContextService = conversationContextService;
 
@@ -188,6 +197,78 @@ public class WhatsAppService {
         return sendTemplateMessage(phoneNumber, "boas_vindas_cliente", "pt_BR", List.of(nomeCliente));
     }
 
+    /**
+     * Envia mensagem de mídia referenciando {@code media_id} já obtido via upload Meta.
+     * Não persiste — use {@link #persistOutboundMediaMessage} após confirmação da Meta.
+     */
+    public WhatsAppSendResponse sendMediaMessage(
+            String phoneNumber,
+            WhatsAppMediaCategory category,
+            String mediaId,
+            String filename,
+            String caption) {
+        String formattedPhone = formatPhoneNumber(phoneNumber);
+        log.info(
+                "Enviando mídia {} para {}",
+                category.metaMessageType(),
+                maskPhoneNumber(formattedPhone));
+
+        Object request = montarMediaMessageRequest(category, formattedPhone, mediaId, filename, caption);
+        return executeSend(
+                request,
+                formattedPhone,
+                "mensagem de " + category.metaMessageType(),
+                SendContext.media(category, filename, caption));
+    }
+
+    /**
+     * Persiste mensagem outbound de mídia após envio confirmado pela Meta.
+     *
+     * @return id da linha em {@code whatsapp_messages}
+     */
+    @Transactional
+    public Long persistOutboundMediaMessage(
+            WhatsAppSendResponse response,
+            String formattedPhone,
+            WhatsAppMediaCategory category,
+            String mediaId,
+            String mime,
+            String filename,
+            String caption,
+            String contactName) {
+        String waMessageId = extractMessageId(response);
+        if (!StringUtils.hasText(waMessageId) || "desconhecido".equals(waMessageId)) {
+            throw new IllegalStateException("Resposta Meta sem waMessageId — mensagem não persistida.");
+        }
+
+        WhatsAppMessageEntity msg = new WhatsAppMessageEntity();
+        msg.setWaMessageId(waMessageId);
+        msg.setPhoneNumber(formattedPhone);
+        msg.setContactName(contactName);
+        msg.setDirection(WhatsAppMessageDirection.OUTBOUND);
+        msg.setMessageType(category.toMessageType());
+        msg.setContent(montarConteudoOutboundMedia(category, filename, caption));
+        msg.setStatus(WhatsAppMessageStatus.SENT);
+        msg.setMediaId(mediaId);
+        msg.setMediaMimeType(mime);
+        msg.setMediaFilename(filename);
+        msg.setMediaStatus(WhatsAppMediaStatus.PENDING);
+        msg.setCreatedAt(Instant.now());
+
+        try {
+            WhatsAppMessageEntity saved = whatsAppMessageRepository.save(msg);
+            log.info(
+                    "Mensagem outbound de mídia salva. ID: {}, tipo: {}, media_id: {}",
+                    saved.getId(),
+                    category,
+                    mediaId);
+            return saved.getId();
+        } catch (Exception e) {
+            log.error("Falha ao salvar mensagem outbound de mídia no banco: {}", e.getMessage());
+            throw new IllegalStateException("Falha ao persistir mensagem outbound de mídia.", e);
+        }
+    }
+
     @Transactional
     public void processInboundMessage(
             String from,
@@ -237,6 +318,9 @@ public class WhatsAppService {
         msg.setMediaId(mediaId);
         msg.setMediaMimeType(mimeType);
         msg.setMediaFilename(filename);
+        if (StringUtils.hasText(mediaId)) {
+            msg.setMediaStatus(WhatsAppMediaStatus.PENDING);
+        }
         msg.setCreatedAt(receivedAt != null ? receivedAt : Instant.now());
 
         Long clienteId = resolveClienteId(from);
@@ -276,27 +360,8 @@ public class WhatsAppService {
         }
 
         if (StringUtils.hasText(mediaId)) {
-            CompletableFuture.runAsync(() -> {
-                var savedMedia = whatsAppMediaService.downloadAndSaveMedia(
-                        mediaId, filename, mimeType, contactName, from);
-                if (savedMedia != null) {
-                    whatsAppMessageRepository.findByWaMessageId(waMessageId).ifPresent(m -> {
-                        m.setMediaDriveUrl(savedMedia.webViewLink());
-                        m.setMediaDriveFileId(savedMedia.fileId());
-                        whatsAppMessageRepository.save(m);
-                        try {
-                            whatsAppNotificationService.notifyMediaReady(
-                                    m.getId(),
-                                    from,
-                                    waMessageId,
-                                    savedMedia.webViewLink(),
-                                    m.getMediaFilename());
-                        } catch (Exception e) {
-                            log.warn("Falha ao notificar mídia pronta via SSE: {}", e.getMessage());
-                        }
-                    });
-                }
-            });
+            whatsAppMediaProcessingService.agendarProcessamentoMidia(
+                    waMessageId, mediaId, filename, mimeType, contactName, from);
         }
 
         boolean hasText = body != null && !body.isBlank();
@@ -398,6 +463,65 @@ public class WhatsAppService {
         static SendContext copiaMonitoramento() {
             return new SendContext(true, "texto", "");
         }
+
+        static SendContext media(WhatsAppMediaCategory category, String filename, String caption) {
+            String resumo = category.metaMessageType();
+            if (StringUtils.hasText(filename)) {
+                resumo += ": " + filename;
+            } else if (StringUtils.hasText(caption)) {
+                resumo += ": " + caption;
+            }
+            return new SendContext(false, "mídia", resumo);
+        }
+    }
+
+    private static Object montarMediaMessageRequest(
+            WhatsAppMediaCategory category,
+            String formattedPhone,
+            String mediaId,
+            String filename,
+            String caption) {
+        String trimmedCaption = StringUtils.hasText(caption) ? caption.trim() : null;
+        return switch (category) {
+            case IMAGE -> new ImageMessageRequest(
+                    "whatsapp",
+                    "individual",
+                    formattedPhone,
+                    "image",
+                    new ImageBody(mediaId, trimmedCaption));
+            case DOCUMENT -> new DocumentMessageRequest(
+                    "whatsapp",
+                    "individual",
+                    formattedPhone,
+                    "document",
+                    new DocumentBody(mediaId, filename, trimmedCaption));
+            case AUDIO -> new AudioMessageRequest(
+                    "whatsapp", "individual", formattedPhone, "audio", new AudioBody(mediaId));
+            case VIDEO -> new VideoMessageRequest(
+                    "whatsapp",
+                    "individual",
+                    formattedPhone,
+                    "video",
+                    new VideoBody(mediaId, trimmedCaption));
+        };
+    }
+
+    static String montarConteudoOutboundMedia(
+            WhatsAppMediaCategory category, String filename, String caption) {
+        if (StringUtils.hasText(caption)) {
+            return caption.trim();
+        }
+        return switch (category) {
+            case IMAGE -> "📷 Imagem";
+            case DOCUMENT -> {
+                if (StringUtils.hasText(filename)) {
+                    yield "📄 " + filename.trim();
+                }
+                yield "📄 Documento";
+            }
+            case AUDIO -> "🎵 Áudio";
+            case VIDEO -> "🎥 Vídeo";
+        };
     }
 
     private WhatsAppSendResponse executeSend(
@@ -639,6 +763,11 @@ public class WhatsAppService {
         }
         WhatsAppSendResponse.Message message = response.messages().getFirst();
         return message.id() != null ? message.id() : "desconhecido";
+    }
+
+    /** Exposto para serviços de orquestração outbound (ex.: resultado de envio de mídia). */
+    public static String extractMessageIdPublic(WhatsAppSendResponse response) {
+        return extractMessageId(response);
     }
 
     public static String formatPhoneNumber(String phone) {

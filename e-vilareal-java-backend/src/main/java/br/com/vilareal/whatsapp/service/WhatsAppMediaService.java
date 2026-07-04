@@ -3,7 +3,7 @@ package br.com.vilareal.whatsapp.service;
 import br.com.vilareal.config.WhatsAppConfig;
 import br.com.vilareal.documento.DriveArquivoDto;
 import br.com.vilareal.documento.GoogleDriveService;
-import br.com.vilareal.whatsapp.dto.WhatsAppMediaSaveResult;
+import br.com.vilareal.whatsapp.dto.WhatsAppMediaDownloadResult;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.slf4j.Logger;
@@ -13,6 +13,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicReference;
@@ -26,6 +27,7 @@ public class WhatsAppMediaService {
     private static final Logger log = LoggerFactory.getLogger(WhatsAppMediaService.class);
     private static final String PASTA_WHATSAPP = "WhatsApp";
     private static final String PASTA_RECEBIDOS = "Recebidos";
+    private static final String PASTA_ENVIADOS = "Enviados";
     /** Limite conservador — upload sanitiza de novo; Drive aceita até 255. */
     private static final int MAX_NOME_ARQUIVO = 240;
 
@@ -33,6 +35,7 @@ public class WhatsAppMediaService {
     private final RestClient restClient;
     private final GoogleDriveService googleDriveService;
     private final AtomicReference<String> pastaRecebidosId = new AtomicReference<>();
+    private final AtomicReference<String> pastaEnviadosId = new AtomicReference<>();
 
     public WhatsAppMediaService(
             WhatsAppConfig whatsAppConfig, RestClient.Builder restClientBuilder, GoogleDriveService googleDriveService) {
@@ -52,17 +55,15 @@ public class WhatsAppMediaService {
 
     /**
      * Baixa mídia do WhatsApp e salva no Google Drive (idempotente por {@code mediaId} na pasta do contato).
-     *
-     * @return webViewLink e fileId do Drive, ou null se falhar
      */
-    public WhatsAppMediaSaveResult downloadAndSaveMedia(
+    public WhatsAppMediaDownloadResult downloadAndSaveMedia(
             String mediaId, String filename, String mimeType, String contactName, String phoneNumber) {
         if (!StringUtils.hasText(mediaId)) {
-            return null;
+            return WhatsAppMediaDownloadResult.Falha.permanente("media_id_ausente");
         }
         if (!googleDriveService.isConfigurado()) {
-            log.warn("Google Drive não configurado — mídia WhatsApp {} não será salva", mediaId);
-            return null;
+            log.warn("Google Drive não configurado — mídia WhatsApp {} aguardará reprocessamento", mediaId);
+            return WhatsAppMediaDownloadResult.Falha.driveNaoConfigurado();
         }
 
         try {
@@ -72,7 +73,7 @@ public class WhatsAppMediaService {
 
             // Dedupe por media_id: mesma pasta + mesmo nome determinístico → reutilizar sem baixar da Meta.
             // Risco de corrida: dois workers simultâneos podem ambos não encontrar o arquivo e subir
-            // duplicata — mitigação completa nos Passos 3/4 (status de processamento + ShedLock no job).
+            // duplicata — mitigação completa nos Passos 3/4 (status + ShedLock no job).
             DriveArquivoDto existente = googleDriveService.buscarArquivoPorNomeNaPasta(pastaId, nomeArquivo);
             if (existente != null
                     && StringUtils.hasText(existente.webViewLink())
@@ -82,33 +83,30 @@ public class WhatsAppMediaService {
                         mediaId,
                         existente.webViewLink(),
                         existente.id());
-                return new WhatsAppMediaSaveResult(existente.webViewLink(), existente.id());
+                return new WhatsAppMediaDownloadResult.Sucesso(existente.webViewLink(), existente.id());
             }
 
-            WhatsAppMediaInfo info = restClient
-                    .get()
-                    .uri("/{mediaId}", mediaId)
-                    .retrieve()
-                    .body(WhatsAppMediaInfo.class);
+            WhatsAppMediaInfo metaResult = buscarInfoMeta(mediaId);
+            if (metaResult instanceof MetaFetchFailure failure) {
+                return failure.result();
+            }
+            WhatsAppMediaInfoRecord infoRecord = ((MetaFetchSuccess) metaResult).info();
 
-            if (info == null || !StringUtils.hasText(info.url())) {
+            if (infoRecord == null || !StringUtils.hasText(infoRecord.url())) {
                 log.warn("URL de download ausente para mídia WhatsApp {}", mediaId);
-                return null;
+                return WhatsAppMediaDownloadResult.Falha.transitoria("meta_info_indisponivel");
             }
 
-            byte[] fileBytes = restClient
-                    .get()
-                    .uri(info.url())
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + whatsAppConfig.getAccessToken())
-                    .retrieve()
-                    .body(byte[].class);
-
-            if (fileBytes == null || fileBytes.length == 0) {
+            byte[] fileBytes = baixarBytesMeta(infoRecord.url(), mediaId);
+            if (fileBytes == null) {
+                return WhatsAppMediaDownloadResult.Falha.transitoria("download_vazio");
+            }
+            if (fileBytes.length == 0) {
                 log.warn("Download vazio para mídia WhatsApp {}", mediaId);
-                return null;
+                return WhatsAppMediaDownloadResult.Falha.transitoria("download_vazio");
             }
 
-            String effectiveMime = StringUtils.hasText(mimeType) ? mimeType : info.mimeType();
+            String effectiveMime = StringUtils.hasText(mimeType) ? mimeType : infoRecord.mimeType();
 
             DriveArquivoDto uploaded =
                     googleDriveService.uploadArquivo(fileBytes, nomeArquivo, effectiveMime, pastaId);
@@ -116,7 +114,7 @@ public class WhatsAppMediaService {
                     || !StringUtils.hasText(uploaded.webViewLink())
                     || !StringUtils.hasText(uploaded.id())) {
                 log.warn("Falha ao enviar mídia WhatsApp {} para o Drive", mediaId);
-                return null;
+                return WhatsAppMediaDownloadResult.Falha.transitoria("drive_falha");
             }
 
             log.info(
@@ -124,27 +122,135 @@ public class WhatsAppMediaService {
                     nomeArquivo,
                     uploaded.webViewLink(),
                     uploaded.id());
-            return new WhatsAppMediaSaveResult(uploaded.webViewLink(), uploaded.id());
+            return new WhatsAppMediaDownloadResult.Sucesso(uploaded.webViewLink(), uploaded.id());
         } catch (Exception e) {
             log.error("Erro ao baixar/salvar mídia WhatsApp {}: {}", mediaId, e.getMessage());
+            return WhatsAppMediaDownloadResult.Falha.transitoria("excecao:" + e.getClass().getSimpleName());
+        }
+    }
+
+    /**
+     * Salva mídia outbound a partir de arquivo staged (sem download Meta) em {@code WhatsApp/Enviados/{contato}/}.
+     */
+    public WhatsAppMediaDownloadResult saveOutboundMediaFromFile(
+            java.nio.file.Path filePath,
+            String mediaId,
+            String filename,
+            String mimeType,
+            String contactName,
+            String phoneNumber) {
+        if (!StringUtils.hasText(mediaId)) {
+            return WhatsAppMediaDownloadResult.Falha.permanente("media_id_ausente");
+        }
+        if (filePath == null || !java.nio.file.Files.isRegularFile(filePath)) {
+            return WhatsAppMediaDownloadResult.Falha.permanente("staging_ausente");
+        }
+        if (!googleDriveService.isConfigurado()) {
+            log.warn("Google Drive não configurado — mídia outbound {} não será exibida inline", mediaId);
+            return WhatsAppMediaDownloadResult.Falha.permanente("drive_nao_configurado");
+        }
+
+        try {
+            String mimeParaNome = StringUtils.hasText(mimeType) ? mimeType : "application/octet-stream";
+            String nomeArquivo = montarNomeArquivoDeterministico(mediaId, filename, mimeParaNome);
+            String pastaId = resolverPastaEnviados(phoneNumber, contactName);
+
+            DriveArquivoDto existente = googleDriveService.buscarArquivoPorNomeNaPasta(pastaId, nomeArquivo);
+            if (existente != null
+                    && StringUtils.hasText(existente.webViewLink())
+                    && StringUtils.hasText(existente.id())) {
+                log.info(
+                        "Mídia outbound {} já existe no Drive (Enviados), reutilizando: {}",
+                        mediaId,
+                        existente.webViewLink());
+                return new WhatsAppMediaDownloadResult.Sucesso(existente.webViewLink(), existente.id());
+            }
+
+            String effectiveMime = mimeParaNome;
+            DriveArquivoDto uploaded =
+                    googleDriveService.uploadArquivoFromPath(filePath, nomeArquivo, effectiveMime, pastaId);
+            if (uploaded == null
+                    || !StringUtils.hasText(uploaded.webViewLink())
+                    || !StringUtils.hasText(uploaded.id())) {
+                log.warn("Falha ao enviar mídia outbound {} para o Drive (Enviados)", mediaId);
+                return WhatsAppMediaDownloadResult.Falha.permanente("drive_falha");
+            }
+
+            log.info(
+                    "Mídia outbound salva no Drive (Enviados): {} → {} (fileId={})",
+                    nomeArquivo,
+                    uploaded.webViewLink(),
+                    uploaded.id());
+            return new WhatsAppMediaDownloadResult.Sucesso(uploaded.webViewLink(), uploaded.id());
+        } catch (Exception e) {
+            log.error("Erro ao salvar mídia outbound {} no Drive: {}", mediaId, e.getMessage());
+            return WhatsAppMediaDownloadResult.Falha.permanente("excecao:" + e.getClass().getSimpleName());
+        }
+    }
+
+    private WhatsAppMediaInfo buscarInfoMeta(String mediaId) {
+        try {
+            WhatsAppMediaInfoRecord body = restClient
+                    .get()
+                    .uri("/{mediaId}", mediaId)
+                    .retrieve()
+                    .body(WhatsAppMediaInfoRecord.class);
+            return new MetaFetchSuccess(body);
+        } catch (RestClientResponseException e) {
+            int status = e.getStatusCode().value();
+            log.warn("Meta GET /{} retornou HTTP {}: {}", mediaId, status, e.getMessage());
+            if (status == 404 || status == 410) {
+                return new MetaFetchFailure(WhatsAppMediaDownloadResult.Falha.permanente("meta_info_indisponivel"));
+            }
+            return new MetaFetchFailure(WhatsAppMediaDownloadResult.Falha.transitoria("meta_info_indisponivel"));
+        }
+    }
+
+    private byte[] baixarBytesMeta(String url, String mediaId) {
+        try {
+            return restClient
+                    .get()
+                    .uri(url)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + whatsAppConfig.getAccessToken())
+                    .retrieve()
+                    .body(byte[].class);
+        } catch (RestClientResponseException e) {
+            int status = e.getStatusCode().value();
+            log.warn("Meta download bytes mediaId={} HTTP {}: {}", mediaId, status, e.getMessage());
             return null;
         }
     }
 
+    private sealed interface WhatsAppMediaInfo permits MetaFetchSuccess, MetaFetchFailure {}
+
+    private record MetaFetchSuccess(WhatsAppMediaInfoRecord info) implements WhatsAppMediaInfo {}
+
+    private record MetaFetchFailure(WhatsAppMediaDownloadResult.Falha result) implements WhatsAppMediaInfo {}
+
     private String resolverPastaRecebidos(String phoneNumber, String contactName) throws Exception {
-        String cached = pastaRecebidosId.get();
+        return resolverPastaPorTipo(PASTA_RECEBIDOS, pastaRecebidosId, phoneNumber, contactName);
+    }
+
+    /** Pasta {@code WhatsApp/Enviados/{contato}/} para mídia outbound. */
+    public String resolverPastaEnviados(String phoneNumber, String contactName) throws Exception {
+        return resolverPastaPorTipo(PASTA_ENVIADOS, pastaEnviadosId, phoneNumber, contactName);
+    }
+
+    private String resolverPastaPorTipo(
+            String tipoPasta, AtomicReference<String> cache, String phoneNumber, String contactName)
+            throws Exception {
+        String cached = cache.get();
+        String subpasta = montarNomeSubpasta(phoneNumber, contactName);
         if (StringUtils.hasText(cached)) {
-            String subpasta = montarNomeSubpasta(phoneNumber, contactName);
             return googleDriveService.encontrarOuCriarPastaPublic(subpasta, cached);
         }
 
         String rootId = googleDriveService.getRootFolderId();
         String whatsAppFolderId = googleDriveService.encontrarOuCriarPastaPublic(PASTA_WHATSAPP, rootId);
-        String recebidosId = googleDriveService.encontrarOuCriarPastaPublic(PASTA_RECEBIDOS, whatsAppFolderId);
-        pastaRecebidosId.compareAndSet(null, recebidosId);
+        String tipoId = googleDriveService.encontrarOuCriarPastaPublic(tipoPasta, whatsAppFolderId);
+        cache.compareAndSet(null, tipoId);
 
-        String subpasta = montarNomeSubpasta(phoneNumber, contactName);
-        return googleDriveService.encontrarOuCriarPastaPublic(subpasta, recebidosId);
+        return googleDriveService.encontrarOuCriarPastaPublic(subpasta, tipoId);
     }
 
     private static String montarNomeSubpasta(String phoneNumber, String contactName) {
@@ -239,7 +345,7 @@ public class WhatsAppMediaService {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    private record WhatsAppMediaInfo(
+    private record WhatsAppMediaInfoRecord(
             @JsonProperty("url") String url,
             @JsonProperty("mime_type") String mimeType,
             @JsonProperty("sha256") String sha256,

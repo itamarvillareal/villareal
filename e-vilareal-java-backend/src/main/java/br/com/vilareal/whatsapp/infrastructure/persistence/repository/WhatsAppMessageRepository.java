@@ -1,7 +1,8 @@
 package br.com.vilareal.whatsapp.infrastructure.persistence.repository;
 
-import br.com.vilareal.whatsapp.WhatsAppMessageStatus;
+import br.com.vilareal.whatsapp.WhatsAppMediaStatus;
 import br.com.vilareal.whatsapp.WhatsAppMessageDirection;
+import br.com.vilareal.whatsapp.WhatsAppMessageStatus;
 import br.com.vilareal.whatsapp.infrastructure.persistence.entity.WhatsAppMessageEntity;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -227,4 +228,25 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
     long countByDirectionAndCreatedAtAfter(WhatsAppMessageDirection direction, Instant after);
 
     long countByStatusAndCreatedAtAfter(WhatsAppMessageStatus status, Instant after);
+
+    /**
+     * Mídia inbound recuperável — apenas {@link WhatsAppMediaStatus#PENDING} (opção A: FAILED não retenta).
+     * Restrito a {@link WhatsAppMessageDirection#INBOUND} — outbound tem fluxo Drive próprio (Fatia 3).
+     * Usa índice {@code (media_status, created_at)}.
+     */
+    @Query(
+            """
+            SELECT m FROM WhatsAppMessageEntity m
+            WHERE m.mediaId IS NOT NULL
+              AND m.mediaId <> ''
+              AND m.mediaStatus = :status
+              AND m.direction = :direction
+              AND (m.mediaLastAttemptAt IS NULL OR m.mediaLastAttemptAt < :tentativaAntesDe)
+            ORDER BY m.createdAt ASC
+            """)
+    List<WhatsAppMessageEntity> findMidiaPendenteParaReprocessamento(
+            @Param("status") WhatsAppMediaStatus status,
+            @Param("direction") WhatsAppMessageDirection direction,
+            @Param("tentativaAntesDe") Instant tentativaAntesDe,
+            Pageable pageable);
 }

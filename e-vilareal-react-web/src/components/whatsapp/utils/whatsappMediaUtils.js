@@ -5,6 +5,15 @@ export function isWhatsAppMediaMessage(message) {
   return MEDIA_TYPES.includes(type) || Boolean(message?.mediaId);
 }
 
+export function normalizarMediaStatus(message) {
+  return String(message?.mediaStatus ?? '').toUpperCase();
+}
+
+export function isWhatsAppMediaFailed(message) {
+  if (!isWhatsAppMediaMessage(message)) return false;
+  return normalizarMediaStatus(message) === 'FAILED';
+}
+
 /** URL do proxy inline — só quando o Drive já tem o arquivo (senão 404 no backend). */
 export function resolverMediaProxyUrl(message) {
   if (!message?.mediaDriveUrl) return null;
@@ -16,7 +25,11 @@ export function resolverMediaProxyUrl(message) {
 }
 
 export function isWhatsAppMediaPending(message) {
-  return isWhatsAppMediaMessage(message) && !message?.mediaDriveUrl;
+  if (!isWhatsAppMediaMessage(message)) return false;
+  if (message?.mediaDriveUrl) return false;
+  const st = normalizarMediaStatus(message);
+  if (st === 'FAILED' || st === 'DONE') return false;
+  return true;
 }
 
 export function mergeMediaReady(messages, event) {
@@ -32,10 +45,24 @@ export function mergeMediaReady(messages, event) {
       ...m,
       mediaDriveUrl: event.mediaDriveUrl,
       mediaFilename: event.mediaFilename || m.mediaFilename,
+      mediaStatus: 'DONE',
+      mediaError: null,
     };
     return {
       ...next,
       mediaProxyUrl: resolverMediaProxyUrl(next),
     };
   });
+}
+
+/** Atualização otimista após "Tentar novamente". */
+export function marcarMidiaReprocessando(message) {
+  if (!message) return message;
+  return {
+    ...message,
+    mediaStatus: 'PENDING',
+    mediaError: null,
+    mediaDriveUrl: null,
+    mediaProxyUrl: null,
+  };
 }

@@ -2,6 +2,7 @@ package br.com.vilareal.documento;
 
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.http.ByteArrayContent;
+import com.google.api.client.http.FileContent;
 import com.google.api.client.http.HttpRequestInitializer;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.services.drive.Drive;
@@ -27,6 +28,8 @@ import org.springframework.util.StringUtils;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -698,6 +701,43 @@ public class GoogleDriveService {
             } else {
                 log.warn("Erro ao enviar arquivo ao Google Drive ({}): {}", nomeOriginal, msg);
             }
+            return null;
+        }
+    }
+
+    /** Upload a partir de arquivo em disco (stream via {@link FileContent}, sem carregar tudo na RAM). */
+    public DriveArquivoDto uploadArquivoFromPath(
+            Path filePath, String nomeOriginal, String contentType, String pastaId) {
+        if (!isConfigurado() || pastaId == null || pastaId.isBlank()) {
+            return null;
+        }
+        if (filePath == null || !Files.isRegularFile(filePath)) {
+            return null;
+        }
+
+        try {
+            String nome = sanitizarNomeArquivoGenerico(nomeOriginal);
+            String mimeType = StringUtils.hasText(contentType) ? contentType : "application/octet-stream";
+
+            File fileMetadata = new File();
+            fileMetadata.setName(nome);
+            fileMetadata.setParents(List.of(pastaId));
+            if (!"application/vnd.google-apps.folder".equals(mimeType)) {
+                fileMetadata.setMimeType(mimeType);
+            }
+
+            FileContent content = new FileContent(mimeType, filePath.toFile());
+
+            File uploadedFile = prepararCreate(driveService.files()
+                    .create(fileMetadata, content)
+                    .setFields("id, name, mimeType, size, modifiedTime, webViewLink, webContentLink, iconLink"))
+                    .execute();
+
+            log.info("Arquivo salvo no Google Drive (path): {} → {}", nome, uploadedFile.getWebViewLink());
+            return toDriveArquivoDto(uploadedFile);
+        } catch (Exception e) {
+            String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            log.warn("Erro ao enviar arquivo ao Google Drive (path={}, {}): {}", filePath, nomeOriginal, msg);
             return null;
         }
     }

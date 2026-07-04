@@ -44,4 +44,20 @@ class WhatsAppMessageDtoMapperTest {
 
         assertEquals("/api/whatsapp/media/99", WhatsAppMessageDtoMapper.resolverMediaProxyUrl(entity));
     }
+
+    @Test
+    void dtoIncluiMediaStatusEMediaError() {
+        WhatsAppMessageEntity entity = new WhatsAppMessageEntity();
+        entity.setId(1L);
+        entity.setMessageType(WhatsAppMessageType.IMAGE);
+        entity.setDirection(WhatsAppMessageDirection.INBOUND);
+        entity.setStatus(WhatsAppMessageStatus.RECEIVED);
+        entity.setPhoneNumber("5562999999999");
+        entity.setMediaStatus(WhatsAppMediaStatus.FAILED);
+        entity.setMediaError("drive_falha");
+
+        var dto = WhatsAppMessageDtoMapper.fromEntity(entity, "Contato");
+        assertEquals("FAILED", dto.mediaStatus());
+        assertEquals("drive_falha", dto.mediaError());
+    }
 }

@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Loader2, MessageCircle, Search, Send, X } from 'lucide-react';
+import { Loader2, MessageCircle, Paperclip, Search, Send, X } from 'lucide-react';
 import { useWhatsAppNotificationContext } from './WhatsAppNotificationProvider.jsx';
 import { ChatBubble } from './components/ChatBubble.jsx';
 import {
   getWhatsAppMessages,
   getWhatsAppRecentConversations,
+  sendWhatsAppMedia,
   sendWhatsAppText,
 } from '../../repositories/whatsappRepository.js';
 import { formatPhoneDisplay, formatTimeBR } from '../../utils/whatsappFormat.js';
 import { FREE_TEXT_DELIVERY_ERROR } from '../../utils/whatsappTemplateUtils.js';
 import { isWhatsAppMediaPending, mergeMediaReady } from './utils/whatsappMediaUtils.js';
+import { validarArquivoWhatsAppMedia } from './utils/whatsappMediaSendUtils.js';
+import { WHATSAPP_MEDIA_ACCEPT, categoriaAceitaCaption } from './utils/whatsappMediaSendUtils.js';
 
 function previewConversa(conv) {
   const type = String(conv?.lastMessageType ?? '').toUpperCase();
@@ -97,7 +100,10 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [mediaCaption, setMediaCaption] = useState('');
   const [error, setError] = useState('');
+  const fileInputRef = useRef(null);
   const bottomRef = useRef(null);
   const phone = conversation.phoneNumber;
 
@@ -158,8 +164,35 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
   }, [messages]);
 
   const handleSend = async () => {
+    if (sending) return;
+
+    if (selectedFile) {
+      const validation = validarArquivoWhatsAppMedia(selectedFile);
+      if (!validation.ok) {
+        setError(validation.erro);
+        return;
+      }
+      setSending(true);
+      setError('');
+      try {
+        const res = await sendWhatsAppMedia(phone, selectedFile, mediaCaption.trim() || undefined);
+        if (res?.success === false) {
+          setError(res.error || 'Falha ao enviar mídia.');
+          return;
+        }
+        setSelectedFile(null);
+        setMediaCaption('');
+        await loadMessages(true);
+      } catch (err) {
+        setError(String(err?.message ?? 'Falha ao enviar mídia.'));
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
     const text = draft.trim();
-    if (!text || sending) return;
+    if (!text) return;
     setSending(true);
     setError('');
     try {
@@ -185,6 +218,10 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
     }
   };
 
+  const mediaValidation = selectedFile ? validarArquivoWhatsAppMedia(selectedFile) : null;
+  const showMediaCaption =
+    mediaValidation?.ok && categoriaAceitaCaption(mediaValidation.categoria);
+
   return (
     <>
       <div className="flex items-center gap-2 px-3 py-2.5 bg-[#075E54] text-white shrink-0">
@@ -209,7 +246,66 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
         <div ref={bottomRef} />
       </div>
       {error ? <p className="px-3 text-xs text-red-600 shrink-0">{error}</p> : null}
+      {selectedFile ? (
+        <div className="px-3 py-2 border-t border-slate-100 dark:border-slate-800 shrink-0 space-y-1.5">
+          <div className="flex items-center gap-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 px-2 py-1.5">
+            <span className="flex-1 min-w-0 text-xs truncate text-emerald-900 dark:text-emerald-100" title={selectedFile.name}>
+              {selectedFile.name}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedFile(null);
+                setMediaCaption('');
+              }}
+              disabled={sending}
+              className="shrink-0 text-emerald-800 dark:text-emerald-200"
+              aria-label="Remover anexo"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          {showMediaCaption ? (
+            <input
+              type="text"
+              value={mediaCaption}
+              onChange={(e) => setMediaCaption(e.target.value)}
+              placeholder="Legenda (opcional)"
+              disabled={sending}
+              className="w-full rounded-lg border border-slate-200 dark:border-slate-600 px-2.5 py-1.5 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-emerald-400"
+            />
+          ) : null}
+        </div>
+      ) : null}
       <div className="flex items-center gap-2 px-3 py-2 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shrink-0">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={WHATSAPP_MEDIA_ACCEPT}
+          className="hidden"
+          disabled={sending}
+          onChange={(e) => {
+            const file = e.target.files?.[0] ?? null;
+            e.target.value = '';
+            if (!file) return;
+            const v = validarArquivoWhatsAppMedia(file);
+            if (!v.ok) {
+              setError(v.erro);
+              return;
+            }
+            setError('');
+            setSelectedFile(file);
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={sending}
+          className="shrink-0 rounded-lg border border-slate-200 dark:border-slate-600 p-2 text-slate-600 dark:text-slate-300 disabled:opacity-50"
+          aria-label="Anexar arquivo"
+        >
+          <Paperclip className="h-4 w-4" />
+        </button>
         <input
           type="text"
           value={draft}
@@ -220,13 +316,14 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
               void handleSend();
             }
           }}
-          placeholder="Digite uma mensagem..."
+          placeholder={selectedFile ? 'Ou envie só o anexo…' : 'Digite uma mensagem...'}
           className="flex-1 min-w-0 rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-emerald-400"
+          disabled={sending}
         />
         <button
           type="button"
           onClick={() => void handleSend()}
-          disabled={sending || !draft.trim()}
+          disabled={sending || (!draft.trim() && !selectedFile)}
           className="shrink-0 rounded-lg bg-[#25D366] p-2 text-white disabled:opacity-50"
           aria-label="Enviar"
         >

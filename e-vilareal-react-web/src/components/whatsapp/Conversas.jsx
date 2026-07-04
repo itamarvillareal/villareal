@@ -2,6 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ExternalLink, Link2, Loader2, MessageCircle, Search, Send } from 'lucide-react';
 import { ChatBubble } from './components/ChatBubble.jsx';
+import {
+  WhatsAppMediaAttachComposer,
+  WhatsAppMediaSendingIndicator,
+} from './components/WhatsAppMediaAttachComposer.jsx';
 import { ModalVinculosTelefoneConversa } from './components/ModalVinculosTelefoneConversa.jsx';
 import { useWhatsApp } from './hooks/useWhatsApp.js';
 import { useWhatsAppToast } from './WhatsAppToast.jsx';
@@ -10,6 +14,7 @@ import { getWhatsAppConversationContext } from '../../repositories/whatsappRepos
 import { formatPhoneDisplay, formatTimeBR, isValidBrazilPhone, normalizePhoneForApi } from '../../utils/whatsappFormat.js';
 import { FREE_TEXT_DELIVERY_ERROR, FREE_TEXT_WINDOW_HINT } from '../../utils/whatsappTemplateUtils.js';
 import { isWhatsAppMediaPending, mergeMediaReady } from './utils/whatsappMediaUtils.js';
+import { validarArquivoWhatsAppMedia } from './utils/whatsappMediaSendUtils.js';
 import { resumoContactCardContent } from './utils/whatsappContactCard.js';
 
 const PAGE_SIZE = 20;
@@ -130,7 +135,7 @@ function PainelContextoChat({ contextos, indice, onIndiceChange }) {
 }
 
 export function WhatsAppConversas() {
-  const { getConversations, getMessages, sendText } = useWhatsApp();
+  const { getConversations, getMessages, sendText, sendMedia } = useWhatsApp();
   const toast = useWhatsAppToast();
   const { clearNotifications, latestInbound, latestMediaReady } = useWhatsAppNotificationContext() ?? {};
   const [searchParams, setSearchParams] = useSearchParams();
@@ -149,6 +154,8 @@ export function WhatsAppConversas() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [mediaCaption, setMediaCaption] = useState('');
   const [contextosAtivos, setContextosAtivos] = useState([]);
   const [indiceContexto, setIndiceContexto] = useState(0);
   const [modalVinculosAberto, setModalVinculosAberto] = useState(false);
@@ -283,7 +290,35 @@ export function WhatsAppConversas() {
 
   const handleSend = async (e) => {
     e.preventDefault();
-    if (!activePhone) return;
+    if (!activePhone || sending) return;
+
+    if (selectedFile) {
+      const validation = validarArquivoWhatsAppMedia(selectedFile);
+      if (!validation.ok) {
+        toast.error(validation.erro);
+        return;
+      }
+      setSending(true);
+      try {
+        const res = await sendMedia(activePhone, selectedFile, mediaCaption.trim() || undefined);
+        if (res?.success === false) {
+          toast.error(res.error || 'Falha ao enviar mídia.');
+          return;
+        }
+        setSelectedFile(null);
+        setMediaCaption('');
+        toast.success('Mídia enviada. A exibição aparecerá quando o arquivo estiver pronto.');
+        await fetchPage(activePhone, 0, false);
+        window.setTimeout(scrollToBottom, 50);
+        loadConversations({ silent: true });
+      } catch (err) {
+        toast.error(err?.message || 'Falha ao enviar mídia.');
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
     const text = draft.trim();
     if (!text) return;
     setSending(true);
@@ -527,24 +562,57 @@ export function WhatsAppConversas() {
               onSubmit={handleSend}
               className="shrink-0 flex flex-col gap-1 p-3 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
             >
+              <WhatsAppMediaAttachComposer
+                selectedFile={selectedFile}
+                onSelectFile={(file, erro) => {
+                  if (erro) toast.error(erro);
+                  setSelectedFile(file);
+                  if (!file) setMediaCaption('');
+                }}
+                onClearFile={() => {
+                  setSelectedFile(null);
+                  setMediaCaption('');
+                }}
+                mediaCaption={mediaCaption}
+                onMediaCaptionChange={setMediaCaption}
+                disabled={sending}
+                showClip={false}
+              />
               <div className="flex items-center gap-2">
+                <WhatsAppMediaAttachComposer
+                  selectedFile={selectedFile}
+                  onSelectFile={(file, erro) => {
+                    if (erro) toast.error(erro);
+                    setSelectedFile(file);
+                  }}
+                  onClearFile={() => {
+                    setSelectedFile(null);
+                    setMediaCaption('');
+                  }}
+                  mediaCaption={mediaCaption}
+                  onMediaCaptionChange={setMediaCaption}
+                  disabled={sending}
+                  showPreview={false}
+                  clipBtnClass="inline-flex shrink-0 flex-none items-center justify-center px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+                />
                 <input
                   type="text"
                   className={chatComposeInputClass}
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
-                  placeholder="Digite uma mensagem…"
+                  placeholder={selectedFile ? 'Ou envie só o anexo…' : 'Digite uma mensagem…'}
                   disabled={sending}
                 />
                 <button
                   type="submit"
-                  disabled={sending || !draft.trim()}
+                  disabled={sending || (!draft.trim() && !selectedFile)}
                   className={chatComposeBtnClass}
-                  title="Enviar mensagem"
+                  title={selectedFile ? 'Enviar mídia' : 'Enviar mensagem'}
                 >
                   {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                 </button>
               </div>
+              <WhatsAppMediaSendingIndicator sending={sending && Boolean(selectedFile)} />
               <p className="text-[11px] text-amber-700 dark:text-amber-300/90 px-1">{FREE_TEXT_WINDOW_HINT}</p>
             </form>
           </>

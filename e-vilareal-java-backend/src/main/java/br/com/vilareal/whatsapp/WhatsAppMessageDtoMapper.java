@@ -51,6 +51,8 @@ public final class WhatsAppMessageDtoMapper {
                 entity.getMediaFilename(),
                 entity.getMediaDriveUrl(),
                 resolverMediaProxyUrl(entity),
+                entity.getMediaStatus() != null ? entity.getMediaStatus().name() : null,
+                entity.getMediaError(),
                 entity.getCreatedAt());
     }
 }

@@ -5,6 +5,7 @@ import br.com.vilareal.whatsapp.WhatsAppMediaRangeSupport;
 import br.com.vilareal.whatsapp.infrastructure.persistence.entity.WhatsAppMessageEntity;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppMessageRepository;
 import br.com.vilareal.whatsapp.service.WhatsAppMediaBytesCacheService;
+import br.com.vilareal.whatsapp.service.WhatsAppMediaProcessingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
@@ -16,6 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -35,12 +37,15 @@ public class WhatsAppMediaController {
 
     private final WhatsAppMessageRepository whatsAppMessageRepository;
     private final WhatsAppMediaBytesCacheService mediaBytesCacheService;
+    private final WhatsAppMediaProcessingService whatsAppMediaProcessingService;
 
     public WhatsAppMediaController(
             WhatsAppMessageRepository whatsAppMessageRepository,
-            WhatsAppMediaBytesCacheService mediaBytesCacheService) {
+            WhatsAppMediaBytesCacheService mediaBytesCacheService,
+            WhatsAppMediaProcessingService whatsAppMediaProcessingService) {
         this.whatsAppMessageRepository = whatsAppMessageRepository;
         this.mediaBytesCacheService = mediaBytesCacheService;
+        this.whatsAppMediaProcessingService = whatsAppMediaProcessingService;
     }
 
     @GetMapping("/media/{messageId}")
@@ -113,6 +118,17 @@ public class WhatsAppMediaController {
                 .header(HttpHeaders.ACCEPT_RANGES, "bytes")
                 .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(bytes.length))
                 .body(bytes);
+    }
+
+    @PostMapping("/media/{messageId}/reprocessar")
+    @Operation(summary = "Reprocessar download de mídia inbound (reset PENDING + async imediato)")
+    public ResponseEntity<Void> reprocessarMidia(@PathVariable Long messageId) {
+        try {
+            whatsAppMediaProcessingService.solicitarReprocessamentoManual(messageId);
+            return ResponseEntity.accepted().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
     }
 
     static String sanitizarFilename(String filename) {

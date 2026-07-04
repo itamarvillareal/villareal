@@ -68,7 +68,7 @@ class WhatsAppServiceCopiaMonitoramentoTest {
     private WhatsAppIAConfigService whatsAppIAConfigService;
 
     @Mock
-    private WhatsAppMediaService whatsAppMediaService;
+    private WhatsAppMediaProcessingService whatsAppMediaProcessingService;
 
     @Mock
     private WhatsAppNotificationService whatsAppNotificationService;
@@ -129,7 +129,7 @@ class WhatsAppServiceCopiaMonitoramentoTest {
                 cobrancaWhatsAppRepository,
                 whatsAppAIService,
                 whatsAppIAConfigService,
-                whatsAppMediaService,
+                whatsAppMediaProcessingService,
                 whatsAppNotificationService,
                 conversationContextService);
     }
