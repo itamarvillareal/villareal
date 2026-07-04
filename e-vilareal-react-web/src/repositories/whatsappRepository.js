@@ -1,4 +1,48 @@
 import { request } from '../api/httpClient.js';
+import { API_BASE_URL } from '../api/config.js';
+import { buildAuditoriaHeaders } from '../services/auditoriaCliente.js';
+import { getAccessToken } from '../api/authTokenStorage.js';
+import { emitApiUnauthorized } from '../api/apiAuthHeaders.js';
+
+async function parseWhatsAppMediaError(res) {
+  const text = await res.text();
+  if (!text) return `Erro ${res.status}`;
+  try {
+    const data = JSON.parse(text);
+    return data.message || data.error || text;
+  } catch {
+    return text.length > 300 ? `${text.slice(0, 300)}…` : text;
+  }
+}
+
+function headersAuthBlob() {
+  const h = { ...buildAuditoriaHeaders() };
+  const t = getAccessToken();
+  if (t) h.Authorization = `Bearer ${t}`;
+  return h;
+}
+
+/**
+ * Baixa bytes de mídia WhatsApp via proxy autenticado (GET /api/whatsapp/media/{id}).
+ * @param {string} mediaProxyUrl — caminho relativo do DTO (ex.: /api/whatsapp/media/42)
+ */
+export async function buscarWhatsAppMediaBlob(mediaProxyUrl, opts = {}) {
+  const path = String(mediaProxyUrl ?? '').trim();
+  if (!path) {
+    throw new Error('URL de mídia ausente.');
+  }
+  const url = path.startsWith('http') ? path : `${API_BASE_URL}${path}`;
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: headersAuthBlob(),
+    signal: opts.signal,
+  });
+  if (res.status === 401) emitApiUnauthorized();
+  if (!res.ok) {
+    throw new Error(await parseWhatsAppMediaError(res));
+  }
+  return res.blob();
+}
 
 export async function getWhatsAppStats(signal) {
   return request('/api/whatsapp/stats', { signal });

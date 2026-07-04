@@ -3,6 +3,7 @@ package br.com.vilareal.whatsapp.service;
 import br.com.vilareal.config.WhatsAppConfig;
 import br.com.vilareal.documento.DriveArquivoDto;
 import br.com.vilareal.documento.GoogleDriveService;
+import br.com.vilareal.whatsapp.dto.WhatsAppMediaSaveResult;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.slf4j.Logger;
@@ -14,9 +15,6 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 
 import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -28,8 +26,8 @@ public class WhatsAppMediaService {
     private static final Logger log = LoggerFactory.getLogger(WhatsAppMediaService.class);
     private static final String PASTA_WHATSAPP = "WhatsApp";
     private static final String PASTA_RECEBIDOS = "Recebidos";
-    private static final ZoneId ZONE_BRASILIA = ZoneId.of("America/Sao_Paulo");
-    private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss");
+    /** Limite conservador — upload sanitiza de novo; Drive aceita até 255. */
+    private static final int MAX_NOME_ARQUIVO = 240;
 
     private final WhatsAppConfig whatsAppConfig;
     private final RestClient restClient;
@@ -53,11 +51,11 @@ public class WhatsAppMediaService {
     }
 
     /**
-     * Baixa mídia do WhatsApp e salva no Google Drive.
+     * Baixa mídia do WhatsApp e salva no Google Drive (idempotente por {@code mediaId} na pasta do contato).
      *
-     * @return link webViewLink do Drive ou null se falhar
+     * @return webViewLink e fileId do Drive, ou null se falhar
      */
-    public String downloadAndSaveMedia(
+    public WhatsAppMediaSaveResult downloadAndSaveMedia(
             String mediaId, String filename, String mimeType, String contactName, String phoneNumber) {
         if (!StringUtils.hasText(mediaId)) {
             return null;
@@ -68,6 +66,25 @@ public class WhatsAppMediaService {
         }
 
         try {
+            String mimeParaNome = StringUtils.hasText(mimeType) ? mimeType : "application/octet-stream";
+            String nomeArquivo = montarNomeArquivoDeterministico(mediaId, filename, mimeParaNome);
+            String pastaId = resolverPastaRecebidos(phoneNumber, contactName);
+
+            // Dedupe por media_id: mesma pasta + mesmo nome determinístico → reutilizar sem baixar da Meta.
+            // Risco de corrida: dois workers simultâneos podem ambos não encontrar o arquivo e subir
+            // duplicata — mitigação completa nos Passos 3/4 (status de processamento + ShedLock no job).
+            DriveArquivoDto existente = googleDriveService.buscarArquivoPorNomeNaPasta(pastaId, nomeArquivo);
+            if (existente != null
+                    && StringUtils.hasText(existente.webViewLink())
+                    && StringUtils.hasText(existente.id())) {
+                log.info(
+                        "Mídia WhatsApp {} já existe no Drive, reutilizando: {} (fileId={})",
+                        mediaId,
+                        existente.webViewLink(),
+                        existente.id());
+                return new WhatsAppMediaSaveResult(existente.webViewLink(), existente.id());
+            }
+
             WhatsAppMediaInfo info = restClient
                     .get()
                     .uri("/{mediaId}", mediaId)
@@ -92,18 +109,22 @@ public class WhatsAppMediaService {
             }
 
             String effectiveMime = StringUtils.hasText(mimeType) ? mimeType : info.mimeType();
-            String nomeArquivo = montarNomeArquivo(filename, effectiveMime);
-            String pastaId = resolverPastaRecebidos(phoneNumber, contactName);
 
             DriveArquivoDto uploaded =
                     googleDriveService.uploadArquivo(fileBytes, nomeArquivo, effectiveMime, pastaId);
-            if (uploaded == null || !StringUtils.hasText(uploaded.webViewLink())) {
+            if (uploaded == null
+                    || !StringUtils.hasText(uploaded.webViewLink())
+                    || !StringUtils.hasText(uploaded.id())) {
                 log.warn("Falha ao enviar mídia WhatsApp {} para o Drive", mediaId);
                 return null;
             }
 
-            log.info("Mídia WhatsApp salva no Drive: {} → {}", nomeArquivo, uploaded.webViewLink());
-            return uploaded.webViewLink();
+            log.info(
+                    "Mídia WhatsApp salva no Drive: {} → {} (fileId={})",
+                    nomeArquivo,
+                    uploaded.webViewLink(),
+                    uploaded.id());
+            return new WhatsAppMediaSaveResult(uploaded.webViewLink(), uploaded.id());
         } catch (Exception e) {
             log.error("Erro ao baixar/salvar mídia WhatsApp {}: {}", mediaId, e.getMessage());
             return null;
@@ -135,17 +156,61 @@ public class WhatsAppMediaService {
         return digits;
     }
 
-    private static String montarNomeArquivo(String filename, String mimeType) {
-        String base = StringUtils.hasText(filename) ? filename : "arquivo." + extensaoFromMime(mimeType);
-        String stamp = STAMP.format(Instant.now().atZone(ZONE_BRASILIA));
-        return stamp + "_" + base;
+    /**
+     * Nome estável por {@code mediaId} — sem timestamp — para idempotência no Drive.
+     * Formato: {@code {mediaId}_{base}} com base = filename sanitizado ou {@code arquivo.{ext}}.
+     */
+    static String montarNomeArquivoDeterministico(String mediaId, String filename, String mimeType) {
+        String prefixo = sanitizarSegmentoMediaId(mediaId) + "_";
+        String base = montarBaseArquivo(filename, mimeType);
+        String nome = prefixo + base;
+        if (nome.length() <= MAX_NOME_ARQUIVO) {
+            return nome;
+        }
+        int maxBase = Math.max(1, MAX_NOME_ARQUIVO - prefixo.length());
+        return prefixo + truncarBasePreservandoExtensao(base, maxBase);
+    }
+
+    private static String montarBaseArquivo(String filename, String mimeType) {
+        String ext = extensaoFromMime(mimeType);
+        if (StringUtils.hasText(filename)) {
+            String base = sanitizarComponenteNome(filename.trim());
+            if (!base.contains(".")) {
+                base = base + "." + ext;
+            }
+            return base;
+        }
+        return "arquivo." + ext;
+    }
+
+    private static String sanitizarSegmentoMediaId(String mediaId) {
+        return mediaId.trim().replaceAll("[\\\\/:*?\"<>|\\r\\n\\s]", "_");
+    }
+
+    private static String sanitizarComponenteNome(String nome) {
+        return nome.replaceAll("[\\\\/:*?\"<>|\\r\\n]", " ").replaceAll("\\s+", " ").trim();
+    }
+
+    private static String truncarBasePreservandoExtensao(String base, int maxLen) {
+        if (base.length() <= maxLen) {
+            return base;
+        }
+        int dot = base.lastIndexOf('.');
+        if (dot > 0 && dot < base.length() - 1) {
+            String ext = base.substring(dot);
+            int maxStem = maxLen - ext.length();
+            if (maxStem > 0) {
+                return base.substring(0, maxStem) + ext;
+            }
+        }
+        return base.substring(0, maxLen);
     }
 
     public static String extensaoFromMime(String mimeType) {
         if (mimeType == null) {
             return "bin";
         }
-        String lower = mimeType.toLowerCase();
+        String lower = mimeType.toLowerCase().split(";")[0].trim();
         if (lower.contains("jpeg") || lower.contains("jpg")) {
             return "jpg";
         }

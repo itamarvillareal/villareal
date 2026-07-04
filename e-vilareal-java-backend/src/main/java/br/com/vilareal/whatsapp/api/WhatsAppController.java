@@ -4,6 +4,7 @@ import br.com.vilareal.config.WhatsAppConfig;
 import br.com.vilareal.whatsapp.ScheduledMessageStatus;
 import br.com.vilareal.whatsapp.WhatsAppApiException;
 import br.com.vilareal.whatsapp.WhatsAppContactCardSupport;
+import br.com.vilareal.whatsapp.WhatsAppMessageDtoMapper;
 import br.com.vilareal.whatsapp.WhatsAppMessageDirection;
 import br.com.vilareal.whatsapp.WhatsAppMessageStatus;
 import br.com.vilareal.whatsapp.dto.CreateTemplateRequest;
@@ -451,24 +452,10 @@ public class WhatsAppController {
     }
 
     private WhatsAppMessageDTO toMessageDto(WhatsAppMessageEntity entity) {
-        return new WhatsAppMessageDTO(
-                entity.getId(),
-                entity.getWaMessageId(),
-                entity.getPhoneNumber(),
+        return WhatsAppMessageDtoMapper.fromEntity(
+                entity,
                 contactResolver.resolveContactName(
-                        entity.getPhoneNumber(), entity.getContactName(), entity.getClienteId()),
-                entity.getDirection() != null ? entity.getDirection().name() : null,
-                entity.getMessageType() != null ? entity.getMessageType().name() : null,
-                entity.getContent(),
-                entity.getTemplateName(),
-                entity.getStatus() != null ? entity.getStatus().name() : null,
-                entity.getClienteId(),
-                entity.getProcessoId(),
-                entity.getMediaId(),
-                entity.getMediaMimeType(),
-                entity.getMediaFilename(),
-                entity.getMediaDriveUrl(),
-                entity.getCreatedAt());
+                        entity.getPhoneNumber(), entity.getContactName(), entity.getClienteId()));
     }
 
     private ScheduledMessageDTO toScheduledDto(ScheduledWhatsAppMessageEntity entity) {

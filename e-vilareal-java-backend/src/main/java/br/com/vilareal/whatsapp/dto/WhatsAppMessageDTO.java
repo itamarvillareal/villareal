@@ -18,4 +18,5 @@ public record WhatsAppMessageDTO(
         String mediaMimeType,
         String mediaFilename,
         String mediaDriveUrl,
+        String mediaProxyUrl,
         Instant createdAt) {}

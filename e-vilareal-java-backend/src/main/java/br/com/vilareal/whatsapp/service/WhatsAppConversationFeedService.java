@@ -1,6 +1,7 @@
 package br.com.vilareal.whatsapp.service;
 
 import br.com.vilareal.whatsapp.WhatsAppMessageDirection;
+import br.com.vilareal.whatsapp.WhatsAppMessageDtoMapper;
 import br.com.vilareal.whatsapp.dto.WhatsAppMessageDTO;
 import br.com.vilareal.whatsapp.infrastructure.persistence.entity.CobrancaWhatsAppEntity;
 import br.com.vilareal.whatsapp.infrastructure.persistence.entity.WhatsAppMessageEntity;
@@ -114,28 +115,15 @@ public class WhatsAppConversationFeedService {
                 null,
                 null,
                 null,
+                null,
                 quando);
     }
 
     private WhatsAppMessageDTO toMessageDto(WhatsAppMessageEntity entity) {
-        return new WhatsAppMessageDTO(
-                entity.getId(),
-                entity.getWaMessageId(),
-                entity.getPhoneNumber(),
+        return WhatsAppMessageDtoMapper.fromEntity(
+                entity,
                 contactResolver.resolveContactName(
-                        entity.getPhoneNumber(), entity.getContactName(), entity.getClienteId()),
-                entity.getDirection() != null ? entity.getDirection().name() : null,
-                entity.getMessageType() != null ? entity.getMessageType().name() : null,
-                entity.getContent(),
-                entity.getTemplateName(),
-                entity.getStatus() != null ? entity.getStatus().name() : null,
-                entity.getClienteId(),
-                entity.getProcessoId(),
-                entity.getMediaId(),
-                entity.getMediaMimeType(),
-                entity.getMediaFilename(),
-                entity.getMediaDriveUrl(),
-                entity.getCreatedAt());
+                        entity.getPhoneNumber(), entity.getContactName(), entity.getClienteId()));
     }
 
     private static String mapStatusCobranca(String status) {

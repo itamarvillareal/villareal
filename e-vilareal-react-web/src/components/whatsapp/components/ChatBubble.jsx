@@ -1,6 +1,14 @@
+import { useCallback, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { UserRound } from 'lucide-react';
+import { FileText, Loader2, UserRound } from 'lucide-react';
 import { formatTimeBR, formatPhoneDisplay } from '../../../utils/whatsappFormat.js';
+import { useWhatsAppMediaUrl } from '../hooks/useWhatsAppMediaUrl.js';
+import { resolverMediaProxyUrl } from '../utils/whatsappMediaUtils.js';
+import {
+  baixarWhatsAppMediaViaProxy,
+  navegadorReproduzAudioInline,
+  resolverNomeArquivoMidia,
+} from '../utils/whatsappMediaDownload.js';
 import {
   parseContactCardContent,
   resumoContactCardContent,
@@ -27,61 +35,264 @@ function MessageStatusIcon({ status }) {
 
 const MEDIA_TYPES = ['IMAGE', 'DOCUMENT', 'AUDIO', 'VIDEO'];
 
+function isStickerMessage(message) {
+  const fn = String(message?.mediaFilename ?? '').toLowerCase();
+  return fn.startsWith('sticker.');
+}
+
+function DriveLinkTertiary({ driveUrl, linkClass, label = 'Abrir no Drive' }) {
+  if (!driveUrl) return null;
+  return (
+    <a
+      href={driveUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`chat-media-drive-link text-[11px] opacity-80 hover:opacity-100 ${linkClass}`}
+    >
+      {label}
+    </a>
+  );
+}
+
+function MediaAccessBar({
+  message,
+  mediaProxyUrl,
+  linkClass,
+  downloadLabel = 'Baixar',
+  downloading,
+  downloadError,
+  onDownload,
+  driveUrl,
+}) {
+  return (
+    <div className="mt-1.5 space-y-1">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <button
+          type="button"
+          onClick={onDownload}
+          disabled={downloading || !mediaProxyUrl}
+          className={`text-[11px] font-semibold underline underline-offset-2 disabled:opacity-50 ${linkClass}`}
+        >
+          {downloading ? (
+            <span className="inline-flex items-center gap-1">
+              <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+              Baixando…
+            </span>
+          ) : (
+            downloadLabel
+          )}
+        </button>
+        <DriveLinkTertiary driveUrl={driveUrl} linkClass={linkClass} />
+      </div>
+      {downloadError ? (
+        <p className="text-[10px] opacity-70">{downloadError}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function MediaPendingContent({ message }) {
+  return (
+    <div className="chat-media chat-media-pending">
+      <span>{message.content || 'Mídia recebida'}</span>
+      <span className="block text-xs opacity-75 mt-1 flex items-center gap-1">
+        <Loader2 className="h-3 w-3 animate-spin shrink-0" aria-hidden />
+        Salvando no Drive…
+      </span>
+      <span className="block text-[10px] opacity-60 mt-0.5">A mídia aparecerá aqui em instantes</span>
+    </div>
+  );
+}
+
+function MediaLoadingContent({ message }) {
+  return (
+    <div className="chat-media chat-media-loading">
+      <span>{message.content || 'Mídia recebida'}</span>
+      <span className="block text-xs opacity-75 mt-1 flex items-center gap-1">
+        <Loader2 className="h-3 w-3 animate-spin shrink-0" aria-hidden />
+        Carregando mídia…
+      </span>
+    </div>
+  );
+}
+
+function InlineErrorHint({ text }) {
+  if (!text) return null;
+  return <p className="text-[11px] opacity-70 mt-1">{text}</p>;
+}
+
 function MediaBubbleContent({ message, isOutbound }) {
   const type = String(message.messageType ?? '').toUpperCase();
   const driveUrl = message.mediaDriveUrl;
+  const mediaProxyUrl = resolverMediaProxyUrl(message);
   const linkClass = isOutbound
     ? 'text-white underline underline-offset-2 hover:text-white/90'
     : 'text-emerald-700 dark:text-emerald-300 underline underline-offset-2 hover:opacity-90';
 
-  if (type === 'IMAGE' && driveUrl) {
-    return (
-      <a href={driveUrl} target="_blank" rel="noopener noreferrer" className={`chat-media-link ${linkClass}`}>
-        📷 Ver imagem no Drive
-      </a>
-    );
-  }
-  if (type === 'DOCUMENT') {
-    if (driveUrl) {
-      return (
-        <a href={driveUrl} target="_blank" rel="noopener noreferrer" className={`chat-media-link ${linkClass}`}>
-          📎 {message.mediaFilename || 'Documento'}
-        </a>
-      );
+  const [tagError, setTagError] = useState(false);
+  const [audioPlayError, setAudioPlayError] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState('');
+
+  const { url, loading, error } = useWhatsAppMediaUrl(message);
+
+  const filename = useMemo(() => resolverNomeArquivoMidia(message), [message]);
+  const sticker = type === 'IMAGE' && isStickerMessage(message);
+  const audioMime = message.mediaMimeType || 'audio/ogg; codecs=opus';
+  const audioInlineBlocked = useMemo(() => {
+    if (type !== 'AUDIO') return false;
+    return !navegadorReproduzAudioInline(audioMime);
+  }, [type, audioMime]);
+
+  const handleDownload = useCallback(async () => {
+    if (!mediaProxyUrl) return;
+    setDownloading(true);
+    setDownloadError('');
+    try {
+      await baixarWhatsAppMediaViaProxy(message, mediaProxyUrl);
+    } catch (err) {
+      setDownloadError(err?.message || 'Falha ao baixar o arquivo.');
+    } finally {
+      setDownloading(false);
     }
+  }, [message, mediaProxyUrl]);
+
+  const accessBar = (
+    <MediaAccessBar
+      message={message}
+      mediaProxyUrl={mediaProxyUrl}
+      linkClass={linkClass}
+      downloading={downloading}
+      downloadError={downloadError}
+      onDownload={() => void handleDownload()}
+      driveUrl={driveUrl}
+      downloadLabel={
+        type === 'AUDIO' ? 'Baixar áudio' : type === 'DOCUMENT' ? 'Baixar' : 'Baixar'
+      }
+    />
+  );
+
+  if (!mediaProxyUrl) {
+    if (MEDIA_TYPES.includes(type) || Boolean(message.mediaId)) {
+      return <MediaPendingContent message={message} />;
+    }
+    return null;
   }
-  if (type === 'AUDIO' && driveUrl) {
+
+  const showLoadingShell = loading && !url && !tagError && type !== 'DOCUMENT';
+
+  if (showLoadingShell) {
     return (
-      <a href={driveUrl} target="_blank" rel="noopener noreferrer" className={`chat-media-link ${linkClass}`}>
-        🎤 Ouvir áudio no Drive
-      </a>
-    );
-  }
-  if (type === 'VIDEO' && driveUrl) {
-    return (
-      <a href={driveUrl} target="_blank" rel="noopener noreferrer" className={`chat-media-link ${linkClass}`}>
-        🎬 Ver vídeo no Drive
-      </a>
-    );
-  }
-  if (MEDIA_TYPES.includes(type) && !driveUrl) {
-    return (
-      <div className="chat-media chat-media-pending">
-        <span>{message.content || 'Mídia recebida'}</span>
-        <span className="block text-xs opacity-75 mt-1">⏳ Salvando no Drive…</span>
-        <span className="block text-[10px] opacity-60 mt-0.5">O link aparecerá aqui em instantes</span>
+      <div className="chat-media space-y-1">
+        <MediaLoadingContent message={message} />
+        {accessBar}
       </div>
     );
   }
-  if (Boolean(message.mediaId) && !driveUrl) {
+
+  const inlineError =
+    error
+    || (tagError ? 'Não foi possível exibir a mídia inline.' : null)
+    || (audioPlayError ? 'Seu navegador não reproduz este áudio.' : null);
+
+  if (type === 'DOCUMENT') {
     return (
-      <div className="chat-media chat-media-pending">
-        <span>{message.content || 'Mídia recebida'}</span>
-        <span className="block text-xs opacity-75 mt-1">⏳ Salvando no Drive…</span>
+      <div className="chat-media chat-media-document space-y-1">
+        <div className="flex items-start gap-2">
+          <FileText className="h-5 w-5 shrink-0 opacity-80 mt-0.5" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium break-words">{filename}</p>
+            <InlineErrorHint text={error} />
+          </div>
+        </div>
+        {accessBar}
       </div>
     );
   }
-  return null;
+
+  if (type === 'IMAGE') {
+    return (
+      <div className="chat-media chat-media-image space-y-1">
+        {!tagError && url ? (
+          <button
+            type="button"
+            className="block p-0 border-0 bg-transparent cursor-pointer rounded-lg overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+            onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
+            title="Abrir imagem em nova aba"
+          >
+            <img
+              src={url}
+              alt={filename}
+              className={`rounded-lg object-contain max-w-full ${
+                sticker ? 'max-h-40' : 'max-h-80'
+              }`}
+              onError={() => setTagError(true)}
+            />
+          </button>
+        ) : (
+          <InlineErrorHint text={inlineError || 'Imagem indisponível inline.'} />
+        )}
+        {accessBar}
+      </div>
+    );
+  }
+
+  if (type === 'VIDEO') {
+    return (
+      <div className="chat-media chat-media-video space-y-1">
+        {!tagError && url ? (
+          <video
+            src={url}
+            controls
+            preload="metadata"
+            className="rounded-lg max-w-full max-h-80"
+            onError={() => setTagError(true)}
+          >
+            Seu navegador não suporta vídeo inline.
+          </video>
+        ) : (
+          <InlineErrorHint text={inlineError || 'Vídeo indisponível inline.'} />
+        )}
+        {accessBar}
+      </div>
+    );
+  }
+
+  if (type === 'AUDIO') {
+    const showPlayer = url && !audioInlineBlocked && !audioPlayError && !tagError;
+    return (
+      <div className="chat-media chat-media-audio space-y-1 min-w-[220px]">
+        {showPlayer ? (
+          <audio
+            src={url}
+            controls
+            preload="metadata"
+            className="w-full max-w-sm"
+            onError={() => setAudioPlayError(true)}
+          >
+            Seu navegador não suporta áudio inline.
+          </audio>
+        ) : (
+          <InlineErrorHint
+            text={
+              audioInlineBlocked || audioPlayError
+                ? 'Seu navegador não reproduz este áudio.'
+                : inlineError || 'Áudio indisponível inline.'
+            }
+          />
+        )}
+        {accessBar}
+      </div>
+    );
+  }
+
+  return (
+    <div className="chat-media space-y-1">
+      <span className="text-sm">{message.content || 'Mídia recebida'}</span>
+      <InlineErrorHint text={inlineError} />
+      {accessBar}
+    </div>
+  );
 }
 
 function ContactBubbleContent({ message, isOutbound }) {

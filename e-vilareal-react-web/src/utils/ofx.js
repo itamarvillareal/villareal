@@ -183,8 +183,20 @@ export function dataLancamentoParaIso(dataBrOuIso) {
   return '';
 }
 
+/**
+ * Valor em centavos com sinal para dedupe (crédito ≠ débito no mesmo |valor|).
+ * Usa {@code natureza} quando o valor veio absoluto da API.
+ */
+export function valorCentavosAssinadoDedupe(t) {
+  const v = Number(t?.valor) || 0;
+  const nat = String(t?.natureza ?? '').toUpperCase();
+  if (nat === 'DEBITO') return -Math.round(Math.abs(v) * 100);
+  if (nat === 'CREDITO') return Math.round(Math.abs(v) * 100);
+  return Math.round(v * 100);
+}
+
 export function chaveDedupeLancamento(t) {
-  const c = Math.round((Number(t.valor) || 0) * 100);
+  const c = valorCentavosAssinadoDedupe(t);
   return `${String(t.numero ?? '').trim()}|${String(t.data ?? '').trim()}|${c}`;
 }
 
@@ -215,7 +227,7 @@ export function digitosDescricao(descricao) {
  */
 export function chaveSemanticaLancamento(t) {
   const data = dataLancamentoParaIso(t?.data) || String(t?.data ?? '').trim();
-  const cents = Math.round((Number(t?.valor) || 0) * 100);
+  const cents = valorCentavosAssinadoDedupe(t);
   const desc = normalizarDescricaoParaDedupe(t?.descricao);
   return `${data}|${cents}|${desc}`;
 }
@@ -227,7 +239,7 @@ export function chaveSemanticaLancamento(t) {
  */
 export function listarChavesSemanticasLancamento(t) {
   const data = dataLancamentoParaIso(t?.data) || String(t?.data ?? '').trim();
-  const cents = Math.round((Number(t?.valor) || 0) * 100);
+  const cents = valorCentavosAssinadoDedupe(t);
   const desc = normalizarDescricaoParaDedupe(t?.descricao);
   const chaves = new Set([`${data}|${cents}|${desc}`]);
 
@@ -351,11 +363,15 @@ export function diasIgnorarPorContagemIgual(existente, novo) {
  */
 export function analisarLancamentosNovosDedupe(existente, novo, opts = {}) {
   const { estritas, semanticas } = construirContagens(existente);
+  const numerosExistentes =
+    opts.numerosExistentes instanceof Set ? opts.numerosExistentes : new Set();
   const diasIgnorarContagem = opts.respeitarExtratoComoMestre
     ? new Set()
     : diasIgnorarPorContagemIgual(existente, novo);
   const porDia = new Map();
   const novos = [];
+  /** @type {Array<{ row: object, motivo: string }>} */
+  const ignoradosDetalhe = [];
   let ignorados = 0;
 
   const bumpDia = (dataIso, field) => {
@@ -373,16 +389,25 @@ export function analisarLancamentosNovosDedupe(existente, novo, opts = {}) {
   for (const t of novo || []) {
     const dataIso = dataLancamentoParaIso(t.data);
     bumpDia(dataIso, 'ofx');
+    const numero = String(t?.numero ?? '').trim();
+    if (numero && numerosExistentes.has(numero)) {
+      ignorados += 1;
+      bumpDia(dataIso, 'ignorados');
+      ignoradosDetalhe.push({ row: t, motivo: 'numero_ja_no_banco' });
+      continue;
+    }
     if (diasIgnorarContagem.has(dataIso)) {
       ignorados += 1;
       bumpDia(dataIso, 'ignorados');
       bumpDia(dataIso, 'ignoradosContagemDia');
+      ignoradosDetalhe.push({ row: t, motivo: 'contagem_dia_igual' });
       continue;
     }
     const ke = chaveDedupeLancamento(t);
     if (consumirDoMapa(estritas, ke)) {
       ignorados += 1;
       bumpDia(dataIso, 'ignorados');
+      ignoradosDetalhe.push({ row: t, motivo: 'chave_estrita' });
       // Linha já gravada (mesmo FITID/nº): consome também o par semântico para não
       // bloquear outra linha idêntica do extrato (ex.: 2× SAQ 2.000 no mesmo dia).
       tentarConsumirSemantico(semanticas, t);
@@ -391,6 +416,7 @@ export function analisarLancamentosNovosDedupe(existente, novo, opts = {}) {
     if (tentarConsumirSemantico(semanticas, t)) {
       ignorados += 1;
       bumpDia(dataIso, 'ignorados');
+      ignoradosDetalhe.push({ row: t, motivo: 'chave_semantica' });
       continue;
     }
     novos.push(t);
@@ -400,6 +426,7 @@ export function analisarLancamentosNovosDedupe(existente, novo, opts = {}) {
   return {
     novos,
     ignorados,
+    ignoradosDetalhe,
     porDia,
     diasIgnoradosPorContagem: [...diasIgnorarContagem].sort(),
   };

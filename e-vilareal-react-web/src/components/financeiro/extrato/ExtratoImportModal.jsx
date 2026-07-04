@@ -9,6 +9,8 @@ import { ConfirmDialog } from '../shared/ConfirmDialog.jsx';
 import { NovoBancoModal } from './NovoBancoModal.jsx';
 import {
   executarImportacaoExtrato,
+  formatMotivoIgnoradoImportacao,
+  formatValorExtratoPreview,
   parseArquivoExtrato,
   resumirNovosImportacaoMesclar,
 } from './importUtils.js';
@@ -315,6 +317,38 @@ export function ExtratoImportModal({
                           </>
                         ) : null}
                       </p>
+                    ) : null}
+                    {(preview.resumoMesclar.linhasNovas?.length > 0 ||
+                      preview.resumoMesclar.linhasIgnoradas?.length > 0) ? (
+                      <div className="rounded-lg border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                        {(preview.resumoMesclar.linhasNovas || []).map((row) => (
+                          <div
+                            key={`novo-${row.numero}-${row.data}`}
+                            className="px-3 py-2 flex gap-2 items-start text-emerald-800 dark:text-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20"
+                          >
+                            <span className="shrink-0 font-semibold">Importar</span>
+                            <span className="min-w-0">
+                              {row.data} · {formatValorExtratoPreview(row.valor)} ·{' '}
+                              {String(row.descricao ?? '').slice(0, 72)}
+                            </span>
+                          </div>
+                        ))}
+                        {(preview.resumoMesclar.linhasIgnoradas || []).map(({ row, motivo }) => (
+                          <div
+                            key={`ign-${row.numero}-${row.data}-${motivo}`}
+                            className="px-3 py-2 flex gap-2 items-start text-slate-600 dark:text-slate-400"
+                          >
+                            <span className="shrink-0 font-semibold">Ignorar</span>
+                            <span className="min-w-0">
+                              {row.data} · {formatValorExtratoPreview(row.valor)} ·{' '}
+                              {String(row.descricao ?? '').slice(0, 60)}
+                              <span className="block text-[10px] text-slate-500 mt-0.5">
+                                {formatMotivoIgnoradoImportacao(motivo)}
+                              </span>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     ) : null}
                   </>
                 ) : null}

@@ -277,15 +277,20 @@ public class WhatsAppService {
 
         if (StringUtils.hasText(mediaId)) {
             CompletableFuture.runAsync(() -> {
-                String driveUrl = whatsAppMediaService.downloadAndSaveMedia(
+                var savedMedia = whatsAppMediaService.downloadAndSaveMedia(
                         mediaId, filename, mimeType, contactName, from);
-                if (driveUrl != null) {
+                if (savedMedia != null) {
                     whatsAppMessageRepository.findByWaMessageId(waMessageId).ifPresent(m -> {
-                        m.setMediaDriveUrl(driveUrl);
+                        m.setMediaDriveUrl(savedMedia.webViewLink());
+                        m.setMediaDriveFileId(savedMedia.fileId());
                         whatsAppMessageRepository.save(m);
                         try {
                             whatsAppNotificationService.notifyMediaReady(
-                                    m.getId(), from, waMessageId, driveUrl, m.getMediaFilename());
+                                    m.getId(),
+                                    from,
+                                    waMessageId,
+                                    savedMedia.webViewLink(),
+                                    m.getMediaFilename());
                         } catch (Exception e) {
                             log.warn("Falha ao notificar mídia pronta via SSE: {}", e.getMessage());
                         }

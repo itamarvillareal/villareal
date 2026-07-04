@@ -35,6 +35,31 @@ import { extratoRowToUi, mapApiLancamentoToExtratoRow } from './extratoMappers.j
 
 export { arquivoExtratoEhOfx, arquivoExtratoEhPdf, isInstituicaoExtratoPdfImport };
 
+export function formatMotivoIgnoradoImportacao(motivo) {
+  switch (motivo) {
+    case 'numero_ja_no_banco':
+      return 'já no banco (mesmo FITID/nº)';
+    case 'chave_estrita':
+      return 'já no banco';
+    case 'chave_semantica':
+      return 'equivalente a lançamento existente';
+    case 'contagem_dia_igual':
+      return 'dia já importado (mesma quantidade de lançamentos no dia)';
+    default:
+      return 'duplicado';
+  }
+}
+
+function formatValorExtratoPreview(valor) {
+  const v = Number(valor) || 0;
+  const abs = Math.abs(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (v < 0) return `-R$ ${abs}`;
+  if (v > 0) return `+R$ ${abs}`;
+  return `R$ ${abs}`;
+}
+
+export { formatValorExtratoPreview };
+
 /**
  * @param {File} file
  * @param {string} nomeBanco
@@ -233,8 +258,12 @@ async function prepararImportacaoMesclarRapido(rows, numeroBanco, signal, origem
     : [];
 
   const existente = montarExistenteParaDedupe(existenteSemantico, existentesNumeros);
+  const numerosExistentes = new Set(
+    [...(existentesNumeros || []), ...existente.map((t) => String(t?.numero ?? '').trim())].filter(Boolean)
+  );
   const analise = analisarLancamentosNovosDedupe(existente, protecao.rows, {
     respeitarExtratoComoMestre: /^PDF$/i.test(String(origemImportacao ?? '').trim()),
+    numerosExistentes,
   });
 
   return {
@@ -246,10 +275,13 @@ async function prepararImportacaoMesclarRapido(rows, numeroBanco, signal, origem
     dataCorte: protecao.dataCorte,
     dataCorteBr: formatarDataCorteBr(protecao.dataCorte),
     linhasAposCorte: protecao.rows.length,
+    linhasNovas: analise.novos,
+    linhasIgnoradas: analise.ignoradosDetalhe,
     preparacao: {
       existente,
       protecao,
       linhasNovas: analise.novos,
+      numerosExistentes,
     },
   };
 }

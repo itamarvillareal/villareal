@@ -1,5 +1,6 @@
 package br.com.vilareal.whatsapp.infrastructure.persistence.entity;
 
+import br.com.vilareal.whatsapp.WhatsAppMediaStatus;
 import br.com.vilareal.whatsapp.WhatsAppMessageDirection;
 import br.com.vilareal.whatsapp.WhatsAppMessageStatus;
 import br.com.vilareal.whatsapp.WhatsAppMessageType;
@@ -74,6 +75,22 @@ public class WhatsAppMessageEntity {
 
     @Column(name = "media_drive_url", length = 500)
     private String mediaDriveUrl;
+
+    @Column(name = "media_drive_file_id", length = 255)
+    private String mediaDriveFileId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "media_status", length = 20)
+    private WhatsAppMediaStatus mediaStatus;
+
+    @Column(name = "media_download_attempts", nullable = false)
+    private int mediaDownloadAttempts;
+
+    @Column(name = "media_last_attempt_at")
+    private Instant mediaLastAttemptAt;
+
+    @Column(name = "media_error", length = 500)
+    private String mediaError;
 
     @Column(name = "created_at")
     private Instant createdAt;

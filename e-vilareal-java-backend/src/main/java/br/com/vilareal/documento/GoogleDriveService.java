@@ -629,6 +629,34 @@ public class GoogleDriveService {
         return ids;
     }
 
+    /**
+     * Primeiro arquivo (não pasta) com nome exato na pasta — usado para deduplicar upload WhatsApp.
+     */
+    public DriveArquivoDto buscarArquivoPorNomeNaPasta(String pastaId, String nomeArquivo) throws Exception {
+        if (!isConfigurado() || !StringUtils.hasText(pastaId) || !StringUtils.hasText(nomeArquivo)) {
+            return null;
+        }
+        String nome = sanitizarNomeArquivoGenerico(nomeArquivo);
+        String query = "'" + pastaId + "' in parents "
+                + "and name = '" + escaparQueryDrive(nome) + "' "
+                + "and mimeType != 'application/vnd.google-apps.folder' "
+                + "and trashed = false";
+        FileList result = prepararListagem(
+                        driveService.files()
+                                .list()
+                                .setQ(query)
+                                .setSpaces("drive")
+                                .setFields(
+                                        "files(id, name, mimeType, size, modifiedTime, webViewLink, webContentLink, iconLink)")
+                                .setPageSize(1),
+                        pastaId)
+                .execute();
+        if (result.getFiles() == null || result.getFiles().isEmpty()) {
+            return null;
+        }
+        return toDriveArquivoDto(result.getFiles().getFirst());
+    }
+
     public DriveArquivoDto uploadArquivo(
             byte[] bytes, String nomeOriginal, String contentType, String pastaId) {
         if (!isConfigurado() || pastaId == null || pastaId.isBlank()) {

@@ -10,6 +10,7 @@ import {
   analisarLancamentosNovosDedupe,
   diasIgnorarPorContagemIgual,
   chaveSemanticaLancamento,
+  valorCentavosAssinadoDedupe,
   normalizarDescricaoParaDedupe,
 } from './ofx.js';
 
@@ -278,6 +279,50 @@ describe('mergeExtratoBancario (mesclar OFX/PDF com extrato)', () => {
     ];
     expect(listarLancamentosNovosDedupe(existente, novo)).toHaveLength(1);
     expect(listarLancamentosNovosDedupe(existente, novo)[0].numero).toBe('e');
+  });
+
+  it('BB jan/2021: crédito poupança +680,01 importa mesmo com PIX -680,01 já no banco', () => {
+    const existente = [
+      {
+        numero: '202101251680010',
+        data: '25/01/2021',
+        valor: -680.01,
+        descricao: 'PIX - Enviado - 25/01 15:42 Itamar Alexandre F V Real',
+        origemImportacao: 'OFX',
+      },
+    ];
+    const novo = [
+      {
+        numero: '202101250680010',
+        data: '25/01/2021',
+        valor: 680.01,
+        descricao: 'Transferido da poupança - 25/01 0324 453259-7 ITAMAR A F V R',
+        origemImportacao: 'OFX',
+      },
+      {
+        numero: '202101251680010',
+        data: '25/01/2021',
+        valor: -680.01,
+        descricao: 'PIX - Enviado - 25/01 15:42 Itamar Alexandre F V Real',
+        origemImportacao: 'OFX',
+      },
+    ];
+    const analise = analisarLancamentosNovosDedupe(existente, novo, {
+      numerosExistentes: new Set(['202101251680010']),
+    });
+    expect(analise.novos).toHaveLength(1);
+    expect(analise.novos[0].numero).toBe('202101250680010');
+    expect(analise.novos[0].valor).toBe(680.01);
+    expect(analise.ignorados).toBe(1);
+  });
+
+  it('valorCentavosAssinadoDedupe distingue crédito e débito no mesmo |valor|', () => {
+    expect(valorCentavosAssinadoDedupe({ valor: 680.01, natureza: 'DEBITO' })).toBe(-68001);
+    expect(valorCentavosAssinadoDedupe({ valor: 680.01, natureza: 'CREDITO' })).toBe(68001);
+    expect(valorCentavosAssinadoDedupe({ valor: -680.01 })).toBe(-68001);
+    expect(chaveSemanticaLancamento({ data: '25/01/2021', valor: 680.01, natureza: 'CREDITO', descricao: 'a' })).not.toBe(
+      chaveSemanticaLancamento({ data: '25/01/2021', valor: 680.01, natureza: 'DEBITO', descricao: 'b' })
+    );
   });
 });
 
