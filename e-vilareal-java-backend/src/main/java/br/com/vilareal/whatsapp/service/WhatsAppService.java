@@ -427,6 +427,7 @@ public class WhatsAppService {
                     : "👤 Cartão de contato";
             case LOCATION -> "📍 Localização";
             case INTERACTIVE, BUTTON -> "↩️ Resposta";
+            case REACTION -> body != null && !body.isBlank() ? body : "Reação";
             default -> "📩 Mídia recebida";
         };
     }
@@ -436,7 +437,8 @@ public class WhatsAppService {
         return messageType == WhatsAppMessageType.CONTACT
                 || messageType == WhatsAppMessageType.LOCATION
                 || messageType == WhatsAppMessageType.INTERACTIVE
-                || messageType == WhatsAppMessageType.BUTTON;
+                || messageType == WhatsAppMessageType.BUTTON
+                || messageType == WhatsAppMessageType.REACTION;
     }
 
     private static String suffixFilename(String filename) {
@@ -758,6 +760,7 @@ public class WhatsAppService {
             case "sticker" -> WhatsAppMessageType.IMAGE;
             case "interactive" -> WhatsAppMessageType.INTERACTIVE;
             case "button" -> WhatsAppMessageType.BUTTON;
+            case "reaction" -> WhatsAppMessageType.REACTION;
             default -> WhatsAppMessageType.UNKNOWN;
         };
     }

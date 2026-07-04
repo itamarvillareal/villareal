@@ -19,10 +19,11 @@ export function marcarConversaLidaAsync(phoneNumber) {
 
 /**
  * Aplica INBOUND SSE à lista em memória: sobe pro topo, atualiza preview e incrementa unread
- * (exceto conversa ativa, que permanece 0).
+ * (exceto conversa ativa, que permanece 0; REACTION não incrementa não-lida).
  * @returns {{ conversations, found, wasUnread, becameUnread }}
  */
 export function applyInboundToConversationList(conversations, inbound, activePhone) {
+  const isReaction = String(inbound?.messageType ?? '').toUpperCase() === 'REACTION';
   if (String(inbound?.direction ?? '').toUpperCase() !== 'INBOUND') {
     return { conversations, found: false, wasUnread: false, becameUnread: false };
   }
@@ -46,12 +47,12 @@ export function applyInboundToConversationList(conversations, inbound, activePho
     lastMessageType: inbound.messageType ?? conv.lastMessageType,
     lastMessageDirection: 'INBOUND',
     lastMessageAt: inbound.createdAt ?? conv.lastMessageAt,
-    unreadCount: isActive ? 0 : unreadCountOf(conv) + 1,
+    unreadCount: isActive ? 0 : isReaction ? unreadCountOf(conv) : unreadCountOf(conv) + 1,
     contactName: inbound.contactName || conv.contactName,
   };
 
   const rest = conversations.filter((_, i) => i !== idx);
-  const becameUnread = !isActive && !wasUnread;
+  const becameUnread = !isActive && !wasUnread && !isReaction;
 
   return {
     conversations: [updated, ...rest],

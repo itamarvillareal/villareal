@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { aplicarNonoDigitoCelular, normalizePhoneForApi } from './whatsappFormat.js';
+import {
+  aplicarNonoDigitoCelular,
+  normalizePhoneForApi,
+  formatRelativeConversationTime,
+  formatDateSeparator,
+  diffDaysBR,
+} from './whatsappFormat.js';
+
+/** Meio-dia em Brasília no dia civil indicado (UTC-3). */
+function brNoonUtc(y, mo, d) {
+  return new Date(Date.UTC(y, mo - 1, d, 15, 0, 0)).toISOString();
+}
 
 describe('normalizePhoneForApi (canônico — espelha backend)', () => {
   it('celular GO sem nono dígito insere 9', () => {
@@ -57,5 +68,75 @@ describe('sufixo feed — legado 12 vs canônico 13 (documentação)', () => {
 describe('aplicarNonoDigitoCelular', () => {
   it('extrai DDD e local após 55', () => {
     expect(aplicarNonoDigitoCelular('556292975894')).toBe('5562992975894');
+  });
+});
+
+describe('diffDaysBR', () => {
+  const ref = brNoonUtc(2026, 7, 4);
+
+  it('mesmo dia civil em Brasília → 0', () => {
+    expect(diffDaysBR(brNoonUtc(2026, 7, 4), ref)).toBe(0);
+  });
+
+  it('ontem civil → -1', () => {
+    expect(diffDaysBR(brNoonUtc(2026, 7, 3), ref)).toBe(-1);
+  });
+
+  it('limítrofe UTC madrugada: msg ainda é dia anterior em Brasília', () => {
+    const msgUtcEarly = '2026-07-04T02:30:00.000Z';
+    const refUtcMidnightBr = '2026-07-04T03:00:00.000Z';
+    expect(diffDaysBR(msgUtcEarly, refUtcMidnightBr)).toBe(-1);
+  });
+});
+
+describe('formatRelativeConversationTime', () => {
+  const ref = brNoonUtc(2026, 7, 4);
+
+  it('hoje → hora em Brasília', () => {
+    const msg = '2026-07-04T20:18:00.000Z';
+    expect(formatRelativeConversationTime(msg, ref)).toBe('17:18');
+  });
+
+  it('ontem → "Ontem"', () => {
+    expect(formatRelativeConversationTime(brNoonUtc(2026, 7, 3), ref)).toBe('Ontem');
+  });
+
+  it('3 dias atrás → dia da semana capitalizado', () => {
+    expect(formatRelativeConversationTime(brNoonUtc(2026, 7, 1), ref)).toBe('Quarta');
+  });
+
+  it('10 dias atrás → dd/MM/yy', () => {
+    expect(formatRelativeConversationTime(brNoonUtc(2026, 6, 24), ref)).toBe('24/06/26');
+  });
+
+  it('virada de ano → dd/MM/yy', () => {
+    const refJan = brNoonUtc(2026, 1, 5);
+    expect(formatRelativeConversationTime(brNoonUtc(2025, 12, 20), refJan)).toBe('20/12/25');
+  });
+
+  it('limítrofe fuso: UTC madrugada conta como ontem, não hora de hoje', () => {
+    const refNow = '2026-07-04T03:00:00.000Z';
+    const msgYesterdayBr = '2026-07-04T02:30:00.000Z';
+    expect(formatRelativeConversationTime(msgYesterdayBr, refNow)).toBe('Ontem');
+  });
+});
+
+describe('formatDateSeparator', () => {
+  const ref = brNoonUtc(2026, 7, 4);
+
+  it('hoje → "Hoje"', () => {
+    expect(formatDateSeparator(brNoonUtc(2026, 7, 4), ref)).toBe('Hoje');
+  });
+
+  it('ontem → "Ontem"', () => {
+    expect(formatDateSeparator(brNoonUtc(2026, 7, 3), ref)).toBe('Ontem');
+  });
+
+  it('mesmo ano → "28 de junho"', () => {
+    expect(formatDateSeparator(brNoonUtc(2026, 6, 28), ref)).toBe('28 de junho');
+  });
+
+  it('ano diferente → "28 de junho de 2025"', () => {
+    expect(formatDateSeparator(brNoonUtc(2025, 6, 28), ref)).toBe('28 de junho de 2025');
   });
 });

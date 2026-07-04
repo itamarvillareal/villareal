@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, FileText, Loader2, UserRound } from 'lucide-react';
-import { formatTimeBR, formatPhoneDisplay } from '../../../utils/whatsappFormat.js';
+import { formatTimeBR, formatPhoneDisplay, formatDateTimeBR } from '../../../utils/whatsappFormat.js';
 import { reprocessarWhatsAppMedia } from '../../../repositories/whatsappRepository.js';
 import { useWhatsAppMediaUrl } from '../hooks/useWhatsAppMediaUrl.js';
 import { normalizarMediaStatus, resolverMediaProxyUrl } from '../utils/whatsappMediaUtils.js';
@@ -17,6 +17,7 @@ import {
   tituloContatoCartao,
 } from '../utils/whatsappContactCard.js';
 import { mapsUrl, parseLocationContent } from '../utils/whatsappLocation.js';
+import { labelReactionThread } from '../utils/whatsappReaction.js';
 import { parseInteractiveReplyContent } from '../utils/whatsappInteractiveReply.js';
 
 function MessageStatusIcon({ status }) {
@@ -637,6 +638,22 @@ export function ChatBubble({ message, onRetryOutboundMedia, onLocalPreviewConsum
   const isOutbound = String(message.direction ?? '').toUpperCase() === 'OUTBOUND';
   const hasTemplate = Boolean(message.templateName);
   const type = String(message.messageType ?? '').toUpperCase();
+  const isReaction = type === 'REACTION';
+
+  if (isReaction) {
+    const label = labelReactionThread(message.content);
+    return (
+      <div className="flex justify-center py-0.5" role="status" aria-label={label}>
+        <span
+          className="rounded-full bg-white/90 dark:bg-slate-700/90 px-3 py-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-300 shadow-sm tabular-nums"
+          title={formatDateTimeBR(message.createdAt)}
+        >
+          {label}
+        </span>
+      </div>
+    );
+  }
+
   const isContact = type === 'CONTACT';
   const isLocation = type === 'LOCATION';
   const isInteractive = type === 'INTERACTIVE' || type === 'BUTTON';
@@ -687,7 +704,9 @@ export function ChatBubble({ message, onRetryOutboundMedia, onLocalPreviewConsum
           <p className="text-sm whitespace-pre-wrap break-words">{formatTemplateContent(message)}</p>
         )}
         <div className={`flex items-center justify-end gap-1 mt-1 ${isOutbound ? 'text-white/80' : 'text-slate-500'}`}>
-          <span className="text-[11px]">{formatTimeBR(message.createdAt)}</span>
+          <span className="text-[11px]" title={formatDateTimeBR(message.createdAt)}>
+            {formatTimeBR(message.createdAt)}
+          </span>
           {isOutbound ? <MessageStatusIcon status={message.status} /> : null}
         </div>
       </div>

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, Fragment } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ExternalLink, Link2, Loader2, MessageCircle, MessageSquarePlus, Search, Send } from 'lucide-react';
 import { ChatBubble } from './components/ChatBubble.jsx';
+import { DaySeparator } from './components/DaySeparator.jsx';
 import {
   WhatsAppMediaAttachComposer,
   WhatsAppMediaSendingIndicator,
@@ -12,7 +13,14 @@ import { useWhatsApp } from './hooks/useWhatsApp.js';
 import { useWhatsAppToast } from './WhatsAppToast.jsx';
 import { useWhatsAppNotificationContext } from './WhatsAppNotificationProvider.jsx';
 import { getWhatsAppConversationContext } from '../../repositories/whatsappRepository.js';
-import { formatPhoneDisplay, formatTimeBR, isValidBrazilPhone, normalizePhoneForApi } from '../../utils/whatsappFormat.js';
+import {
+  formatDateTimeBR,
+  formatPhoneDisplay,
+  formatRelativeConversationTime,
+  isValidBrazilPhone,
+  normalizePhoneForApi,
+} from '../../utils/whatsappFormat.js';
+import { dateKeyBR } from '../../utils/whatsappScheduleUtils.js';
 import { FREE_TEXT_DELIVERY_ERROR, FREE_TEXT_WINDOW_HINT } from '../../utils/whatsappTemplateUtils.js';
 import { isWhatsAppMediaPending, mergeMediaReady, consumirLocalPreview, revogarPreviewsLocaisEmLista } from './utils/whatsappMediaUtils.js';
 import { validarArquivoWhatsAppMedia } from './utils/whatsappMediaSendUtils.js';
@@ -37,7 +45,7 @@ const chatComposeBtnClass =
 
 function previewText(conv) {
   const type = String(conv?.lastMessageType ?? '').toUpperCase();
-  if (['IMAGE', 'DOCUMENT', 'AUDIO', 'VIDEO', 'CONTACT', 'LOCATION', 'INTERACTIVE', 'BUTTON'].includes(type)) {
+  if (['IMAGE', 'DOCUMENT', 'AUDIO', 'VIDEO', 'CONTACT', 'LOCATION', 'INTERACTIVE', 'BUTTON', 'REACTION'].includes(type)) {
     return resumoWhatsAppMessageContent(type, conv?.lastMessagePreview);
   }
   const raw = String(conv?.lastMessagePreview ?? '').trim();
@@ -599,7 +607,12 @@ export function WhatsAppConversas() {
                           </p>
                           <div className="flex items-center gap-1 shrink-0">
                             <WhatsAppUnreadBadge count={conv.unreadCount} />
-                            <span className="text-[10px] text-slate-400">{formatTimeBR(conv.lastMessageAt)}</span>
+                            <span
+                              className="text-[10px] text-slate-400"
+                              title={formatDateTimeBR(conv.lastMessageAt)}
+                            >
+                              {formatRelativeConversationTime(conv.lastMessageAt)}
+                            </span>
                           </div>
                         </div>
                         {String(conv.contactName ?? '').trim() ? (
@@ -691,14 +704,21 @@ export function WhatsAppConversas() {
                   </button>
                 </div>
               ) : null}
-              {messages.map((msg) => (
-                <ChatBubble
-                  key={msg.id ?? msg.waMessageId}
-                  message={msg}
-                  onRetryOutboundMedia={handleRetryOutboundMedia}
-                  onLocalPreviewConsumed={handleLocalPreviewConsumed}
-                />
-              ))}
+              {messages.map((msg, idx) => {
+                const prevKey = idx > 0 ? dateKeyBR(messages[idx - 1].createdAt) : null;
+                const curKey = dateKeyBR(msg.createdAt);
+                const showDaySep = idx === 0 || curKey !== prevKey;
+                return (
+                  <Fragment key={msg.id ?? msg.waMessageId}>
+                    {showDaySep ? <DaySeparator iso={msg.createdAt} /> : null}
+                    <ChatBubble
+                      message={msg}
+                      onRetryOutboundMedia={handleRetryOutboundMedia}
+                      onLocalPreviewConsumed={handleLocalPreviewConsumed}
+                    />
+                  </Fragment>
+                );
+              })}
               <div ref={bottomRef} />
             </div>
             <form

@@ -131,6 +131,7 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                                FROM whatsapp_messages wi
                                WHERE wi.phone_number = w.phone_number
                                  AND wi.direction = 'INBOUND'
+                                 AND wi.message_type <> 'REACTION'
                                  AND wi.created_at > COALESCE(
                                      (SELECT r.last_read_at
                                       FROM whatsapp_conversation_read r
@@ -206,6 +207,7 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                                FROM whatsapp_messages wi
                                WHERE wi.phone_number = w.phone_number
                                  AND wi.direction = 'INBOUND'
+                                 AND wi.message_type <> 'REACTION'
                                  AND wi.created_at > COALESCE(
                                      (SELECT r.last_read_at
                                       FROM whatsapp_conversation_read r
@@ -235,6 +237,7 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                     SELECT COUNT(DISTINCT wi.phone_number)
                     FROM whatsapp_messages wi
                     WHERE wi.direction = 'INBOUND'
+                      AND wi.message_type <> 'REACTION'
                       AND wi.created_at > COALESCE(
                           (SELECT r.last_read_at
                            FROM whatsapp_conversation_read r

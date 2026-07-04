@@ -1,15 +1,22 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, Fragment } from 'react';
 import { Link } from 'react-router-dom';
 import { Loader2, MessageCircle, Paperclip, Search, Send, X } from 'lucide-react';
 import { useWhatsAppNotificationContext } from './WhatsAppNotificationProvider.jsx';
 import { ChatBubble } from './components/ChatBubble.jsx';
+import { DaySeparator } from './components/DaySeparator.jsx';
 import {
   getWhatsAppMessages,
   getWhatsAppRecentConversations,
   sendWhatsAppMedia,
   sendWhatsAppText,
 } from '../../repositories/whatsappRepository.js';
-import { formatPhoneDisplay, formatTimeBR, normalizePhoneForApi } from '../../utils/whatsappFormat.js';
+import {
+  formatDateTimeBR,
+  formatPhoneDisplay,
+  formatRelativeConversationTime,
+  normalizePhoneForApi,
+} from '../../utils/whatsappFormat.js';
+import { dateKeyBR } from '../../utils/whatsappScheduleUtils.js';
 import { FREE_TEXT_DELIVERY_ERROR } from '../../utils/whatsappTemplateUtils.js';
 import { isWhatsAppMediaPending, mergeMediaReady, consumirLocalPreview, revogarPreviewsLocaisEmLista } from './utils/whatsappMediaUtils.js';
 import { validarArquivoWhatsAppMedia, WHATSAPP_MEDIA_ACCEPT, categoriaAceitaCaption } from './utils/whatsappMediaSendUtils.js';
@@ -21,7 +28,7 @@ import { marcarConversaLidaAsync, applyInboundToConversationList, zeroUnreadAndR
 
 function previewConversa(conv) {
   const type = String(conv?.lastMessageType ?? '').toUpperCase();
-  if (['IMAGE', 'DOCUMENT', 'AUDIO', 'VIDEO', 'CONTACT', 'LOCATION', 'INTERACTIVE', 'BUTTON'].includes(type)) {
+  if (['IMAGE', 'DOCUMENT', 'AUDIO', 'VIDEO', 'CONTACT', 'LOCATION', 'INTERACTIVE', 'BUTTON', 'REACTION'].includes(type)) {
     return resumoWhatsAppMessageContent(type, conv?.lastMessageContent ?? conv?.lastMessagePreview);
   }
   return conv?.lastMessageContent || conv?.lastMessagePreview || '—';
@@ -93,7 +100,12 @@ function FloatingConversationList({ conversations, loading, query, onQueryChange
                   </span>
                   <div className="flex items-center gap-1 shrink-0">
                     <WhatsAppUnreadBadge count={conv.unreadCount} />
-                    <span className="text-[10px] text-slate-400">{formatTimeBR(conv.lastMessageAt)}</span>
+                    <span
+                      className="text-[10px] text-slate-400"
+                      title={formatDateTimeBR(conv.lastMessageAt)}
+                    >
+                      {formatRelativeConversationTime(conv.lastMessageAt)}
+                    </span>
                   </div>
                 </div>
                 <p className="text-xs text-slate-500 truncate mt-0.5">{previewConversa(conv)}</p>
@@ -315,14 +327,21 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
             <Loader2 className="h-5 w-5 animate-spin text-slate-500" />
           </div>
         ) : (
-          messages.map((m) => (
-            <ChatBubble
-              key={m.id ?? m.waMessageId}
-              message={m}
-              onRetryOutboundMedia={handleRetryOutboundMedia}
-              onLocalPreviewConsumed={handleLocalPreviewConsumed}
-            />
-          ))
+          messages.map((m, idx) => {
+            const prevKey = idx > 0 ? dateKeyBR(messages[idx - 1].createdAt) : null;
+            const curKey = dateKeyBR(m.createdAt);
+            const showDaySep = idx === 0 || curKey !== prevKey;
+            return (
+              <Fragment key={m.id ?? m.waMessageId}>
+                {showDaySep ? <DaySeparator iso={m.createdAt} /> : null}
+                <ChatBubble
+                  message={m}
+                  onRetryOutboundMedia={handleRetryOutboundMedia}
+                  onLocalPreviewConsumed={handleLocalPreviewConsumed}
+                />
+              </Fragment>
+            );
+          })
         )}
         <div ref={bottomRef} />
       </div>

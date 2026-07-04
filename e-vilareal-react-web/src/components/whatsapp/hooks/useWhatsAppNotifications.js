@@ -104,10 +104,15 @@ export function useWhatsAppNotifications({ enabled = true } = {}) {
   const handleInbound = useCallback(
     (data, { playFeedback = true } = {}) => {
       if (String(data?.direction ?? '').toUpperCase() !== 'INBOUND') return;
-      setNotifications((prev) => [data, ...prev].slice(0, MAX_NOTIFICATIONS));
+      const isReaction = String(data?.messageType ?? '').toUpperCase() === 'REACTION';
+      if (!isReaction) {
+        setNotifications((prev) => [data, ...prev].slice(0, MAX_NOTIFICATIONS));
+      }
       setLatestInbound(data);
-      scheduleRevalidateUnreadTotal();
-      if (playFeedback) {
+      if (!isReaction) {
+        scheduleRevalidateUnreadTotal();
+      }
+      if (playFeedback && !isReaction) {
         playNotificationSound();
         showBrowserNotification(data);
       }

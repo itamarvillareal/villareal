@@ -9,6 +9,7 @@ import br.com.vilareal.whatsapp.dto.WhatsAppWebhookPayload.MessageStatus;
 import br.com.vilareal.whatsapp.dto.WhatsAppWebhookPayload.Value;
 import br.com.vilareal.whatsapp.dto.WhatsAppWebhookPayload.WebhookContact;
 import br.com.vilareal.whatsapp.service.WhatsAppMediaService;
+import br.com.vilareal.whatsapp.WhatsAppReactionSupport;
 import br.com.vilareal.whatsapp.service.WhatsAppService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -188,7 +189,17 @@ public class WhatsAppWebhookController {
                 case "interactive" ->
                         body = WhatsAppInteractiveReplySupport.toContentJson(message.interactive());
                 case "button" -> body = WhatsAppInteractiveReplySupport.toContentJson(message.button());
+                case "reaction" -> body = WhatsAppReactionSupport.toContentJson(message.reaction());
                 default -> { }
+            }
+
+            if ("reaction".equalsIgnoreCase(type)) {
+                if (message.reaction() == null || !StringUtils.hasText(message.reaction().emoji())) {
+                    log.debug(
+                            "Reaction removida ou sem emoji — ignorada (sem persistência). eventId={}",
+                            msgId);
+                    continue;
+                }
             }
 
             log.info(

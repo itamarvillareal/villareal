@@ -1,6 +1,7 @@
 import { resumoContactCardContent } from './whatsappContactCard.js';
 import { resumoInteractiveReplyContent } from './whatsappInteractiveReply.js';
 import { resumoLocationContent } from './whatsappLocation.js';
+import { resumoReactionContent } from './whatsappReaction.js';
 
 /**
  * Resumo legível de uma mensagem WhatsApp para listas, toasts e notificações.
@@ -27,6 +28,8 @@ export function resumoWhatsAppMessageContent(messageType, content) {
     case 'INTERACTIVE':
     case 'BUTTON':
       return resumoInteractiveReplyContent(content);
+    case 'REACTION':
+      return resumoReactionContent(content);
     default: {
       const raw = String(content ?? '').trim();
       return raw || 'Nova mensagem';

@@ -6,6 +6,7 @@ import {
   ChevronUp,
   FileText,
   MessageCircle,
+  Phone,
   User,
   UserPlus,
   Banknote,
@@ -91,6 +92,9 @@ export function ScheduleCard({ item, compact = false, onCancel, cancelling = fal
   const nomeCliente = extrairNomeCliente(item);
   const numeroProcesso = extrairNumeroProcesso(item);
   const automatico = String(item.createdBy ?? '').toLowerCase() === 'sistema';
+  const telefoneDestino = formatPhoneDisplay(item.phoneNumber) || '—';
+  const isSent = String(item.status).toUpperCase() === 'SENT';
+  const rotuloTelefone = isSent ? 'Enviado para' : 'Para';
 
   if (compact) {
     return (
@@ -100,7 +104,9 @@ export function ScheduleCard({ item, compact = false, onCancel, cancelling = fal
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{titulo}</p>
-            <p className="text-xs text-slate-500 mt-0.5 tabular-nums">{formatPhoneDisplay(item.phoneNumber)}</p>
+            <p className="text-xs text-slate-500 mt-0.5 tabular-nums">
+              <span className="font-medium">{rotuloTelefone}:</span> {telefoneDestino}
+            </p>
           </div>
           <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 tabular-nums shrink-0">
             {formatTimeBR(item.scheduledAt)}
@@ -153,10 +159,9 @@ export function ScheduleCard({ item, compact = false, onCancel, cancelling = fal
             </li>
           ) : null}
           <li className="flex items-center gap-1.5 tabular-nums">
-            <span className="opacity-60" aria-hidden>
-              📱
-            </span>
-            {formatPhoneDisplay(item.phoneNumber)}
+            <Phone className="w-3.5 h-3.5 shrink-0 opacity-60" aria-hidden />
+            <span className="font-medium text-slate-700 dark:text-slate-300">{rotuloTelefone}:</span>
+            <span>{telefoneDestino}</span>
           </li>
           {numeroProcesso ? (
             <li className="flex items-center gap-1.5">
@@ -193,10 +198,13 @@ export function ScheduleCard({ item, compact = false, onCancel, cancelling = fal
 
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
           <div className="flex flex-wrap items-center gap-2">
-            <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${cfg.badge}`}>
+            <span className={`inline-flex flex-wrap items-center gap-x-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${cfg.badge}`}>
               {cfg.label}
-              {String(item.status).toUpperCase() === 'SENT' && item.sentAt ? (
-                <span className="ml-1 opacity-80">✓ {formatTimeBR(item.sentAt)}</span>
+              {isSent && item.sentAt ? (
+                <span className="opacity-80">✓ {formatTimeBR(item.sentAt)}</span>
+              ) : null}
+              {isSent && telefoneDestino !== '—' ? (
+                <span className="opacity-90 font-normal tabular-nums">· {telefoneDestino}</span>
               ) : null}
             </span>
             {String(item.status).toUpperCase() === 'FAILED' && item.errorMessage ? (

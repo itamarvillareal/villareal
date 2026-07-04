@@ -84,7 +84,14 @@ public record WhatsAppWebhookPayload(
             @JsonProperty("contacts") List<SharedContact> contacts,
             @JsonProperty("location") LocationContent location,
             @JsonProperty("interactive") InteractiveContent interactive,
-            @JsonProperty("button") ButtonContent button) {}
+            @JsonProperty("button") ButtonContent button,
+            @JsonProperty("reaction") ReactionContent reaction) {}
+
+    /** Reação (emoji) a uma mensagem existente na conversa. */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record ReactionContent(
+            @JsonProperty("message_id") String messageId, @JsonProperty("emoji") String emoji) {}
 
     /**
      * Conteúdo textual de uma mensagem recebida.

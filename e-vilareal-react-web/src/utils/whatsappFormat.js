@@ -1,3 +1,5 @@
+import { dateKeyBR } from './whatsappScheduleUtils.js';
+
 /** Formatar telefone para exibição: 5562999991234 → (62) 99999-1234 */
 export function formatPhoneDisplay(phone) {
   if (!phone) return '';
@@ -121,6 +123,90 @@ export function formatTimeBR(isoString) {
     minute: '2-digit',
     hour12: false,
   });
+}
+
+/** Diferença em dias civis (Brasília) entre duas datas ISO; negativo = passado. */
+export function diffDaysBR(isoString, referenceIso = new Date().toISOString()) {
+  const keyA = dateKeyBR(isoString);
+  const keyB = dateKeyBR(referenceIso);
+  if (!keyA || !keyB) return NaN;
+  const [yA, mA, dA] = keyA.split('-').map(Number);
+  const [yB, mB, dB] = keyB.split('-').map(Number);
+  const msA = Date.UTC(yA, mA - 1, dA);
+  const msB = Date.UTC(yB, mB - 1, dB);
+  return Math.round((msA - msB) / 86_400_000);
+}
+
+function weekdayLabelBR(isoString) {
+  const raw = new Date(isoString).toLocaleDateString('pt-BR', {
+    timeZone: TZ_BR,
+    weekday: 'long',
+  });
+  const short = raw.replace(/-feira$/, '');
+  return short.charAt(0).toUpperCase() + short.slice(1);
+}
+
+function monthDayYearPartsBR(isoString) {
+  const d = new Date(isoString);
+  if (Number.isNaN(d.getTime())) return null;
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('pt-BR', {
+      timeZone: TZ_BR,
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    })
+      .formatToParts(d)
+      .filter((p) => p.type !== 'literal')
+      .map((p) => [p.type, p.value]),
+  );
+  return {
+    day: parts.day,
+    monthLong: parts.month,
+    year: parts.year,
+  };
+}
+
+/**
+ * Timestamp relativo para a lista de conversas (fuso America/Sao_Paulo).
+ * @param {string} isoString
+ * @param {string} [referenceIso] — "agora" para testes; default: Date atual
+ */
+export function formatRelativeConversationTime(isoString, referenceIso) {
+  if (!isoString) return '';
+  const ref = referenceIso ?? new Date().toISOString();
+  const diff = diffDaysBR(isoString, ref);
+  if (Number.isNaN(diff)) return '';
+  if (diff === 0) return formatTimeBR(isoString);
+  if (diff === -1) return 'Ontem';
+  if (diff >= -6 && diff <= -2) return weekdayLabelBR(isoString);
+  return new Date(isoString).toLocaleDateString('pt-BR', {
+    timeZone: TZ_BR,
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+  });
+}
+
+/**
+ * Label de separador de dia na thread (Hoje, Ontem, 28 de junho, …).
+ * @param {string} isoString
+ * @param {string} [referenceIso]
+ */
+export function formatDateSeparator(isoString, referenceIso) {
+  if (!isoString) return '';
+  const ref = referenceIso ?? new Date().toISOString();
+  const diff = diffDaysBR(isoString, ref);
+  if (Number.isNaN(diff)) return '';
+  if (diff === 0) return 'Hoje';
+  if (diff === -1) return 'Ontem';
+  const parts = monthDayYearPartsBR(isoString);
+  if (!parts) return '';
+  const refYear = dateKeyBR(ref).slice(0, 4);
+  if (parts.year === refYear) {
+    return `${parts.day} de ${parts.monthLong}`;
+  }
+  return `${parts.day} de ${parts.monthLong} de ${parts.year}`;
 }
 
 export function isFutureDatetimeLocal(localValue) {

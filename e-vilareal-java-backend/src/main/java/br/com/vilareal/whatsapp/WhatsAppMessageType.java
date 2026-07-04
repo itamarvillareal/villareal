@@ -14,5 +14,6 @@ public enum WhatsAppMessageType {
     LOCATION,
     INTERACTIVE,
     BUTTON,
+    REACTION,
     UNKNOWN
 }

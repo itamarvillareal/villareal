@@ -6,6 +6,7 @@ import br.com.vilareal.whatsapp.WhatsAppApiException;
 import br.com.vilareal.whatsapp.WhatsAppContactCardSupport;
 import br.com.vilareal.whatsapp.WhatsAppInteractiveReplySupport;
 import br.com.vilareal.whatsapp.WhatsAppLocationSupport;
+import br.com.vilareal.whatsapp.WhatsAppReactionSupport;
 import br.com.vilareal.whatsapp.WhatsAppMediaMimeUtil;
 import br.com.vilareal.whatsapp.WhatsAppMessageDtoMapper;
 import br.com.vilareal.whatsapp.WhatsAppMessageDirection;
@@ -623,6 +624,7 @@ public class WhatsAppController {
                 case "LOCATION" -> WhatsAppLocationSupport.resumoLegivel(row.getLastMessageContent());
                 case "INTERACTIVE", "BUTTON" ->
                         WhatsAppInteractiveReplySupport.resumoLegivel(row.getLastMessageContent());
+                case "REACTION" -> WhatsAppReactionSupport.resumoLegivel(row.getLastMessageContent());
                 default -> row.getLastMessageContent();
             };
         }
@@ -663,6 +665,7 @@ public class WhatsAppController {
                 case "LOCATION" -> WhatsAppLocationSupport.resumoLegivel(row.getLastMessageContent());
                 case "INTERACTIVE", "BUTTON" ->
                         WhatsAppInteractiveReplySupport.resumoLegivel(row.getLastMessageContent());
+                case "REACTION" -> WhatsAppReactionSupport.resumoLegivel(row.getLastMessageContent());
                 default -> row.getLastMessageContent();
             };
         }
