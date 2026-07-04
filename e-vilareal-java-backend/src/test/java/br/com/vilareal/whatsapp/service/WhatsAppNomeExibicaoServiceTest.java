@@ -1,5 +1,6 @@
 package br.com.vilareal.whatsapp.service;
 
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.projection.PessoaTelefoneIndiceBatchRow;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.whatsapp.config.WhatsAppNomeExibicaoCacheConfig;
@@ -16,6 +17,8 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -48,6 +51,39 @@ class WhatsAppNomeExibicaoServiceTest {
     }
 
     @Test
+    void resolverNomesPorTelefone_pessoaSemCliente_porFallbackIndice() {
+        when(pessoaRepository.findTelefoneIndiceBatch(anyList(), anyList())).thenReturn(List.of());
+        when(pessoaRepository.findIdsByTelefoneIndice(anyList(), eq("83452868"), eq("")))
+                .thenReturn(List.of(7007L));
+        when(pessoaRepository.findById(7007L)).thenReturn(Optional.of(pessoaJuliano()));
+
+        Map<String, String> map = service.resolverNomesPorTelefone(List.of(PHONE_JULIANO));
+
+        assertThat(map).containsEntry(PHONE_JULIANO, "JULIANO CESAR MENDONÇA");
+    }
+
+    @Test
+    void resolverNomesPorTelefone_pessoaComCliente_mesmoFluxo() {
+        when(pessoaRepository.findTelefoneIndiceBatch(anyList(), anyList()))
+                .thenReturn(List.of(rowKarlaComCliente()));
+
+        Map<String, String> map = service.resolverNomesPorTelefone(List.of("5562994395882"));
+
+        assertThat(map).containsEntry("5562994395882", "KARLA PEDROZA");
+    }
+
+    @Test
+    void resolverNomesPorTelefone_telefoneOrfao_naoEntraNoMapa() {
+        when(pessoaRepository.findTelefoneIndiceBatch(anyList(), anyList())).thenReturn(List.of());
+        when(pessoaRepository.findIdsByTelefoneIndice(anyList(), anyString(), eq("")))
+                .thenReturn(List.of());
+
+        Map<String, String> map = service.resolverNomesPorTelefone(List.of("5562999999999"));
+
+        assertThat(map).isEmpty();
+    }
+
+    @Test
     void resolverNomeExibido_cadastroTemPrioridadeSobreMeta() {
         when(pessoaRepository.findTelefoneIndiceBatch(anyList(), anyList()))
                 .thenReturn(List.of(rowJuliano()));
@@ -72,6 +108,47 @@ class WhatsAppNomeExibicaoServiceTest {
 
         assertThat(service.resolverNomeExibido(PHONE_JULIANO, ".")).isNull();
         assertThat(service.resolverNomeExibido(PHONE_JULIANO, null)).isNull();
+    }
+
+    private static PessoaEntity pessoaJuliano() {
+        PessoaEntity p = new PessoaEntity();
+        p.setId(7007L);
+        p.setNome("JULIANO CESAR MENDONÇA");
+        return p;
+    }
+
+    private static PessoaTelefoneIndiceBatchRow rowKarlaComCliente() {
+        return new PessoaTelefoneIndiceBatchRow() {
+            @Override
+            public Long getPessoaId() {
+                return 42L;
+            }
+
+            @Override
+            public String getNome() {
+                return "KARLA PEDROZA";
+            }
+
+            @Override
+            public String getTelefoneDigitos() {
+                return "62994395882";
+            }
+
+            @Override
+            public String getTelefoneSufixo8() {
+                return "99439588";
+            }
+
+            @Override
+            public String getContatoDigitos() {
+                return null;
+            }
+
+            @Override
+            public String getContatoSufixo8() {
+                return null;
+            }
+        };
     }
 
     private static PessoaTelefoneIndiceBatchRow rowJuliano() {

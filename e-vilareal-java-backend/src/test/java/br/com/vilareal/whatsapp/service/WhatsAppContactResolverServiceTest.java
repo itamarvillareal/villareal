@@ -4,14 +4,12 @@ import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteWhatsAppRepository;
-import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaContatoRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -21,6 +19,7 @@ import static org.mockito.Mockito.when;
 class WhatsAppContactResolverServiceTest {
 
     private static final String PHONE = "5562994395882";
+    private static final String PHONE_JULIANO = "5562983452868";
 
     @Mock
     private ClienteRepository clienteRepository;
@@ -29,14 +28,14 @@ class WhatsAppContactResolverServiceTest {
     private ClienteWhatsAppRepository clienteWhatsAppRepository;
 
     @Mock
-    private PessoaContatoRepository pessoaContatoRepository;
+    private WhatsAppNomeExibicaoService nomeExibicaoService;
 
     private WhatsAppContactResolverService service;
 
     @BeforeEach
     void setUp() {
         service = new WhatsAppContactResolverService(
-                clienteRepository, clienteWhatsAppRepository, pessoaContatoRepository);
+                clienteRepository, clienteWhatsAppRepository, nomeExibicaoService);
     }
 
     @Test
@@ -51,7 +50,7 @@ class WhatsAppContactResolverServiceTest {
     @Test
     void usaPerfilWhatsAppQuandoNaoHaCadastro() {
         when(clienteWhatsAppRepository.findClienteIdByTelefoneNormalizado(PHONE)).thenReturn(Optional.empty());
-        when(pessoaContatoRepository.findPessoaIdByTelefoneNormalizado(PHONE)).thenReturn(Optional.empty());
+        when(nomeExibicaoService.resolverNomeExibido(PHONE, null)).thenReturn(null);
 
         assertEquals("Karla WhatsApp", service.resolveContactName(PHONE, "Karla WhatsApp"));
     }
@@ -76,9 +75,19 @@ class WhatsAppContactResolverServiceTest {
     }
 
     @Test
+    void resolvePessoaSemClienteViaNomeExibicaoService() {
+        when(clienteWhatsAppRepository.findClienteIdByTelefoneNormalizado(PHONE_JULIANO))
+                .thenReturn(Optional.empty());
+        when(nomeExibicaoService.resolverNomeExibido(PHONE_JULIANO, null))
+                .thenReturn("JULIANO CESAR MENDONÇA");
+
+        assertEquals("JULIANO CESAR MENDONÇA", service.resolveContactName(PHONE_JULIANO, null));
+    }
+
+    @Test
     void retornaNullQuandoNaoHaNome() {
         when(clienteWhatsAppRepository.findClienteIdByTelefoneNormalizado(PHONE)).thenReturn(Optional.empty());
-        when(pessoaContatoRepository.findPessoaIdByTelefoneNormalizado(PHONE)).thenReturn(Optional.empty());
+        when(nomeExibicaoService.resolverNomeExibido(PHONE, null)).thenReturn(null);
 
         assertEquals(null, service.resolveContactName(PHONE, null));
     }

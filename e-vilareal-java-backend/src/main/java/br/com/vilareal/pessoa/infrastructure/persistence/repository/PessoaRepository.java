@@ -47,6 +47,7 @@ public interface PessoaRepository extends JpaRepository<PessoaEntity, Long>, Jpa
 
     /**
      * Candidatos para casamento em lote (mesmos índices de {@link #findIdsByTelefoneIndice}).
+     * Retorna {@code pessoa.nome} diretamente — não exige cliente vinculado.
      * Usa {@code idx_pessoa_contato_valor_digitos}, {@code idx_pessoa_telefone_digitos} (V174).
      */
     @Query(
@@ -60,10 +61,13 @@ public interface PessoaRepository extends JpaRepository<PessoaEntity, Long>, Jpa
                            pc.valor_sufixo_8 AS contatoSufixo8
                     FROM pessoa p
                     LEFT JOIN pessoa_contato pc ON pc.pessoa_id = p.id AND LOWER(pc.tipo) = 'telefone'
-                    WHERE p.telefone_digitos IN (:digitosList)
-                       OR pc.valor_digitos IN (:digitosList)
-                       OR p.telefone_sufixo_8 IN (:sufixosList)
-                       OR pc.valor_sufixo_8 IN (:sufixosList)
+                    WHERE (p.ativo IS NULL OR p.ativo = TRUE)
+                      AND (
+                        p.telefone_digitos IN (:digitosList)
+                        OR pc.valor_digitos IN (:digitosList)
+                        OR p.telefone_sufixo_8 IN (:sufixosList)
+                        OR pc.valor_sufixo_8 IN (:sufixosList)
+                      )
                     ORDER BY p.id
                     """,
             nativeQuery = true)

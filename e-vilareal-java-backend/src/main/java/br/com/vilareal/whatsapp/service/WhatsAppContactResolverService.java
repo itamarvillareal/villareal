@@ -5,7 +5,6 @@ import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteWhatsAppRepository;
-import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaContatoRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -15,6 +14,9 @@ import java.util.Optional;
 /**
  * Resolve nome de exibição para conversas WhatsApp: prioriza cadastro (pessoa/cliente) e usa o perfil
  * informado pela Meta quando não houver vínculo no sistema.
+ *
+ * <p>Para resolução por telefone, delega em {@link WhatsAppNomeExibicaoService} — retorna
+ * {@code pessoa.nome} mesmo sem cliente vinculado.</p>
  */
 @Service
 public class WhatsAppContactResolverService {
@@ -23,15 +25,15 @@ public class WhatsAppContactResolverService {
 
     private final ClienteRepository clienteRepository;
     private final ClienteWhatsAppRepository clienteWhatsAppRepository;
-    private final PessoaContatoRepository pessoaContatoRepository;
+    private final WhatsAppNomeExibicaoService nomeExibicaoService;
 
     public WhatsAppContactResolverService(
             ClienteRepository clienteRepository,
             ClienteWhatsAppRepository clienteWhatsAppRepository,
-            PessoaContatoRepository pessoaContatoRepository) {
+            WhatsAppNomeExibicaoService nomeExibicaoService) {
         this.clienteRepository = clienteRepository;
         this.clienteWhatsAppRepository = clienteWhatsAppRepository;
-        this.pessoaContatoRepository = pessoaContatoRepository;
+        this.nomeExibicaoService = nomeExibicaoService;
     }
 
     @Transactional(readOnly = true)
@@ -79,13 +81,7 @@ public class WhatsAppContactResolverService {
             }
         }
 
-        return pessoaContatoRepository
-                .findPessoaIdByTelefoneNormalizado(digits)
-                .flatMap(pessoaId -> clienteRepository.findByPessoa_IdOrderByCodigoClienteAsc(pessoaId).stream()
-                        .findFirst())
-                .map(this::nomeCliente)
-                .filter(StringUtils::hasText)
-                .orElse(null);
+        return nomeExibicaoService.resolverNomeExibido(phoneNumber, null);
     }
 
     private String nomeCliente(ClienteEntity cliente) {

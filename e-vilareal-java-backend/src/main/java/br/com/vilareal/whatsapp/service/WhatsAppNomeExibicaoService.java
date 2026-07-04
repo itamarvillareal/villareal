@@ -27,6 +27,11 @@ import java.util.Set;
  *
  * <p><strong>Precedência do nome exibido:</strong> cadastro ({@code pessoa.nome}) &gt; profile.name Meta
  * (salvo na mensagem) &gt; {@code null} (front formata o número).</p>
+ *
+ * <p>Cliente vinculado <strong>não</strong> é pré-requisito: basta casar telefone com {@code pessoa}
+ * (campo principal ou contato tipo telefone).</p>
+ *
+ * <p>Desempate quando várias pessoas casam: menor {@code pessoa.id} (estável e previsível).</p>
  */
 @Service
 public class WhatsAppNomeExibicaoService {
@@ -100,6 +105,9 @@ public class WhatsAppNomeExibicaoService {
                 continue;
             }
             Optional<String> nome = resolverNomeParaIndice(idx, candidatos);
+            if (nome.isEmpty()) {
+                nome = resolverNomePessoaPorIndice(idx);
+            }
             cache.put(canonico, nome);
             nome.filter(StringUtils::hasText).ifPresent(n -> out.put(canonico, n));
         }
@@ -151,6 +159,23 @@ public class WhatsAppNomeExibicaoService {
                 .filter(row -> casaIndiceComLinha(indice, row))
                 .min(Comparator.comparing(PessoaTelefoneIndiceBatchRow::getPessoaId))
                 .map(PessoaTelefoneIndiceBatchRow::getNome)
+                .map(WhatsAppNomeExibicaoService::normalizarNomePessoa)
+                .filter(StringUtils::hasText);
+    }
+
+    /**
+     * Fallback quando o batch não trouxe linha casável: resolve ids por índice e retorna
+     * {@code pessoa.nome} do menor id — sem exigir cliente.
+     */
+    private Optional<String> resolverNomePessoaPorIndice(TelefoneIndice indice) {
+        List<String> variantes = indice.variantes();
+        String sufixo = indice.sufixoLocal();
+        List<Long> ids = pessoaRepository.findIdsByTelefoneIndice(
+                variantes, StringUtils.hasText(sufixo) ? sufixo : "", "");
+        return ids.stream()
+                .min(Long::compareTo)
+                .flatMap(pessoaRepository::findById)
+                .map(p -> p.getNome())
                 .map(WhatsAppNomeExibicaoService::normalizarNomePessoa)
                 .filter(StringUtils::hasText);
     }
