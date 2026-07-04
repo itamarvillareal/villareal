@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Loader2, MessageCircle, Paperclip, Search, Send, X } from 'lucide-react';
 import { WhatsAppMediaAttachPreview } from './components/WhatsAppMediaAttachPreview.jsx';
 import { useWhatsAppNotificationContext } from './WhatsAppNotificationProvider.jsx';
@@ -461,6 +461,7 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
 }
 
 export function WhatsAppFloatingChat() {
+  const location = useLocation();
   const ctx = useWhatsAppNotificationContext();
   const [isOpen, setIsOpen] = useState(false);
   const [selectedConversation, setSelectedConversation] = useState(null);
@@ -589,6 +590,10 @@ export function WhatsAppFloatingChat() {
   };
 
   if (!ctx) return null;
+
+  if (location.pathname.startsWith('/whatsapp/conversas')) {
+    return null;
+  }
 
   return (
     <div className="whatsapp-floating-container fixed bottom-6 right-6 z-[9999] max-sm:bottom-0 max-sm:right-0">

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ExternalLink, Link2, Loader2, MessageCircle, MessageSquarePlus, Search, Send, ChevronUp, ChevronDown, X, Trash2, Camera, ImageMinus } from 'lucide-react';
+import { ExternalLink, Link2, Loader2, MessageCircle, MessageSquarePlus, Search, Send, ChevronUp, ChevronDown, ChevronLeft, X, Trash2, Camera, ImageMinus, MoreVertical } from 'lucide-react';
 import { ConfirmDialog } from '../financeiro/shared/ConfirmDialog.jsx';
 import { ChatBubble } from './components/ChatBubble.jsx';
 import { DaySeparator } from './components/DaySeparator.jsx';
@@ -276,6 +276,7 @@ export function WhatsAppConversas() {
   const [contactPhotoMenuOpen, setContactPhotoMenuOpen] = useState(false);
   const [pendingContactPhotoFile, setPendingContactPhotoFile] = useState(null);
   const [contactPhotoBusy, setContactPhotoBusy] = useState(false);
+  const [mobileHeaderMenuOpen, setMobileHeaderMenuOpen] = useState(false);
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -705,6 +706,7 @@ export function WhatsAppConversas() {
       if (!normalized) return;
       markConversationReadLocal(normalized);
       resetConversationSearch();
+      setMobileHeaderMenuOpen(false);
       setActivePhone(normalized);
       setContactName(nameHint || '');
       setContactPhotoUrl(photoHint ?? null);
@@ -737,6 +739,14 @@ export function WhatsAppConversas() {
     },
     [fetchPage, setSearchParams, toast, markConversationReadLocal, resetConversationSearch],
   );
+
+  const closeMobileConversation = useCallback(() => {
+    setMobileHeaderMenuOpen(false);
+    setContactPhotoMenuOpen(false);
+    resetConversationSearch();
+    setActivePhone('');
+    setSearchParams({}, { replace: true });
+  }, [resetConversationSearch, setSearchParams]);
 
   useEffect(() => {
     if (!conversationSearchOpen || !activePhone) return undefined;
@@ -1104,8 +1114,17 @@ export function WhatsAppConversas() {
   }, [messages.length, loadingMore]);
 
   return (
-    <div className="flex flex-col lg:flex-row gap-0 h-[calc(100dvh-12rem)] max-w-6xl mx-auto rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900 shadow-sm">
-      <aside className="w-full lg:w-80 shrink-0 flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/80">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div
+        className={`flex min-h-0 flex-1 flex-col md:flex-row gap-0 overflow-hidden max-w-6xl w-full mx-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm md:h-[calc(100dvh-12rem)] ${
+          activePhone ? 'max-md:flex-1' : ''
+        }`}
+      >
+      <aside
+        className={`w-full md:w-80 shrink-0 flex-col border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/80 min-h-0 ${
+          activePhone ? 'hidden md:flex' : 'flex'
+        }`}
+      >
         <div className="p-3 shrink-0 border-b border-slate-200 dark:border-slate-700 space-y-2">
           <button
             type="button"
@@ -1373,9 +1392,13 @@ export function WhatsAppConversas() {
         />
       </aside>
 
-      <section className="flex-1 min-w-0 flex flex-col min-h-[280px]">
+      <section
+        className={`flex-1 min-w-0 flex-col min-h-0 md:min-h-[280px] ${
+          activePhone ? 'flex max-md:flex-1' : 'hidden md:flex'
+        }`}
+      >
         {!activePhone ? (
-          <div className="flex-1 flex items-center justify-center p-8 text-center bg-slate-50/50 dark:bg-slate-800/20">
+          <div className="hidden md:flex flex-1 items-center justify-center p-8 text-center bg-slate-50/50 dark:bg-slate-800/20">
             <p className="text-sm text-slate-500 max-w-sm">
               Selecione uma conversa ao lado ou busque um número para ver o histórico.
             </p>
@@ -1386,8 +1409,125 @@ export function WhatsAppConversas() {
           </div>
         ) : (
           <>
-            <div className="shrink-0 px-3 py-2 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
-              <div className="flex items-start justify-between gap-2">
+            <div className="shrink-0 px-2 md:px-3 py-2 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+              {/* Cabeçalho mobile — uma linha enxuta */}
+              <div className="md:hidden flex items-center gap-2 min-w-0">
+                <button
+                  type="button"
+                  onClick={closeMobileConversation}
+                  className="shrink-0 inline-flex items-center justify-center rounded-lg p-1.5 text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                  aria-label="Voltar para lista de conversas"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+                <div className="relative shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setContactPhotoMenuOpen((open) => !open)}
+                    disabled={contactPhotoBusy}
+                    className="rounded-full focus:outline-none focus:ring-2 focus:ring-emerald-400 disabled:opacity-50"
+                    title="Foto do contato"
+                    aria-label="Foto do contato"
+                  >
+                    <WhatsAppContactAvatar
+                      nome={contactName}
+                      telefone={activePhone}
+                      contactPhotoUrl={contactPhotoUrl}
+                      size="sm"
+                    />
+                  </button>
+                  {contactPhotoMenuOpen ? (
+                    <div className="absolute top-full left-0 z-30 mt-1 min-w-[10rem] rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => contactPhotoFileInputRef.current?.click()}
+                        disabled={contactPhotoBusy}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-700 disabled:opacity-50"
+                      >
+                        <Camera className="h-3.5 w-3.5 shrink-0" />
+                        Definir foto
+                      </button>
+                      {contactPhotoUrl ? (
+                        <button
+                          type="button"
+                          onClick={() => void removeContactPhoto()}
+                          disabled={contactPhotoBusy}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950/40 disabled:opacity-50"
+                        >
+                          <ImageMinus className="h-3.5 w-3.5 shrink-0" />
+                          Remover foto
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                    {tituloContato(contactName, activePhone)}
+                  </p>
+                  {String(contactName ?? '').trim() ? (
+                    <p className="text-[11px] text-slate-500 tabular-nums truncate">
+                      {formatPhoneDisplay(activePhone)}
+                    </p>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileHeaderMenuOpen(false);
+                    setConversationSearchOpen(true);
+                  }}
+                  className={`shrink-0 inline-flex items-center justify-center rounded-lg border p-1.5 ${
+                    conversationSearchOpen
+                      ? 'border-emerald-500 bg-emerald-50 text-emerald-800 dark:border-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-200'
+                      : 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200'
+                  }`}
+                  title="Buscar no histórico"
+                  aria-label="Buscar no histórico"
+                >
+                  <Search className="h-4 w-4" />
+                </button>
+                <div className="relative shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setMobileHeaderMenuOpen((open) => !open)}
+                    className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-slate-50 p-1.5 text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+                    aria-label="Mais ações"
+                    aria-expanded={mobileHeaderMenuOpen}
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </button>
+                  {mobileHeaderMenuOpen ? (
+                    <div className="absolute top-full right-0 z-30 mt-1 min-w-[10rem] rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMobileHeaderMenuOpen(false);
+                          setModalVinculosAberto(true);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-700"
+                      >
+                        <Link2 className="h-3.5 w-3.5 shrink-0" />
+                        Vínculos
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMobileHeaderMenuOpen(false);
+                          requestDeleteConversation(activePhone);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950/40"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 shrink-0" />
+                        Apagar conversa
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              {/* Cabeçalho desktop — inalterado */}
+              <div className="hidden md:flex items-start justify-between gap-2">
                 <div className="flex items-start gap-2.5 min-w-0 flex-1">
                   <div className="relative shrink-0">
                     <button
@@ -1493,6 +1633,18 @@ export function WhatsAppConversas() {
                   </button>
                 </div>
               </div>
+              <input
+                ref={contactPhotoFileInputRef}
+                type="file"
+                accept="image/jpeg,image/png"
+                className="hidden"
+                disabled={contactPhotoBusy}
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  e.target.value = '';
+                  if (file) handleContactPhotoFileSelect(file);
+                }}
+              />
               {pendingContactPhotoFile ? (
                 <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50/80 px-2.5 py-2 dark:border-emerald-900/50 dark:bg-emerald-950/30">
                   <WhatsAppMediaAttachPreview
@@ -1633,7 +1785,7 @@ export function WhatsAppConversas() {
                 </button>
               </div>
               <WhatsAppMediaSendingIndicator sending={sending && Boolean(selectedFile)} />
-              <p className="text-[11px] text-amber-700 dark:text-amber-300/90 px-1">{FREE_TEXT_WINDOW_HINT}</p>
+              <p className="hidden md:block text-[11px] text-amber-700 dark:text-amber-300/90 px-1">{FREE_TEXT_WINDOW_HINT}</p>
             </form>
           </>
         )}
@@ -1667,6 +1819,7 @@ export function WhatsAppConversas() {
         onCancel={() => setPendingDeleteConversationPhone('')}
         danger
       />
+      </div>
     </div>
   );
 }

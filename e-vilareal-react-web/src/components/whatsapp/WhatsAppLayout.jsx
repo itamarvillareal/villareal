@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useSearchParams } from 'react-router-dom';
 import { LayoutDashboard, MessageCircle, Send, CalendarClock, FileText, Cake, Banknote } from 'lucide-react';
 import { WhatsAppToastProvider } from './WhatsAppToast.jsx';
 import { WhatsAppIaToggle } from './components/WhatsAppIaToggle.jsx';
@@ -14,6 +14,11 @@ const TABS = [
 ];
 
 export function WhatsAppLayout() {
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const isConversasRoute = /\/whatsapp\/conversas\/?$/.test(location.pathname);
+  const conversaAbertaNoMobile = isConversasRoute && Boolean(searchParams.get('telefone')?.trim());
+
   return (
     <WhatsAppToastProvider>
       <div className="flex flex-col h-full min-h-0">
@@ -40,11 +45,15 @@ export function WhatsAppLayout() {
               </NavLink>
             ))}
           </nav>
-          <div className="mt-3 max-w-xl">
+          <div className={`mt-3 max-w-xl ${conversaAbertaNoMobile ? 'max-md:hidden' : ''}`}>
             <WhatsAppIaToggle />
           </div>
         </header>
-        <main className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6">
+        <main
+          className={`flex-1 min-h-0 p-4 md:p-6 ${
+            isConversasRoute ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'
+          }`}
+        >
           <Outlet />
         </main>
       </div>
