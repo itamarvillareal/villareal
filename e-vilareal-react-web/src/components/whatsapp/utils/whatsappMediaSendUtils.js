@@ -94,4 +94,68 @@ export function placeholderConteudoMidia(messageType, filename, caption) {
   return '📄 Documento';
 }
 
+function extensaoImagemDeMime(mime) {
+  const m = normalizarMime(mime);
+  if (m === 'image/jpeg') return 'jpg';
+  if (m === 'image/png') return 'png';
+  return 'png';
+}
+
+/** Nome vazio ou genérico de clipboard / screenshot. */
+function nomeArquivoMidiaGenerico(name) {
+  const n = String(name ?? '').trim();
+  if (!n) return true;
+  const lower = n.toLowerCase();
+  if (lower === 'blob' || lower === 'arquivo') return true;
+  return /^image\.(png|jpe?g)$/i.test(lower);
+}
+
+/** Garante nome legível para preview/envio (ex.: colado-1717500000000.png). */
+export function prepararArquivoMidiaWhatsApp(file) {
+  if (!file) return null;
+  if (!nomeArquivoMidiaGenerico(file.name)) return file;
+  const mime = normalizarMime(file.type) || inferirMimeDoNome(file.name) || 'image/png';
+  const ext = extensaoImagemDeMime(mime);
+  return new File([file], `colado-${Date.now()}.${ext}`, { type: file.type || mime });
+}
+
+/**
+ * Ponto único de seleção de anexo (file input, paste): normaliza nome, valida, retorna file ou erro.
+ */
+export function handleAttachSelect(file) {
+  if (!file) return { ok: false, erro: 'Selecione um arquivo.' };
+  const prepared = prepararArquivoMidiaWhatsApp(file);
+  const validation = validarArquivoWhatsAppMedia(prepared);
+  if (!validation.ok) return { ok: false, erro: validation.erro };
+  return { ok: true, file: prepared, categoria: validation.categoria, mime: validation.mime };
+}
+
+/** Primeira imagem do clipboard (screenshot / copiar imagem). */
+export function extrairImagemDoClipboard(event) {
+  const items = event?.clipboardData?.items;
+  if (!items) return null;
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (item.kind === 'file' && String(item.type ?? '').startsWith('image/')) {
+      const file = item.getAsFile();
+      if (file) return file;
+    }
+  }
+  return null;
+}
+
+/**
+ * Handler onPaste para o campo de digitação — só intercepta imagem; texto cola normalmente.
+ * @param {{ conversaAtiva: boolean, onAttachFile: (file: File) => void, disabled?: boolean }} opts
+ */
+export function criarOnPasteCompositor({ conversaAtiva, onAttachFile, disabled = false }) {
+  return (event) => {
+    if (!conversaAtiva || disabled) return;
+    const file = extrairImagemDoClipboard(event);
+    if (!file) return;
+    event.preventDefault();
+    onAttachFile(file);
+  };
+}
+
 export { resolverCategoria, normalizarMime, inferirMimeDoNome };

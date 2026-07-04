@@ -1110,6 +1110,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
 
   const autorBarraCalculo = rotuloCabecalhoCalculoParte(rodadaAtual.cabecalho?.autor);
   const reuBarraCalculo = rotuloCabecalhoCalculoParte(rodadaAtual.cabecalho?.reu);
+  const unidadeBarraCalculo = String(rodadaAtual.cabecalho?.unidade ?? '').trim();
 
   // Sincroniza o checkbox com `parcelamentoAceito` da rodada no estado (inclui após GET individual assíncrono).
   const parcelamentoAceitoRodadaAtual = rodadasState[rodadaKey]?.parcelamentoAceito;
@@ -2427,10 +2428,13 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
         onDoubleClick={() =>
           navigate('/processos', { state: buildRouterStateChaveClienteProcesso(codigoClienteNorm, procNorm) })
         }
-        title={`${autorBarraCalculo} X ${reuBarraCalculo} - Proc. ${procNorm} — duplo clique: abrir em Processos (cliente ${codigoClienteNorm}, proc. ${procNorm})`}
+        title={`${autorBarraCalculo} X ${reuBarraCalculo} - Proc. ${procNorm}${unidadeBarraCalculo ? ` — ${unidadeBarraCalculo}` : ''} — duplo clique: abrir em Processos (cliente ${codigoClienteNorm}, proc. ${procNorm})`}
       >
         <span className="font-medium truncate min-w-0 leading-snug">
           {autorBarraCalculo} X {reuBarraCalculo} - Proc. {procNorm}
+          {unidadeBarraCalculo ? (
+            <span className="font-normal text-white/90"> — {unidadeBarraCalculo}</span>
+          ) : null}
         </span>
         <span className="text-[11px] font-mono tabular-nums shrink-0 text-white/90 border-l border-white/25 pl-3">
           Cód. {String(codigoClienteNorm)}

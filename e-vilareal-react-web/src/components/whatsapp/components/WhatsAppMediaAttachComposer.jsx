@@ -3,6 +3,7 @@ import { Loader2, Paperclip, X } from 'lucide-react';
 import {
   WHATSAPP_MEDIA_ACCEPT,
   categoriaAceitaCaption,
+  handleAttachSelect,
   validarArquivoWhatsAppMedia,
 } from '../utils/whatsappMediaSendUtils.js';
 
@@ -34,12 +35,12 @@ export function WhatsAppMediaAttachComposer({
     const file = e.target.files?.[0] ?? null;
     e.target.value = '';
     if (!file) return;
-    const v = validarArquivoWhatsAppMedia(file);
-    if (!v.ok) {
-      onSelectFile?.(null, v.erro);
+    const result = handleAttachSelect(file);
+    if (!result.ok) {
+      onSelectFile?.(null, result.erro);
       return;
     }
-    onSelectFile?.(file, null);
+    onSelectFile?.(result.file, null);
   };
 
   return (

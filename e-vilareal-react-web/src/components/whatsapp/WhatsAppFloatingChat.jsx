@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, Fragment } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from 'react';
 import { Link } from 'react-router-dom';
 import { Loader2, MessageCircle, Paperclip, Search, Send, X } from 'lucide-react';
 import { useWhatsAppNotificationContext } from './WhatsAppNotificationProvider.jsx';
@@ -19,7 +19,13 @@ import {
 import { dateKeyBR } from '../../utils/whatsappScheduleUtils.js';
 import { FREE_TEXT_DELIVERY_ERROR } from '../../utils/whatsappTemplateUtils.js';
 import { isWhatsAppMediaPending, mergeMediaReady, consumirLocalPreview, revogarPreviewsLocaisEmLista } from './utils/whatsappMediaUtils.js';
-import { validarArquivoWhatsAppMedia, WHATSAPP_MEDIA_ACCEPT, categoriaAceitaCaption } from './utils/whatsappMediaSendUtils.js';
+import {
+  criarOnPasteCompositor,
+  categoriaAceitaCaption,
+  handleAttachSelect,
+  validarArquivoWhatsAppMedia,
+  WHATSAPP_MEDIA_ACCEPT,
+} from './utils/whatsappMediaSendUtils.js';
 import { useOptimisticMediaSend } from './hooks/useOptimisticMediaSend.js';
 import { resumoWhatsAppMessageContent } from './utils/whatsappMessagePreview.js';
 import { WhatsAppContactAvatar } from './components/WhatsAppContactAvatar.jsx';
@@ -303,6 +309,28 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
   const showMediaCaption =
     mediaValidation?.ok && categoriaAceitaCaption(mediaValidation.categoria);
 
+  const applyMediaAttach = useCallback((file) => {
+    const result = handleAttachSelect(file);
+    if (!result.ok) {
+      setError(result.erro);
+      setSelectedFile(null);
+      setMediaCaption('');
+      return;
+    }
+    setError('');
+    setSelectedFile(result.file);
+  }, []);
+
+  const onPasteCompositor = useMemo(
+    () =>
+      criarOnPasteCompositor({
+        conversaAtiva: Boolean(phoneApi),
+        onAttachFile: applyMediaAttach,
+        disabled: sending,
+      }),
+    [phoneApi, applyMediaAttach, sending],
+  );
+
   return (
     <>
       <div className="flex items-center gap-2 px-3 py-2.5 bg-[#075E54] text-white shrink-0">
@@ -388,13 +416,7 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
             const file = e.target.files?.[0] ?? null;
             e.target.value = '';
             if (!file) return;
-            const v = validarArquivoWhatsAppMedia(file);
-            if (!v.ok) {
-              setError(v.erro);
-              return;
-            }
-            setError('');
-            setSelectedFile(file);
+            applyMediaAttach(file);
           }}
         />
         <button
@@ -410,6 +432,7 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
           type="text"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
+          onPaste={onPasteCompositor}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();

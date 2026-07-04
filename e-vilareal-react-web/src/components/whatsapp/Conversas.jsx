@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, Fragment } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ExternalLink, Link2, Loader2, MessageCircle, MessageSquarePlus, Search, Send } from 'lucide-react';
 import { ChatBubble } from './components/ChatBubble.jsx';
@@ -23,7 +23,11 @@ import {
 import { dateKeyBR } from '../../utils/whatsappScheduleUtils.js';
 import { FREE_TEXT_DELIVERY_ERROR, FREE_TEXT_WINDOW_HINT } from '../../utils/whatsappTemplateUtils.js';
 import { isWhatsAppMediaPending, mergeMediaReady, consumirLocalPreview, revogarPreviewsLocaisEmLista } from './utils/whatsappMediaUtils.js';
-import { validarArquivoWhatsAppMedia } from './utils/whatsappMediaSendUtils.js';
+import {
+  criarOnPasteCompositor,
+  handleAttachSelect,
+  validarArquivoWhatsAppMedia,
+} from './utils/whatsappMediaSendUtils.js';
 import { useOptimisticMediaSend } from './hooks/useOptimisticMediaSend.js';
 import { sendWhatsAppMedia } from '../../repositories/whatsappRepository.js';
 import { resumoWhatsAppMessageContent } from './utils/whatsappMessagePreview.js';
@@ -426,6 +430,30 @@ export function WhatsAppConversas() {
     }
   };
 
+  const applyMediaAttach = useCallback(
+    (file) => {
+      const result = handleAttachSelect(file);
+      if (!result.ok) {
+        toast.error(result.erro);
+        setSelectedFile(null);
+        setMediaCaption('');
+        return;
+      }
+      setSelectedFile(result.file);
+    },
+    [toast],
+  );
+
+  const onPasteCompositor = useMemo(
+    () =>
+      criarOnPasteCompositor({
+        conversaAtiva: Boolean(activePhone),
+        onAttachFile: applyMediaAttach,
+        disabled: sending,
+      }),
+    [activePhone, applyMediaAttach, sending],
+  );
+
   useEffect(() => {
     if (!activePhone) return;
     const conv = conversations.find((c) => normalizePhoneForApi(c.phoneNumber) === activePhone);
@@ -763,6 +791,7 @@ export function WhatsAppConversas() {
                   className={chatComposeInputClass}
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
+                  onPaste={onPasteCompositor}
                   placeholder={selectedFile ? 'Ou envie só o anexo…' : 'Digite uma mensagem…'}
                   disabled={sending}
                 />
