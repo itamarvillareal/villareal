@@ -257,6 +257,21 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
             nativeQuery = true)
     List<WhatsAppMessageEntity> findByPhoneSuffixOrderByCreatedAtDesc(@Param("suffix11") String suffix11);
 
+    @Query(
+            value =
+                    """
+                    SELECT m.* FROM whatsapp_messages m
+                    WHERE m.direction = 'INBOUND'
+                      AND m.created_at > :since
+                      AND (RIGHT(m.phone_number, 11) = :suffix11
+                           OR RIGHT(m.phone_number, 10) = RIGHT(:suffix11, 10))
+                    ORDER BY m.created_at DESC
+                    LIMIT 1
+                    """,
+            nativeQuery = true)
+    Optional<WhatsAppMessageEntity> findLatestInboundByPhoneSuffixSince(
+            @Param("suffix11") String suffix11, @Param("since") Instant since);
+
     List<WhatsAppMessageEntity> findByPhoneNumberAndCreatedAtAfterOrderByCreatedAtAsc(
             String phoneNumber, Instant after);
 

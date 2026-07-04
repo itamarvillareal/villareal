@@ -127,6 +127,7 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
   const fileInputRef = useRef(null);
   const bottomRef = useRef(null);
   const phone = conversation.phoneNumber;
+  const phoneApi = normalizePhoneForApi(phone);
 
   const { sendOptimisticMedia, retryOptimisticMedia } = useOptimisticMediaSend({
     setMessages,
@@ -159,7 +160,7 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
   const loadMessages = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const res = await getWhatsAppMessages(phone, 0, 30);
+      const res = await getWhatsAppMessages(phoneApi, 0, 30);
       const chunk = Array.isArray(res?.content) ? [...res.content].reverse() : [];
       setMessages(chunk);
     } catch {
@@ -167,23 +168,23 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [phone]);
+  }, [phoneApi]);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       await loadMessages();
       if (cancelled) return;
-      onMarkRead?.(phone);
-      marcarConversaLidaAsync(phone);
+      onMarkRead?.(phoneApi);
+      marcarConversaLidaAsync(phoneApi);
     })();
     return () => {
       cancelled = true;
     };
-  }, [loadMessages, phone, onMarkRead]);
+  }, [loadMessages, phoneApi, onMarkRead]);
 
   useEffect(() => {
-    if (!latestInbound || normalizePhoneForApi(latestInbound.phoneNumber) !== normalizePhoneForApi(phone)) return;
+    if (!latestInbound || normalizePhoneForApi(latestInbound.phoneNumber) !== phoneApi) return;
     setMessages((prev) => {
       if (prev.some((m) => m.messageId === latestInbound.messageId || m.id === latestInbound.messageId)) {
         return prev;
@@ -201,15 +202,20 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
         },
       ];
     });
-    onMarkRead?.(phone);
-    marcarConversaLidaAsync(phone);
-  }, [latestInbound, phone, onMarkRead]);
+    onMarkRead?.(phoneApi);
+    marcarConversaLidaAsync(phoneApi);
+  }, [latestInbound, phoneApi, onMarkRead]);
 
   useEffect(() => {
     if (!latestMediaReady?.mediaDriveUrl) return;
-    if (latestMediaReady.phoneNumber && latestMediaReady.phoneNumber !== phone) return;
+    if (
+      latestMediaReady.phoneNumber &&
+      normalizePhoneForApi(latestMediaReady.phoneNumber) !== phoneApi
+    ) {
+      return;
+    }
     setMessages((prev) => mergeMediaReady(prev, latestMediaReady));
-  }, [latestMediaReady, phone]);
+  }, [latestMediaReady, phoneApi]);
 
   useEffect(() => {
     if (!messages.some(isWhatsAppMediaPending)) return undefined;
@@ -236,7 +242,7 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
       setError('');
       try {
         const result = await sendOptimisticMedia({
-          phone,
+          phone: phoneApi,
           file: selectedFile,
           caption: mediaCaption.trim() || undefined,
         });
@@ -259,13 +265,13 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
     setSending(true);
     setError('');
     try {
-      await sendWhatsAppText(phone, text);
+      await sendWhatsAppText(phoneApi, text);
       setDraft('');
       setMessages((prev) => [
         ...prev,
         {
           id: `local-${Date.now()}`,
-          phoneNumber: phone,
+          phoneNumber: phoneApi,
           direction: 'OUTBOUND',
           messageType: 'TEXT',
           content: text,

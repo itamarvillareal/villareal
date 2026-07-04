@@ -33,44 +33,82 @@ public class ClienteEnvioTelefoneResolver {
         this.pessoaContatoRepository = pessoaContatoRepository;
     }
 
-    public List<String> resolverTelefonesCliente(ClienteEntity cliente) {
+    /**
+     * Telefone canônico com metadados de origem (para iniciar conversa a partir do cadastro).
+     */
+    public record TelefoneEnvioDetalhe(String numeroCanonico, String label, boolean principal) {}
+
+    public List<TelefoneEnvioDetalhe> resolverTelefonesDetalhados(ClienteEntity cliente) {
         if (cliente == null) {
             return List.of();
         }
 
-        Set<String> numeros = new LinkedHashSet<>();
         List<ClienteWhatsAppEntity> whatsappCadastro =
                 clienteWhatsAppRepository.findByCliente_IdAndAtivoTrueOrderByPrincipalDescIdAsc(cliente.getId());
-        for (ClienteWhatsAppEntity w : whatsappCadastro) {
-            adicionarSeValido(numeros, w.getNumero());
-        }
-
-        if (!numeros.isEmpty()) {
-            return List.copyOf(numeros);
+        if (!whatsappCadastro.isEmpty()) {
+            LinkedHashSet<String> vistos = new LinkedHashSet<>();
+            List<TelefoneEnvioDetalhe> out = new ArrayList<>();
+            for (ClienteWhatsAppEntity w : whatsappCadastro) {
+                adicionarDetalheSeValido(out, vistos, w.getNumero(), labelWhatsApp(w), Boolean.TRUE.equals(w.getPrincipal()));
+            }
+            return List.copyOf(out);
         }
 
         PessoaEntity pessoa = cliente.getPessoa();
-        if (pessoa != null) {
-            List<PessoaContatoEntity> contatos =
-                    pessoaContatoRepository.findByPessoa_IdOrderByIdAsc(pessoa.getId());
-            for (PessoaContatoEntity c : contatos) {
-                if (c.getTipo() != null
-                        && "telefone".equalsIgnoreCase(c.getTipo().trim())) {
-                    adicionarSeValido(numeros, c.getValor());
-                }
-            }
-            adicionarSeValido(numeros, pessoa.getTelefone());
+        if (pessoa == null) {
+            return List.of();
         }
 
-        return new ArrayList<>(numeros);
+        LinkedHashSet<String> vistos = new LinkedHashSet<>();
+        List<TelefoneEnvioDetalhe> out = new ArrayList<>();
+        List<PessoaContatoEntity> contatos = pessoaContatoRepository.findByPessoa_IdOrderByIdAsc(pessoa.getId());
+        for (PessoaContatoEntity c : contatos) {
+            if (c.getTipo() != null && "telefone".equalsIgnoreCase(c.getTipo().trim())) {
+                adicionarDetalheSeValido(out, vistos, c.getValor(), "Contato telefone", false);
+            }
+        }
+        adicionarDetalheSeValido(out, vistos, pessoa.getTelefone(), "Telefone cadastro", false);
+        return List.copyOf(out);
     }
 
-    private static void adicionarSeValido(Set<String> destino, String raw) {
+    public List<String> resolverTelefonesCliente(ClienteEntity cliente) {
+        return resolverTelefonesDetalhados(cliente).stream()
+                .map(TelefoneEnvioDetalhe::numeroCanonico)
+                .toList();
+    }
+
+    private static String labelWhatsApp(ClienteWhatsAppEntity w) {
+        if (Boolean.TRUE.equals(w.getPrincipal())) {
+            return "WhatsApp principal";
+        }
+        if (StringUtils.hasText(w.getNomeLabel())) {
+            return w.getNomeLabel().trim();
+        }
+        return "WhatsApp cadastro";
+    }
+
+    private static void adicionarDetalheSeValido(
+            List<TelefoneEnvioDetalhe> destino,
+            Set<String> vistos,
+            String raw,
+            String label,
+            boolean principal) {
         if (!StringUtils.hasText(raw)) {
             return;
         }
         try {
-            destino.add(WhatsAppService.formatPhoneNumber(raw.trim()));
+            String canonico = WhatsAppService.formatPhoneNumber(raw.trim());
+            if (vistos.add(canonico)) {
+                destino.add(new TelefoneEnvioDetalhe(canonico, label, principal));
+            } else if (principal) {
+                for (int i = 0; i < destino.size(); i++) {
+                    TelefoneEnvioDetalhe item = destino.get(i);
+                    if (item.numeroCanonico().equals(canonico) && !item.principal()) {
+                        destino.set(i, new TelefoneEnvioDetalhe(canonico, label, true));
+                        break;
+                    }
+                }
+            }
         } catch (IllegalArgumentException ignored) {
             // ignora número inválido
         }

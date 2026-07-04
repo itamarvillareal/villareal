@@ -1,9 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2, X } from 'lucide-react';
 import { processosBtnPrimary, processosInputClass } from '../../processos/ProcessosAdminLayout.jsx';
 import { MessageComposePreview } from './MessageComposePreview.jsx';
 import { TemplateParamsForm, TemplateSelect } from './TemplateParamsForm.jsx';
-import { useWhatsApp } from '../hooks/useWhatsApp.js';
+import {
+  BATCH_MODE_RECORRENCIA,
+  buildScheduleBatchPayload,
+  ScheduleBatchFields,
+} from './ScheduleBatchFields.jsx';
 import { useWhatsAppToast } from '../WhatsAppToast.jsx';
 import {
   datetimeLocalToIso,
@@ -15,11 +19,17 @@ import { findWhatsAppTemplate } from '../../../data/whatsappTemplates.js';
 import { useWhatsAppTemplates } from '../hooks/useWhatsAppTemplates.js';
 import { useCloseOnEscape } from '../../../hooks/useCloseOnEscape.js';
 import { buildComposePreviewText } from '../../../utils/whatsappTemplateUtils.js';
+import { createWhatsAppSchedule, createWhatsAppScheduleBatch } from '../../../repositories/whatsappRepository.js';
+
+const MODE_UNICO = 'unico';
+const MODE_LOTE = 'lote';
 
 export function ScheduleModal({ open, onClose, onSuccess }) {
-  const { createSchedule } = useWhatsApp();
   const { templates, loading: loadingTemplates } = useWhatsAppTemplates({ approvedOnly: true });
   const toast = useWhatsAppToast();
+  const [formMode, setFormMode] = useState(MODE_UNICO);
+  const [batchMode, setBatchMode] = useState(BATCH_MODE_RECORRENCIA);
+  const [batchState, setBatchState] = useState(null);
   const [phone, setPhone] = useState('');
   const [templateName, setTemplateName] = useState('');
   const [params, setParams] = useState([]);
@@ -33,6 +43,9 @@ export function ScheduleModal({ open, onClose, onSuccess }) {
 
   useEffect(() => {
     if (!open) return;
+    setFormMode(MODE_UNICO);
+    setBatchMode(BATCH_MODE_RECORRENCIA);
+    setBatchState(null);
     setPhone('');
     setTemplateName('');
     setParams([]);
@@ -63,7 +76,25 @@ export function ScheduleModal({ open, onClose, onSuccess }) {
     [selectedTemplate, params],
   );
 
+  const handleBatchStateChange = useCallback((state) => {
+    setBatchState(state);
+  }, []);
+
   if (!open) return null;
+
+  const buildBaseBody = (normalized) => {
+    const body = {
+      phoneNumber: normalized,
+      templateName,
+      parameters: params.map((p) => String(p ?? '').trim()),
+      descricao: descricao.trim() || null,
+    };
+    const cid = String(clienteId ?? '').trim();
+    const pid = String(processoId ?? '').trim();
+    if (cid) body.clienteId = Number(cid);
+    if (pid) body.processoId = Number(pid);
+    return body;
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -76,36 +107,39 @@ export function ScheduleModal({ open, onClose, onSuccess }) {
       toast.error('Selecione um template.');
       return;
     }
-    if (!isFutureDatetimeLocal(scheduledAtLocal)) {
-      toast.error('A data e hora do agendamento devem ser no futuro.');
-      return;
-    }
-    const scheduledAt = datetimeLocalToIso(scheduledAtLocal);
-    if (!scheduledAt) {
-      toast.error('Data/hora inválida.');
-      return;
-    }
 
     setSaving(true);
     try {
-      const body = {
-        phoneNumber: normalized,
-        templateName,
-        parameters: params.map((p) => String(p ?? '').trim()),
-        scheduledAt,
-        descricao: descricao.trim() || null,
-      };
-      const cid = String(clienteId ?? '').trim();
-      const pid = String(processoId ?? '').trim();
-      if (cid) body.clienteId = Number(cid);
-      if (pid) body.processoId = Number(pid);
-
-      const res = await createSchedule(body);
-      if (res?.success === false) {
-        toast.error(res.error || 'Falha ao agendar mensagem.');
-        return;
+      if (formMode === MODE_LOTE) {
+        const built = buildScheduleBatchPayload(buildBaseBody(normalized), batchState);
+        if (built.error) {
+          toast.error(built.error);
+          return;
+        }
+        const res = await createWhatsAppScheduleBatch(built.body);
+        if (!res?.criados) {
+          toast.error(res?.message || 'Nenhum agendamento criado.');
+          return;
+        }
+        const extra = res.pulados > 0 ? ` (${res.pulados} ignorado(s))` : '';
+        toast.success(`${res.criados} agendamento(s) criado(s)${extra}.`);
+      } else {
+        if (!isFutureDatetimeLocal(scheduledAtLocal)) {
+          toast.error('A data e hora do agendamento devem ser no futuro.');
+          return;
+        }
+        const scheduledAt = datetimeLocalToIso(scheduledAtLocal);
+        if (!scheduledAt) {
+          toast.error('Data/hora inválida.');
+          return;
+        }
+        const res = await createWhatsAppSchedule({ ...buildBaseBody(normalized), scheduledAt });
+        if (res?.success === false) {
+          toast.error(res.error || 'Falha ao agendar mensagem.');
+          return;
+        }
+        toast.success('Agendamento criado com sucesso.');
       }
-      toast.success('Agendamento criado com sucesso.');
       onSuccess?.();
       onClose?.();
     } catch (err) {
@@ -132,6 +166,32 @@ export function ScheduleModal({ open, onClose, onSuccess }) {
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        <div className="flex gap-2 mb-4">
+          <button
+            type="button"
+            className={`flex-1 text-sm py-2 rounded-lg border ${
+              formMode === MODE_UNICO
+                ? 'bg-slate-800 text-white border-slate-800 dark:bg-slate-100 dark:text-slate-900'
+                : 'border-slate-300 dark:border-slate-600'
+            }`}
+            onClick={() => setFormMode(MODE_UNICO)}
+          >
+            Único
+          </button>
+          <button
+            type="button"
+            className={`flex-1 text-sm py-2 rounded-lg border ${
+              formMode === MODE_LOTE
+                ? 'bg-slate-800 text-white border-slate-800 dark:bg-slate-100 dark:text-slate-900'
+                : 'border-slate-300 dark:border-slate-600'
+            }`}
+            onClick={() => setFormMode(MODE_LOTE)}
+          >
+            Em lote
+          </button>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Telefone</label>
@@ -162,17 +222,27 @@ export function ScheduleModal({ open, onClose, onSuccess }) {
             templateName={templateName || null}
             emptyHint="Selecione um template e preencha os parâmetros para ver o preview."
           />
-          <div>
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
-              Data e hora do envio
-            </label>
-            <input
-              type="datetime-local"
-              className={processosInputClass}
-              value={scheduledAtLocal}
-              onChange={(e) => setScheduledAtLocal(e.target.value)}
+
+          {formMode === MODE_UNICO ? (
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                Data e hora do envio
+              </label>
+              <input
+                type="datetime-local"
+                className={processosInputClass}
+                value={scheduledAtLocal}
+                onChange={(e) => setScheduledAtLocal(e.target.value)}
+              />
+            </div>
+          ) : (
+            <ScheduleBatchFields
+              batchMode={batchMode}
+              onBatchModeChange={setBatchMode}
+              onStateChange={handleBatchStateChange}
             />
-          </div>
+          )}
+
           <div>
             <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Descrição</label>
             <input
@@ -219,7 +289,7 @@ export function ScheduleModal({ open, onClose, onSuccess }) {
             </button>
             <button type="submit" disabled={saving} className={processosBtnPrimary}>
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-              Agendar
+              {formMode === MODE_LOTE ? 'Agendar lote' : 'Agendar'}
             </button>
           </div>
         </form>

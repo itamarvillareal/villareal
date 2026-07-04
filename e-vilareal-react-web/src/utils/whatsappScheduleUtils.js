@@ -112,3 +112,10 @@ export function resumirParams(params, max = 60) {
   if (text.length <= max) return text;
   return `${text.slice(0, max).trim()}…`;
 }
+
+export function resumirTexto(text, max = 60) {
+  const s = String(text ?? '').trim();
+  if (!s) return '—';
+  if (s.length <= max) return s;
+  return `${s.slice(0, max).trim()}…`;
+}

@@ -30,4 +30,7 @@ public interface ScheduledWhatsAppMessageRepository extends JpaRepository<Schedu
             Long pagamentoId, String templateName, Collection<ScheduledMessageStatus> statuses);
 
     long countByStatus(ScheduledMessageStatus status);
+
+    boolean existsByPhoneNumberAndTemplateNameAndScheduledAtAndStatus(
+            String phoneNumber, String templateName, Instant scheduledAt, ScheduledMessageStatus status);
 }

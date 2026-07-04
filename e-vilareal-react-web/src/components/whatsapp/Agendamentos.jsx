@@ -4,6 +4,7 @@ import { ConfirmDialog } from '../financeiro/shared/ConfirmDialog.jsx';
 import { ScheduleModal } from './components/ScheduleModal.jsx';
 import { ScheduleCard } from './components/ScheduleCard.jsx';
 import { useWhatsApp } from './hooks/useWhatsApp.js';
+import { useWhatsAppTemplates } from './hooks/useWhatsAppTemplates.js';
 import { cancelWhatsAppScheduledItem, scheduledItemKey } from '../../repositories/whatsappRepository.js';
 import { useWhatsAppToast } from './WhatsAppToast.jsx';
 import { agruparPorData } from '../../utils/whatsappScheduleUtils.js';
@@ -56,6 +57,7 @@ function ScheduleDateHeader({ label, count, collapsed, onToggle, collapsible }) 
 
 export function WhatsAppAgendamentos() {
   const { getScheduled } = useWhatsApp();
+  const { templates } = useWhatsAppTemplates();
   const toast = useWhatsAppToast();
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(0);
@@ -200,6 +202,7 @@ export function WhatsAppAgendamentos() {
                       <ScheduleCard
                         key={scheduledItemKey(item)}
                         item={item}
+                        templates={templates}
                         onCancel={setCancelTarget}
                         cancelling={cancelling && cancelTarget && scheduledItemKey(cancelTarget) === scheduledItemKey(item)}
                       />

@@ -11,12 +11,48 @@ export function formatPhoneDisplay(phone) {
   return String(phone);
 }
 
-/** Normaliza para envio à API (somente dígitos, prefixo 55). */
+/**
+ * Espelha {@code TelefoneBrasilUtil.aplicarNonoDigitoCelular} (backend).
+ * {@code digits} deve conter só dígitos, prefixo 55, comprimento 12 ou 13.
+ */
+export function aplicarNonoDigitoCelular(digits) {
+  if (digits.length !== 12 && digits.length !== 13) {
+    return digits;
+  }
+  const ddd = digits.slice(2, 4);
+  let local = digits.slice(4);
+  if (local.length === 8 && local[0] >= '6' && local[0] <= '9') {
+    local = `9${local}`;
+    return `55${ddd}${local}`;
+  }
+  return digits;
+}
+
+/**
+ * Normaliza para envio/comparação na API (somente dígitos, prefixo 55, formato canônico).
+ * <p>
+ * Regra do nono dígito (celular BR): após {@code 55}+DDD, se a parte local tem 8 dígitos e o
+ * primeiro é 6–9, insere {@code 9} (13 total). Fixo (2–5) permanece com 12.
+ * <p>
+ * Ex.: {@code 556292975894} → {@code 5562992975894}; {@code 556232179999} inalterado.
+ * <p>
+ * Entrada inválida (comprimento ≠ 12/13 após regra): retorna melhor esforço (55 + dígitos
+ * limpos) para não travar a UI — o backend rejeita na validação estrita.
+ */
 export function normalizePhoneForApi(input) {
-  const cleaned = String(input ?? '').replace(/\D/g, '');
+  let cleaned = String(input ?? '').replace(/\D/g, '');
   if (!cleaned) return '';
-  if (cleaned.startsWith('55')) return cleaned;
-  return `55${cleaned}`;
+  if (cleaned.startsWith('0')) {
+    cleaned = `55${cleaned.slice(1)}`;
+  }
+  if (!cleaned.startsWith('55')) {
+    cleaned = `55${cleaned}`;
+  }
+  const canonical = aplicarNonoDigitoCelular(cleaned);
+  if (canonical.length === 12 || canonical.length === 13) {
+    return canonical;
+  }
+  return cleaned;
 }
 
 export function isValidBrazilPhone(input) {

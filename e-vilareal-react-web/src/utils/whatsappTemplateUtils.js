@@ -1,3 +1,5 @@
+import { findWhatsAppTemplate } from '../data/whatsappTemplates.js';
+
 /** Detecta índices de parâmetros {{1}}, {{2}}, … no corpo do template. */
 export function detectTemplateParameters(bodyText) {
   if (!bodyText) return [];
@@ -25,6 +27,23 @@ export function buildComposePreviewText({ mode, message, template, params }) {
   const body = String(template.bodyText ?? '').trim();
   if (!body) return '';
   return fillTemplatePreview(body, params ?? []);
+}
+
+/** Monta a mensagem final de um agendamento (template + parâmetros). */
+export function buildScheduledMessagePreview(templateName, templateParams, templates = []) {
+  const params = Array.isArray(templateParams) ? templateParams : [];
+  const tpl =
+    (templates ?? []).find((t) => t.value === templateName) ?? findWhatsAppTemplate(templateName);
+
+  const filled = buildComposePreviewText({
+    mode: 'template',
+    template: tpl,
+    params,
+  });
+  if (filled) return filled;
+
+  const fallback = params.filter(Boolean).join(', ');
+  return fallback || '—';
 }
 
 /** Valida nome de template Meta (minúsculas, números, underscore). */

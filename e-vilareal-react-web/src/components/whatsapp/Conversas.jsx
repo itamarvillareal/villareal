@@ -236,8 +236,10 @@ export function WhatsAppConversas() {
         setMessages((prev) => [...chunk, ...prev]);
       } else {
         setMessages(chunk);
-        const name = chunk.find((m) => m.contactName)?.contactName ?? res?.content?.[0]?.contactName;
-        setContactName(name || '');
+        const nameFromMessages =
+          chunk.find((m) => String(m.contactName ?? '').trim())?.contactName ??
+          res?.content?.find((m) => String(m.contactName ?? '').trim())?.contactName;
+        setContactName((prev) => String(nameFromMessages ?? '').trim() || String(prev ?? '').trim());
       }
       return chunk;
     },
@@ -407,6 +409,10 @@ export function WhatsAppConversas() {
     if (Array.isArray(conv?.contextos) && conv.contextos.length > 0) {
       setContextosAtivos(conv.contextos);
     }
+    const nomeLista = String(conv?.contactName ?? '').trim();
+    if (nomeLista) {
+      setContactName((prev) => prev || nomeLista);
+    }
   }, [conversations, activePhone]);
 
   useEffect(() => {
@@ -457,6 +463,9 @@ export function WhatsAppConversas() {
       ];
     });
     markConversationReadLocal(activePhone);
+    if (String(latestInbound.contactName ?? '').trim()) {
+      setContactName((prev) => prev || latestInbound.contactName);
+    }
     marcarConversaLidaAsync(activePhone);
   }, [latestInbound, activePhone, markConversationReadLocal]);
 
@@ -613,10 +622,19 @@ export function WhatsAppConversas() {
                 <div className="flex items-start gap-2.5 min-w-0 flex-1">
                   <WhatsAppContactAvatar nome={contactName} telefone={activePhone} size="md" />
                   <div className="min-w-0">
-                    <p className="font-medium text-slate-900 dark:text-slate-100">{tituloContato(contactName, activePhone)}</p>
-                    {String(contactName ?? '').trim() ? (
-                      <p className="text-xs text-slate-500">{formatPhoneDisplay(activePhone)}</p>
-                    ) : null}
+                    <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                      <p className="font-medium text-slate-900 dark:text-slate-100 tabular-nums shrink-0">
+                        {formatPhoneDisplay(activePhone)}
+                      </p>
+                      {String(contactName ?? '').trim() ? (
+                        <span
+                          className="text-sm font-medium text-emerald-700 dark:text-emerald-400 truncate"
+                          title={contactName}
+                        >
+                          {contactName}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
                 <button

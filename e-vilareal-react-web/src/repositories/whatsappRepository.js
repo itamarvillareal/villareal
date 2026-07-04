@@ -134,6 +134,23 @@ export async function createWhatsAppSchedule(data) {
   });
 }
 
+/** Vários agendamentos idênticos em datas distintas (template + params compartilhados). */
+export async function createWhatsAppScheduleBatch(data) {
+  return request('/api/whatsapp/agendamentos/lote', {
+    method: 'POST',
+    body: data,
+  });
+}
+
+/** Preview de datas da recorrência mensal (Brasília). */
+export async function previewWhatsAppScheduleRecurrence(recorrenciaMensal, signal) {
+  return request('/api/whatsapp/agendamentos/lote/preview-recorrencia', {
+    method: 'POST',
+    body: recorrenciaMensal,
+    signal,
+  });
+}
+
 export async function cancelWhatsAppSchedule(id) {
   return request(`/api/whatsapp/schedule/${id}`, { method: 'DELETE' });
 }

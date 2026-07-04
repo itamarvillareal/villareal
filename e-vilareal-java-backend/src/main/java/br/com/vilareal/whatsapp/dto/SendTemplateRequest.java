@@ -8,4 +8,6 @@ public record SendTemplateRequest(
         @NotBlank String phoneNumber,
         @NotBlank String templateName,
         String languageCode,
-        List<String> parameters) {}
+        List<String> parameters,
+        Long clienteId,
+        Long processoId) {}

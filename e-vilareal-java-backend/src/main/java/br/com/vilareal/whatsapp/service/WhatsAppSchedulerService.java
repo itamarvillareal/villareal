@@ -5,6 +5,7 @@ import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRe
 import br.com.vilareal.jobrun.application.JobRunTracker;
 import br.com.vilareal.jobrun.domain.JobNames;
 import br.com.vilareal.whatsapp.ScheduledMessageStatus;
+import br.com.vilareal.whatsapp.dto.RecorrenciaMensalRequest;
 import br.com.vilareal.whatsapp.infrastructure.persistence.entity.ScheduledWhatsAppMessageEntity;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.ScheduledWhatsAppMessageRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -17,10 +18,14 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.Instant;
+import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Agendamento e envio automático de mensagens WhatsApp por template.
@@ -107,6 +112,83 @@ public class WhatsAppSchedulerService {
                 scheduledAt,
                 saved.getId());
         return saved;
+    }
+
+    public record AgendarLoteResult(int criados, int pulados, int totalSolicitado, List<Long> ids, List<Instant> scheduledAt) {}
+
+    /**
+     * Cria vários agendamentos idênticos (mesmo destinatário/template/params), um por data.
+     * Duplicatas pendentes (mesmo telefone, template e horário) são ignoradas.
+     */
+    @Transactional
+    public AgendarLoteResult agendarMensagensEmLote(
+            String phoneNumber,
+            String templateName,
+            List<String> params,
+            List<Instant> scheduledAts,
+            Long clienteId,
+            Long processoId,
+            String createdBy,
+            String descricao) {
+        if (scheduledAts == null || scheduledAts.isEmpty()) {
+            throw new IllegalArgumentException("Informe pelo menos uma data de agendamento");
+        }
+
+        String formattedPhone = WhatsAppService.formatPhoneNumber(phoneNumber);
+        Instant now = Instant.now();
+        Set<Instant> datasUnicas = new LinkedHashSet<>(scheduledAts);
+
+        int criados = 0;
+        int pulados = 0;
+        List<Long> ids = new ArrayList<>();
+        List<Instant> criadosAt = new ArrayList<>();
+
+        for (Instant scheduledAt : datasUnicas) {
+            if (scheduledAt == null || !scheduledAt.isAfter(now)) {
+                pulados++;
+                continue;
+            }
+            if (scheduledRepository.existsByPhoneNumberAndTemplateNameAndScheduledAtAndStatus(
+                    formattedPhone, templateName, scheduledAt, ScheduledMessageStatus.PENDING)) {
+                pulados++;
+                continue;
+            }
+            ScheduledWhatsAppMessageEntity saved = agendarMensagem(
+                    formattedPhone,
+                    templateName,
+                    params,
+                    scheduledAt,
+                    clienteId,
+                    processoId,
+                    null,
+                    createdBy,
+                    descricao);
+            criados++;
+            ids.add(saved.getId());
+            criadosAt.add(saved.getScheduledAt());
+        }
+
+        if (criados == 0) {
+            throw new IllegalArgumentException(
+                    "Nenhum agendamento criado (todas as datas são passadas ou já existem pendentes)");
+        }
+
+        return new AgendarLoteResult(criados, pulados, datasUnicas.size(), ids, criadosAt);
+    }
+
+    /** Resolve lista de datas a partir de avulsas ou recorrência mensal. */
+    public List<Instant> resolverDatasAgendamentoLote(
+            List<Instant> scheduledAtList, RecorrenciaMensalRequest recorrencia) {
+        if (recorrencia != null) {
+            YearMonth inicio = WhatsAppScheduleRecurrenceSupport.parseYearMonth(recorrencia.mesInicio());
+            YearMonth fim = WhatsAppScheduleRecurrenceSupport.parseYearMonth(recorrencia.mesFim());
+            return WhatsAppScheduleRecurrenceSupport.gerarRecorrenciaMensal(
+                    recorrencia.diaDoMes(), recorrencia.hora(), recorrencia.minuto(), inicio, fim);
+        }
+        if (scheduledAtList == null || scheduledAtList.isEmpty()) {
+            throw new IllegalArgumentException("Informe datas avulsas ou recorrência mensual");
+        }
+        return List.copyOf(scheduledAtList);
     }
 
     /**

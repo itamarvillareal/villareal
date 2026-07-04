@@ -117,6 +117,11 @@ public class WhatsAppService {
     }
 
     public WhatsAppSendResponse sendTextMessage(String phoneNumber, String message) {
+        return sendTextMessage(phoneNumber, message, null, null);
+    }
+
+    public WhatsAppSendResponse sendTextMessage(
+            String phoneNumber, String message, Long clienteId, Long processoId) {
         String formattedPhone = formatPhoneNumber(phoneNumber);
         log.info("Enviando mensagem de texto para {}", maskPhoneNumber(formattedPhone));
         log.debug("Destinatário completo (texto): {}", formattedPhone);
@@ -130,7 +135,8 @@ public class WhatsAppService {
 
         WhatsAppSendResponse response =
                 executeSend(request, formattedPhone, "mensagem de texto", SendContext.texto(message));
-        persistOutboundMessage(response, formattedPhone, WhatsAppMessageType.TEXT, message, null);
+        persistOutboundMessage(
+                response, formattedPhone, WhatsAppMessageType.TEXT, message, null, clienteId, processoId);
         return response;
     }
 
@@ -304,12 +310,14 @@ public class WhatsAppService {
             return;
         }
 
+        String canonicalFrom = resolveCanonicalInboundPhone(from);
+
         WhatsAppMessageType messageType = parseMessageType(type);
         String content = montarConteudoInbound(body, messageType, filename);
 
         WhatsAppMessageEntity msg = new WhatsAppMessageEntity();
         msg.setWaMessageId(waMessageId);
-        msg.setPhoneNumber(from);
+        msg.setPhoneNumber(canonicalFrom);
         msg.setContactName(contactName);
         msg.setDirection(WhatsAppMessageDirection.INBOUND);
         msg.setMessageType(messageType);
@@ -323,10 +331,10 @@ public class WhatsAppService {
         }
         msg.setCreatedAt(receivedAt != null ? receivedAt : Instant.now());
 
-        Long clienteId = resolveClienteId(from);
-        Long processoId = resolveProcessoIdInbound(from);
+        Long clienteId = resolveClienteId(canonicalFrom);
+        Long processoId = resolveProcessoIdInbound(canonicalFrom);
         if (clienteId == null) {
-            clienteId = resolveClienteIdInbound(from, processoId);
+            clienteId = resolveClienteIdInbound(canonicalFrom, processoId);
         }
         msg.setClienteId(clienteId);
         msg.setProcessoId(processoId);
@@ -348,8 +356,8 @@ public class WhatsAppService {
             Instant createdAt = saved.getCreatedAt() != null ? saved.getCreatedAt() : Instant.now();
             whatsAppNotificationService.notifyNewMessage(new WhatsAppNotificationDTO(
                     saved.getId(),
-                    from,
-                    formatPhoneDisplay(from),
+                    canonicalFrom,
+                    formatPhoneDisplay(canonicalFrom),
                     contactName,
                     content,
                     messageType.name(),
@@ -361,7 +369,7 @@ public class WhatsAppService {
 
         if (StringUtils.hasText(mediaId)) {
             whatsAppMediaProcessingService.agendarProcessamentoMidia(
-                    waMessageId, mediaId, filename, mimeType, contactName, from);
+                    waMessageId, mediaId, filename, mimeType, contactName, canonicalFrom);
         }
 
         boolean hasText = body != null && !body.isBlank();
@@ -369,12 +377,32 @@ public class WhatsAppService {
         if (acionarIa && whatsAppIAConfigService.isIaHabilitada()) {
             try {
                 String aiInput = hasText ? body : content;
-                whatsAppAIService.handleIncomingMessage(from, aiInput, contactName);
+                whatsAppAIService.handleIncomingMessage(canonicalFrom, aiInput, contactName);
             } catch (Exception e) {
                 log.error("Falha ao processar mensagem inbound com IA: {}", e.getMessage(), e);
             }
         } else if (acionarIa) {
-            log.debug("Resposta automática WhatsApp IA desligada — mensagem de {} registrada sem IA", from);
+            log.debug(
+                    "Resposta automática WhatsApp IA desligada — mensagem de {} registrada sem IA",
+                    canonicalFrom);
+        }
+    }
+
+    /**
+     * Canonicaliza o {@code from} da Meta; em falha de validação mantém o valor original para não perder a mensagem.
+     */
+    private String resolveCanonicalInboundPhone(String from) {
+        if (!StringUtils.hasText(from)) {
+            return from;
+        }
+        try {
+            return formatPhoneNumber(from);
+        } catch (IllegalArgumentException e) {
+            log.warn(
+                    "Telefone inbound não canonicalizável ({}): {} — gravando formato original",
+                    from,
+                    e.getMessage());
+            return from;
         }
     }
 
@@ -781,25 +809,9 @@ public class WhatsAppService {
         return extractMessageId(response);
     }
 
+    /** Delega para {@link br.com.vilareal.common.util.TelefoneBrasilUtil#canonicalizar(String)}. */
     public static String formatPhoneNumber(String phone) {
-        if (phone == null || phone.isBlank()) {
-            throw new IllegalArgumentException("Número de telefone inválido: " + phone);
-        }
-
-        String digits = phone.replaceAll("\\D", "");
-        if (digits.startsWith("0")) {
-            digits = "55" + digits.substring(1);
-        }
-        if (!digits.startsWith("55")) {
-            digits = "55" + digits;
-        }
-
-        int length = digits.length();
-        if (length != 12 && length != 13) {
-            throw new IllegalArgumentException("Número de telefone inválido: " + phone);
-        }
-
-        return digits;
+        return br.com.vilareal.common.util.TelefoneBrasilUtil.canonicalizar(phone);
     }
 
     public static String formatPhoneDisplay(String phone) {

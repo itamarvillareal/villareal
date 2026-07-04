@@ -16,10 +16,11 @@ import {
   formatDateTimeBR,
 } from '../../../utils/whatsappFormat.js';
 import {
-  resumirParams,
+  resumirTexto,
   templateIconName,
   templateLabel,
 } from '../../../utils/whatsappScheduleUtils.js';
+import { buildScheduledMessagePreview } from '../../../utils/whatsappTemplateUtils.js';
 
 const ICON_MAP = {
   Bell,
@@ -78,13 +79,13 @@ function extrairNumeroProcesso(item) {
   return null;
 }
 
-export function ScheduleCard({ item, compact = false, onCancel, cancelling = false }) {
+export function ScheduleCard({ item, compact = false, onCancel, cancelling = false, templates = [] }) {
   const [expanded, setExpanded] = useState(false);
   const cfg = statusConfig(item.status);
   const isPending = String(item.status).toUpperCase() === 'PENDING';
-  const paramsText = resumirParams(item.templateParams, compact ? 40 : 80);
-  const paramsLong = resumirParams(item.templateParams, 500);
-  const showExpand = !compact && paramsLong.length > 80;
+  const mensagemCompleta = buildScheduledMessagePreview(item.templateName, item.templateParams, templates);
+  const mensagemResumida = resumirTexto(mensagemCompleta, compact ? 40 : 160);
+  const showExpand = !compact && mensagemCompleta.length > 160;
 
   const titulo = item.descricao || templateLabel(item.templateName);
   const nomeCliente = extrairNomeCliente(item);
@@ -167,15 +168,14 @@ export function ScheduleCard({ item, compact = false, onCancel, cancelling = fal
           ) : null}
         </ul>
 
-        <div className="text-xs text-slate-500 dark:text-slate-400">
-          <p>
-            <span className="font-medium text-slate-600 dark:text-slate-300">Params:</span>{' '}
-            {expanded ? paramsLong : paramsText}
+        <div className="rounded-lg bg-slate-50 dark:bg-slate-800/60 px-3 py-2 text-xs text-slate-700 dark:text-slate-300">
+          <p className="whitespace-pre-wrap break-words leading-relaxed">
+            {expanded ? mensagemCompleta : mensagemResumida}
           </p>
           {showExpand ? (
             <button
               type="button"
-              className="mt-1 text-emerald-600 hover:underline inline-flex items-center gap-0.5"
+              className="mt-1.5 text-emerald-600 hover:underline inline-flex items-center gap-0.5"
               onClick={() => setExpanded((v) => !v)}
             >
               {expanded ? (
@@ -184,7 +184,7 @@ export function ScheduleCard({ item, compact = false, onCancel, cancelling = fal
                 </>
               ) : (
                 <>
-                  <ChevronDown className="w-3 h-3" /> Ver parâmetros
+                  <ChevronDown className="w-3 h-3" /> Ver mensagem completa
                 </>
               )}
             </button>
