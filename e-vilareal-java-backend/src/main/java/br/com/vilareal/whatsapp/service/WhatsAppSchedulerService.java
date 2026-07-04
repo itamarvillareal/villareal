@@ -5,6 +5,7 @@ import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRe
 import br.com.vilareal.jobrun.application.JobRunTracker;
 import br.com.vilareal.jobrun.domain.JobNames;
 import br.com.vilareal.whatsapp.ScheduledMessageStatus;
+import br.com.vilareal.whatsapp.dto.RecorrenciaAgendamentoRequest;
 import br.com.vilareal.whatsapp.dto.RecorrenciaMensalRequest;
 import br.com.vilareal.whatsapp.infrastructure.persistence.entity.ScheduledWhatsAppMessageEntity;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.ScheduledWhatsAppMessageRepository;
@@ -18,7 +19,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.Instant;
-import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
@@ -176,19 +176,21 @@ public class WhatsAppSchedulerService {
         return new AgendarLoteResult(criados, pulados, datasUnicas.size(), ids, criadosAt);
     }
 
-    /** Resolve lista de datas a partir de avulsas ou recorrência mensal. */
+    /** Resolve lista de datas a partir de avulsas ou recorrência. */
     public List<Instant> resolverDatasAgendamentoLote(
-            List<Instant> scheduledAtList, RecorrenciaMensalRequest recorrencia) {
+            List<Instant> scheduledAtList,
+            RecorrenciaAgendamentoRequest recorrencia,
+            RecorrenciaMensalRequest recorrenciaMensal) {
         if (recorrencia != null) {
-            YearMonth inicio = WhatsAppScheduleRecurrenceSupport.parseYearMonth(recorrencia.mesInicio());
-            YearMonth fim = WhatsAppScheduleRecurrenceSupport.parseYearMonth(recorrencia.mesFim());
-            return WhatsAppScheduleRecurrenceSupport.gerarRecorrenciaMensal(
-                    recorrencia.diaDoMes(), recorrencia.hora(), recorrencia.minuto(), inicio, fim);
+            return WhatsAppScheduleRecurrenceSupport.resolver(recorrencia);
+        }
+        if (recorrenciaMensal != null) {
+            return WhatsAppScheduleRecurrenceSupport.resolverLegadoMensal(recorrenciaMensal);
         }
         if (scheduledAtList == null || scheduledAtList.isEmpty()) {
-            throw new IllegalArgumentException("Informe datas avulsas ou recorrência mensual");
+            throw new IllegalArgumentException("Informe datas avulsas ou uma recorrência");
         }
-        return List.copyOf(scheduledAtList);
+        return WhatsAppScheduleRecurrenceSupport.limitar(List.copyOf(scheduledAtList));
     }
 
     /**

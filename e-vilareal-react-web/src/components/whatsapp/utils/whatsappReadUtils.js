@@ -1,6 +1,7 @@
 import { marcarConversaLida } from '../../../repositories/whatsappRepository.js';
 import { normalizePhoneForApi } from '../../../utils/whatsappFormat.js';
 import { unreadCountOf } from '../components/WhatsAppUnreadBadge.jsx';
+import { sortConversationsByPinAndRecency } from './whatsappPinUtils.js';
 
 export function zeroUnreadInConversations(conversations, phone) {
   const normalized = normalizePhoneForApi(phone);
@@ -55,7 +56,7 @@ export function applyInboundToConversationList(conversations, inbound, activePho
   const becameUnread = !isActive && !wasUnread && !isReaction;
 
   return {
-    conversations: [updated, ...rest],
+    conversations: sortConversationsByPinAndRecency([updated, ...rest]),
     found: true,
     wasUnread,
     becameUnread,

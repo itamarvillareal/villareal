@@ -9,6 +9,9 @@ import {
   getWhatsAppRecentConversations,
   sendWhatsAppMedia,
   sendWhatsAppText,
+  fixarConversa,
+  desfixarConversa,
+  arquivarConversa,
 } from '../../repositories/whatsappRepository.js';
 import {
   formatDateTimeBR,
@@ -30,7 +33,10 @@ import { useOptimisticMediaSend } from './hooks/useOptimisticMediaSend.js';
 import { resumoWhatsAppMessageContent } from './utils/whatsappMessagePreview.js';
 import { WhatsAppContactAvatar } from './components/WhatsAppContactAvatar.jsx';
 import { WhatsAppUnreadBadge, unreadCountOf } from './components/WhatsAppUnreadBadge.jsx';
+import { WhatsAppConversationPinButton } from './components/WhatsAppConversationPinButton.jsx';
+import { WhatsAppConversationArchiveButton } from './components/WhatsAppConversationArchiveButton.jsx';
 import { marcarConversaLidaAsync, applyInboundToConversationList, zeroUnreadAndReportHadUnread, zeroUnreadInConversations } from './utils/whatsappReadUtils.js';
+import { sortConversationsByPinAndRecency, togglePinInConversationList } from './utils/whatsappPinUtils.js';
 
 function previewConversa(conv) {
   const type = String(conv?.lastMessageType ?? '').toUpperCase();
@@ -40,7 +46,7 @@ function previewConversa(conv) {
   return conv?.lastMessageContent || conv?.lastMessagePreview || '—';
 }
 
-function FloatingConversationList({ conversations, loading, query, onQueryChange, onSelect, onClose }) {
+function FloatingConversationList({ conversations, loading, query, onQueryChange, onSelect, onTogglePin, onArchive, onClose }) {
   const filtered = conversations.filter((c) => {
     const q = query.trim().toLowerCase();
     if (!q) return true;
@@ -82,12 +88,15 @@ function FloatingConversationList({ conversations, loading, query, onQueryChange
         ) : (
           filtered.map((conv) => {
             const hasUnread = unreadCountOf(conv) > 0;
+            const isPinned = Boolean(conv.pinned);
             return (
             <button
               key={conv.phoneNumber}
               type="button"
               onClick={() => onSelect(conv)}
-              className="w-full text-left px-3 py-2.5 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition flex gap-2.5"
+              className={`group w-full text-left px-3 py-2.5 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition flex gap-2.5 ${
+                isPinned ? 'bg-amber-50/60 dark:bg-amber-950/20' : ''
+              }`}
             >
               <WhatsAppContactAvatar
                 nome={conv.contactName}
@@ -105,6 +114,14 @@ function FloatingConversationList({ conversations, loading, query, onQueryChange
                     {tituloFromNomeTelefone(conv.contactName, conv.phoneNumber)}
                   </span>
                   <div className="flex items-center gap-1 shrink-0">
+                    <WhatsAppConversationPinButton
+                      pinned={isPinned}
+                      onToggle={() => onTogglePin?.(conv.phoneNumber, isPinned)}
+                    />
+                    <WhatsAppConversationArchiveButton
+                      archivedView={false}
+                      onToggle={() => onArchive?.(conv.phoneNumber)}
+                    />
                     <WhatsAppUnreadBadge count={conv.unreadCount} />
                     <span
                       className="text-[10px] text-slate-400"
@@ -478,7 +495,7 @@ export function WhatsAppFloatingChat() {
     setLoadingConversations(true);
     try {
       const rows = await getWhatsAppRecentConversations(10);
-      setConversations(Array.isArray(rows) ? rows : []);
+      setConversations(sortConversationsByPinAndRecency(Array.isArray(rows) ? rows : []));
     } catch {
       setConversations([]);
     } finally {
@@ -541,6 +558,39 @@ export function WhatsAppFloatingChat() {
     setConversations((prev) => zeroUnreadInConversations(prev, phone));
   }, []);
 
+  const toggleConversationPin = useCallback((phone, currentlyPinned) => {
+    const normalized = normalizePhoneForApi(phone);
+    if (!normalized) return;
+    const nextPinned = !currentlyPinned;
+    setConversations((prev) => togglePinInConversationList(prev, normalized, nextPinned));
+    const api = nextPinned ? fixarConversa : desfixarConversa;
+    void api(normalized).catch((err) => {
+      console.warn('[WhatsApp] fixar/desfixar falhou:', err?.message ?? err);
+      setConversations((prev) => togglePinInConversationList(prev, normalized, currentlyPinned));
+    });
+  }, []);
+
+  const archiveConversation = useCallback(
+    (phone) => {
+      const normalized = normalizePhoneForApi(phone);
+      if (!normalized) return;
+      setConversations((prev) =>
+        prev.filter((c) => normalizePhoneForApi(c.phoneNumber) !== normalized),
+      );
+      if (
+        selectedConversation &&
+        normalizePhoneForApi(selectedConversation.phoneNumber) === normalized
+      ) {
+        setSelectedConversation(null);
+      }
+      void arquivarConversa(normalized).catch((err) => {
+        console.warn('[WhatsApp] arquivar falhou:', err?.message ?? err);
+        void loadConversations();
+      });
+    },
+    [selectedConversation, loadConversations],
+  );
+
   const openPanel = () => {
     ctx?.clearNotifications();
     setIsOpen(true);
@@ -588,6 +638,8 @@ export function WhatsAppFloatingChat() {
               query={query}
               onQueryChange={setQuery}
               onSelect={handleSelectConversation}
+              onTogglePin={toggleConversationPin}
+              onArchive={archiveConversation}
               onClose={closePanel}
             />
           )}

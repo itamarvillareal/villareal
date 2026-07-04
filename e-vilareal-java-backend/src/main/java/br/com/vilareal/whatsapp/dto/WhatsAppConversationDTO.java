@@ -11,5 +11,6 @@ public record WhatsAppConversationDTO(
         String lastMessageType,
         Instant lastMessageAt,
         long unreadCount,
+        boolean pinned,
         WhatsAppProcessoContextItemDTO contextoPrincipal,
         List<WhatsAppProcessoContextItemDTO> contextos) {}

@@ -30,6 +30,8 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
         Instant getLastMessageAt();
 
         Long getUnreadCount();
+
+        Integer getPinned();
     }
 
     interface RecentConversationRow {
@@ -46,6 +48,8 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
         Long getTotalMessages();
 
         Long getUnreadCount();
+
+        Integer getPinned();
     }
 
     @Query(
@@ -82,10 +86,12 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                                ORDER BY w5.created_at DESC
                                LIMIT 1
                            ) AS lastMessageType,
-                           MAX(w.created_at) AS lastMessageAt
+                           MAX(w.created_at) AS lastMessageAt,
+                           MAX(CASE WHEN pin.phone_number IS NOT NULL THEN 1 ELSE 0 END) AS pinned
                     FROM whatsapp_messages w
+                    LEFT JOIN whatsapp_conversation_pin pin ON pin.phone_number = w.phone_number
                     GROUP BY w.phone_number
-                    ORDER BY lastMessageAt DESC
+                    ORDER BY pinned DESC, lastMessageAt DESC
                     """,
             countQuery = "SELECT COUNT(DISTINCT w.phone_number) FROM whatsapp_messages w",
             nativeQuery = true)
@@ -137,8 +143,10 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                                       FROM whatsapp_conversation_read r
                                       WHERE r.phone_number = w.phone_number),
                                      TIMESTAMP('1970-01-01 00:00:00.000'))
-                           ) AS unreadCount
+                           ) AS unreadCount,
+                           MAX(CASE WHEN pin.phone_number IS NOT NULL THEN 1 ELSE 0 END) AS pinned
                     FROM whatsapp_messages w
+                    LEFT JOIN whatsapp_conversation_pin pin ON pin.phone_number = w.phone_number
                     WHERE w.phone_number NOT IN (
                         SELECT wm.phone_number
                         FROM whatsapp_messages wm
@@ -149,8 +157,28 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                                     THEN 1 ELSE 0 END) = 0
                            AND COUNT(*) > 0
                     )
+                      AND (
+                          (:somenteArquivadas = false AND NOT EXISTS (
+                              SELECT 1 FROM whatsapp_conversation_archive arch
+                              WHERE arch.phone_number = w.phone_number))
+                          OR (:somenteArquivadas = true AND EXISTS (
+                              SELECT 1 FROM whatsapp_conversation_archive arch
+                              WHERE arch.phone_number = w.phone_number))
+                      )
+                      AND (
+                          :clienteCodigo = ''
+                          OR EXISTS (
+                              SELECT 1 FROM whatsapp_conversa_cliente wcc
+                              WHERE wcc.phone_number = w.phone_number
+                                AND wcc.cliente_codigo = :clienteCodigo
+                          )
+                      )
                     GROUP BY w.phone_number
-                    ORDER BY lastMessageAt DESC
+                    ORDER BY
+                      CASE WHEN :somenteArquivadas = true THEN 0
+                           ELSE MAX(CASE WHEN pin.phone_number IS NOT NULL THEN 1 ELSE 0 END)
+                      END DESC,
+                      MAX(w.created_at) DESC
                     """,
             countQuery =
                     """
@@ -167,11 +195,30 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                                         THEN 1 ELSE 0 END) = 0
                                AND COUNT(*) > 0
                         )
+                          AND (
+                              (:somenteArquivadas = false AND NOT EXISTS (
+                                  SELECT 1 FROM whatsapp_conversation_archive arch
+                                  WHERE arch.phone_number = w.phone_number))
+                              OR (:somenteArquivadas = true AND EXISTS (
+                                  SELECT 1 FROM whatsapp_conversation_archive arch
+                                  WHERE arch.phone_number = w.phone_number))
+                          )
+                          AND (
+                              :clienteCodigo = ''
+                              OR EXISTS (
+                                  SELECT 1 FROM whatsapp_conversa_cliente wcc
+                                  WHERE wcc.phone_number = w.phone_number
+                                    AND wcc.cliente_codigo = :clienteCodigo
+                              )
+                          )
                         GROUP BY w.phone_number
                     ) t
                     """,
             nativeQuery = true)
-    Page<ConversationSummaryRow> findConversationSummariesExcluindoAniversario(Pageable pageable);
+    Page<ConversationSummaryRow> findConversationSummariesExcluindoAniversario(
+            @Param("somenteArquivadas") boolean somenteArquivadas,
+            @Param("clienteCodigo") String clienteCodigo,
+            Pageable pageable);
 
     @Query(
             value =
@@ -213,16 +260,22 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                                       FROM whatsapp_conversation_read r
                                       WHERE r.phone_number = w.phone_number),
                                      TIMESTAMP('1970-01-01 00:00:00.000'))
-                           ) AS unreadCount
+                           ) AS unreadCount,
+                           MAX(CASE WHEN pin.phone_number IS NOT NULL THEN 1 ELSE 0 END) AS pinned
                     FROM whatsapp_messages w
+                    LEFT JOIN whatsapp_conversation_pin pin ON pin.phone_number = w.phone_number
                     WHERE EXISTS (
                         SELECT 1
                         FROM whatsapp_messages wi
                         WHERE wi.phone_number = w.phone_number
                           AND wi.direction = 'INBOUND'
                     )
+                      AND NOT EXISTS (
+                          SELECT 1 FROM whatsapp_conversation_archive arch
+                          WHERE arch.phone_number = w.phone_number
+                      )
                     GROUP BY w.phone_number
-                    ORDER BY lastMessageAt DESC
+                    ORDER BY pinned DESC, lastMessageAt DESC
                     """,
             nativeQuery = true)
     List<RecentConversationRow> findRecentConversationsWithInbound(Pageable pageable);
@@ -312,4 +365,7 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
             @Param("direction") WhatsAppMessageDirection direction,
             @Param("tentativaAntesDe") Instant tentativaAntesDe,
             Pageable pageable);
+
+    @Query("SELECT DISTINCT w.phoneNumber FROM WhatsAppMessageEntity w ORDER BY w.phoneNumber ASC")
+    List<String> findDistinctPhoneNumbers();
 }

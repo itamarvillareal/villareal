@@ -4,7 +4,7 @@ import { processosBtnPrimary, processosInputClass } from '../../processos/Proces
 import { MessageComposePreview } from './MessageComposePreview.jsx';
 import { TemplateParamsForm, TemplateSelect } from './TemplateParamsForm.jsx';
 import {
-  BATCH_MODE_RECORRENCIA,
+  BATCH_MODE_MENSAL,
   buildScheduleBatchPayload,
   ScheduleBatchFields,
 } from './ScheduleBatchFields.jsx';
@@ -28,7 +28,7 @@ export function ScheduleModal({ open, onClose, onSuccess }) {
   const { templates, loading: loadingTemplates } = useWhatsAppTemplates({ approvedOnly: true });
   const toast = useWhatsAppToast();
   const [formMode, setFormMode] = useState(MODE_UNICO);
-  const [batchMode, setBatchMode] = useState(BATCH_MODE_RECORRENCIA);
+  const [batchMode, setBatchMode] = useState(BATCH_MODE_MENSAL);
   const [batchState, setBatchState] = useState(null);
   const [phone, setPhone] = useState('');
   const [templateName, setTemplateName] = useState('');
@@ -44,7 +44,7 @@ export function ScheduleModal({ open, onClose, onSuccess }) {
   useEffect(() => {
     if (!open) return;
     setFormMode(MODE_UNICO);
-    setBatchMode(BATCH_MODE_RECORRENCIA);
+    setBatchMode(BATCH_MODE_MENSAL);
     setBatchState(null);
     setPhone('');
     setTemplateName('');

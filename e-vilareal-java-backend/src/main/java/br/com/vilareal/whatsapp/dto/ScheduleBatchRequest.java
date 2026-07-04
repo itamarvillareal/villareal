@@ -12,7 +12,9 @@ public record ScheduleBatchRequest(
         Long clienteId,
         Long processoId,
         String descricao,
-        /** Datas avulsas (ISO UTC). Ignorado se {@code recorrenciaMensal} estiver preenchido. */
+        /** Datas avulsas (ISO UTC). Ignorado se houver recorrência. */
         List<Instant> scheduledAtList,
-        /** Recorrência mensal — datas geradas no backend (Brasília). */
+        /** Recorrência unificada (mensal, semanal, intervalo no dia). */
+        RecorrenciaAgendamentoRequest recorrencia,
+        /** Legado — preferir {@link #recorrencia()} com tipo MENSAL. */
         RecorrenciaMensalRequest recorrenciaMensal) {}

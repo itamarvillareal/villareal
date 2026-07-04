@@ -10,4 +10,5 @@ public record RecentConversationDTO(
         String lastMessageType,
         Instant lastMessageAt,
         long totalMessages,
-        long unreadCount) {}
+        long unreadCount,
+        boolean pinned) {}

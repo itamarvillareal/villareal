@@ -131,7 +131,8 @@ class WhatsAppServiceCopiaMonitoramentoTest {
                 whatsAppIAConfigService,
                 whatsAppMediaProcessingService,
                 whatsAppNotificationService,
-                conversationContextService);
+                conversationContextService,
+                org.mockito.Mockito.mock(WhatsAppConversationArchiveService.class));
     }
 
     @AfterEach

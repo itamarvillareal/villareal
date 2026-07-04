@@ -75,11 +75,18 @@ export async function getWhatsAppMessages(phoneNumber, page = 0, size = 20, sign
   });
 }
 
-export async function getWhatsAppConversations(page = 0, size = 50, signal) {
+export async function getWhatsAppConversations(page = 0, size = 50, opts = {}) {
+  const { arquivadas = false, clienteCodigo, signal } = opts;
+  const query = { page, size, arquivadas };
+  if (clienteCodigo) query.clienteCodigo = clienteCodigo;
   return request('/api/whatsapp/conversations', {
-    query: { page, size },
+    query,
     signal,
   });
+}
+
+export async function getWhatsAppGrupos(signal) {
+  return request('/api/whatsapp/grupos', { signal });
 }
 
 export async function getWhatsAppConversationContext(phoneNumber, signal) {
@@ -230,6 +237,42 @@ export async function marcarConversaLida(phoneNumber) {
   if (!phone) throw new Error('Telefone ausente.');
   return request(`/api/whatsapp/conversations/${encodeURIComponent(phone)}/marcar-lida`, {
     method: 'POST',
+  });
+}
+
+/** Fixa conversa no topo globalmente (POST 204, idempotente). */
+export async function fixarConversa(phoneNumber) {
+  const phone = String(phoneNumber ?? '').trim();
+  if (!phone) throw new Error('Telefone ausente.');
+  return request(`/api/whatsapp/conversations/${encodeURIComponent(phone)}/fixar`, {
+    method: 'POST',
+  });
+}
+
+/** Remove fixação da conversa (DELETE 204, idempotente). */
+export async function desfixarConversa(phoneNumber) {
+  const phone = String(phoneNumber ?? '').trim();
+  if (!phone) throw new Error('Telefone ausente.');
+  return request(`/api/whatsapp/conversations/${encodeURIComponent(phone)}/fixar`, {
+    method: 'DELETE',
+  });
+}
+
+/** Arquiva conversa globalmente (POST 204, idempotente). */
+export async function arquivarConversa(phoneNumber) {
+  const phone = String(phoneNumber ?? '').trim();
+  if (!phone) throw new Error('Telefone ausente.');
+  return request(`/api/whatsapp/conversations/${encodeURIComponent(phone)}/arquivar`, {
+    method: 'POST',
+  });
+}
+
+/** Desarquiva conversa globalmente (DELETE 204, idempotente). */
+export async function desarquivarConversa(phoneNumber) {
+  const phone = String(phoneNumber ?? '').trim();
+  if (!phone) throw new Error('Telefone ausente.');
+  return request(`/api/whatsapp/conversations/${encodeURIComponent(phone)}/arquivar`, {
+    method: 'DELETE',
   });
 }
 

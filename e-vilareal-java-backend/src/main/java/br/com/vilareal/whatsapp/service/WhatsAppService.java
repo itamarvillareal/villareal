@@ -75,6 +75,7 @@ public class WhatsAppService {
     private final WhatsAppMediaProcessingService whatsAppMediaProcessingService;
     private final WhatsAppNotificationService whatsAppNotificationService;
     private final WhatsAppConversationContextService conversationContextService;
+    private final WhatsAppConversationArchiveService conversationArchiveService;
 
     public WhatsAppService(
             WhatsAppConfig whatsAppConfig,
@@ -90,7 +91,8 @@ public class WhatsAppService {
             WhatsAppIAConfigService whatsAppIAConfigService,
             WhatsAppMediaProcessingService whatsAppMediaProcessingService,
             WhatsAppNotificationService whatsAppNotificationService,
-            WhatsAppConversationContextService conversationContextService) {
+            WhatsAppConversationContextService conversationContextService,
+            WhatsAppConversationArchiveService conversationArchiveService) {
         this.whatsAppConfig = whatsAppConfig;
         this.objectMapper = objectMapper;
         this.whatsAppMessageRepository = whatsAppMessageRepository;
@@ -104,6 +106,7 @@ public class WhatsAppService {
         this.whatsAppMediaProcessingService = whatsAppMediaProcessingService;
         this.whatsAppNotificationService = whatsAppNotificationService;
         this.conversationContextService = conversationContextService;
+        this.conversationArchiveService = conversationArchiveService;
 
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofSeconds(10));
@@ -350,6 +353,10 @@ public class WhatsAppService {
         } catch (Exception e) {
             log.error("Falha ao salvar mensagem inbound no banco: {}", e.getMessage());
             return;
+        }
+
+        if (messageType != WhatsAppMessageType.REACTION) {
+            conversationArchiveService.desarquivarSeExistir(canonicalFrom);
         }
 
         try {

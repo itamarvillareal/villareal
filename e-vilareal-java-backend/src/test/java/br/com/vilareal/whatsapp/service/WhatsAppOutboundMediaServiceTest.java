@@ -143,7 +143,8 @@ class WhatsAppOutboundMediaServiceTest {
                 whatsAppIAConfigService,
                 whatsAppMediaProcessingService,
                 whatsAppNotificationService,
-                conversationContextService);
+                conversationContextService,
+                org.mockito.Mockito.mock(WhatsAppConversationArchiveService.class));
 
         uploadService = new WhatsAppMediaUploadService(whatsAppConfig, builder, objectMapper);
         stagingService = new WhatsAppOutboundMediaStagingService();

@@ -12,7 +12,7 @@ import { ModalVinculosTelefoneConversa } from './components/ModalVinculosTelefon
 import { useWhatsApp } from './hooks/useWhatsApp.js';
 import { useWhatsAppToast } from './WhatsAppToast.jsx';
 import { useWhatsAppNotificationContext } from './WhatsAppNotificationProvider.jsx';
-import { getWhatsAppConversationContext } from '../../repositories/whatsappRepository.js';
+import { getWhatsAppConversationContext, fixarConversa, desfixarConversa, arquivarConversa, desarquivarConversa, getWhatsAppGrupos } from '../../repositories/whatsappRepository.js';
 import {
   formatDateTimeBR,
   formatPhoneDisplay,
@@ -33,7 +33,10 @@ import { sendWhatsAppMedia } from '../../repositories/whatsappRepository.js';
 import { resumoWhatsAppMessageContent } from './utils/whatsappMessagePreview.js';
 import { WhatsAppContactAvatar } from './components/WhatsAppContactAvatar.jsx';
 import { WhatsAppUnreadBadge, unreadCountOf } from './components/WhatsAppUnreadBadge.jsx';
+import { WhatsAppConversationPinButton } from './components/WhatsAppConversationPinButton.jsx';
+import { WhatsAppConversationArchiveButton } from './components/WhatsAppConversationArchiveButton.jsx';
 import { marcarConversaLidaAsync, applyInboundToConversationList, zeroUnreadAndReportHadUnread } from './utils/whatsappReadUtils.js';
+import { sortConversationsByPinAndRecency, togglePinInConversationList } from './utils/whatsappPinUtils.js';
 
 const PAGE_SIZE = 20;
 const CONVERSATIONS_PAGE_SIZE = 50;
@@ -157,6 +160,9 @@ export function WhatsAppConversas() {
     useWhatsAppNotificationContext() ?? {};
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState('');
+  const [showArchivedView, setShowArchivedView] = useState(false);
+  const [selectedClienteCodigo, setSelectedClienteCodigo] = useState(null);
+  const [grupos, setGrupos] = useState([]);
   const [conversations, setConversations] = useState([]);
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [conversationsPageLoaded, setConversationsPageLoaded] = useState(0);
@@ -184,6 +190,8 @@ export function WhatsAppConversas() {
   const bottomRef = useRef(null);
   const openedFromUrl = useRef(false);
   const lastListInboundIdRef = useRef(null);
+  const archiveViewInitialized = useRef(false);
+  const clienteTabInitialized = useRef(false);
 
   const scrollToBottom = () => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -193,21 +201,27 @@ export function WhatsAppConversas() {
     async ({ silent = false } = {}) => {
       if (!silent) setLoadingConversations(true);
       try {
-        const res = await getConversations(0, CONVERSATIONS_PAGE_SIZE);
+        const res = await getConversations(0, CONVERSATIONS_PAGE_SIZE, {
+          arquivadas: showArchivedView,
+          clienteCodigo: selectedClienteCodigo || undefined,
+        });
         const page0 = Array.isArray(res?.content) ? res.content : [];
         setConversationsTotalPages(Number(res?.totalPages ?? 0));
         if (silent) {
           setConversations((prev) => {
-            if (prev.length <= CONVERSATIONS_PAGE_SIZE) return page0;
+            if (prev.length <= CONVERSATIONS_PAGE_SIZE) {
+              return showArchivedView ? page0 : sortConversationsByPinAndRecency(page0);
+            }
             const page0Phones = new Set(page0.map((c) => normalizePhoneForApi(c.phoneNumber)));
             const older = prev
               .slice(CONVERSATIONS_PAGE_SIZE)
               .filter((c) => !page0Phones.has(normalizePhoneForApi(c.phoneNumber)));
-            return [...page0, ...older];
+            const merged = [...page0, ...older];
+            return showArchivedView ? merged : sortConversationsByPinAndRecency(merged);
           });
         } else {
           setConversationsPageLoaded(0);
-          setConversations(page0);
+          setConversations(showArchivedView ? page0 : sortConversationsByPinAndRecency(page0));
         }
       } catch (err) {
         toast.error(err?.message || 'Erro ao carregar conversas.');
@@ -215,7 +229,7 @@ export function WhatsAppConversas() {
         if (!silent) setLoadingConversations(false);
       }
     },
-    [getConversations, toast],
+    [getConversations, toast, showArchivedView, selectedClienteCodigo],
   );
 
   const handleLoadMoreConversations = useCallback(async () => {
@@ -223,7 +237,10 @@ export function WhatsAppConversas() {
     setLoadingMoreConversations(true);
     try {
       const nextPage = conversationsPageLoaded + 1;
-      const res = await getConversations(nextPage, CONVERSATIONS_PAGE_SIZE);
+      const res = await getConversations(nextPage, CONVERSATIONS_PAGE_SIZE, {
+        arquivadas: showArchivedView,
+        clienteCodigo: selectedClienteCodigo || undefined,
+      });
       const chunk = Array.isArray(res?.content) ? res.content : [];
       setConversationsTotalPages(Number(res?.totalPages ?? conversationsTotalPages));
       setConversationsPageLoaded(nextPage);
@@ -237,7 +254,42 @@ export function WhatsAppConversas() {
     } finally {
       setLoadingMoreConversations(false);
     }
-  }, [conversationsPageLoaded, conversationsTotalPages, getConversations, toast]);
+  }, [conversationsPageLoaded, conversationsTotalPages, getConversations, toast, showArchivedView, selectedClienteCodigo]);
+
+  useEffect(() => {
+    if (!archiveViewInitialized.current) {
+      archiveViewInitialized.current = true;
+      return;
+    }
+    setActivePhone('');
+    setMessages([]);
+    setConversationsPageLoaded(0);
+    void loadConversations();
+  }, [showArchivedView]); // eslint-disable-line react-hooks/exhaustive-deps -- recarrega ao trocar aba
+
+  useEffect(() => {
+    if (!clienteTabInitialized.current) {
+      clienteTabInitialized.current = true;
+      return;
+    }
+    setConversationsPageLoaded(0);
+    void loadConversations();
+  }, [selectedClienteCodigo]); // eslint-disable-line react-hooks/exhaustive-deps -- refetch ao trocar cliente
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await getWhatsAppGrupos();
+        if (!cancelled) setGrupos(Array.isArray(list) ? list : []);
+      } catch {
+        if (!cancelled) setGrupos([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const fetchPage = useCallback(
     async (phone, pageNum, appendOlder = false) => {
@@ -269,6 +321,39 @@ export function WhatsAppConversas() {
       });
     },
     [adjustUnreadConversations],
+  );
+
+  const toggleConversationPin = useCallback((phone, currentlyPinned) => {
+    const normalized = normalizePhoneForApi(phone);
+    if (!normalized) return;
+    const nextPinned = !currentlyPinned;
+    setConversations((prev) => togglePinInConversationList(prev, normalized, nextPinned));
+    const api = nextPinned ? fixarConversa : desfixarConversa;
+    void api(normalized).catch((err) => {
+      console.warn('[WhatsApp] fixar/desfixar falhou:', err?.message ?? err);
+      setConversations((prev) => togglePinInConversationList(prev, normalized, currentlyPinned));
+    });
+  }, []);
+
+  const toggleConversationArchive = useCallback(
+    (phone, shouldArchive) => {
+      const normalized = normalizePhoneForApi(phone);
+      if (!normalized) return;
+      setConversations((prev) =>
+        prev.filter((c) => normalizePhoneForApi(c.phoneNumber) !== normalized),
+      );
+      if (normalizePhoneForApi(activePhone) === normalized) {
+        setActivePhone('');
+        setMessages([]);
+        setContactName('');
+      }
+      const api = shouldArchive ? arquivarConversa : desarquivarConversa;
+      void api(normalized).catch((err) => {
+        console.warn('[WhatsApp] arquivar/desarquivar falhou:', err?.message ?? err);
+        void loadConversations();
+      });
+    },
+    [activePhone, loadConversations],
   );
 
   const openConversation = useCallback(
@@ -577,6 +662,30 @@ export function WhatsAppConversas() {
             <MessageSquarePlus className="w-4 h-4" aria-hidden />
             Nova conversa
           </button>
+          <div className="flex rounded-lg border border-slate-200 dark:border-slate-600 overflow-hidden text-xs font-medium">
+            <button
+              type="button"
+              onClick={() => setShowArchivedView(false)}
+              className={`flex-1 px-2 py-1.5 transition-colors ${
+                !showArchivedView
+                  ? 'bg-white dark:bg-slate-800 text-emerald-800 dark:text-emerald-300'
+                  : 'bg-slate-100 dark:bg-slate-900/60 text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Ativas
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowArchivedView(true)}
+              className={`flex-1 px-2 py-1.5 transition-colors border-l border-slate-200 dark:border-slate-600 ${
+                showArchivedView
+                  ? 'bg-white dark:bg-slate-800 text-emerald-800 dark:text-emerald-300'
+                  : 'bg-slate-100 dark:bg-slate-900/60 text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Arquivadas
+            </button>
+          </div>
           <form onSubmit={handleSearch} className="flex items-center gap-2">
             <input
               type="search"
@@ -589,6 +698,49 @@ export function WhatsAppConversas() {
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
             </button>
           </form>
+          {grupos.length > 0 ? (
+            <div
+              className="flex gap-1.5 overflow-x-auto pb-0.5 -mx-0.5 px-0.5 scroll-smooth"
+              role="tablist"
+              aria-label="Filtrar por cliente"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={!selectedClienteCodigo}
+                onClick={() => setSelectedClienteCodigo(null)}
+                className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                  !selectedClienteCodigo
+                    ? 'bg-emerald-700 text-white border-emerald-700'
+                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-emerald-400'
+                }`}
+              >
+                Todas
+              </button>
+              {grupos.map((grupo) => {
+                const ativo = selectedClienteCodigo === grupo.codigo;
+                const label =
+                  grupo.qtdConversas > 0 ? `${grupo.nome} (${grupo.qtdConversas})` : grupo.nome;
+                return (
+                  <button
+                    key={grupo.codigo}
+                    type="button"
+                    role="tab"
+                    aria-selected={ativo}
+                    title={label}
+                    onClick={() => setSelectedClienteCodigo(grupo.codigo)}
+                    className={`shrink-0 max-w-[10rem] truncate px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                      ativo
+                        ? 'bg-emerald-700 text-white border-emerald-700'
+                        : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-emerald-400'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto">
@@ -601,7 +753,11 @@ export function WhatsAppConversas() {
             <div className="p-6 text-center text-sm text-slate-500">
               <MessageCircle className="w-8 h-8 mx-auto mb-2 opacity-40" />
               {conversations.length === 0
-                ? 'Nenhuma conversa ainda. Envie uma mensagem em "Enviar mensagem" para iniciar.'
+                ? showArchivedView
+                  ? 'Nenhuma conversa arquivada.'
+                  : selectedClienteCodigo
+                    ? 'Nenhuma conversa para este cliente.'
+                    : 'Nenhuma conversa ainda. Envie uma mensagem em "Enviar mensagem" para iniciar.'
                 : 'Nenhuma conversa corresponde à busca.'}
             </div>
           ) : (
@@ -609,14 +765,15 @@ export function WhatsAppConversas() {
               {filteredConversations.map((conv) => {
                 const selected = normalizePhoneForApi(conv.phoneNumber) === activePhone;
                 const hasUnread = unreadCountOf(conv) > 0;
+                const isPinned = Boolean(conv.pinned);
                 return (
                   <li key={conv.phoneNumber}>
                     <button
                       type="button"
                       onClick={() => openConversation(conv.phoneNumber, conv.contactName, conv.contextos)}
-                      className={`w-full text-left px-3 py-3 hover:bg-white dark:hover:bg-slate-800 transition-colors flex gap-2.5 ${
+                      className={`group w-full text-left px-3 py-3 hover:bg-white dark:hover:bg-slate-800 transition-colors flex gap-2.5 ${
                         selected ? 'bg-white dark:bg-slate-800 border-l-4 border-emerald-600' : 'border-l-4 border-transparent'
-                      }`}
+                      } ${isPinned ? 'bg-amber-50/60 dark:bg-amber-950/20' : ''}`}
                     >
                       <WhatsAppContactAvatar
                         nome={conv.contactName}
@@ -634,6 +791,16 @@ export function WhatsAppConversas() {
                             {tituloContato(conv.contactName, conv.phoneNumber)}
                           </p>
                           <div className="flex items-center gap-1 shrink-0">
+                            {!showArchivedView ? (
+                              <WhatsAppConversationPinButton
+                                pinned={isPinned}
+                                onToggle={() => toggleConversationPin(conv.phoneNumber, isPinned)}
+                              />
+                            ) : null}
+                            <WhatsAppConversationArchiveButton
+                              archivedView={showArchivedView}
+                              onToggle={() => toggleConversationArchive(conv.phoneNumber, !showArchivedView)}
+                            />
                             <WhatsAppUnreadBadge count={conv.unreadCount} />
                             <span
                               className="text-[10px] text-slate-400"

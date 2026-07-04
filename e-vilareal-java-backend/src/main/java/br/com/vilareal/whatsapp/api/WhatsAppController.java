@@ -19,6 +19,7 @@ import br.com.vilareal.whatsapp.dto.ScheduleMessageResponse;
 import br.com.vilareal.whatsapp.dto.ScheduleBatchRequest;
 import br.com.vilareal.whatsapp.dto.ScheduleBatchResponse;
 import br.com.vilareal.whatsapp.dto.ScheduleBatchPreviewResponse;
+import br.com.vilareal.whatsapp.dto.RecorrenciaAgendamentoRequest;
 import br.com.vilareal.whatsapp.dto.RecorrenciaMensalRequest;
 import br.com.vilareal.whatsapp.dto.SendMediaMessageResponse;
 import br.com.vilareal.whatsapp.dto.SendMessageResponse;
@@ -40,16 +41,20 @@ import br.com.vilareal.whatsapp.infrastructure.persistence.repository.ScheduledW
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppMessageRepository;
 import br.com.vilareal.whatsapp.dto.WhatsAppTemplateDTO;
 import br.com.vilareal.whatsapp.service.WhatsAppAgendamentosFeedService;
+import br.com.vilareal.whatsapp.service.WhatsAppConversationArchiveService;
+import br.com.vilareal.whatsapp.service.WhatsAppConversationPinService;
 import br.com.vilareal.whatsapp.service.WhatsAppConversationReadService;
 import br.com.vilareal.whatsapp.service.WhatsAppConversationWindowService;
 import br.com.vilareal.whatsapp.service.WhatsAppIniciarConversaService;
 import br.com.vilareal.whatsapp.service.WhatsAppConversationContextService;
 import br.com.vilareal.whatsapp.service.WhatsAppConversationFeedService;
 import br.com.vilareal.whatsapp.service.WhatsAppNomeExibicaoService;
+import br.com.vilareal.whatsapp.service.WhatsAppGrupoListService;
 import br.com.vilareal.whatsapp.service.WhatsAppIAConfigService;
 import br.com.vilareal.whatsapp.service.WhatsAppNotificationService;
 import br.com.vilareal.whatsapp.service.WhatsAppTemplateService;
 import br.com.vilareal.whatsapp.service.WhatsAppOutboundMediaService;
+import br.com.vilareal.whatsapp.service.WhatsAppScheduleRecurrenceSupport;
 import br.com.vilareal.whatsapp.service.WhatsAppSchedulerService;
 import br.com.vilareal.whatsapp.service.WhatsAppService;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -116,6 +121,8 @@ public class WhatsAppController {
     private final WhatsAppConversationFeedService conversationFeedService;
     private final WhatsAppOutboundMediaService outboundMediaService;
     private final WhatsAppConversationReadService conversationReadService;
+    private final WhatsAppConversationPinService conversationPinService;
+    private final WhatsAppConversationArchiveService conversationArchiveService;
     private final WhatsAppIniciarConversaService iniciarConversaService;
     private final WhatsAppConversationWindowService conversationWindowService;
     private final WhatsAppNomeExibicaoService nomeExibicaoService;
@@ -135,6 +142,8 @@ public class WhatsAppController {
             WhatsAppConversationFeedService conversationFeedService,
             WhatsAppOutboundMediaService outboundMediaService,
             WhatsAppConversationReadService conversationReadService,
+            WhatsAppConversationPinService conversationPinService,
+            WhatsAppConversationArchiveService conversationArchiveService,
             WhatsAppIniciarConversaService iniciarConversaService,
             WhatsAppConversationWindowService conversationWindowService,
             WhatsAppNomeExibicaoService nomeExibicaoService) {
@@ -152,6 +161,8 @@ public class WhatsAppController {
         this.conversationFeedService = conversationFeedService;
         this.outboundMediaService = outboundMediaService;
         this.conversationReadService = conversationReadService;
+        this.conversationPinService = conversationPinService;
+        this.conversationArchiveService = conversationArchiveService;
         this.iniciarConversaService = iniciarConversaService;
         this.conversationWindowService = conversationWindowService;
         this.nomeExibicaoService = nomeExibicaoService;
@@ -293,9 +304,13 @@ public class WhatsAppController {
     @Operation(summary = "Listar conversas recentes (última mensagem por telefone)")
     public ResponseEntity<Page<WhatsAppConversationDTO>> getConversations(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "50") int size) {
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(defaultValue = "false") boolean arquivadas,
+            @RequestParam(required = false) String clienteCodigo) {
+        String codigoFiltro = WhatsAppGrupoListService.normalizarFiltroClienteCodigo(clienteCodigo);
         Page<ConversationSummaryRow> rows =
-                whatsAppMessageRepository.findConversationSummariesExcluindoAniversario(PageRequest.of(page, size));
+                whatsAppMessageRepository.findConversationSummariesExcluindoAniversario(
+                        arquivadas, codigoFiltro, PageRequest.of(page, size));
         List<String> phones = rows.getContent().stream()
                 .map(ConversationSummaryRow::getPhoneNumber)
                 .toList();
@@ -340,6 +355,50 @@ public class WhatsAppController {
     public ResponseEntity<Void> marcarConversaComoLida(@PathVariable String phoneNumber) {
         try {
             conversationReadService.marcarComoLida(phoneNumber);
+            return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @PostMapping("/conversations/{phoneNumber}/fixar")
+    @Operation(summary = "Fixa conversa no topo da lista globalmente (estado interno do escritório)")
+    public ResponseEntity<Void> fixarConversa(@PathVariable String phoneNumber) {
+        try {
+            conversationPinService.fixar(phoneNumber);
+            return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @DeleteMapping("/conversations/{phoneNumber}/fixar")
+    @Operation(summary = "Remove fixação da conversa globalmente")
+    public ResponseEntity<Void> desfixarConversa(@PathVariable String phoneNumber) {
+        try {
+            conversationPinService.desfixar(phoneNumber);
+            return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @PostMapping("/conversations/{phoneNumber}/arquivar")
+    @Operation(summary = "Arquiva conversa globalmente (some da lista principal)")
+    public ResponseEntity<Void> arquivarConversa(@PathVariable String phoneNumber) {
+        try {
+            conversationArchiveService.arquivar(phoneNumber);
+            return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @DeleteMapping("/conversations/{phoneNumber}/arquivar")
+    @Operation(summary = "Desarquiva conversa globalmente")
+    public ResponseEntity<Void> desarquivarConversa(@PathVariable String phoneNumber) {
+        try {
+            conversationArchiveService.desarquivar(phoneNumber);
             return ResponseEntity.noContent().build();
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
@@ -439,7 +498,7 @@ public class WhatsAppController {
     public ResponseEntity<ScheduleBatchResponse> scheduleBatch(@Valid @RequestBody ScheduleBatchRequest request) {
         try {
             List<Instant> datas = whatsAppSchedulerService.resolverDatasAgendamentoLote(
-                    request.scheduledAtList(), request.recorrenciaMensal());
+                    request.scheduledAtList(), request.recorrencia(), request.recorrenciaMensal());
             var result = whatsAppSchedulerService.agendarMensagensEmLote(
                     request.phoneNumber(),
                     request.templateName(),
@@ -472,7 +531,7 @@ public class WhatsAppController {
             @Valid @RequestBody ScheduleBatchRequest request) {
         try {
             List<Instant> datas = whatsAppSchedulerService.resolverDatasAgendamentoLote(
-                    request.scheduledAtList(), request.recorrenciaMensal());
+                    request.scheduledAtList(), request.recorrencia(), request.recorrenciaMensal());
             List<String> labels = new ArrayList<>(datas.size());
             for (Instant instant : datas) {
                 labels.add(DATA_HORA_PREVIEW.format(instant));
@@ -484,19 +543,35 @@ public class WhatsAppController {
     }
 
     @PostMapping("/agendamentos/lote/preview-recorrencia")
-    @Operation(summary = "Preview rápido da recorrência mensal")
+    @Operation(summary = "Preview de recorrência (mensal, semanal ou intervalo no dia)")
     public ResponseEntity<ScheduleBatchPreviewResponse> scheduleRecurrencePreview(
-            @Valid @RequestBody RecorrenciaMensalRequest request) {
+            @Valid @RequestBody RecorrenciaAgendamentoRequest request) {
         try {
-            List<Instant> datas = whatsAppSchedulerService.resolverDatasAgendamentoLote(null, request);
-            List<String> labels = new ArrayList<>(datas.size());
-            for (Instant instant : datas) {
-                labels.add(DATA_HORA_PREVIEW.format(instant));
-            }
-            return ResponseEntity.ok(new ScheduleBatchPreviewResponse(datas.size(), datas, labels));
+            List<Instant> datas = WhatsAppScheduleRecurrenceSupport.resolver(request);
+            return ResponseEntity.ok(previewResponse(datas));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
         }
+    }
+
+    @PostMapping("/agendamentos/lote/preview-recorrencia-mensal")
+    @Operation(summary = "Preview da recorrência mensal legada (intervalo de meses)")
+    public ResponseEntity<ScheduleBatchPreviewResponse> scheduleRecurrenceMensalPreview(
+            @Valid @RequestBody RecorrenciaMensalRequest request) {
+        try {
+            List<Instant> datas = WhatsAppScheduleRecurrenceSupport.resolverLegadoMensal(request);
+            return ResponseEntity.ok(previewResponse(datas));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    private static ScheduleBatchPreviewResponse previewResponse(List<Instant> datas) {
+        List<String> labels = new ArrayList<>(datas.size());
+        for (Instant instant : datas) {
+            labels.add(DATA_HORA_PREVIEW.format(instant));
+        }
+        return new ScheduleBatchPreviewResponse(datas.size(), datas, labels);
     }
 
     @DeleteMapping("/schedule/{id}")
@@ -615,6 +690,7 @@ public class WhatsAppController {
                 row.getLastMessageType(),
                 row.getLastMessageAt(),
                 unreadCountOf(row.getUnreadCount()),
+                pinnedOf(row.getPinned()),
                 principal,
                 safeContextos);
     }
@@ -659,7 +735,8 @@ public class WhatsAppController {
                 row.getLastMessageType(),
                 row.getLastMessageAt(),
                 row.getTotalMessages() != null ? row.getTotalMessages() : 0L,
-                unreadCountOf(row.getUnreadCount()));
+                unreadCountOf(row.getUnreadCount()),
+                pinnedOf(row.getPinned()));
     }
 
     private static String previewFromRecentRow(RecentConversationRow row) {
@@ -687,6 +764,10 @@ public class WhatsAppController {
 
     private static long unreadCountOf(Long unreadCount) {
         return unreadCount != null ? unreadCount : 0L;
+    }
+
+    private static boolean pinnedOf(Integer pinned) {
+        return pinned != null && pinned > 0;
     }
 
     private WhatsAppMessageDTO toMessageDto(WhatsAppMessageEntity entity) {
