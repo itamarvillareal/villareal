@@ -443,6 +443,7 @@ public class CalculoApplicationService {
         n.put("periodicidade", "mensal");
         n.put("modeloListaDebitos", "01");
         n.put("regraInicioCobrancaDias", RegraInicioCobrancaDiasValidator.DEFAULT);
+        n.put("entradaCobranca", "XLS_INADIMPLENCIA");
         return n;
     }
 

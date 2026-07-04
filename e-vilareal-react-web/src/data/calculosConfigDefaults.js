@@ -10,6 +10,8 @@ export const DEFAULT_CONFIG_CALCULO_CLIENTE = {
   periodicidade: 'mensal',
   modeloListaDebitos: '01',
   regraInicioCobrancaDias: 1,
+  /** Origem da cobrança automática: planilha .xls ou PDF Condo Id. */
+  entradaCobranca: 'XLS_INADIMPLENCIA',
 };
 
 /** Honorários «fixos» são percentual (20 %), nunca valor em R$. */

@@ -2,8 +2,6 @@ package br.com.vilareal.whatsapp.service;
 
 import br.com.vilareal.imovel.infrastructure.persistence.entity.ImovelEntity;
 import br.com.vilareal.imovel.infrastructure.persistence.repository.ImovelRepository;
-import br.com.vilareal.pagamento.infrastructure.persistence.entity.PagamentoEntity;
-import br.com.vilareal.pagamento.infrastructure.persistence.repository.PagamentoRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteWhatsAppEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaContatoEntity;
@@ -79,7 +77,6 @@ public class CobrancaWhatsAppService {
 
     private final CobrancaWhatsAppRepository cobrancaRepository;
     private final ImovelRepository imovelRepository;
-    private final PagamentoRepository pagamentoRepository;
     private final ProcessoRepository processoRepository;
     private final ProcessoParteRepository processoParteRepository;
     private final ClienteRepository clienteRepository;
@@ -89,11 +86,11 @@ public class CobrancaWhatsAppService {
     private final WhatsAppService whatsAppService;
     private final WhatsAppTemplateService whatsAppTemplateService;
     private final TelefoneCadastroNormalizacaoService telefoneCadastroNormalizacaoService;
+    private final CobrancaWhatsAppElegibilidadeService cobrancaWhatsAppElegibilidadeService;
 
     public CobrancaWhatsAppService(
             CobrancaWhatsAppRepository cobrancaRepository,
             ImovelRepository imovelRepository,
-            PagamentoRepository pagamentoRepository,
             ProcessoRepository processoRepository,
             ProcessoParteRepository processoParteRepository,
             ClienteRepository clienteRepository,
@@ -102,10 +99,10 @@ public class CobrancaWhatsAppService {
             PessoaRepository pessoaRepository,
             WhatsAppService whatsAppService,
             WhatsAppTemplateService whatsAppTemplateService,
-            TelefoneCadastroNormalizacaoService telefoneCadastroNormalizacaoService) {
+            TelefoneCadastroNormalizacaoService telefoneCadastroNormalizacaoService,
+            CobrancaWhatsAppElegibilidadeService cobrancaWhatsAppElegibilidadeService) {
         this.cobrancaRepository = cobrancaRepository;
         this.imovelRepository = imovelRepository;
-        this.pagamentoRepository = pagamentoRepository;
         this.processoRepository = processoRepository;
         this.processoParteRepository = processoParteRepository;
         this.clienteRepository = clienteRepository;
@@ -115,6 +112,7 @@ public class CobrancaWhatsAppService {
         this.whatsAppService = whatsAppService;
         this.whatsAppTemplateService = whatsAppTemplateService;
         this.telefoneCadastroNormalizacaoService = telefoneCadastroNormalizacaoService;
+        this.cobrancaWhatsAppElegibilidadeService = cobrancaWhatsAppElegibilidadeService;
     }
 
     public List<CondominioResumoDTO> listarCondominios() {
@@ -147,8 +145,8 @@ public class CobrancaWhatsAppService {
     }
 
     /**
-     * Unidades vinculadas a processos do cliente do escritório (ex.: condomínio 299), com réu e telefone.
-     * Não exige pendência financeira — template {@link #TEMPLATE_COBRANCA} não inclui valor.
+     * Unidades vinculadas a processos do cliente do escritório, com réu e telefone.
+     * Exige pendência no cálculo (débito ou parcela em aberto) para {@code elegivelCobranca=true}.
      */
     @Transactional(readOnly = true)
     public List<CobrancaPreviewDTO> buscarProcessosParaCobranca(String codigoClienteRaw) {
@@ -189,7 +187,9 @@ public class CobrancaWhatsAppService {
             boolean temTelefone = StringUtils.hasText(telefone);
             String telefoneFormatado = temTelefone ? WhatsAppService.formatPhoneDisplay(telefone) : null;
             String unidadeDescricao = montarUnidadeDescricao(processo.getUnidade());
-            BigDecimal valorPendente = BigDecimal.ZERO;
+            CobrancaWhatsAppElegibilidadeService.Avaliacao avaliacao =
+                    cobrancaWhatsAppElegibilidadeService.avaliarProcessoEscritorio(cod8, processo.getNumeroInterno());
+            BigDecimal valorPendente = avaliacao.valorDebitoAberto();
             boolean jaCobrado = cobrancaRepository.existsCobrancaNoMesPorProcesso(processo.getId(), inicioMes, fimMes);
 
             ClienteEntity clienteEscritorio = processo.getCliente();
@@ -213,6 +213,12 @@ public class CobrancaWhatsAppService {
                     processo.getNumeroInterno(),
                     cod8,
                     nomeEscritorio,
+                    avaliacao.elegivelCobranca(),
+                    avaliacao.motivoInelegivel(),
+                    avaliacao.calculoDesatualizado(),
+                    avaliacao.dataCalculo(),
+                    avaliacao.debitosAbertos(),
+                    avaliacao.parcelasAbertas(),
                     List.of()));
         }
         return enriquecerPreviewComHistorico(previews);
@@ -248,14 +254,12 @@ public class CobrancaWhatsAppService {
             }
             Long imovelId = imovel.getId();
             Long cid = cliente.getId();
-            List<PagamentoEntity> abertos = pagamentoRepository.findReceberAbertosPorImovelOuCliente(imovelId, cid);
-            BigDecimal valorPendente = abertos.stream()
-                    .map(PagamentoEntity::getValor)
-                    .filter(v -> v != null)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-            if (valorPendente.compareTo(BigDecimal.ZERO) <= 0) {
+            CobrancaWhatsAppElegibilidadeService.Avaliacao avaliacao =
+                    cobrancaWhatsAppElegibilidadeService.avaliarImovel(imovelId, cid);
+            if (!avaliacao.elegivelCobranca()) {
                 continue;
             }
+            BigDecimal valorPendente = avaliacao.valorDebitoAberto();
 
             PessoaEntity pessoa = cliente.getPessoa();
             String pessoaNome = pessoa != null && StringUtils.hasText(pessoa.getNome())
@@ -289,6 +293,12 @@ public class CobrancaWhatsAppService {
                     processo != null ? processo.getNumeroInterno() : null,
                     null,
                     null,
+                    avaliacao.elegivelCobranca(),
+                    avaliacao.motivoInelegivel(),
+                    avaliacao.calculoDesatualizado(),
+                    avaliacao.dataCalculo(),
+                    avaliacao.debitosAbertos(),
+                    avaliacao.parcelasAbertas(),
                     List.of()));
         }
         return enriquecerPreviewComHistorico(previews);
@@ -306,9 +316,16 @@ public class CobrancaWhatsAppService {
         int falhos = 0;
         int semTelefone = 0;
         int jaCobrados = 0;
+        int puladosInelegiveis = 0;
 
         for (CobrancaItemDTO item : itens) {
             if (item == null) {
+                continue;
+            }
+            Optional<String> inelegivel = motivoInelegivelEnvio(item);
+            if (inelegivel.isPresent()) {
+                puladosInelegiveis++;
+                salvarFalha(loteId, loteDescricao, item, createdBy, inelegivel.get(), item.telefone());
                 continue;
             }
             if (!StringUtils.hasText(item.telefone())) {
@@ -357,7 +374,7 @@ public class CobrancaWhatsAppService {
             }
         }
 
-        return new CobrancaLoteResultDTO(loteId, itens.size(), enviados, falhos, semTelefone, jaCobrados);
+        return new CobrancaLoteResultDTO(loteId, itens.size(), enviados, falhos, semTelefone, jaCobrados, puladosInelegiveis);
     }
 
     @Transactional
@@ -374,9 +391,17 @@ public class CobrancaWhatsAppService {
         String loteId = UUID.randomUUID().toString();
         int agendados = 0;
         int semTelefone = 0;
+        int puladosInelegiveis = 0;
 
         for (CobrancaItemDTO item : itens) {
             if (item == null) {
+                continue;
+            }
+            Optional<String> inelegivel = motivoInelegivelEnvio(item);
+            if (inelegivel.isPresent()) {
+                puladosInelegiveis++;
+                salvarAgendamentoFalha(
+                        loteId, loteDescricao, item, createdBy, scheduledAt, inelegivel.get(), item.telefone());
                 continue;
             }
             if (!StringUtils.hasText(item.telefone())) {
@@ -399,7 +424,7 @@ public class CobrancaWhatsAppService {
             agendados++;
         }
 
-        return new AgendarCobrancaResultDTO(loteId, itens.size(), agendados, semTelefone, scheduledAt);
+        return new AgendarCobrancaResultDTO(loteId, itens.size(), agendados, semTelefone, puladosInelegiveis, scheduledAt);
     }
 
     @Transactional
@@ -450,6 +475,18 @@ public class CobrancaWhatsAppService {
     }
 
     private void enviarCobrancaAgendada(CobrancaWhatsAppEntity cobranca) {
+        Optional<String> inelegivel = cobrancaWhatsAppElegibilidadeService.motivoInelegivelEnvio(
+                cobranca.getImovelId(), cobranca.getProcessoId(), cobranca.getClienteId());
+        if (inelegivel.isPresent()) {
+            cobranca.setStatus("FALHOU");
+            cobranca.setErrorMessage(inelegivel.get());
+            cobrancaRepository.save(cobranca);
+            log.warn(
+                    "Cobrança agendada id={} bloqueada: {}",
+                    cobranca.getId(),
+                    cobranca.getErrorMessage());
+            return;
+        }
         try {
             String primeiroNome = extrairPrimeiroNome(cobranca.getPessoaNome());
             WhatsAppSendResponse response = whatsAppService.sendTemplateMessage(
@@ -569,6 +606,14 @@ public class CobrancaWhatsAppService {
             case "failed" -> "FALHOU";
             default -> null;
         };
+    }
+
+    private Optional<String> motivoInelegivelEnvio(CobrancaItemDTO item) {
+        if (item == null) {
+            return Optional.empty();
+        }
+        return cobrancaWhatsAppElegibilidadeService.motivoInelegivelEnvio(
+                item.imovelId(), item.processoId(), item.clienteId());
     }
 
     private void validarTemplateCobrancaAprovado() {
@@ -841,6 +886,12 @@ public class CobrancaWhatsAppService {
                 p.processoNumeroInterno(),
                 p.clienteEscritorioCodigo(),
                 p.clienteEscritorioNome(),
+                p.elegivelCobranca(),
+                p.motivoInelegivel(),
+                p.calculoDesatualizado(),
+                p.dataCalculo(),
+                p.debitosAbertos(),
+                p.parcelasAbertas(),
                 historico);
     }
 

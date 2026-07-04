@@ -50,6 +50,21 @@ function formatCodigoCliente(cod) {
   return String(n);
 }
 
+/** Seleção automática e envio: exige telefone, elegível e cálculo recente (modo cliente escritório). */
+function podeSelecionarCobranca(item, modoOrigem) {
+  if (!item?.temTelefone || item.jaCobradoEsteMes) return false;
+  if (modoOrigem === 'cliente') {
+    if (item.elegivelCobranca === false) return false;
+    if (item.calculoDesatualizado) return false;
+  }
+  return true;
+}
+
+function formatMoedaBrl(val) {
+  const n = Number(val ?? 0);
+  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
 export function WhatsAppCobrancas() {
   const toast = useWhatsAppToast();
   const [tab, setTab] = useState('nova');
@@ -108,6 +123,9 @@ export function WhatsAppCobrancas() {
 
   const semTelefoneCount = preview.filter((p) => !p.temTelefone).length;
   const jaCobradosCount = preview.filter((p) => p.jaCobradoEsteMes).length;
+  const inelegiveisCount = preview.filter((p) => p.elegivelCobranca === false).length;
+  const calculoAntigoCount = preview.filter((p) => p.calculoDesatualizado && p.elegivelCobranca !== false).length;
+  const elegiveisCount = preview.filter((p) => podeSelecionarCobranca(p, modoOrigem)).length;
 
   const loadStats = useCallback(async () => {
     try {
@@ -139,10 +157,7 @@ export function WhatsAppCobrancas() {
       .catch(() => setCondominios([]));
     void getClientesEscritorioCobranca()
       .then((rows) => {
-        const list = Array.isArray(rows) ? rows : [];
-        setClientesEscritorio(list);
-        const piloto = list.find((c) => formatCodigoCliente(c.codigoCliente) === '299');
-        if (piloto) setClienteEscritorioCodigo(piloto.codigoCliente);
+        setClientesEscritorio(Array.isArray(rows) ? rows : []);
       })
       .catch(() => setClientesEscritorio([]));
     void loadStats();
@@ -185,9 +200,16 @@ export function WhatsAppCobrancas() {
       setExpandedHistoricoKey(null);
       const auto = new Set();
       for (const p of list) {
-        if (p.temTelefone && !p.jaCobradoEsteMes) auto.add(itemKey(p));
+        if (podeSelecionarCobranca(p, modoOrigem)) auto.add(itemKey(p));
       }
       setSelected(auto);
+      const ineleg = list.filter((p) => p.elegivelCobranca === false).length;
+      const antigos = list.filter((p) => p.calculoDesatualizado && p.elegivelCobranca !== false).length;
+      if (modoOrigem === 'cliente' && (ineleg > 0 || antigos > 0)) {
+        toast.info(
+          `Pré-seleção segura: ${auto.size} unidade(s). ${ineleg} quitada(s)/sem débito e ${antigos} com cálculo antigo ficaram de fora.`,
+        );
+      }
       const now = new Date();
       const mesAno = `${tituloOrigem} - ${MESES[now.getMonth()]}/${now.getFullYear()}`;
       setLoteDescricao(`Cobrança ${mesAno}`);
@@ -200,8 +222,8 @@ export function WhatsAppCobrancas() {
   };
 
   const toggleAllComTelefone = () => {
-    const keys = preview.filter((p) => p.temTelefone).map(itemKey);
-    const allSelected = keys.every((k) => selected.has(k));
+    const keys = preview.filter((p) => podeSelecionarCobranca(p, modoOrigem)).map(itemKey);
+    const allSelected = keys.length > 0 && keys.every((k) => selected.has(k));
     setSelected((prev) => {
       const next = new Set(prev);
       if (allSelected) keys.forEach((k) => next.delete(k));
@@ -384,7 +406,7 @@ export function WhatsAppCobrancas() {
                 <div>
                   <h3 className="font-semibold">{tituloOrigem} — {preview.length} unidade(s)</h3>
                   <button type="button" className="text-xs text-emerald-700 dark:text-emerald-400 mt-1" onClick={toggleAllComTelefone}>
-                    Selecionar todas com telefone
+                    Selecionar elegíveis ({elegiveisCount})
                   </button>
                 </div>
                 <button type="button" className={processosBtnSecondary} onClick={() => setStep(1)}>
@@ -399,6 +421,7 @@ export function WhatsAppCobrancas() {
                       <th className="p-2">Cliente / Réu</th>
                       <th className="p-2">Unidade</th>
                       <th className="p-2">Proc.</th>
+                      {modoOrigem === 'cliente' ? <th className="p-2">Pendência</th> : null}
                       <th className="p-2">Telefone</th>
                       <th className="p-2">Contato</th>
                       <th className="p-2 w-8" />
@@ -407,7 +430,8 @@ export function WhatsAppCobrancas() {
                   <tbody>
                     {preview.map((p) => {
                       const key = itemKey(p);
-                      const disabled = !p.temTelefone;
+                      const selecionavel = podeSelecionarCobranca(p, modoOrigem);
+                      const disabled = !p.temTelefone || (modoOrigem === 'cliente' && p.elegivelCobranca === false);
                       const historico = Array.isArray(p.historicoContatos) ? p.historicoContatos : [];
                       const resumo = resumoUltimoContato(historico);
                       const historicoAberto = expandedHistoricoKey === key;
@@ -419,6 +443,13 @@ export function WhatsAppCobrancas() {
                               type="checkbox"
                               checked={selected.has(key)}
                               disabled={disabled}
+                              title={
+                                p.elegivelCobranca === false
+                                  ? p.motivoInelegivel || 'Inelegível'
+                                  : p.calculoDesatualizado
+                                    ? 'Cálculo desatualizado — atualize antes de cobrar'
+                                    : undefined
+                              }
                               onChange={() => {
                                 setSelected((prev) => {
                                   const next = new Set(prev);
@@ -432,6 +463,29 @@ export function WhatsAppCobrancas() {
                           <td className="p-2">{p.pessoaNome}</td>
                           <td className="p-2">{p.unidadeDescricao}</td>
                           <td className="p-2 tabular-nums">{p.processoNumeroInterno ?? '—'}</td>
+                          {modoOrigem === 'cliente' ? (
+                            <td className="p-2 text-xs">
+                              {p.elegivelCobranca === false ? (
+                                <span className="text-red-700 dark:text-red-400" title={p.motivoInelegivel}>
+                                  {p.motivoInelegivel || 'Inelegível'}
+                                </span>
+                              ) : (
+                                <div className="space-y-0.5">
+                                  <span className="text-slate-800 dark:text-slate-200 tabular-nums">
+                                    {formatMoedaBrl(p.valorPendente)}
+                                  </span>
+                                  {p.calculoDesatualizado ? (
+                                    <span className="block text-amber-700 dark:text-amber-400">
+                                      Cálculo antigo{p.dataCalculo ? ` (${p.dataCalculo})` : ''}
+                                    </span>
+                                  ) : null}
+                                  {!selecionavel && p.elegivelCobranca !== false && p.calculoDesatualizado ? (
+                                    <span className="block text-slate-500">Não pré-selecionado</span>
+                                  ) : null}
+                                </div>
+                              )}
+                            </td>
+                          ) : null}
                           <td className="p-2">
                             {!p.temTelefone ? <span className="text-amber-600 text-xs">Sem tel</span> : null}
                             {p.jaCobradoEsteMes ? <span className="text-slate-500 text-xs ml-1">Já cobrado</span> : null}
@@ -467,7 +521,7 @@ export function WhatsAppCobrancas() {
                         </tr>
                         {historicoAberto ? (
                           <tr className="border-t border-slate-100 bg-slate-50/80 dark:bg-slate-800/40">
-                            <td colSpan={7} className="p-3">
+                            <td colSpan={modoOrigem === 'cliente' ? 8 : 7} className="p-3">
                               <p className="text-xs font-semibold text-slate-600 mb-2">Histórico de cobranças — {p.pessoaNome}</p>
                               <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white dark:bg-slate-900">
                                 <table className="w-full text-xs">
@@ -508,8 +562,14 @@ export function WhatsAppCobrancas() {
               </div>
               <div className="p-4 border-t border-slate-200 dark:border-slate-700 space-y-3">
                 <p className="text-xs text-slate-500">
-                  Selecionados: {selectedItems.length} · Sem tel: {semTelefoneCount} · Já cobrados: {jaCobradosCount}
-                  {modoOrigem === 'condominio' ? (
+                  Selecionados: {selectedItems.length} · Elegíveis: {elegiveisCount} · Sem tel: {semTelefoneCount} · Já cobrados: {jaCobradosCount}
+                  {modoOrigem === 'cliente' ? (
+                    <>
+                      {' '}
+                      · Quitados/sem débito: {inelegiveisCount} · Cálculo antigo: {calculoAntigoCount}
+                    </>
+                  ) : null}
+                  {modoOrigem === 'condominio' || modoOrigem === 'cliente' ? (
                     <>
                       {' '}
                       · Total: {valorTotalSelecionado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
@@ -573,10 +633,16 @@ export function WhatsAppCobrancas() {
                       {resultado.semTelefone > 0 ? (
                         <span className="text-amber-700"> · {resultado.semTelefone} sem telefone</span>
                       ) : null}
+                      {resultado.puladosInelegiveis > 0 ? (
+                        <span className="text-red-700"> · {resultado.puladosInelegiveis} bloqueados (sem débito)</span>
+                      ) : null}
                     </p>
                   ) : (
                     <p className="text-sm">
                       ✅ Enviados: <strong>{resultado.enviados}</strong> · ❌ Falhos: <strong>{resultado.falhos}</strong>
+                      {resultado.puladosInelegiveis > 0 ? (
+                        <span className="text-red-700"> · Bloqueados: <strong>{resultado.puladosInelegiveis}</strong></span>
+                      ) : null}
                     </p>
                   )}
                   <div className="flex flex-wrap gap-2">

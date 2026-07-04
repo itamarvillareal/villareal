@@ -1,6 +1,7 @@
 package br.com.vilareal.config;
 
 import br.com.vilareal.notificacao.config.NotificacaoEmailProperties;
+import br.com.vilareal.whatsapp.config.CobrancaWhatsAppProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -9,7 +10,12 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.client.RestClient;
 
 @Configuration
-@EnableConfigurationProperties({SecurityProperties.class, WhatsAppConfig.class, NotificacaoEmailProperties.class})
+@EnableConfigurationProperties({
+    SecurityProperties.class,
+    WhatsAppConfig.class,
+    NotificacaoEmailProperties.class,
+    CobrancaWhatsAppProperties.class
+})
 public class AppConfig {
 
     @Bean

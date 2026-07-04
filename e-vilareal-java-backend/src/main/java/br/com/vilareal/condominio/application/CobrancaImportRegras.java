@@ -27,6 +27,8 @@ package br.com.vilareal.condominio.application;
  *
  * <h2>Proprietário (planilha / PDF)</h2>
  * <ul>
+ *   <li>Origem do relatório definida por {@code calculo_cliente_config.entradaCobranca}:
+ *       {@code XLS_INADIMPLENCIA} (planilha .xls) ou {@code PDF_CONDO_ID} (PDF Condo Id).</li>
  *   <li>PDF Condo Id: débitos only; proprietário vem da planilha Condôminos ou do cadastro existente.</li>
  *   <li>Planilha .xls legada: proprietário inline no relatório de inadimplência.</li>
  *   <li>Processo com {@code parcelamento_aceito = 1} não deve ser excluído automaticamente

@@ -82,6 +82,9 @@ function rowFromApiConfig(raw) {
     if (n === 30 || n === 60) base.regraInicioCobrancaDias = 61;
     else if (n === 1 || n === 61) base.regraInicioCobrancaDias = n;
   }
+  if (raw.entradaCobranca === 'PDF_CONDO_ID' || raw.entradaCobranca === 'XLS_INADIMPLENCIA') {
+    base.entradaCobranca = raw.entradaCobranca;
+  }
   return normalizarRowConfigCalculo(base);
 }
 

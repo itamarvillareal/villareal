@@ -38,6 +38,12 @@ public final class CobrancaWhatsAppDTOs {
             Integer processoNumeroInterno,
             String clienteEscritorioCodigo,
             String clienteEscritorioNome,
+            boolean elegivelCobranca,
+            String motivoInelegivel,
+            boolean calculoDesatualizado,
+            String dataCalculo,
+            int debitosAbertos,
+            int parcelasAbertas,
             List<CobrancaHistoricoItemDTO> historicoContatos) {}
 
     public record CobrancaItemDTO(
@@ -56,13 +62,14 @@ public final class CobrancaWhatsAppDTOs {
     public record AgendarCobrancaRequest(List<CobrancaItemDTO> itens, String loteDescricao, Instant scheduledAt) {}
 
     public record CobrancaLoteResultDTO(
-            String loteId, int total, int enviados, int falhos, int semTelefone, int jaCobrados) {}
+            String loteId, int total, int enviados, int falhos, int semTelefone, int jaCobrados, int puladosInelegiveis) {}
 
     public record AgendarCobrancaResultDTO(
             String loteId,
             int total,
             int agendados,
             int semTelefone,
+            int puladosInelegiveis,
             Instant scheduledAt) {}
 
     public record CobrancaLoteResumoDTO(

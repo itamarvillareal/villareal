@@ -1,12 +1,20 @@
-import { padCliente8Cadastro } from '../../data/cadastroClientesStorage.js';
+import { loadConfigCalculoCliente } from '../../data/clienteConfigCalculoStorage.js';
+
+/** Valores alinhados a {@code calculo_cliente_config.payload_json.entradaCobranca} (backend). */
+export const ENTRADA_COBRANCA_XLS = 'XLS_INADIMPLENCIA';
+export const ENTRADA_COBRANCA_PDF = 'PDF_CONDO_ID';
 
 /**
- * Clientes cuja cobrança automática usa PDF Condo Id (não planilha .xls de inadimplência).
- * Regras de importação: `CobrancaImportRegras` (backend) — valem para todos os clientes nos fluxos aplicáveis.
+ * Origem da cobrança automática do cliente (config por cliente, não lista hardcoded).
+ * @param {string} codigoClienteRaw
+ * @returns {'XLS_INADIMPLENCIA' | 'PDF_CONDO_ID'}
  */
-export const CLIENTES_COBRANCA_ENTRADA_PDF = Object.freeze(['00000928']);
+export function entradaCobrancaDoCliente(codigoClienteRaw) {
+  const cfg = loadConfigCalculoCliente(codigoClienteRaw);
+  return cfg.entradaCobranca === ENTRADA_COBRANCA_PDF ? ENTRADA_COBRANCA_PDF : ENTRADA_COBRANCA_XLS;
+}
 
+/** @param {string} codigoClienteRaw */
 export function clienteUsaEntradaPdfCobranca(codigoClienteRaw) {
-  const cod = padCliente8Cadastro(codigoClienteRaw);
-  return CLIENTES_COBRANCA_ENTRADA_PDF.includes(cod);
+  return entradaCobrancaDoCliente(codigoClienteRaw) === ENTRADA_COBRANCA_PDF;
 }
