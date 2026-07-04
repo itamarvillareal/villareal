@@ -40,12 +40,12 @@ import br.com.vilareal.whatsapp.infrastructure.persistence.repository.ScheduledW
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppMessageRepository;
 import br.com.vilareal.whatsapp.dto.WhatsAppTemplateDTO;
 import br.com.vilareal.whatsapp.service.WhatsAppAgendamentosFeedService;
-import br.com.vilareal.whatsapp.service.WhatsAppContactResolverService;
 import br.com.vilareal.whatsapp.service.WhatsAppConversationReadService;
 import br.com.vilareal.whatsapp.service.WhatsAppConversationWindowService;
 import br.com.vilareal.whatsapp.service.WhatsAppIniciarConversaService;
 import br.com.vilareal.whatsapp.service.WhatsAppConversationContextService;
 import br.com.vilareal.whatsapp.service.WhatsAppConversationFeedService;
+import br.com.vilareal.whatsapp.service.WhatsAppNomeExibicaoService;
 import br.com.vilareal.whatsapp.service.WhatsAppIAConfigService;
 import br.com.vilareal.whatsapp.service.WhatsAppNotificationService;
 import br.com.vilareal.whatsapp.service.WhatsAppTemplateService;
@@ -108,7 +108,6 @@ public class WhatsAppController {
     private final ScheduledWhatsAppMessageRepository scheduledWhatsAppMessageRepository;
     private final ObjectMapper objectMapper;
     private final WhatsAppConfig whatsAppConfig;
-    private final WhatsAppContactResolverService contactResolver;
     private final WhatsAppTemplateService whatsAppTemplateService;
     private final WhatsAppNotificationService whatsAppNotificationService;
     private final WhatsAppAgendamentosFeedService agendamentosFeedService;
@@ -119,6 +118,7 @@ public class WhatsAppController {
     private final WhatsAppConversationReadService conversationReadService;
     private final WhatsAppIniciarConversaService iniciarConversaService;
     private final WhatsAppConversationWindowService conversationWindowService;
+    private final WhatsAppNomeExibicaoService nomeExibicaoService;
 
     public WhatsAppController(
             WhatsAppService whatsAppService,
@@ -127,7 +127,6 @@ public class WhatsAppController {
             ScheduledWhatsAppMessageRepository scheduledWhatsAppMessageRepository,
             ObjectMapper objectMapper,
             WhatsAppConfig whatsAppConfig,
-            WhatsAppContactResolverService contactResolver,
             WhatsAppTemplateService whatsAppTemplateService,
             WhatsAppNotificationService whatsAppNotificationService,
             WhatsAppAgendamentosFeedService agendamentosFeedService,
@@ -137,14 +136,14 @@ public class WhatsAppController {
             WhatsAppOutboundMediaService outboundMediaService,
             WhatsAppConversationReadService conversationReadService,
             WhatsAppIniciarConversaService iniciarConversaService,
-            WhatsAppConversationWindowService conversationWindowService) {
+            WhatsAppConversationWindowService conversationWindowService,
+            WhatsAppNomeExibicaoService nomeExibicaoService) {
         this.whatsAppService = whatsAppService;
         this.whatsAppSchedulerService = whatsAppSchedulerService;
         this.whatsAppMessageRepository = whatsAppMessageRepository;
         this.scheduledWhatsAppMessageRepository = scheduledWhatsAppMessageRepository;
         this.objectMapper = objectMapper;
         this.whatsAppConfig = whatsAppConfig;
-        this.contactResolver = contactResolver;
         this.whatsAppTemplateService = whatsAppTemplateService;
         this.whatsAppNotificationService = whatsAppNotificationService;
         this.agendamentosFeedService = agendamentosFeedService;
@@ -155,6 +154,7 @@ public class WhatsAppController {
         this.conversationReadService = conversationReadService;
         this.iniciarConversaService = iniciarConversaService;
         this.conversationWindowService = conversationWindowService;
+        this.nomeExibicaoService = nomeExibicaoService;
     }
 
     @GetMapping("/iniciar/telefones")
@@ -301,8 +301,9 @@ public class WhatsAppController {
                 .toList();
         Map<String, List<WhatsAppProcessoContextItemDTO>> contextosPorTelefone =
                 conversationContextService.resolverPorTelefones(phones);
+        Map<String, String> nomesCadastro = nomeExibicaoService.resolverNomesPorTelefone(phones);
         return ResponseEntity.ok(rows.map(row -> toConversationDto(
-                row, contextosPorTelefone.getOrDefault(row.getPhoneNumber(), List.of()))));
+                row, contextosPorTelefone.getOrDefault(row.getPhoneNumber(), List.of()), nomesCadastro)));
     }
 
     @GetMapping("/conversations/context")
@@ -352,7 +353,10 @@ public class WhatsAppController {
         int safeLimit = Math.min(Math.max(limit, 1), 50);
         List<RecentConversationRow> rows =
                 whatsAppMessageRepository.findRecentConversationsWithInbound(PageRequest.of(0, safeLimit));
-        return ResponseEntity.ok(rows.stream().map(this::toRecentConversationDto).toList());
+        List<String> phones = rows.stream().map(RecentConversationRow::getPhoneNumber).toList();
+        Map<String, String> nomesCadastro = nomeExibicaoService.resolverNomesPorTelefone(phones);
+        return ResponseEntity.ok(
+                rows.stream().map(row -> toRecentConversationDto(row, nomesCadastro)).toList());
     }
 
     @GetMapping(value = "/notifications/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -591,7 +595,9 @@ public class WhatsAppController {
     }
 
     private WhatsAppConversationDTO toConversationDto(
-            ConversationSummaryRow row, List<WhatsAppProcessoContextItemDTO> contextos) {
+            ConversationSummaryRow row,
+            List<WhatsAppProcessoContextItemDTO> contextos,
+            Map<String, String> nomesCadastro) {
         String preview = previewFromRow(row);
         if (StringUtils.hasText(preview) && preview.length() > 120) {
             preview = preview.substring(0, 117) + "...";
@@ -602,7 +608,8 @@ public class WhatsAppController {
                 safeContextos.isEmpty() ? null : safeContextos.getFirst();
         return new WhatsAppConversationDTO(
                 row.getPhoneNumber(),
-                contactResolver.resolveContactName(row.getPhoneNumber(), row.getContactName()),
+                nomeExibicaoService.resolverNomeExibido(
+                        row.getPhoneNumber(), row.getContactName(), nomesCadastro),
                 preview,
                 row.getLastMessageDirection(),
                 row.getLastMessageType(),
@@ -637,7 +644,8 @@ public class WhatsAppController {
         return preview;
     }
 
-    private RecentConversationDTO toRecentConversationDto(RecentConversationRow row) {
+    private RecentConversationDTO toRecentConversationDto(
+            RecentConversationRow row, Map<String, String> nomesCadastro) {
         String preview = previewFromRecentRow(row);
         if (StringUtils.hasText(preview) && preview.length() > 120) {
             preview = preview.substring(0, 117) + "...";
@@ -645,7 +653,8 @@ public class WhatsAppController {
         return new RecentConversationDTO(
                 row.getPhoneNumber(),
                 WhatsAppService.formatPhoneDisplay(row.getPhoneNumber()),
-                contactResolver.resolveContactName(row.getPhoneNumber(), row.getContactName()),
+                nomeExibicaoService.resolverNomeExibido(
+                        row.getPhoneNumber(), row.getContactName(), nomesCadastro),
                 preview,
                 row.getLastMessageType(),
                 row.getLastMessageAt(),
@@ -683,8 +692,7 @@ public class WhatsAppController {
     private WhatsAppMessageDTO toMessageDto(WhatsAppMessageEntity entity) {
         return WhatsAppMessageDtoMapper.fromEntity(
                 entity,
-                contactResolver.resolveContactName(
-                        entity.getPhoneNumber(), entity.getContactName(), entity.getClienteId()));
+                nomeExibicaoService.resolverNomeExibido(entity.getPhoneNumber(), entity.getContactName()));
     }
 
     private ScheduledMessageDTO toScheduledDto(ScheduledWhatsAppMessageEntity entity) {

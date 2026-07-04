@@ -20,6 +20,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -30,15 +31,15 @@ public class WhatsAppConversationFeedService {
 
     private final WhatsAppMessageRepository messageRepository;
     private final CobrancaWhatsAppRepository cobrancaRepository;
-    private final WhatsAppContactResolverService contactResolver;
+    private final WhatsAppNomeExibicaoService nomeExibicaoService;
 
     public WhatsAppConversationFeedService(
             WhatsAppMessageRepository messageRepository,
             CobrancaWhatsAppRepository cobrancaRepository,
-            WhatsAppContactResolverService contactResolver) {
+            WhatsAppNomeExibicaoService nomeExibicaoService) {
         this.messageRepository = messageRepository;
         this.cobrancaRepository = cobrancaRepository;
-        this.contactResolver = contactResolver;
+        this.nomeExibicaoService = nomeExibicaoService;
     }
 
     @Transactional(readOnly = true)
@@ -53,11 +54,14 @@ public class WhatsAppConversationFeedService {
         Set<String> waIdsPresentes = new HashSet<>();
         List<WhatsAppMessageDTO> feed = new ArrayList<>();
 
+        Map<String, String> nomesCadastro =
+                nomeExibicaoService.resolverNomesPorTelefone(List.of(normalized));
+
         for (WhatsAppMessageEntity entity : entities) {
             if (StringUtils.hasText(entity.getWaMessageId())) {
                 waIdsPresentes.add(entity.getWaMessageId());
             }
-            feed.add(toMessageDto(entity));
+            feed.add(toMessageDto(entity, nomesCadastro));
         }
 
         List<CobrancaWhatsAppEntity> cobrancas =
@@ -121,11 +125,11 @@ public class WhatsAppConversationFeedService {
                 quando);
     }
 
-    private WhatsAppMessageDTO toMessageDto(WhatsAppMessageEntity entity) {
+    private WhatsAppMessageDTO toMessageDto(WhatsAppMessageEntity entity, Map<String, String> nomesCadastro) {
         return WhatsAppMessageDtoMapper.fromEntity(
                 entity,
-                contactResolver.resolveContactName(
-                        entity.getPhoneNumber(), entity.getContactName(), entity.getClienteId()));
+                nomeExibicaoService.resolverNomeExibido(
+                        entity.getPhoneNumber(), entity.getContactName(), nomesCadastro));
     }
 
     private static String mapStatusCobranca(String status) {

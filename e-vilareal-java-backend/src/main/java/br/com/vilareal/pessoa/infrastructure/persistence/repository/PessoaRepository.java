@@ -1,6 +1,7 @@
 package br.com.vilareal.pessoa.infrastructure.persistence.repository;
 
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
+import br.com.vilareal.pessoa.infrastructure.persistence.projection.PessoaTelefoneIndiceBatchRow;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -43,6 +44,31 @@ public interface PessoaRepository extends JpaRepository<PessoaEntity, Long>, Jpa
             @Param("digitosList") List<String> digitosList,
             @Param("sufixoLocal") String sufixoLocal,
             @Param("buscaParcial") String buscaParcial);
+
+    /**
+     * Candidatos para casamento em lote (mesmos índices de {@link #findIdsByTelefoneIndice}).
+     * Usa {@code idx_pessoa_contato_valor_digitos}, {@code idx_pessoa_telefone_digitos} (V174).
+     */
+    @Query(
+            value =
+                    """
+                    SELECT p.id AS pessoaId,
+                           p.nome AS nome,
+                           p.telefone_digitos AS telefoneDigitos,
+                           p.telefone_sufixo_8 AS telefoneSufixo8,
+                           pc.valor_digitos AS contatoDigitos,
+                           pc.valor_sufixo_8 AS contatoSufixo8
+                    FROM pessoa p
+                    LEFT JOIN pessoa_contato pc ON pc.pessoa_id = p.id AND LOWER(pc.tipo) = 'telefone'
+                    WHERE p.telefone_digitos IN (:digitosList)
+                       OR pc.valor_digitos IN (:digitosList)
+                       OR p.telefone_sufixo_8 IN (:sufixosList)
+                       OR pc.valor_sufixo_8 IN (:sufixosList)
+                    ORDER BY p.id
+                    """,
+            nativeQuery = true)
+    List<PessoaTelefoneIndiceBatchRow> findTelefoneIndiceBatch(
+            @Param("digitosList") List<String> digitosList, @Param("sufixosList") List<String> sufixosList);
 
     @EntityGraph(attributePaths = "responsavel")
     @Query("SELECT p FROM PessoaEntity p WHERE p.id = :id")

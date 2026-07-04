@@ -15,10 +15,12 @@ import org.springframework.data.domain.PageRequest;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -33,13 +35,13 @@ class WhatsAppConversationFeedServiceTest {
     private CobrancaWhatsAppRepository cobrancaRepository;
 
     @Mock
-    private WhatsAppContactResolverService contactResolver;
+    private WhatsAppNomeExibicaoService nomeExibicaoService;
 
     private WhatsAppConversationFeedService service;
 
     @BeforeEach
     void setUp() {
-        service = new WhatsAppConversationFeedService(messageRepository, cobrancaRepository, contactResolver);
+        service = new WhatsAppConversationFeedService(messageRepository, cobrancaRepository, nomeExibicaoService);
     }
 
     @Test
@@ -64,7 +66,8 @@ class WhatsAppConversationFeedServiceTest {
 
         when(messageRepository.findByPhoneSuffixOrderByCreatedAtDesc(any())).thenReturn(List.of(inbound));
         when(cobrancaRepository.findRecentesPorSufixoTelefone(any(), anyCollection())).thenReturn(List.of(cobranca));
-        when(contactResolver.resolveContactName(any(), any(), any())).thenReturn("Reinaldo Caetano");
+        when(nomeExibicaoService.resolverNomesPorTelefone(anyList())).thenReturn(Map.of(PHONE, "Reinaldo Caetano"));
+        when(nomeExibicaoService.resolverNomeExibido(any(), any(), any())).thenReturn("Reinaldo Caetano");
 
         Page<WhatsAppMessageDTO> page = service.listarMensagens(PHONE, PageRequest.of(0, 20));
 
