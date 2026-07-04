@@ -18,6 +18,7 @@ import { validarArquivoWhatsAppMedia } from './utils/whatsappMediaSendUtils.js';
 import { useOptimisticMediaSend } from './hooks/useOptimisticMediaSend.js';
 import { sendWhatsAppMedia } from '../../repositories/whatsappRepository.js';
 import { resumoWhatsAppMessageContent } from './utils/whatsappMessagePreview.js';
+import { WhatsAppContactAvatar } from './components/WhatsAppContactAvatar.jsx';
 
 const PAGE_SIZE = 20;
 const CONVERSATIONS_PAGE_SIZE = 50;
@@ -501,21 +502,29 @@ export function WhatsAppConversas() {
                     <button
                       type="button"
                       onClick={() => openConversation(conv.phoneNumber, conv.contactName, conv.contextos)}
-                      className={`w-full text-left px-3 py-3 hover:bg-white dark:hover:bg-slate-800 transition-colors ${
+                      className={`w-full text-left px-3 py-3 hover:bg-white dark:hover:bg-slate-800 transition-colors flex gap-2.5 ${
                         selected ? 'bg-white dark:bg-slate-800 border-l-4 border-emerald-600' : 'border-l-4 border-transparent'
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="font-medium text-sm text-slate-900 dark:text-slate-100 truncate">
-                          {tituloContato(conv.contactName, conv.phoneNumber)}
-                        </p>
-                        <span className="text-[10px] text-slate-400 shrink-0">{formatTimeBR(conv.lastMessageAt)}</span>
+                      <WhatsAppContactAvatar
+                        nome={conv.contactName}
+                        telefone={conv.phoneNumber}
+                        size="sm"
+                        className="mt-0.5"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="font-medium text-sm text-slate-900 dark:text-slate-100 truncate">
+                            {tituloContato(conv.contactName, conv.phoneNumber)}
+                          </p>
+                          <span className="text-[10px] text-slate-400 shrink-0">{formatTimeBR(conv.lastMessageAt)}</span>
+                        </div>
+                        {String(conv.contactName ?? '').trim() ? (
+                          <p className="text-xs text-slate-500 truncate">{formatPhoneDisplay(conv.phoneNumber)}</p>
+                        ) : null}
+                        <ContextoProcessoLinha ctx={conv.contextoPrincipal} className="mt-0.5" />
+                        <p className="text-xs text-slate-500 truncate mt-0.5">{previewText(conv)}</p>
                       </div>
-                      {String(conv.contactName ?? '').trim() ? (
-                        <p className="text-xs text-slate-500 truncate">{formatPhoneDisplay(conv.phoneNumber)}</p>
-                      ) : null}
-                      <ContextoProcessoLinha ctx={conv.contextoPrincipal} className="mt-0.5" />
-                      <p className="text-xs text-slate-500 truncate mt-0.5">{previewText(conv)}</p>
                     </button>
                   </li>
                 );
@@ -552,11 +561,14 @@ export function WhatsAppConversas() {
           <>
             <div className="shrink-0 px-3 py-2 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="font-medium text-slate-900 dark:text-slate-100">{tituloContato(contactName, activePhone)}</p>
-                  {String(contactName ?? '').trim() ? (
-                    <p className="text-xs text-slate-500">{formatPhoneDisplay(activePhone)}</p>
-                  ) : null}
+                <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                  <WhatsAppContactAvatar nome={contactName} telefone={activePhone} size="md" />
+                  <div className="min-w-0">
+                    <p className="font-medium text-slate-900 dark:text-slate-100">{tituloContato(contactName, activePhone)}</p>
+                    {String(contactName ?? '').trim() ? (
+                      <p className="text-xs text-slate-500">{formatPhoneDisplay(activePhone)}</p>
+                    ) : null}
+                  </div>
                 </div>
                 <button
                   type="button"

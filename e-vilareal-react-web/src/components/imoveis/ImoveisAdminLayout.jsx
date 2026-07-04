@@ -26,6 +26,7 @@ import {
 import { CampoDataBr } from '../ui/CampoDataBr.jsx';
 import { featureFlags } from '../../config/featureFlags.js';
 import { formatValorMoeda, formatValorMoedaCampo } from '../../utils/moneyBr.js';
+import { iniciaisNome } from '../../utils/iniciais.js';
 
 export { formatValorMoeda, formatValorMoedaCampo };
 
@@ -145,16 +146,6 @@ export function formatDocBrExibicao(digits) {
   if (d.length === 11) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
   if (d.length === 14) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
   return d || '—';
-}
-
-export function iniciaisNome(nome) {
-  const parts = String(nome ?? '')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 }
 
 export function enderecoUmaLinha(endereco, condominio, unidade) {

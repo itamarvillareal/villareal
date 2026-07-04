@@ -15,6 +15,7 @@ import { isWhatsAppMediaPending, mergeMediaReady, consumirLocalPreview, revogarP
 import { validarArquivoWhatsAppMedia, WHATSAPP_MEDIA_ACCEPT, categoriaAceitaCaption } from './utils/whatsappMediaSendUtils.js';
 import { useOptimisticMediaSend } from './hooks/useOptimisticMediaSend.js';
 import { resumoWhatsAppMessageContent } from './utils/whatsappMessagePreview.js';
+import { WhatsAppContactAvatar } from './components/WhatsAppContactAvatar.jsx';
 
 function previewConversa(conv) {
   const type = String(conv?.lastMessageType ?? '').toUpperCase();
@@ -69,15 +70,23 @@ function FloatingConversationList({ conversations, loading, query, onQueryChange
               key={conv.phoneNumber}
               type="button"
               onClick={() => onSelect(conv)}
-              className="w-full text-left px-3 py-2.5 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition"
+              className="w-full text-left px-3 py-2.5 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition flex gap-2.5"
             >
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
-                  {tituloFromNomeTelefone(conv.contactName, conv.phoneNumber)}
-                </span>
-                <span className="text-[10px] text-slate-400 shrink-0">{formatTimeBR(conv.lastMessageAt)}</span>
+              <WhatsAppContactAvatar
+                nome={conv.contactName}
+                telefone={conv.phoneNumber}
+                size="sm"
+                className="mt-0.5"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                    {tituloFromNomeTelefone(conv.contactName, conv.phoneNumber)}
+                  </span>
+                  <span className="text-[10px] text-slate-400 shrink-0">{formatTimeBR(conv.lastMessageAt)}</span>
+                </div>
+                <p className="text-xs text-slate-500 truncate mt-0.5">{previewConversa(conv)}</p>
               </div>
-              <p className="text-xs text-slate-500 truncate mt-0.5">{previewConversa(conv)}</p>
             </button>
           ))
         )}
@@ -259,6 +268,11 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
         <button type="button" onClick={onBack} className="rounded p-1 hover:bg-white/10 text-sm" aria-label="Voltar">
           ←
         </button>
+        <WhatsAppContactAvatar
+          nome={conversation.contactName}
+          telefone={conversation.phoneNumber}
+          size="sm"
+        />
         <span className="flex-1 min-w-0 truncate text-sm font-semibold">
           {tituloFromNomeTelefone(conversation.contactName, conversation.phoneNumber)}
         </span>
