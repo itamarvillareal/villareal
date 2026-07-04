@@ -19,6 +19,99 @@ function linkProcesso(codigoCliente, numeroInterno) {
   return `/processos?${params.toString()}`;
 }
 
+function LinkAbrirProcesso({ codigoCliente, numeroInterno, className, children }) {
+  return (
+    <Link
+      to={linkProcesso(codigoCliente, numeroInterno)}
+      state={buildRouterStateChaveClienteProcesso(codigoCliente, numeroInterno)}
+      className={className}
+    >
+      {children}
+    </Link>
+  );
+}
+
+function VinculosCodProcMobileCards({ vinculos }) {
+  return (
+    <div className="md:hidden space-y-3">
+      {vinculos.map((row) => (
+        <article
+          key={`${row.codigoCliente}-${row.numeroInterno}`}
+          className="rounded-lg border border-slate-200 bg-slate-50/80 p-3 space-y-2 dark:border-slate-700 dark:bg-slate-800/40"
+        >
+          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 tabular-nums">
+            Cód. {formatCodigoExibicao(row.codigoCliente)} · Proc. {row.numeroInterno}
+          </p>
+          <p className="text-sm text-slate-600 dark:text-slate-300 break-words">
+            <span className="font-medium text-slate-700 dark:text-slate-200">Parte oposta:</span>{' '}
+            {row.parteOposta || '—'}
+          </p>
+          <p className="text-sm text-slate-600 dark:text-slate-300 break-words">
+            <span className="font-medium text-slate-700 dark:text-slate-200">Unidade:</span> {row.unidade || '—'}
+          </p>
+          <p className="text-sm text-slate-600 dark:text-slate-300 break-words">
+            <span className="font-medium text-slate-700 dark:text-slate-200">Papéis:</span> {row.papeis || '—'}
+          </p>
+          <LinkAbrirProcesso
+            codigoCliente={row.codigoCliente}
+            numeroInterno={row.numeroInterno}
+            className="mt-1 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-600 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-800 hover:bg-emerald-100 dark:border-emerald-500 dark:bg-emerald-950/40 dark:text-emerald-200 dark:hover:bg-emerald-950/60"
+          >
+            Abrir processo
+            <ExternalLink className="h-4 w-4 shrink-0" aria-hidden />
+          </LinkAbrirProcesso>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function VinculosCodProcDesktopTable({ vinculos }) {
+  return (
+    <div className="hidden md:block border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+      <table className="w-full text-sm">
+        <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200">
+          <tr>
+            <th className="text-left px-3 py-2 font-medium">Cód.</th>
+            <th className="text-left px-3 py-2 font-medium">Proc.</th>
+            <th className="text-left px-3 py-2 font-medium">Parte oposta</th>
+            <th className="text-left px-3 py-2 font-medium">Unidade</th>
+            <th className="text-left px-3 py-2 font-medium">Papéis</th>
+            <th className="text-right px-3 py-2 font-medium">Abrir</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+          {vinculos.map((row) => (
+            <tr key={`${row.codigoCliente}-${row.numeroInterno}`} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50">
+              <td className="px-3 py-2 text-slate-700 dark:text-slate-200 tabular-nums">
+                {formatCodigoExibicao(row.codigoCliente)}
+              </td>
+              <td className="px-3 py-2 text-slate-700 dark:text-slate-200 tabular-nums">{row.numeroInterno}</td>
+              <td className="px-3 py-2 text-slate-600 dark:text-slate-300 max-w-[12rem] truncate" title={row.parteOposta || undefined}>
+                {row.parteOposta || '—'}
+              </td>
+              <td className="px-3 py-2 text-slate-600 dark:text-slate-300 max-w-[8rem] truncate" title={row.unidade || undefined}>
+                {row.unidade || '—'}
+              </td>
+              <td className="px-3 py-2 text-slate-600 dark:text-slate-300">{row.papeis || '—'}</td>
+              <td className="px-3 py-2 text-right">
+                <LinkAbrirProcesso
+                  codigoCliente={row.codigoCliente}
+                  numeroInterno={row.numeroInterno}
+                  className="inline-flex items-center gap-1 text-emerald-700 hover:underline text-sm font-medium dark:text-emerald-400"
+                >
+                  Processo
+                  <ExternalLink className="h-3 w-3" />
+                </LinkAbrirProcesso>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function PainelPessoa({ pessoa }) {
   const vinculos = Array.isArray(pessoa?.vinculos) ? pessoa.vinculos : [];
   const codigos = Array.isArray(pessoa?.codigosCliente) ? pessoa.codigosCliente : [];
@@ -47,47 +140,10 @@ function PainelPessoa({ pessoa }) {
         {vinculos.length === 0 ? (
           <p className="text-sm text-slate-500">Nenhum processo encontrado com vínculo para esta pessoa.</p>
         ) : (
-          <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200">
-                <tr>
-                  <th className="text-left px-3 py-2 font-medium">Cód.</th>
-                  <th className="text-left px-3 py-2 font-medium">Proc.</th>
-                  <th className="text-left px-3 py-2 font-medium">Parte oposta</th>
-                  <th className="text-left px-3 py-2 font-medium">Unidade</th>
-                  <th className="text-left px-3 py-2 font-medium">Papéis</th>
-                  <th className="text-right px-3 py-2 font-medium">Abrir</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                {vinculos.map((row) => (
-                  <tr key={`${row.codigoCliente}-${row.numeroInterno}`} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50">
-                    <td className="px-3 py-2 text-slate-700 dark:text-slate-200 tabular-nums">
-                      {formatCodigoExibicao(row.codigoCliente)}
-                    </td>
-                    <td className="px-3 py-2 text-slate-700 dark:text-slate-200 tabular-nums">{row.numeroInterno}</td>
-                    <td className="px-3 py-2 text-slate-600 dark:text-slate-300 max-w-[12rem] truncate" title={row.parteOposta || undefined}>
-                      {row.parteOposta || '—'}
-                    </td>
-                    <td className="px-3 py-2 text-slate-600 dark:text-slate-300 max-w-[8rem] truncate" title={row.unidade || undefined}>
-                      {row.unidade || '—'}
-                    </td>
-                    <td className="px-3 py-2 text-slate-600 dark:text-slate-300">{row.papeis || '—'}</td>
-                    <td className="px-3 py-2 text-right">
-                      <Link
-                        to={linkProcesso(row.codigoCliente, row.numeroInterno)}
-                        state={buildRouterStateChaveClienteProcesso(row.codigoCliente, row.numeroInterno)}
-                        className="inline-flex items-center gap-1 text-emerald-700 hover:underline text-sm font-medium dark:text-emerald-400"
-                      >
-                        Processo
-                        <ExternalLink className="h-3 w-3" />
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <>
+            <VinculosCodProcMobileCards vinculos={vinculos} />
+            <VinculosCodProcDesktopTable vinculos={vinculos} />
+          </>
         )}
       </div>
     </div>
@@ -145,7 +201,7 @@ export function ModalVinculosTelefoneConversa({ open, telefone, onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/45"
+      className="fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-4 bg-black/45"
       role="presentation"
       onClick={onClose}
     >
@@ -153,10 +209,10 @@ export function ModalVinculosTelefoneConversa({ open, telefone, onClose }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-vinculos-telefone-titulo"
-        className="bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 max-w-5xl w-full max-h-[85vh] overflow-hidden flex flex-col"
+        className="bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 w-full max-w-5xl max-h-[min(90dvh,100%)] overflow-hidden flex flex-col min-h-0"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 flex items-start justify-between gap-3">
+        <div className="shrink-0 px-4 sm:px-5 py-4 border-b border-slate-200 dark:border-slate-700 flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 id="modal-vinculos-telefone-titulo" className="text-lg font-semibold text-slate-800 dark:text-slate-100">
               Vínculos pelo telefone
@@ -175,7 +231,7 @@ export function ModalVinculosTelefoneConversa({ open, telefone, onClose }) {
           </button>
         </div>
 
-        <div className="px-5 py-4 overflow-y-auto flex-1">
+        <div className="px-4 sm:px-5 py-4 overflow-y-auto flex-1 min-h-0 overscroll-contain">
           {carregando ? (
             <div className="flex items-center gap-2 text-sm text-slate-500 py-8 justify-center">
               <Loader2 className="h-5 w-5 animate-spin" />
