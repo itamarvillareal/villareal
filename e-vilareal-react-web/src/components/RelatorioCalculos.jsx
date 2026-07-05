@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { FilterX, ArrowDownAZ, ArrowUpAZ, Calculator, FileSpreadsheet, Loader2, ChevronDown, X } from 'lucide-react';
 import {
   agregarLinhasRelatorioCalculosConsolidado,
@@ -71,6 +72,7 @@ const CRITERIOS_EMITIR_INICIAL = {
 };
 
 export function RelatorioCalculos() {
+  const navigate = useNavigate();
   const [calculosEmbed, setCalculosEmbed] = useState(null);
   const [linhas, setLinhas] = useState(() => []);
   const [relatorioEmitido, setRelatorioEmitido] = useState(false);
@@ -283,6 +285,13 @@ export function RelatorioCalculos() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigate('/calculos', { state: { abaCalculos: 'Acordos' } })}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border border-indigo-300 bg-white text-indigo-800 text-sm font-medium hover:bg-indigo-50"
+            >
+              Aba Acordos (rápido)
+            </button>
             <button
               type="button"
               onClick={emitirOuAtualizarRelatorio}

@@ -3,6 +3,7 @@ import {
   LETRAS_MODO_EXCLUIR,
   LETRAS_MODO_INCLUIR,
   letrasParaQueryApi,
+  linhaBateFiltroLetras,
   normalizarLetrasFiltro,
   parseLetrasFiltroParam,
   rotuloLetrasFiltro,
@@ -42,5 +43,14 @@ describe('extratoLetrasFiltro', () => {
     expect(rotuloLetrasFiltro({ letras: [], letrasModo: LETRAS_MODO_INCLUIR })).toBe('Letras');
     expect(rotuloLetrasFiltro({ letras: ['F'], letrasModo: LETRAS_MODO_INCLUIR })).toBe('Somente F');
     expect(rotuloLetrasFiltro({ letras: ['E'], letrasModo: LETRAS_MODO_EXCLUIR })).toBe('Exceto E');
+  });
+
+  it('linhaBateFiltroLetras inclui ou exclui por contaCodigo', () => {
+    const rowE = { contaCodigo: 'E' };
+    const rowA = { contaCodigo: 'A' };
+    expect(linhaBateFiltroLetras(rowE, { letras: ['E'], letrasModo: LETRAS_MODO_INCLUIR })).toBe(true);
+    expect(linhaBateFiltroLetras(rowA, { letras: ['E'], letrasModo: LETRAS_MODO_INCLUIR })).toBe(false);
+    expect(linhaBateFiltroLetras(rowA, { letras: ['E'], letrasModo: LETRAS_MODO_EXCLUIR })).toBe(true);
+    expect(linhaBateFiltroLetras(rowE, { letras: ['E'], letrasModo: LETRAS_MODO_EXCLUIR })).toBe(false);
   });
 });

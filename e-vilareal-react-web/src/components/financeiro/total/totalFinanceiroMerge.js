@@ -1,3 +1,6 @@
+import { linhaBateFiltroLetras } from '../extrato/extratoLetrasFiltro.js';
+import { linhaSemParCompensacao } from '../extrato/compensacaoSemPar.js';
+
 /** Chave estável para linhas banco + cartão (ids numéricos podem coincidir entre tabelas). */
 export function extratoRowKey(row) {
   const origem = row?.origemExtrato === 'cartao' ? 'cartao' : 'banco';
@@ -20,11 +23,16 @@ export function compararLancamentosTotal(a, b, sortAsc = false) {
   return sortAsc ? cmpOrigem : -cmpOrigem;
 }
 
-export function filtrarLinhasTotal(linhas, { busca, etapa } = {}) {
+export function filtrarLinhasTotal(linhas, { busca, etapa, letras, letrasModo, semParCompensacao } = {}) {
   let out = Array.isArray(linhas) ? linhas : [];
-  const etapaNorm = String(etapa ?? '').trim().toUpperCase();
-  if (etapaNorm) {
-    out = out.filter((r) => String(r?.etapa ?? '').trim().toUpperCase() === etapaNorm);
+  if (semParCompensacao) {
+    out = out.filter(linhaSemParCompensacao);
+  } else {
+    out = out.filter((r) => linhaBateFiltroLetras(r, { letras, letrasModo }));
+    const etapaNorm = String(etapa ?? '').trim().toUpperCase();
+    if (etapaNorm) {
+      out = out.filter((r) => String(r?.etapa ?? '').trim().toUpperCase() === etapaNorm);
+    }
   }
   const q = String(busca ?? '').trim().toUpperCase();
   if (q) {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { featureFlags } from '../../../config/featureFlags.js';
 import {
   buildContaToLetraMerge,
@@ -18,20 +18,11 @@ import { ExtratoTable } from '../extrato/ExtratoTable.jsx';
 import { ExtratoDetailPanel } from '../extrato/ExtratoDetailPanel.jsx';
 import { EtapaFiltroSelect } from '../shared/EtapaFiltroSelect.jsx';
 import { mapApiLancamentoCartaoToExtratoRow } from '../extrato/extratoMappers.js';
-
-function inicioFimMes(mesIso) {
-  const [y, m] = String(mesIso ?? '').split('-').map(Number);
-  if (!y || !m) return { inicio: undefined, fim: undefined };
-  const ultimo = new Date(y, m, 0).getDate();
-  const pad = (n) => String(n).padStart(2, '0');
-  return {
-    inicio: `${y}-${pad(m)}-01`,
-    fim: `${y}-${pad(m)}-${pad(ultimo)}`,
-  };
-}
+import { periodoParaIntervalo } from '../shared/periodoFinanceiro.js';
 
 /** Extrato consolidado de fechamentos automáticos (AUTO-FAT) — todos os cartões. */
 export function FechamentoFaturaExtratoPage() {
+  const [searchParams] = useSearchParams();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState('');
@@ -39,6 +30,7 @@ export function FechamentoFaturaExtratoPage() {
   const [contasApi, setContasApi] = useState([]);
   const [cartaoFiltro, setCartaoFiltro] = useState('');
   const [mes, setMes] = useState('');
+  const [ano, setAno] = useState('');
   const [statusFiltro, setStatusFiltro] = useState('todos');
   const [etapaFiltro, setEtapaFiltro] = useState('');
   const [vinculadosIds, setVinculadosIds] = useState(() => new Set());
@@ -53,6 +45,20 @@ export function FechamentoFaturaExtratoPage() {
     () => buildContaToLetraMerge(loadPersistedContasContabeisExtrasFinanceiro()),
     [],
   );
+
+  useEffect(() => {
+    const mesParam = searchParams.get('mes') ?? '';
+    const anoParam = searchParams.get('ano') ?? '';
+    const cartaoParam = searchParams.get('cartaoId') ?? '';
+    if (cartaoParam) setCartaoFiltro(cartaoParam);
+    if (mesParam) {
+      setMes(mesParam);
+      setAno('');
+    } else if (anoParam) {
+      setAno(anoParam);
+      setMes('');
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (!featureFlags.useApiFinanceiro) return undefined;
@@ -83,15 +89,16 @@ export function FechamentoFaturaExtratoPage() {
       return undefined;
     }
     const ac = new AbortController();
-    const { inicio, fim } = mes ? inicioFimMes(mes) : { inicio: undefined, fim: undefined };
+    const periodoVal = mes || ano || '';
+    const intervalo = periodoVal ? periodoParaIntervalo(periodoVal) : null;
     setLoading(true);
     setErro('');
     listarLancamentosCartaoFinanceiro(
       {
         fechamentoAutomatico: true,
         cartaoId: cartaoFiltro ? Number(cartaoFiltro) : undefined,
-        dataInicio: inicio,
-        dataFim: fim,
+        dataInicio: intervalo?.dataInicio,
+        dataFim: intervalo?.dataFim,
       },
       { signal: ac.signal },
     )
@@ -124,7 +131,7 @@ export function FechamentoFaturaExtratoPage() {
       })
       .finally(() => setLoading(false));
     return () => ac.abort();
-  }, [mes, cartaoFiltro, statusFiltro, etapaFiltro, contaToLetra, vinculadosIds, reloadKey]);
+  }, [mes, ano, cartaoFiltro, statusFiltro, etapaFiltro, contaToLetra, vinculadosIds, reloadKey]);
 
   const rowsOrdenadas = useMemo(() => {
     return [...rows].sort((a, b) => {
@@ -179,26 +186,42 @@ export function FechamentoFaturaExtratoPage() {
           <h2 className="text-sm font-medium text-slate-900 dark:text-slate-100">
             Extrato fechamentos fatura (AUTO-FAT)
           </h2>
-          <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
-            <span>Mês</span>
-            <input
-              type="month"
-              value={mes}
-              onChange={(e) => setMes(e.target.value)}
-              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-800"
-            />
-            {mes ? (
+          {ano && !mes ? (
+            <span className="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
+              Ano {ano}
               <button
                 type="button"
-                onClick={() => setMes('')}
+                onClick={() => setAno('')}
                 className="text-blue-600 hover:underline"
               >
                 Todos
               </button>
-            ) : (
-              <span className="text-slate-400">(todos)</span>
-            )}
-          </label>
+            </span>
+          ) : (
+            <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
+              <span>Mês</span>
+              <input
+                type="month"
+                value={mes}
+                onChange={(e) => {
+                  setMes(e.target.value);
+                  setAno('');
+                }}
+                className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-800"
+              />
+              {mes ? (
+                <button
+                  type="button"
+                  onClick={() => setMes('')}
+                  className="text-blue-600 hover:underline"
+                >
+                  Todos
+                </button>
+              ) : (
+                <span className="text-slate-400">(todos)</span>
+              )}
+            </label>
+          )}
           <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
             <span>Cartão</span>
             <select
@@ -239,7 +262,10 @@ export function FechamentoFaturaExtratoPage() {
             </span>
           ) : null}
         </div>
-        <Link to="/financeiro/fatura" className="text-xs text-blue-600 hover:underline shrink-0">
+        <Link to="/financeiro/cartoes" className="text-xs text-blue-600 hover:underline shrink-0">
+          Resumo cartões
+        </Link>
+        <Link to="/financeiro/cartoes/regras" className="text-xs text-blue-600 hover:underline shrink-0">
           Regras e vínculos
         </Link>
       </header>

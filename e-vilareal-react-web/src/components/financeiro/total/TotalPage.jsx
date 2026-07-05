@@ -7,9 +7,17 @@ import { isPeriodoTotal, mesAtualIso } from '../shared/periodoFinanceiro.js';
 import { EtapaFiltroSelect } from '../shared/EtapaFiltroSelect.jsx';
 import { ExtratoTable } from '../extrato/ExtratoTable.jsx';
 import { ExtratoDetailPanel } from '../extrato/ExtratoDetailPanel.jsx';
+import { LetrasFiltroExtrato } from '../extrato/LetrasFiltroExtrato.jsx';
+import {
+  LETRAS_MODO_INCLUIR,
+  letrasFiltroAtivo,
+} from '../extrato/extratoLetrasFiltro.js';
 import { extratoRowKey } from './totalFinanceiroMerge.js';
 import { carregarTotalFinanceiroPaginado } from './totalFinanceiroLoader.js';
 import { somarLancamentosExtratoRows } from '../consolidado/consolidadoUtils.js';
+import { filtroCompensacaoSemParAtivo } from '../extrato/compensacaoSemPar.js';
+import { useExtratoParearPorClique } from '../extrato/useExtratoParearPorClique.js';
+import { ModoParearBanner } from '../extrato/ModoParearBanner.jsx';
 
 const fmtBrl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const BUSCA_DEBOUNCE_MS = 300;
@@ -22,6 +30,8 @@ export function TotalPage({ embedded = false, mes: mesProp, onMesChange } = {}) 
   const mes = mesProp ?? mesLocal;
   const setMes = onMesChange ?? setMesLocal;
   const [filtroEtapa, setFiltroEtapa] = useState('');
+  const [filtroLetras, setFiltroLetras] = useState([]);
+  const [filtroLetrasModo, setFiltroLetrasModo] = useState(LETRAS_MODO_INCLUIR);
   const [buscaLocal, setBuscaLocal] = useState('');
   const [buscaDebounced, setBuscaDebounced] = useState('');
   const [page, setPage] = useState(0);
@@ -37,6 +47,38 @@ export function TotalPage({ embedded = false, mes: mesProp, onMesChange } = {}) 
   const [selectedKeys, setSelectedKeys] = useState(() => new Set());
   const [detailItem, setDetailItem] = useState(null);
 
+  const atualizarLinhasAposParear = useCallback((origemMerged, contrapartidaMerged) => {
+    setRows((prev) =>
+      prev.map((r) => {
+        const key = r._rowKey ?? extratoRowKey(r);
+        const oKey = origemMerged._rowKey ?? extratoRowKey(origemMerged);
+        const cKey = contrapartidaMerged._rowKey ?? extratoRowKey(contrapartidaMerged);
+        if (key === oKey) return { ...origemMerged, _rowKey: key };
+        if (key === cKey) return { ...contrapartidaMerged, _rowKey: key };
+        return r;
+      }),
+    );
+  }, []);
+
+  const {
+    modoParearAtivo,
+    modoParearOrigemKey,
+    pareando,
+    handleModoParearChange,
+    handleRowClick: handleRowClickParear,
+  } = useExtratoParearPorClique({
+    detailItem,
+    setDetailItem,
+    onPareadoRows: atualizarLinhasAposParear,
+  });
+
+  const handleRowClick = useCallback(
+    (item) => {
+      void handleRowClickParear(item, setDetailItem);
+    },
+    [handleRowClickParear],
+  );
+
   useEffect(() => {
     const t = window.setTimeout(() => setBuscaDebounced(buscaLocal.trim()), BUSCA_DEBOUNCE_MS);
     return () => window.clearTimeout(t);
@@ -45,7 +87,7 @@ export function TotalPage({ embedded = false, mes: mesProp, onMesChange } = {}) 
   useEffect(() => {
     setPage(0);
     setSelectedKeys(new Set());
-  }, [mes, filtroEtapa, buscaDebounced, sortAsc]);
+  }, [mes, filtroEtapa, filtroLetras, filtroLetrasModo, buscaDebounced, sortAsc]);
 
   useEffect(() => {
     if (!featureFlags.useApiFinanceiro) {
@@ -60,6 +102,8 @@ export function TotalPage({ embedded = false, mes: mesProp, onMesChange } = {}) 
         mes,
         busca: buscaDebounced || undefined,
         etapa: filtroEtapa || undefined,
+        letras: filtroLetras,
+        letrasModo: filtroLetrasModo,
         page,
         size: pageSize,
         sortAsc,
@@ -86,7 +130,7 @@ export function TotalPage({ embedded = false, mes: mesProp, onMesChange } = {}) 
         if (!ac.signal.aborted) setLoading(false);
       });
     return () => ac.abort();
-  }, [mes, filtroEtapa, buscaDebounced, page, pageSize, sortAsc]);
+  }, [mes, filtroEtapa, filtroLetras, filtroLetrasModo, buscaDebounced, page, pageSize, sortAsc]);
 
   const resumoPagina = useMemo(() => somarLancamentosExtratoRows(rows), [rows]);
 
@@ -112,9 +156,18 @@ export function TotalPage({ embedded = false, mes: mesProp, onMesChange } = {}) 
     setBuscaLocal('');
     setBuscaDebounced('');
     setFiltroEtapa('');
+    setFiltroLetras([]);
+    setFiltroLetrasModo(LETRAS_MODO_INCLUIR);
   }, []);
 
-  const filtroAtivo = Boolean(buscaDebounced || filtroEtapa);
+  const filtroAtivo = Boolean(
+    buscaDebounced || filtroEtapa || letrasFiltroAtivo({ letras: filtroLetras }),
+  );
+  const semParCompensacaoAtivo = filtroCompensacaoSemParAtivo({
+    letras: filtroLetras,
+    letrasModo: filtroLetrasModo,
+    etapa: filtroEtapa,
+  });
 
   return (
     <div className="relative flex flex-col flex-1 min-h-0 overflow-hidden">
@@ -148,10 +201,25 @@ export function TotalPage({ embedded = false, mes: mesProp, onMesChange } = {}) 
           </p>
         ) : null}
 
+        {semParCompensacaoAtivo ? (
+          <p className="text-xs text-slate-600 dark:text-slate-400 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
+            Filtro <strong>Somente E</strong> + <strong>Pendente</strong>: lançamentos na conta compensação (E) que
+            ainda não formaram par — inclui pendentes e classificados, exclui compensados.
+          </p>
+        ) : null}
+
         <section className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden">
           <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-slate-200 dark:border-slate-800">
             <PeriodoSelector value={mes} onChange={setMes} incluirTotal />
             <EtapaFiltroSelect value={filtroEtapa} onChange={setFiltroEtapa} />
+            <LetrasFiltroExtrato
+              letras={filtroLetras}
+              letrasModo={filtroLetrasModo}
+              onChange={(letras, letrasModo) => {
+                setFiltroLetras(letras);
+                setFiltroLetrasModo(letrasModo);
+              }}
+            />
             <label className="flex flex-1 min-w-[140px] items-center gap-1.5 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 text-xs">
               <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden />
               <input
@@ -189,17 +257,21 @@ export function TotalPage({ embedded = false, mes: mesProp, onMesChange } = {}) 
 
           {erro ? <p className="px-3 py-2 text-sm text-red-600">{erro}</p> : null}
 
+          {modoParearAtivo ? <ModoParearBanner pareando={pareando} /> : null}
+
           <ExtratoTable
             data={rows}
             selectedIds={selectedKeys}
             rowKeyField="_rowKey"
             onSelect={toggleSelect}
             onSelectAll={toggleSelectAll}
-            onRowClick={setDetailItem}
+            onRowClick={handleRowClick}
             isLoading={loading}
             sortDataAsc={sortAsc}
             onSortDataDoubleClick={() => setSortAsc((v) => !v)}
             modoTotal
+            modoParearAtivo={modoParearAtivo}
+            modoParearOrigemKey={modoParearOrigemKey}
           />
 
           <Pagination
@@ -218,15 +290,20 @@ export function TotalPage({ embedded = false, mes: mesProp, onMesChange } = {}) 
 
       {detailItem ? (
         <>
-          <button
-            type="button"
-            className="absolute inset-0 z-10 bg-black/20"
-            aria-label="Fechar painel"
-            onClick={() => setDetailItem(null)}
-          />
+          {modoParearAtivo ? (
+            <div className="absolute inset-0 z-10 pointer-events-none" aria-hidden />
+          ) : (
+            <button
+              type="button"
+              className="absolute inset-0 z-10 bg-black/20"
+              aria-label="Fechar painel"
+              onClick={() => setDetailItem(null)}
+            />
+          )}
           <ExtratoDetailPanel
             item={detailItem}
             onClose={() => setDetailItem(null)}
+            onModoParearChange={handleModoParearChange}
             onSaved={(updated) => {
               setRows((prev) =>
                 prev.map((r) => {

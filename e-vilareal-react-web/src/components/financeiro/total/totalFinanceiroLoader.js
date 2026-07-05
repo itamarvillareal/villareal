@@ -8,7 +8,9 @@ import {
 } from '../../../repositories/financeiroRepository.js';
 import { ehLancamentoFechamentoAutomatico } from '../../../utils/cartaoFaturaVencimento.js';
 import { mapApiLancamentoCartaoToExtratoRow, mapApiLancamentoToExtratoRow } from '../extrato/extratoMappers.js';
+import { letrasParaQueryApi } from '../extrato/extratoLetrasFiltro.js';
 import { periodoParaListagemApi, periodoParaQueryApi } from '../shared/periodoFinanceiro.js';
+import { filtroCompensacaoSemParAtivo } from '../extrato/compensacaoSemPar.js';
 import {
   extratoRowKey,
   filtrarLinhasTotal,
@@ -38,10 +40,14 @@ function mapCartaoRow(l, contaToLetra) {
 }
 
 async function carregarLinhasBancoTotal(filtros, contaToLetra, signal) {
+  const semPar = filtroCompensacaoSemParAtivo(filtros);
   const periodo = {
     ...periodoParaListagemApi(filtros.mes),
     ...periodoParaQueryApi(filtros.mes),
   };
+  const letrasQuery = semPar
+    ? letrasParaQueryApi({ letras: ['E'], letrasModo: 'incluir' })
+    : letrasParaQueryApi({ letras: filtros.letras, letrasModo: filtros.letrasModo });
   const out = [];
   let page = 0;
   let totalPages = 1;
@@ -51,10 +57,12 @@ async function carregarLinhasBancoTotal(filtros, contaToLetra, signal) {
     const res = await listarLancamentosExtratoPaginados(
       {
         ...periodo,
+        ...letrasQuery,
         page,
         size: TAM_PAGINA_BANCO,
         sort: 'dataLancamento,desc',
-        etapa: filtros.etapa || undefined,
+        etapa: semPar ? undefined : filtros.etapa || undefined,
+        compensacaoSemPar: semPar ? true : undefined,
       },
       { signal },
     );
@@ -87,6 +95,8 @@ export async function carregarTotalFinanceiroPaginado(filtros = {}, opts = {}) {
   const { signal } = opts;
   const contaToLetra = buildContaToLetraMerge(loadPersistedContasContabeisExtrasFinanceiro());
 
+  const semParCompensacao = filtroCompensacaoSemParAtivo(filtros);
+
   const [{ rows: bancoRows, truncado: truncadoBanco }, cartaoRows] = await Promise.all([
     carregarLinhasBancoTotal(filtros, contaToLetra, signal),
     carregarLinhasCartaoTotal(filtros, contaToLetra, signal),
@@ -96,6 +106,9 @@ export async function carregarTotalFinanceiroPaginado(filtros = {}, opts = {}) {
   const filtrado = filtrarLinhasTotal(mesclado, {
     busca: filtros.busca,
     etapa: filtros.etapa,
+    letras: filtros.letras,
+    letrasModo: filtros.letrasModo,
+    semParCompensacao,
   });
   const pagina = paginarLinhasTotal(filtrado, {
     page: filtros.page,

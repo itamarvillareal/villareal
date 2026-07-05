@@ -33,6 +33,16 @@ describe('totalFinanceiroMerge', () => {
     ];
     expect(filtrarLinhasTotal(linhas, { etapa: 'IMPORTADO' })).toHaveLength(1);
     expect(filtrarLinhasTotal(linhas, { busca: 'visa' })).toHaveLength(1);
+    expect(
+      filtrarLinhasTotal(
+        [
+          { id: 1, contaCodigo: 'E', etapa: 'IMPORTADO', descricao: 'x' },
+          { id: 2, contaCodigo: 'E', etapa: 'COMPENSADO', descricao: 'y' },
+          { id: 3, contaCodigo: 'A', etapa: 'IMPORTADO', descricao: 'z' },
+        ],
+        { semParCompensacao: true },
+      ).map((r) => r.id),
+    ).toEqual([1]);
   });
 
   it('pagina resultado mesclado', () => {

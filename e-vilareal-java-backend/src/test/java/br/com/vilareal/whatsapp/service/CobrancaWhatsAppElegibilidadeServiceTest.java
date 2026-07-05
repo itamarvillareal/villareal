@@ -2,6 +2,7 @@ package br.com.vilareal.whatsapp.service;
 
 import br.com.vilareal.calculo.application.CalculoApplicationService;
 import br.com.vilareal.calculo.infrastructure.persistence.entity.CalculoRodadaEntity;
+import br.com.vilareal.calculo.infrastructure.persistence.projection.CalculoRodadaResumoProjection;
 import br.com.vilareal.calculo.infrastructure.persistence.repository.CalculoRodadaRepository;
 import br.com.vilareal.pagamento.infrastructure.persistence.repository.PagamentoRepository;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
@@ -16,6 +17,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -54,9 +56,8 @@ class CobrancaWhatsAppElegibilidadeServiceTest {
 
     @Test
     void avaliarProcessoEscritorio_semRodada_inelegivel() {
-        when(calculoApplicationService.obterRodada(COD8, 13, 0)).thenReturn(Optional.empty());
-        when(calculoRodadaRepository.findByCodigoClienteAndNumeroProcessoAndDimensao(COD8, 13, 0))
-                .thenReturn(Optional.empty());
+        when(calculoRodadaRepository.findResumoByCodigoClienteAndNumeroProcessoOrderByDimensaoAsc(COD8, 13))
+                .thenReturn(List.of());
 
         var av = service.avaliarProcessoEscritorio(COD8, 13);
 
@@ -122,6 +123,8 @@ class CobrancaWhatsAppElegibilidadeServiceTest {
     }
 
     private void mockRodada(int proc, ObjectNode payload, boolean parcelamentoAceito) {
+        when(calculoRodadaRepository.findResumoByCodigoClienteAndNumeroProcessoOrderByDimensaoAsc(COD8, proc))
+                .thenReturn(List.of(new CalculoRodadaResumoProjection(COD8, proc, 0, parcelamentoAceito)));
         when(calculoApplicationService.obterRodada(COD8, proc, 0)).thenReturn(Optional.of(payload));
         CalculoRodadaEntity entity = new CalculoRodadaEntity();
         entity.setParcelamentoAceito(parcelamentoAceito);

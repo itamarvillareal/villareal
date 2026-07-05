@@ -181,6 +181,7 @@ public class FinanceiroApplicationService {
                 null,
                 null,
                 null,
+                null,
                 PageRequest.of(0, LISTAGEM_SEM_PAGINACAO_MAX, ORDEM_LANCAMENTOS));
         if (page.getTotalElements() > LISTAGEM_SEM_PAGINACAO_MAX) {
             log.warn(
@@ -211,6 +212,7 @@ public class FinanceiroApplicationService {
             String codigoCliente,
             Integer numeroInternoProcesso,
             String numeroImovel,
+            Boolean compensacaoSemPar,
             Pageable pageable) {
         var codigos = LancamentoFinanceiroSpecifications.parseContaCodigosParam(contaCodigos);
         boolean excluir = Boolean.TRUE.equals(contaCodigosExcluir);
@@ -220,7 +222,7 @@ public class FinanceiroApplicationService {
                 codigos.isEmpty() ? contaContabilId : null,
                 dataInicio,
                 dataFim,
-                etapa,
+                Boolean.TRUE.equals(compensacaoSemPar) ? null : etapa,
                 numeroBanco,
                 busca,
                 semClienteId,
@@ -229,7 +231,8 @@ public class FinanceiroApplicationService {
                 mes,
                 codigos,
                 excluir,
-                cadastroPlenitude);
+                cadastroPlenitude,
+                compensacaoSemPar);
         spec = spec.and(comChaveNaturalContaCorrente(codigoCliente, numeroInternoProcesso));
         spec = spec.and(comFiltroNumeroImovel(numeroImovel));
         return lancamentoRepository.findAll(spec, pageable).map(this::toLancamentoResponse);
@@ -255,6 +258,7 @@ public class FinanceiroApplicationService {
             String codigoCliente,
             Integer numeroInternoProcesso,
             String numeroImovel,
+            Boolean compensacaoSemPar,
             Pageable pageable) {
         var codigos = LancamentoFinanceiroSpecifications.parseContaCodigosParam(contaCodigos);
         boolean excluir = Boolean.TRUE.equals(contaCodigosExcluir);
@@ -264,7 +268,7 @@ public class FinanceiroApplicationService {
                 codigos.isEmpty() ? contaContabilId : null,
                 dataInicio,
                 dataFim,
-                etapa,
+                Boolean.TRUE.equals(compensacaoSemPar) ? null : etapa,
                 numeroBanco,
                 busca,
                 semClienteId,
@@ -273,7 +277,8 @@ public class FinanceiroApplicationService {
                 mes,
                 codigos,
                 excluir,
-                cadastroPlenitude);
+                cadastroPlenitude,
+                compensacaoSemPar);
         spec = spec.and(comChaveNaturalContaCorrente(codigoCliente, numeroInternoProcesso));
         spec = spec.and(comFiltroNumeroImovel(numeroImovel));
         spec = aplicarRestricaoExtratoBancos(spec, numeroBanco);
@@ -554,29 +559,38 @@ public class FinanceiroApplicationService {
         extratoAcessoService.assertAcessoExtratoBanco(req.getNumeroBanco());
         LancamentoFinanceiroEntity e = new LancamentoFinanceiroEntity();
         aplicarLancamento(e, req, true);
-        LancamentoFinanceiroResponse saved = toLancamentoResponse(lancamentoRepository.save(e));
+        LancamentoFinanceiroEntity saved = lancamentoRepository.save(e);
+        recomputarEtapasGrupoCompensacao(saved.getGrupoCompensacao());
         invalidarCacheSaude();
-        return saved;
+        return toLancamentoResponse(lancamentoRepository.findById(saved.getId()).orElse(saved));
     }
 
     @Transactional
     public LancamentoFinanceiroResponse atualizarLancamento(Long id, LancamentoFinanceiroWriteRequest req) {
         LancamentoFinanceiroEntity e = lancamentoRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Lançamento não encontrado: " + id));
+        String grupoAnterior = e.getGrupoCompensacao();
         extratoAcessoService.assertAcessoAlteracaoLancamento(e, req.getContaContabilId());
         aplicarLancamento(e, req, false);
-        LancamentoFinanceiroResponse saved = toLancamentoResponse(lancamentoRepository.save(e));
+        LancamentoFinanceiroEntity saved = lancamentoRepository.save(e);
+        recomputarEtapasGrupoCompensacao(saved.getGrupoCompensacao());
+        if (grupoAnterior != null
+                && !grupoAnterior.isBlank()
+                && !grupoAnterior.equals(saved.getGrupoCompensacao())) {
+            recomputarEtapasGrupoCompensacao(grupoAnterior);
+        }
         invalidarCacheSaude();
-        return saved;
+        return toLancamentoResponse(lancamentoRepository.findById(saved.getId()).orElse(saved));
     }
 
     @Transactional
     public void removerLancamento(Long id) {
-        if (!lancamentoRepository.existsById(id)) {
-            throw new ResourceNotFoundException("Lançamento não encontrado: " + id);
-        }
+        LancamentoFinanceiroEntity e = lancamentoRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Lançamento não encontrado: " + id));
+        String grupo = e.getGrupoCompensacao();
         removerDependenciasLancamentos(List.of(id));
         lancamentoRepository.deleteById(id);
+        recomputarEtapasGrupoCompensacao(grupo);
         invalidarCacheSaude();
     }
 
@@ -817,7 +831,43 @@ public class FinanceiroApplicationService {
             return;
         }
         Long clienteFkId = e.getClienteEntidade() != null ? e.getClienteEntidade().getId() : null;
+        if (conta.getCodigo() != null
+                && "E".equalsIgnoreCase(conta.getCodigo().trim())
+                && StringUtils.hasText(e.getGrupoCompensacao())) {
+            long qtd = lancamentoRepository.countAtivosByGrupoCompensacao(e.getGrupoCompensacao().trim());
+            if (e.getId() == null || !lancamentoRepository.existsById(e.getId())) {
+                qtd += 1;
+            }
+            e.setEtapa(EtapaLancamento.calcularContaE(e.getGrupoCompensacao(), (int) qtd));
+            return;
+        }
         e.setEtapa(EtapaLancamento.calcular(conta.getCodigo(), e.getGrupoCompensacao(), clienteFkId));
+    }
+
+    private void recomputarEtapasGrupoCompensacao(String grupoCompensacao) {
+        if (grupoCompensacao == null || grupoCompensacao.isBlank()) {
+            return;
+        }
+        List<LancamentoFinanceiroEntity> lista =
+                lancamentoRepository.findAllByGrupoCompensacao(grupoCompensacao.trim());
+        if (lista.isEmpty()) {
+            return;
+        }
+        ContaContabilEntity conta = lista.get(0).getContaContabil();
+        if (conta == null || conta.getCodigo() == null || !"E".equalsIgnoreCase(conta.getCodigo().trim())) {
+            return;
+        }
+        EtapaLancamento etapa = EtapaLancamento.calcularContaE(grupoCompensacao, lista.size());
+        boolean alterou = false;
+        for (LancamentoFinanceiroEntity l : lista) {
+            if (l.getEtapa() != etapa) {
+                l.setEtapa(etapa);
+                alterou = true;
+            }
+        }
+        if (alterou) {
+            lancamentoRepository.saveAll(lista);
+        }
     }
 
     private String codigoClienteExibicaoLancamento(LancamentoFinanceiroEntity e) {

@@ -42,6 +42,13 @@ const navClass = ({ isActive }) =>
       : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
   }`;
 
+const cartaoNavClass = ({ isActive }) =>
+  `flex items-center gap-1.5 text-xs py-1.5 px-3 truncate transition-colors ${
+    isActive
+      ? 'font-medium bg-white dark:bg-slate-800 border-l-2 border-amber-500 text-slate-900 dark:text-slate-100'
+      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+  }`;
+
 function FinanceiroShell({
   importOpen,
   onOpenImport,
@@ -214,14 +221,6 @@ function FinanceiroShell({
                   <Link2 className="w-[15px] h-[15px] shrink-0" />
                   Compensação
                 </NavLink>
-                <NavLink to="/financeiro/fatura/fechamentos" className={navClass}>
-                  <Receipt className="w-[15px] h-[15px] shrink-0" />
-                  Fechamentos fatura
-                </NavLink>
-                <NavLink to="/financeiro/fatura" className={navClass}>
-                  <Receipt className="w-[15px] h-[15px] shrink-0 opacity-60" />
-                  Regras fatura
-                </NavLink>
                 <NavLink to="/financeiro/relatorios" className={navClass}>
                   <BarChart3 className="w-[15px] h-[15px] shrink-0" />
                   Relatórios
@@ -255,20 +254,26 @@ function FinanceiroShell({
               <p className="px-3 pt-2 pb-0.5 text-[11px] uppercase tracking-wider text-slate-400 font-medium">
                 Cartões
               </p>
-              <div className="px-0 pb-3">
+              <div className="px-0 pb-1">
+                <NavLink to="/financeiro/cartoes" end className={cartaoNavClass}>
+                  <CreditCard className="w-3 h-3 shrink-0 opacity-60" aria-hidden />
+                  Resumo fechamentos
+                </NavLink>
+                <NavLink to="/financeiro/cartoes/fechamentos" className={cartaoNavClass}>
+                  <Receipt className="w-3 h-3 shrink-0 opacity-60" aria-hidden />
+                  Fechamentos fatura
+                </NavLink>
+                <NavLink to="/financeiro/cartoes/regras" className={cartaoNavClass}>
+                  <Receipt className="w-3 h-3 shrink-0 opacity-40" aria-hidden />
+                  Regras fatura
+                </NavLink>
                 {cartoes.map((c) => (
                   <NavLink
                     key={c.numero}
                     to={`/financeiro/cartao/${c.numero}`}
-                    className={({ isActive }) =>
-                      `block text-xs py-1.5 px-3 truncate ${
-                        isActive
-                          ? 'font-medium bg-white dark:bg-slate-800 border-l-2 border-amber-500'
-                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-                      }`
-                    }
+                    className={cartaoNavClass}
                   >
-                    <CreditCard className="w-3 h-3 inline mr-1 opacity-60" aria-hidden />
+                    <CreditCard className="w-3 h-3 shrink-0 opacity-60" aria-hidden />
                     {c.nome}
                   </NavLink>
                 ))}

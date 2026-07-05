@@ -2,6 +2,7 @@ package br.com.vilareal.whatsapp.service;
 
 import br.com.vilareal.calculo.application.CalculoApplicationService;
 import br.com.vilareal.calculo.infrastructure.persistence.entity.CalculoRodadaEntity;
+import br.com.vilareal.calculo.infrastructure.persistence.projection.CalculoRodadaResumoProjection;
 import br.com.vilareal.calculo.infrastructure.persistence.repository.CalculoRodadaRepository;
 import br.com.vilareal.pagamento.infrastructure.persistence.entity.PagamentoEntity;
 import br.com.vilareal.pagamento.infrastructure.persistence.repository.PagamentoRepository;
@@ -18,6 +19,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -84,53 +86,93 @@ public class CobrancaWhatsAppElegibilidadeService {
 
     @Transactional(readOnly = true)
     public Avaliacao avaliarProcessoEscritorio(String codigoCliente8, int numeroProcessoInterno) {
-        String cod8 = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(codigoCliente8);
-        Optional<JsonNode> rodadaOpt = calculoApplicationService.obterRodada(cod8, numeroProcessoInterno, 0);
-        boolean parcelamentoAceito = calculoRodadaRepository
-                .findByCodigoClienteAndNumeroProcessoAndDimensao(cod8, numeroProcessoInterno, 0)
-                .map(CalculoRodadaEntity::isParcelamentoAceito)
-                .orElse(false);
+        return avaliarProcessoEscritorio(codigoCliente8, numeroProcessoInterno, null);
+    }
 
-        if (rodadaOpt.isEmpty()) {
+    /**
+     * @param dimensaoAcordo quando informada, considera só essa dimensão; senão agrega todas com parcelamento aceito.
+     */
+    @Transactional(readOnly = true)
+    public Avaliacao avaliarProcessoEscritorio(String codigoCliente8, int numeroProcessoInterno, Integer dimensaoAcordo) {
+        String cod8 = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(codigoCliente8);
+        List<CalculoRodadaResumoProjection> dims =
+                calculoRodadaRepository.findResumoByCodigoClienteAndNumeroProcessoOrderByDimensaoAsc(
+                        cod8, numeroProcessoInterno);
+        if (dims.isEmpty()) {
             return inelegivelSemCalculo();
         }
 
-        JsonNode rodada = rodadaOpt.get();
-        String dataCalculo = texto(rodada.path("meta").path("dataCalculo"));
-        boolean calculoDesatualizado = dataCalculoDesatualizada(dataCalculo);
+        List<Integer> alvoDims = new ArrayList<>();
+        if (dimensaoAcordo != null) {
+            alvoDims.add(dimensaoAcordo);
+        } else {
+            for (CalculoRodadaResumoProjection d : dims) {
+                if (d.parcelamentoAceito() && d.dimensao() != null) {
+                    alvoDims.add(d.dimensao());
+                }
+            }
+            if (alvoDims.isEmpty()) {
+                alvoDims.add(0);
+            }
+        }
 
+        String dataCalculo = null;
+        boolean calculoDesatualizado = false;
         int debitosAbertos = 0;
         int parcelasAbertas = 0;
         BigDecimal valorAberto = BigDecimal.ZERO;
+        int totalDebitos = 0;
+        int totalParcelas = 0;
+        boolean algumParcelamentoAceito = false;
 
-        JsonNode debitos = rodada.path("debitos");
-        if (debitos.isArray()) {
-            for (JsonNode d : debitos) {
-                if (debitoQuitado(d)) {
-                    continue;
+        for (Integer dim : alvoDims) {
+            Optional<JsonNode> rodadaOpt = calculoApplicationService.obterRodada(cod8, numeroProcessoInterno, dim);
+            if (rodadaOpt.isEmpty()) {
+                continue;
+            }
+            boolean aceito = calculoRodadaRepository
+                    .findByCodigoClienteAndNumeroProcessoAndDimensao(cod8, numeroProcessoInterno, dim)
+                    .map(CalculoRodadaEntity::isParcelamentoAceito)
+                    .orElse(false);
+            if (aceito) {
+                algumParcelamentoAceito = true;
+            }
+            JsonNode rodada = rodadaOpt.get();
+            String dc = texto(rodada.path("meta").path("dataCalculo"));
+            if (dataCalculo == null) {
+                dataCalculo = dc;
+            }
+            if (dataCalculoDesatualizada(dc)) {
+                calculoDesatualizado = true;
+            }
+
+            JsonNode debitos = rodada.path("debitos");
+            if (debitos.isArray()) {
+                totalDebitos += debitos.size();
+                for (JsonNode d : debitos) {
+                    if (debitoQuitado(d)) {
+                        continue;
+                    }
+                    debitosAbertos++;
+                    valorAberto = valorAberto.add(totalDebitoLinha(d));
                 }
-                debitosAbertos++;
-                valorAberto = valorAberto.add(totalDebitoLinha(d));
+            }
+
+            JsonNode parcelas = rodada.path("parcelas");
+            if (parcelas.isArray()) {
+                totalParcelas += parcelas.size();
+                for (JsonNode p : parcelas) {
+                    if (parcelaQuitada(p)) {
+                        continue;
+                    }
+                    parcelasAbertas++;
+                    valorAberto = valorAberto.add(valorParcela(p));
+                }
             }
         }
-
-        JsonNode parcelas = rodada.path("parcelas");
-        if (parcelas.isArray()) {
-            for (JsonNode p : parcelas) {
-                if (parcelaQuitada(p)) {
-                    continue;
-                }
-                parcelasAbertas++;
-                valorAberto = valorAberto.add(valorParcela(p));
-            }
-        }
-
-        valorAberto = valorAberto.setScale(2, RoundingMode.HALF_UP);
-        int totalDebitos = debitos.isArray() ? debitos.size() : 0;
-        int totalParcelas = parcelas.isArray() ? parcelas.size() : 0;
 
         if (debitosAbertos == 0 && parcelasAbertas == 0) {
-            String motivo = motivoQuitado(totalDebitos, totalParcelas, parcelamentoAceito);
+            String motivo = motivoQuitado(totalDebitos, totalParcelas, algumParcelamentoAceito);
             return new Avaliacao(
                     false,
                     motivo,
@@ -141,6 +183,7 @@ public class CobrancaWhatsAppElegibilidadeService {
                     BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
         }
 
+        valorAberto = valorAberto.setScale(2, RoundingMode.HALF_UP);
         return new Avaliacao(true, null, calculoDesatualizado, dataCalculo, debitosAbertos, parcelasAbertas, valorAberto);
     }
 

@@ -48,3 +48,12 @@ export function letrasParaQueryApi({ letras, letrasModo }) {
     contaCodigosExcluir: letrasModo === LETRAS_MODO_EXCLUIR ? true : undefined,
   };
 }
+
+/** Filtro client-side por letra da conta contábil (contaCodigo). */
+export function linhaBateFiltroLetras(row, { letras, letrasModo } = {}) {
+  if (!letrasFiltroAtivo({ letras })) return true;
+  const cod = String(row?.contaCodigo ?? 'N').trim().toUpperCase() || 'N';
+  const sel = new Set(normalizarLetrasFiltro(letras));
+  const contem = sel.has(cod);
+  return letrasModo === LETRAS_MODO_EXCLUIR ? !contem : contem;
+}

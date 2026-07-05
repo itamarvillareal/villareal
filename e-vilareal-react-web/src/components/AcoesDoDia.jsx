@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Link2, CircleDollarSign, HandCoins, RefreshCw, CalendarClock, PhoneCall, Wallet, Building2 } from 'lucide-react';
 import { obterAcoesDoDiaApi } from '../repositories/acoesDoDiaRepository.js';
 import { listarCandidatosDespesaCondominioApi, confirmarDespesaCondominioApi } from '../repositories/despesaCondominioRepository.js';
@@ -7,6 +7,7 @@ import { vincularReconciliacaoApi } from '../repositories/imoveisRepository.js';
 import { classificarAlvaraHonorarioApi } from '../repositories/honorariosRepository.js';
 import { marcarPagamentoPago } from '../repositories/pagamentosRepository.js';
 import { featureFlags } from '../config/featureFlags.js';
+import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
 
 function formatBRL(n) {
   const v = Number(n);
@@ -86,6 +87,7 @@ function BlocoGrupo({ titulo, icone: Icone, quantidade, total, cor, children, va
 }
 
 export function AcoesDoDia() {
+  const navigate = useNavigate();
   const [dados, setDados] = useState(null);
   const [candidatosCondominio, setCandidatosCondominio] = useState(null);
   const [carregando, setCarregando] = useState(true);
@@ -371,6 +373,24 @@ export function AcoesDoDia() {
                       <p className="text-xs text-red-700">{item.diasEmAtraso} dia(s)</p>
                     </div>
                   </div>
+                  {item.tipo === 'ACORDO_PARCELA' && item.codigoCliente && item.numeroInterno != null ? (
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          navigate('/calculos', {
+                            state: {
+                              ...buildRouterStateChaveClienteProcesso(item.codigoCliente, item.numeroInterno),
+                              abaCalculos: 'Acordos',
+                            },
+                          })
+                        }
+                        className="inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-md bg-red-600 text-white hover:bg-red-700"
+                      >
+                        Ver na aba Acordos
+                      </button>
+                    </div>
+                  ) : null}
                 </li>
               ))}
             </ul>

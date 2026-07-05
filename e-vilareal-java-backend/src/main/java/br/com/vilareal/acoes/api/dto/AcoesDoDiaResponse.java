@@ -50,7 +50,10 @@ public record AcoesDoDiaResponse(
             LocalDate vencimento,
             int diasEmAtraso,
             Long contratoId,
-            Integer imovelNumeroPlanilha) {}
+            Integer imovelNumeroPlanilha,
+            /** ACORDO_PARCELA — nullable nos demais tipos. */
+            String codigoCliente,
+            Integer numeroInterno) {}
 
     public record GrupoRepassar(int quantidade, BigDecimal total, List<ItemRepassar> itens) {}
 

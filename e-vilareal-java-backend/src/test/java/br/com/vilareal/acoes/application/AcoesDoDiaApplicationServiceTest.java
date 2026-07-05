@@ -1,6 +1,8 @@
 package br.com.vilareal.acoes.application;
 
 import br.com.vilareal.documento.api.dto.RepassePendenteHonorarioCarteiraResponse;
+import br.com.vilareal.calculo.api.dto.CalculoParcelamentosConsolidadoResponse;
+import br.com.vilareal.calculo.application.CalculoParcelamentosConsolidadoApplicationService;
 import br.com.vilareal.documento.application.HonorarioRepasseService;
 import br.com.vilareal.imovel.api.dto.CreditoCandidatoAluguelItem;
 import br.com.vilareal.imovel.api.dto.RepassePendenteCarteiraResponse;
@@ -53,6 +55,8 @@ class AcoesDoDiaApplicationServiceTest {
     private ContratoLocacaoRepository contratoLocacaoRepository;
     @Mock
     private PagamentoRepository pagamentoRepository;
+    @Mock
+    private CalculoParcelamentosConsolidadoApplicationService parcelamentosConsolidadoService;
 
     @InjectMocks
     private AcoesDoDiaApplicationService service;
@@ -67,6 +71,7 @@ class AcoesDoDiaApplicationServiceTest {
                 honorarioRepasseService,
                 contratoLocacaoRepository,
                 pagamentoRepository,
+                parcelamentosConsolidadoService,
                 CLOCK);
         contrato = new ContratoLocacaoEntity();
         contrato.setId(10L);
@@ -79,6 +84,9 @@ class AcoesDoDiaApplicationServiceTest {
         imovel.setNumeroPlanilha(42);
         imovel.setEnderecoCompleto("Rua Teste, 1");
         contrato.setImovel(imovel);
+        when(parcelamentosConsolidadoService.listarConsolidado(
+                        any(), any(), eq("vencidas"), any(), any(), any(), eq(false), eq(0), eq(50)))
+                .thenReturn(new CalculoParcelamentosConsolidadoResponse(List.of(), 0, new br.com.vilareal.calculo.api.dto.CalculoParcelamentosConsolidadoResumo(0, 0, 0, 0, 0, 0, 0, 0)));
     }
 
     @Test

@@ -466,6 +466,12 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             """)
     List<LancamentoFinanceiroEntity> findAllByGrupoCompensacao(@Param("grupoCompensacao") String grupoCompensacao);
 
+    @Query("""
+            SELECT COUNT(l) FROM LancamentoFinanceiroEntity l
+            WHERE l.grupoCompensacao = :grupoCompensacao AND l.status = 'ATIVO'
+            """)
+    long countAtivosByGrupoCompensacao(@Param("grupoCompensacao") String grupoCompensacao);
+
 
     @EntityGraph(attributePaths = {"contaContabil", "pessoaRef", "clienteEntidade", "processo"})
     List<LancamentoFinanceiroEntity> findAllByIdIn(Collection<Long> ids);

@@ -302,7 +302,7 @@ export function ConfigPage() {
         </h2>
         <p className="text-sm text-slate-600 dark:text-slate-400">
           <Link
-            to="/financeiro/fatura?tab=regras"
+            to="/financeiro/cartoes/regras?tab=regras"
             className="inline-flex items-center gap-1 text-blue-600 hover:underline"
           >
             Abrir Faturas — aba Regras de mapeamento

@@ -21,6 +21,7 @@ import { SeloAssistenteIa } from './ui/AutorUsuarioExibicao.jsx';
 import { registrarAuditoria } from '../services/auditoriaCliente.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { featureFlags } from '../config/featureFlags.js';
+import { fetchParcelamentosResumoKpi } from '../repositories/calculosAcordosRepository.js';
 import { useWhatsAppNotificationContext } from './whatsapp/WhatsAppNotificationProvider.jsx';
 
 function itemMenuPermitido(item, podeFn) {
@@ -62,6 +63,7 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
   const { isAuthenticated, logout } = useAuth();
   const whatsAppNotifications = useWhatsAppNotificationContext();
   const whatsAppUnread = whatsAppNotifications?.unreadCount ?? 0;
+  const [acordosVencidos, setAcordosVencidos] = useState(0);
   const [gruposAbertos, setGruposAbertos] = useState(() => new Set());
 
   useEffect(() => {
@@ -75,6 +77,24 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
       window.removeEventListener('vilareal:usuario-sessao-atualizada', h);
       window.removeEventListener('vilareal:permissoes-usuarios-atualizadas', h);
       window.removeEventListener('vilareal:operador-estacao-atualizado', h);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!featureFlags.useApiCalculos) return undefined;
+    let cancelled = false;
+    const load = () => {
+      fetchParcelamentosResumoKpi()
+        .then((r) => {
+          if (!cancelled) setAcordosVencidos(Number(r?.vencidas) || 0);
+        })
+        .catch(() => {});
+    };
+    load();
+    const id = window.setInterval(load, 5 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
     };
   }, []);
 
@@ -243,6 +263,14 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
                 >
                   <SidebarMenuIcon id={item.id} className="w-4 h-4 shrink-0" />
                   <span className="flex-1 min-w-0 leading-snug">{item.label}</span>
+                  {item.id === 'calcular-grupo' && acordosVencidos > 0 ? (
+                    <span
+                      className="notification-badge ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-bold text-white"
+                      title={`${acordosVencidos} parcela(s) de acordo vencida(s)`}
+                    >
+                      {acordosVencidos > 99 ? '99+' : acordosVencidos}
+                    </span>
+                  ) : null}
                   {item.id === 'whatsapp-grupo' && whatsAppUnread > 0 ? (
                     <span
                       className="notification-badge ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white"

@@ -15,7 +15,7 @@ import { featureFlags } from '../../../config/featureFlags.js';
 import { ContaBadge } from '../shared/ContaBadge.jsx';
 import { EtapaDot } from '../shared/EtapaDot.jsx';
 import { ValorText } from '../shared/ValorText.jsx';
-import { ETAPA_LABELS } from '../constants/financeiroConstants.js';
+import { ETAPA_LABELS, ETAPAS } from '../constants/financeiroConstants.js';
 import { resolverTextosPartesCabecalhoCalculo } from '../../../data/processosDadosRelatorio.js';
 import {
   extratoRowToUi,
@@ -45,6 +45,7 @@ import {
 import { ConfirmDialog } from '../shared/ConfirmDialog.jsx';
 import { useFinanceiroToast } from '../shared/Toast.jsx';
 import { dispatchRefreshPendentes } from '../hooks/useKeyboardShortcuts.js';
+import { ParearManualCompensacao } from './ParearManualCompensacao.jsx';
 
 const ProcessosLazy = lazy(() =>
   import('../../Processos.jsx').then((module) => ({ default: module.Processos })),
@@ -184,7 +185,14 @@ function Field({ label, children }) {
   );
 }
 
-export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExtrato = 'banco' }) {
+export function ExtratoDetailPanel({
+  item,
+  onClose,
+  onSaved,
+  onDeleted,
+  onModoParearChange,
+  fonteExtrato = 'banco',
+}) {
   const isCartao = fonteExtrato === 'cartao';
   const toast = useFinanceiroToast();
   const [draft, setDraft] = useState(item);
@@ -338,6 +346,35 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
   }, [isContaE, grupoElo, draft.id, contaToLetra]);
 
   const patch = useCallback((p) => setDraft((d) => ({ ...d, ...p })), []);
+
+  const handlePareadoCompensacao = useCallback(
+    (merged) => {
+      setDraft(merged);
+      onSaved?.(merged);
+    },
+    [onSaved],
+  );
+
+  const mostrarParearManual =
+    isContaE &&
+    !isCartao &&
+    featureFlags.useApiFinanceiro &&
+    !elosLoading &&
+    elosPares.length === 0;
+
+  useEffect(() => {
+    if (!onModoParearChange) return undefined;
+    if (mostrarParearManual && draft?.id) {
+      onModoParearChange({
+        active: true,
+        lancamentoId: Number(draft.id),
+        origemExtrato: isCartao ? 'cartao' : 'banco',
+      });
+    } else {
+      onModoParearChange(null);
+    }
+    return () => onModoParearChange(null);
+  }, [mostrarParearManual, draft?.id, isCartao, onModoParearChange]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -544,7 +581,10 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
   const dataCompleta = formatDataExtratoColuna(draft.dataLancamento);
   const resumoVinculo = `${draft.descricao} · ${dataCompleta} · ${draft.bancoNome ?? ''}`;
   const podeExcluir = featureFlags.useApiFinanceiro && Number(draft.id) > 0;
-  const etapaLabel = ETAPA_LABELS[draft.etapa] ?? draft.etapa;
+  const compensacaoSemPar =
+    isContaE && grupoElo && !elosLoading && elosGrupo.length < 2;
+  const etapaExibida = compensacaoSemPar ? ETAPAS.IMPORTADO : draft.etapa;
+  const etapaLabel = ETAPA_LABELS[etapaExibida] ?? etapaExibida;
   const podeAbrirProcesso = useMemo(() => lancamentoPodeAbrirProcesso(draft), [draft]);
 
   const abrirProcessoFlutuante = useCallback(() => {
@@ -737,9 +777,17 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
                     Abrir módulo de compensação
                   </Link>
                 </div>
-              ) : (
+              ) : !mostrarParearManual ? (
                 <p className="text-sm text-slate-500">Sem elo — pareie no Inbox ou em Compensação.</p>
-              )}
+              ) : null}
+              {mostrarParearManual ? (
+                <ParearManualCompensacao
+                  lancamento={draft}
+                  contaToLetra={contaToLetra}
+                  onPareado={handlePareadoCompensacao}
+                  disabled={saving || deleting}
+                />
+              ) : null}
             </Field>
           ) : isContaI ? (
             <>
@@ -860,7 +908,7 @@ export function ExtratoDetailPanel({ item, onClose, onSaved, onDeleted, fonteExt
           )}
           <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
             <EtapaDot
-              etapa={draft.etapa}
+              etapa={etapaExibida}
               cadastroImoveis={isContaI ? temImovelVinculadoExtratoRow(draft) : undefined}
             />
             <span>{etapaLabel}</span>

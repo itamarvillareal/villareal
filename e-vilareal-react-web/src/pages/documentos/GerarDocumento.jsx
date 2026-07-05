@@ -357,6 +357,7 @@ export function GerarDocumento() {
 
   const [modo, setModo] = useState(() => {
     if (modoInicial === 'contrato') return MODO_CONTRATO;
+    if (modoInicial === 'arquivo') return MODO_ARQUIVO;
     return MODO_IA;
   });
   const modoIA = modo === MODO_IA;

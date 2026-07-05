@@ -277,7 +277,7 @@ export function FaturaPage() {
           </button>
         ) : (
           <Link
-            to="/financeiro/fatura/fechamentos"
+            to="/financeiro/cartoes/fechamentos"
             className="text-xs text-blue-600 hover:underline mb-2 mr-1"
           >
             Ver extrato AUTO-FAT (todos os cartões)

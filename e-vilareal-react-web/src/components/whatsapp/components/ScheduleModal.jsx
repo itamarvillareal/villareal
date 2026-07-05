@@ -24,7 +24,7 @@ import { createWhatsAppSchedule, createWhatsAppScheduleBatch } from '../../../re
 const MODE_UNICO = 'unico';
 const MODE_LOTE = 'lote';
 
-export function ScheduleModal({ open, onClose, onSuccess }) {
+export function ScheduleModal({ open, onClose, onSuccess, initialPhone = '' }) {
   const { templates, loading: loadingTemplates } = useWhatsAppTemplates({ approvedOnly: true });
   const toast = useWhatsAppToast();
   const [formMode, setFormMode] = useState(MODE_UNICO);
@@ -46,14 +46,14 @@ export function ScheduleModal({ open, onClose, onSuccess }) {
     setFormMode(MODE_UNICO);
     setBatchMode(BATCH_MODE_MENSAL);
     setBatchState(null);
-    setPhone('');
+    setPhone(String(initialPhone ?? '').trim());
     setTemplateName('');
     setParams([]);
     setScheduledAtLocal('');
     setDescricao('');
     setClienteId('');
     setProcessoId('');
-  }, [open]);
+  }, [open, initialPhone]);
 
   useEffect(() => {
     const tpl =

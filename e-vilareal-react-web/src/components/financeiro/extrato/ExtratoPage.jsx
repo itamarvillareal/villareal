@@ -34,6 +34,9 @@ import { ExtratoBatchBar } from './ExtratoBatchBar.jsx';
 import { mesAnoFromDataLancamento } from './extratoMesUtils.js';
 import { scrollExtratoParaLancamento, buildCartaoUrlParaLancamento } from './extratoDeepLink.js';
 import { mapApiLancamentoToExtratoRow } from './extratoMappers.js';
+import { filtroCompensacaoSemParAtivo } from './compensacaoSemPar.js';
+import { useExtratoParearPorClique } from './useExtratoParearPorClique.js';
+import { ModoParearBanner } from './ModoParearBanner.jsx';
 
 export function ExtratoPage() {
   const navigate = useNavigate();
@@ -326,9 +329,36 @@ export function ExtratoPage() {
     });
   }, [rows]);
 
-  const handleRowClick = useCallback((item) => {
-    setDetailItem(item);
-  }, []);
+  const atualizarLinhasAposParear = useCallback((origemMerged, contrapartidaMerged) => {
+    limparCachePaginas();
+    setRows((prev) =>
+      prev.map((r) => {
+        if (Number(r.id) === Number(origemMerged.id)) return origemMerged;
+        if (Number(r.id) === Number(contrapartidaMerged.id)) return contrapartidaMerged;
+        return r;
+      }),
+    );
+    setExtratoRefreshKey((n) => n + 1);
+  }, [limparCachePaginas]);
+
+  const {
+    modoParearAtivo,
+    modoParearOrigemKey,
+    pareando,
+    handleModoParearChange,
+    handleRowClick: handleRowClickParear,
+  } = useExtratoParearPorClique({
+    detailItem,
+    setDetailItem,
+    onPareadoRows: atualizarLinhasAposParear,
+  });
+
+  const handleRowClick = useCallback(
+    (item) => {
+      void handleRowClickParear(item, setDetailItem);
+    },
+    [handleRowClickParear],
+  );
 
   const handleRowSaved = (updated) => {
     vinculoOverlayRef.current.set(Number(updated.id), {
@@ -499,6 +529,8 @@ export function ExtratoPage() {
     );
   }
 
+  const semParCompensacaoAtivo = filtroCompensacaoSemParAtivo(filters);
+
   return (
     <div className="relative flex flex-col min-h-0 h-full">
       <ExtratoFilters
@@ -507,6 +539,15 @@ export function ExtratoPage() {
         saldoBanco={saldoBanco}
         saldoBancoLoading={saldoBancoLoading}
       />
+
+      {semParCompensacaoAtivo ? (
+        <p className="mx-3 mb-1 text-xs text-slate-600 dark:text-slate-400 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 px-3 py-2">
+          Filtro <strong>Somente E</strong> + <strong>Pendente</strong>: conta compensação (E) sem par
+          concluído — inclui pendentes, classificados e grupos incompletos.
+        </p>
+      ) : null}
+
+      {modoParearAtivo ? <ModoParearBanner pareando={pareando} /> : null}
 
       <ExtratoBatchBar
         count={selectedIds.size}
@@ -534,6 +575,8 @@ export function ExtratoPage() {
           sortDataAsc={isSortDataAsc(filters.sort)}
           onSortDataDoubleClick={toggleSortData}
           highlightLancamentoId={filters.lancamento}
+          modoParearAtivo={modoParearAtivo}
+          modoParearOrigemKey={modoParearOrigemKey}
         />
       </div>
 
@@ -548,16 +591,21 @@ export function ExtratoPage() {
 
       {detailItem ? (
         <>
-          <button
-            type="button"
-            className="absolute inset-0 z-10 bg-black/20"
-            aria-label="Fechar painel"
-            data-financeiro-fechar-detalhe
-            onClick={() => setDetailItem(null)}
-          />
+          {modoParearAtivo ? (
+            <div className="absolute inset-0 z-10 pointer-events-none" aria-hidden />
+          ) : (
+            <button
+              type="button"
+              className="absolute inset-0 z-10 bg-black/20"
+              aria-label="Fechar painel"
+              data-financeiro-fechar-detalhe
+              onClick={() => setDetailItem(null)}
+            />
+          )}
           <ExtratoDetailPanel
             item={detailItem}
             onClose={() => setDetailItem(null)}
+            onModoParearChange={handleModoParearChange}
             onSaved={handleRowSaved}
             onDeleted={handleRowDeleted}
           />

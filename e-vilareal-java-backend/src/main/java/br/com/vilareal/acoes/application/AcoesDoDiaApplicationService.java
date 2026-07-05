@@ -2,6 +2,8 @@ package br.com.vilareal.acoes.application;
 
 import br.com.vilareal.acoes.api.dto.AcoesDoDiaResponse;
 import br.com.vilareal.acoes.api.dto.AcoesDoDiaResponse.*;
+import br.com.vilareal.calculo.api.dto.CalculoParcelamentoConsolidadoItem;
+import br.com.vilareal.calculo.application.CalculoParcelamentosConsolidadoApplicationService;
 import br.com.vilareal.documento.api.dto.CandidatoAlvaraCreditoResponse;
 import br.com.vilareal.documento.api.dto.CandidatoAlvaraProcessoResponse;
 import br.com.vilareal.documento.api.dto.RepassePendenteHonorarioCarteiraResponse;
@@ -50,6 +52,7 @@ public class AcoesDoDiaApplicationService {
     private final HonorarioRepasseService honorarioRepasseService;
     private final ContratoLocacaoRepository contratoLocacaoRepository;
     private final PagamentoRepository pagamentoRepository;
+    private final CalculoParcelamentosConsolidadoApplicationService parcelamentosConsolidadoService;
     private final Clock clock;
 
     public AcoesDoDiaApplicationService(
@@ -58,12 +61,14 @@ public class AcoesDoDiaApplicationService {
             HonorarioRepasseService honorarioRepasseService,
             ContratoLocacaoRepository contratoLocacaoRepository,
             PagamentoRepository pagamentoRepository,
+            CalculoParcelamentosConsolidadoApplicationService parcelamentosConsolidadoService,
             Clock clock) {
         this.quadroService = quadroService;
         this.locacaoReconciliacaoService = locacaoReconciliacaoService;
         this.honorarioRepasseService = honorarioRepasseService;
         this.contratoLocacaoRepository = contratoLocacaoRepository;
         this.pagamentoRepository = pagamentoRepository;
+        this.parcelamentosConsolidadoService = parcelamentosConsolidadoService;
         this.clock = clock;
     }
 
@@ -201,7 +206,9 @@ public class AcoesDoDiaApplicationService {
                     vencimento,
                     diasEntre(vencimento, hoje),
                     contrato.getId(),
-                    imovel != null ? imovel.getNumeroPlanilha() : null));
+                    imovel != null ? imovel.getNumeroPlanilha() : null,
+                    null,
+                    null));
         }
 
         RecebivelQuadroResponse quadro = quadroService.quadro(null, inicio, fim);
@@ -218,6 +225,8 @@ public class AcoesDoDiaApplicationService {
                         item.vencimento(),
                         diasAtraso,
                         null,
+                        null,
+                        null,
                         null));
             } else if (item.tipo() == RecebivelQuadroTipo.HONORARIOS) {
                 itens.add(new ItemCobrar(
@@ -227,8 +236,33 @@ public class AcoesDoDiaApplicationService {
                         item.vencimento(),
                         diasAtraso,
                         item.refId(),
+                        null,
+                        null,
                         null));
             }
+        }
+
+        var acordosResp = parcelamentosConsolidadoService.listarConsolidado(
+                null, List.of(), "vencidas", null, null, "diasAtraso", false, 0, 50);
+        for (CalculoParcelamentoConsolidadoItem ap : acordosResp.itens()) {
+            BigDecimal valor = escala(
+                    BigDecimal.valueOf(ap.valorCentavos() + ap.honorariosCentavos()).movePointLeft(2));
+            String desc = String.format(
+                    "Acordo proc. %d dim. %d — parc. %d — %s",
+                    ap.numeroProcesso(),
+                    ap.dimensao(),
+                    ap.parcelaNumero(),
+                    ap.parteOposta() != null ? ap.parteOposta() : "—");
+            itens.add(new ItemCobrar(
+                    desc,
+                    "ACORDO_PARCELA",
+                    valor,
+                    ap.dataVencimento(),
+                    ap.diasAtraso(),
+                    null,
+                    null,
+                    ap.codigoCliente(),
+                    ap.numeroProcesso()));
         }
 
         itens.sort(Comparator.comparingInt(ItemCobrar::diasEmAtraso).reversed()

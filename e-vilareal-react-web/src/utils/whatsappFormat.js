@@ -57,6 +57,13 @@ export function normalizePhoneForApi(input) {
   return cleaned;
 }
 
+/** Formata valor de contato (com ou sem 55) para exibição no formulário WhatsApp. */
+export function formatPhoneFromContato(valor) {
+  const normalized = normalizePhoneForApi(valor);
+  if (normalized) return formatPhoneDisplay(normalized);
+  return String(valor ?? '').trim();
+}
+
 export function isValidBrazilPhone(input) {
   const cleaned = normalizePhoneForApi(input);
   return /^55\d{10,11}$/.test(cleaned);

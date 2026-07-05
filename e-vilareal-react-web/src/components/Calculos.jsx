@@ -68,6 +68,7 @@ import {
   titulosGradeTemValor,
 } from '../data/calculosDebitosTitulos.js';
 import TitulosGrid from './calculos/TitulosGrid.jsx';
+import { CalculosAcordosPanel } from './calculos/CalculosAcordosPanel.jsx';
 import { IndicesAtualizacaoConferenciaModal } from './calculos/IndicesAtualizacaoConferenciaModal.jsx';
 import { parseValorMonetarioBr } from '../utils/parseValorMonetarioBr.js';
 import { formatValorMoedaCampo } from '../utils/moneyBr.js';
@@ -82,7 +83,7 @@ const ProcessosLazy = lazy(() =>
   import('./Processos.jsx').then((module) => ({ default: module.Processos }))
 );
 
-const TABS = ['Títulos', 'Custas Judiciais', 'Parcelamento', 'Pagamento', 'Honorários', 'Descrição dos Valores'];
+const TABS = ['Acordos', 'Títulos', 'Custas Judiciais', 'Parcelamento', 'Pagamento', 'Honorários', 'Descrição dos Valores'];
 
 const INDICES = INDICES_CALCULO;
 
@@ -802,6 +803,30 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       navigate('/calculos', { replace: true, state: buildRouterStateChaveClienteProcesso(cod, p) });
     }
   }
+
+  const abrirRodadaDesdeAcordos = useCallback(
+    ({ codigoCliente: codArg, numeroProcesso, dimensao: dimArg, aba = 'Parcelamento' }) => {
+      const cod = padCliente8(codArg);
+      const p = normalizarProc(numeroProcesso);
+      const dim = Math.max(0, Math.floor(Number(dimArg) || 0));
+      setCodigoCliente(cod);
+      setProc(p);
+      setDimensao(dim);
+      setPagina(1);
+      setCodClienteManual(cod);
+      setProcManual(String(p));
+      if (aba && TABS.includes(aba)) {
+        setTabAtiva(aba);
+      }
+      if (!isEmbedded) {
+        navigate('/calculos', {
+          replace: true,
+          state: { ...buildRouterStateChaveClienteProcesso(cod, p), dimensao: dim, abaCalculos: aba },
+        });
+      }
+    },
+    [isEmbedded, navigate]
+  );
 
   function normalizarCampoManual() {
     setCodClienteManual((v) => padCliente8(v));
@@ -2811,7 +2836,13 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
           </div>
         </aside>
 
-        <div className="order-first flex-1 min-w-0 min-h-0 overflow-auto p-2 [-webkit-overflow-scrolling:touch]">
+        <div className="order-first flex-1 min-w-0 min-h-0 overflow-auto p-2 [-webkit-overflow-scrolling:touch] flex flex-col">
+          {tabAtiva === 'Acordos' ? (
+            <CalculosAcordosPanel
+              codigoClienteFiltro=""
+              onAbrirRodada={abrirRodadaDesdeAcordos}
+            />
+          ) : null}
           {tabAtiva === 'Títulos' && (
             <TitulosGrid
               titulosPaginaCompletos={titulosPaginaCompletos}

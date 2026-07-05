@@ -12,6 +12,7 @@ import {
   cadastroParaQueryApi,
   parseCadastroFiltroParam,
 } from '../extrato/extratoCadastroFiltro.js';
+import { filtroCompensacaoSemParAtivo } from '../extrato/compensacaoSemPar.js';
 
 const DEBOUNCE_MS = 300;
 
@@ -204,10 +205,12 @@ export function useExtratoFilters() {
     const buscaPendente = busca !== String(filters.busca ?? '').trim();
     const letrasQuery = letrasParaQueryApi(filters);
     const cadastroQuery = cadastroParaQueryApi(filters.cadastro);
+    const semParCompensacao = filtroCompensacaoSemParAtivo(filters);
     return {
       numeroBanco: Number.isFinite(filters.banco) ? filters.banco : undefined,
       ...periodo,
-      etapa: filters.etapa ?? undefined,
+      etapa: semParCompensacao ? undefined : filters.etapa ?? undefined,
+      compensacaoSemPar: semParCompensacao ? true : undefined,
       busca: busca || undefined,
       semClienteId: filters.semClienteId || undefined,
       semGrupoCompensacao: filters.semGrupoCompensacao || undefined,

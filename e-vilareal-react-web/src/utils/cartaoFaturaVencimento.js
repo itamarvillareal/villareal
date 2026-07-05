@@ -1,4 +1,4 @@
-/** Crédito-síntese de fechamento (AUTO-FAT) — visível só em /financeiro/fatura/fechamentos. */
+/** Crédito-síntese de fechamento (AUTO-FAT) — visível só em /financeiro/cartoes/fechamentos. */
 export function ehLancamentoFechamentoAutomatico(row) {
   const numero = String(row?.numeroLancamento ?? '').trim();
   const origem = String(row?.origem ?? '').trim();

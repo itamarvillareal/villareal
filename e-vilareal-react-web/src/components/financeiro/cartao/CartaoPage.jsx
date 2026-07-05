@@ -595,7 +595,7 @@ export function CartaoPage() {
             Limpar cartão
           </button>
           <Link
-            to="/financeiro/fatura/fechamentos"
+            to="/financeiro/cartoes/fechamentos"
             className="text-xs text-blue-600 hover:underline whitespace-nowrap"
           >
             Fechamentos AUTO-FAT

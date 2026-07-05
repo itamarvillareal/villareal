@@ -235,9 +235,10 @@ public class FinanceiroController {
             @RequestParam(value = "codigoCliente", required = false) String codigoCliente,
             @RequestParam(value = "numeroInternoProcesso", required = false) Integer numeroInternoProcesso,
             @RequestParam(value = "numeroImovel", required = false) String numeroImovel,
+            @RequestParam(value = "compensacaoSemPar", required = false) Boolean compensacaoSemPar,
             @PageableDefault(size = 20, sort = "dataLancamento", direction = Sort.Direction.ASC) Pageable pageable) {
         EtapaLancamento etapaEnum = null;
-        if (etapa != null && !etapa.isBlank()) {
+        if (!Boolean.TRUE.equals(compensacaoSemPar) && etapa != null && !etapa.isBlank()) {
             etapaEnum = EtapaLancamento.valueOf(etapa.trim().toUpperCase());
         }
         return financeiroService.listarExtratoPaginado(
@@ -259,6 +260,7 @@ public class FinanceiroController {
                 codigoCliente,
                 numeroInternoProcesso,
                 numeroImovel,
+                compensacaoSemPar,
                 pageable);
     }
 
@@ -303,9 +305,10 @@ public class FinanceiroController {
             @RequestParam(value = "codigoCliente", required = false) String codigoCliente,
             @RequestParam(value = "numeroInternoProcesso", required = false) Integer numeroInternoProcesso,
             @RequestParam(value = "numeroImovel", required = false) String numeroImovel,
+            @RequestParam(value = "compensacaoSemPar", required = false) Boolean compensacaoSemPar,
             @PageableDefault(size = 20, sort = "dataLancamento", direction = Sort.Direction.ASC) Pageable pageable) {
         EtapaLancamento etapaEnum = null;
-        if (etapa != null && !etapa.isBlank()) {
+        if (!Boolean.TRUE.equals(compensacaoSemPar) && etapa != null && !etapa.isBlank()) {
             etapaEnum = EtapaLancamento.valueOf(etapa.trim().toUpperCase());
         }
         return financeiroService.listarLancamentosPaginado(
@@ -327,6 +330,7 @@ public class FinanceiroController {
                 codigoCliente,
                 numeroInternoProcesso,
                 numeroImovel,
+                compensacaoSemPar,
                 pageable);
     }
 

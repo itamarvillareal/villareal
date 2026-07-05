@@ -8,6 +8,7 @@ import br.com.vilareal.imovel.application.ImovelLancamentoFiltroCriteria;
 import br.com.vilareal.processo.application.ClienteCodigoPessoaResolver;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Subquery;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.util.StringUtils;
 
@@ -126,12 +127,50 @@ public final class LancamentoFinanceiroSpecifications {
             List<String> contaCodigos,
             boolean excluirContaCodigos,
             String cadastroPlenitude) {
+        return comFiltros(
+                clienteId,
+                processoId,
+                contaContabilId,
+                dataInicio,
+                dataFim,
+                etapa,
+                numeroBanco,
+                busca,
+                semClienteId,
+                semGrupoCompensacao,
+                ano,
+                mes,
+                contaCodigos,
+                excluirContaCodigos,
+                cadastroPlenitude,
+                null);
+    }
+
+    public static Specification<LancamentoFinanceiroEntity> comFiltros(
+            Long clienteId,
+            Long processoId,
+            Long contaContabilId,
+            LocalDate dataInicio,
+            LocalDate dataFim,
+            EtapaLancamento etapa,
+            Integer numeroBanco,
+            String busca,
+            Boolean semClienteId,
+            Boolean semGrupoCompensacao,
+            Integer ano,
+            Integer mes,
+            List<String> contaCodigos,
+            boolean excluirContaCodigos,
+            String cadastroPlenitude,
+            Boolean compensacaoSemPar) {
         Specification<LancamentoFinanceiroEntity> spec = comFiltrosBase(
                 clienteId, processoId, contaContabilId, dataInicio, dataFim);
         if (contaCodigos != null && !contaCodigos.isEmpty()) {
             spec = spec.and(comContaCodigos(contaCodigos, excluirContaCodigos));
         }
-        if (etapa != null) {
+        if (Boolean.TRUE.equals(compensacaoSemPar)) {
+            spec = spec.and(comCompensacaoSemPar());
+        } else if (etapa != null) {
             spec = spec.and(comEtapa(etapa));
         }
         if (numeroBanco != null) {
@@ -292,6 +331,32 @@ public final class LancamentoFinanceiroSpecifications {
                 p = cb.and(p, cb.lessThanOrEqualTo(root.get("dataLancamento"), dataFim));
             }
             return p;
+        };
+    }
+
+    /**
+     * Conta E aguardando par: etapa ≠ COMPENSADO ou grupo de compensação com menos de 2 lançamentos ativos.
+     */
+    public static Specification<LancamentoFinanceiroEntity> comCompensacaoSemPar() {
+        return (root, query, cb) -> {
+            var conta = root.join("contaContabil", JoinType.INNER);
+            var isE = cb.equal(cb.upper(conta.get("codigo")), "E");
+            var notCompensado = cb.notEqual(root.get("etapa"), EtapaLancamento.COMPENSADO);
+            var grupoPreenchido = cb.and(
+                    cb.isNotNull(root.get("grupoCompensacao")),
+                    cb.notEqual(root.get("grupoCompensacao"), ""));
+
+            Subquery<Long> countSq = query.subquery(Long.class);
+            var other = countSq.from(LancamentoFinanceiroEntity.class);
+            countSq.select(cb.count(other));
+            countSq.where(cb.and(
+                    cb.equal(other.get("grupoCompensacao"), root.get("grupoCompensacao")),
+                    cb.equal(other.get("status"), StatusLancamento.ATIVO),
+                    cb.isNotNull(other.get("grupoCompensacao")),
+                    cb.notEqual(other.get("grupoCompensacao"), "")));
+
+            var grupoIncompleto = cb.and(grupoPreenchido, cb.lessThan(countSq, 2L));
+            return cb.and(isE, cb.or(notCompensado, grupoIncompleto));
         };
     }
 

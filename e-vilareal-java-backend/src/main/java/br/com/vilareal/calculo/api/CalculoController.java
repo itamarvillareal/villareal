@@ -1,18 +1,32 @@
 package br.com.vilareal.calculo.api;
 
+import br.com.vilareal.calculo.api.dto.AcordoDescumpridoProporRequest;
+import br.com.vilareal.calculo.api.dto.AcordoDescumpridoProporResponse;
+import br.com.vilareal.calculo.api.dto.AcordoRegistrarAndamentoRequest;
 import br.com.vilareal.calculo.api.dto.CalculoClienteConfigResponse;
+import br.com.vilareal.calculo.api.dto.CalculoParcelamentosConsolidadoResponse;
+import br.com.vilareal.calculo.api.dto.CalculoParcelamentosConsolidadoResumo;
 import br.com.vilareal.calculo.api.dto.CalculoRodadasResponse;
 import br.com.vilareal.calculo.api.dto.CalculoRodadasResumoResponse;
 import br.com.vilareal.calculo.api.dto.CalculoRodadasWriteRequest;
+import br.com.vilareal.calculo.application.AcordoDescumpridoApplicationService;
+import br.com.vilareal.calculo.application.AcordoOperacaoAndamentoService;
 import br.com.vilareal.calculo.application.CalculoApplicationService;
+import br.com.vilareal.calculo.application.CalculoParcelamentosConsolidadoApplicationService;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDate;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/calculos")
@@ -20,9 +34,19 @@ import org.springframework.web.bind.annotation.*;
 public class CalculoController {
 
     private final CalculoApplicationService calculoApplicationService;
+    private final CalculoParcelamentosConsolidadoApplicationService parcelamentosConsolidadoService;
+    private final AcordoDescumpridoApplicationService acordoDescumpridoService;
+    private final AcordoOperacaoAndamentoService acordoOperacaoAndamentoService;
 
-    public CalculoController(CalculoApplicationService calculoApplicationService) {
+    public CalculoController(
+            CalculoApplicationService calculoApplicationService,
+            CalculoParcelamentosConsolidadoApplicationService parcelamentosConsolidadoService,
+            AcordoDescumpridoApplicationService acordoDescumpridoService,
+            AcordoOperacaoAndamentoService acordoOperacaoAndamentoService) {
         this.calculoApplicationService = calculoApplicationService;
+        this.parcelamentosConsolidadoService = parcelamentosConsolidadoService;
+        this.acordoDescumpridoService = acordoDescumpridoService;
+        this.acordoOperacaoAndamentoService = acordoOperacaoAndamentoService;
     }
 
     /**
@@ -100,5 +124,65 @@ public class CalculoController {
     public CalculoClienteConfigResponse salvarConfigCliente(
             @PathVariable String codigoCliente, @RequestBody(required = false) JsonNode patch) {
         return calculoApplicationService.salvarConfigCliente(codigoCliente, patch);
+    }
+
+    @GetMapping(value = "/parcelamentos/consolidado", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Parcelamentos aceitos consolidados", description = "Uma linha por parcela de acordo (parcelamentoAceito=true), paginado.")
+    public ResponseEntity<CalculoParcelamentosConsolidadoResponse> listarParcelamentosConsolidado(
+            @RequestParam(required = false) String clienteCodigo,
+            @RequestParam(required = false) String processos,
+            @RequestParam(required = false, defaultValue = "todas") String situacao,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate vencimentoDe,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate vencimentoAte,
+            @RequestParam(required = false, defaultValue = "vencimento") String ordenarPor,
+            @RequestParam(required = false, defaultValue = "true") boolean ordemAsc,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "50") int size) {
+        List<Integer> procs = parseProcessos(processos);
+        CalculoParcelamentosConsolidadoResponse body = parcelamentosConsolidadoService.listarConsolidado(
+                clienteCodigo, procs, situacao, vencimentoDe, vencimentoAte, ordenarPor, ordemAsc, page, size);
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .cacheControl(CacheControl.noStore())
+                .body(body);
+    }
+
+    @GetMapping(value = "/parcelamentos/resumo-kpi", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "KPIs de parcelamentos (badge menu)", description = "Resumo rápido de vencidas e valores em aberto.")
+    public CalculoParcelamentosConsolidadoResumo resumoKpiParcelamentos(
+            @RequestParam(required = false) String clienteCodigo,
+            @RequestParam(required = false) String processos) {
+        return parcelamentosConsolidadoService.resumoKpi(clienteCodigo, parseProcessos(processos));
+    }
+
+    @PostMapping(value = "/acordo-descumprido/propor", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(summary = "Propor descumprimento de acordo", description = "Monta títulos na próxima dimensão (proposta, sem aceitar pagamento).")
+    public AcordoDescumpridoProporResponse proporAcordoDescumprido(@RequestBody AcordoDescumpridoProporRequest body) {
+        return acordoDescumpridoService.propor(body);
+    }
+
+    @PostMapping("/acordos/registrar-andamento")
+    @Operation(summary = "Registrar andamento de operação sobre acordo")
+    public ResponseEntity<Void> registrarAndamentoAcordo(@RequestBody AcordoRegistrarAndamentoRequest body) {
+        acordoOperacaoAndamentoService.registrar(
+                body.processoId(),
+                body.origem(),
+                body.titulo(),
+                body.detalhe(),
+                AcordoOperacaoAndamentoService.novoImportacaoId());
+        return ResponseEntity.noContent().build();
+    }
+
+    private static List<Integer> parseProcessos(String processos) {
+        if (processos == null || processos.isBlank()) {
+            return List.of();
+        }
+        return Arrays.stream(processos.split("[,;\\s]+"))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .map(s -> s.replaceAll("\\D", ""))
+                .filter(s -> !s.isEmpty())
+                .map(Integer::parseInt)
+                .collect(Collectors.toList());
     }
 }

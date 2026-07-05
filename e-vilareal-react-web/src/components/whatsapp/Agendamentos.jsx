@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Calendar, ChevronDown, ChevronRight, Loader2, Plus } from 'lucide-react';
 import { ConfirmDialog } from '../financeiro/shared/ConfirmDialog.jsx';
 import { ScheduleModal } from './components/ScheduleModal.jsx';
@@ -56,6 +57,8 @@ function ScheduleDateHeader({ label, count, collapsed, onToggle, collapsible }) 
 }
 
 export function WhatsAppAgendamentos() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const { getScheduled } = useWhatsApp();
   const { templates } = useWhatsAppTemplates();
   const toast = useWhatsAppToast();
@@ -67,9 +70,28 @@ export function WhatsAppAgendamentos() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [modalInitialPhone, setModalInitialPhone] = useState('');
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelling, setCancelling] = useState(false);
   const [anterioresAbertos, setAnterioresAbertos] = useState(false);
+
+  useEffect(() => {
+    const st = location.state;
+    if (!st?.openSchedule || !st?.phone) return;
+    setModalInitialPhone(String(st.phone).trim());
+    setModalOpen(true);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate]);
+
+  const abrirModalNovo = () => {
+    setModalInitialPhone('');
+    setModalOpen(true);
+  };
+
+  const fecharModal = () => {
+    setModalOpen(false);
+    setModalInitialPhone('');
+  };
 
   const fetchPage = useCallback(
     async (pageNum, append = false, signal) => {
@@ -167,7 +189,7 @@ export function WhatsAppAgendamentos() {
             ))}
           </select>
         </div>
-        <button type="button" className={processosBtnPrimary} onClick={() => setModalOpen(true)}>
+        <button type="button" className={processosBtnPrimary} onClick={abrirModalNovo}>
           <Plus className="w-4 h-4" />
           Novo agendamento
         </button>
@@ -230,7 +252,12 @@ export function WhatsAppAgendamentos() {
         </div>
       ) : null}
 
-      <ScheduleModal open={modalOpen} onClose={() => setModalOpen(false)} onSuccess={handleModalSuccess} />
+      <ScheduleModal
+        open={modalOpen}
+        initialPhone={modalInitialPhone}
+        onClose={fecharModal}
+        onSuccess={handleModalSuccess}
+      />
       <ConfirmDialog
         open={Boolean(cancelTarget)}
         title="Cancelar agendamento"

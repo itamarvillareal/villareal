@@ -132,6 +132,10 @@ export const LazyFinanceiroFaturaFechamentos = fromNamed(
   () => import('../components/financeiro/fatura/FechamentoFaturaExtratoPage.jsx'),
   'FechamentoFaturaExtratoPage',
 );
+export const LazyFinanceiroCartoesHub = fromNamed(
+  () => import('../components/financeiro/cartao/CartoesHubPage.jsx'),
+  'CartoesHubPage',
+);
 export const LazyFinanceiroCartao = fromNamed(
   () => import('../components/financeiro/cartao/CartaoPage.jsx'),
   'CartaoPage',

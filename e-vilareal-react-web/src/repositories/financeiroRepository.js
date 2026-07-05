@@ -354,6 +354,7 @@ function queryLancamentosPaginados(filtros = {}) {
     dataInicio: filtros.dataInicio ?? undefined,
     dataFim: filtros.dataFim ?? undefined,
     etapa: filtros.etapa ?? undefined,
+    compensacaoSemPar: filtros.compensacaoSemPar === true ? true : undefined,
     numeroBanco: filtros.numeroBanco ?? undefined,
     busca: filtros.busca ?? undefined,
     semClienteId: filtros.semClienteId === true ? true : undefined,

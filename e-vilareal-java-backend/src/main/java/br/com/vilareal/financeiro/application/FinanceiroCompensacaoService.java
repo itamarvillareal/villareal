@@ -649,8 +649,7 @@ public class FinanceiroCompensacaoService {
         for (LancamentoFinanceiroEntity e : List.of(a, b)) {
             e.setContaContabil(contaE);
             e.setGrupoCompensacao(grupo);
-            Long clienteId = e.getClienteEntidade() != null ? e.getClienteEntidade().getId() : null;
-            e.setEtapa(EtapaLancamento.calcular(contaE.getCodigo(), grupo, clienteId));
+            e.setEtapa(EtapaLancamento.COMPENSADO);
         }
     }
 

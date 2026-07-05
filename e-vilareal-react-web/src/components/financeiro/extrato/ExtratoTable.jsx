@@ -35,6 +35,9 @@ function ExtratoTableInner({
   modoFechamentoFatura = false,
   /** Total (bancos + cartões): coluna origem (banco/cartão). */
   modoTotal = false,
+  /** Modo parear: clique na linha forma par com o lançamento aberto no painel. */
+  modoParearAtivo = false,
+  modoParearOrigemKey = null,
 }) {
   const ids = useMemo(
     () => data.map((r) => rowKeyOf(r, rowKeyField)).filter((id) => id != null),
@@ -131,12 +134,15 @@ function ExtratoTableInner({
               const rowKey = rowKeyOf(item, rowKeyField);
               const selected = selectedIds.has(rowKey);
               const destacado = highlightLancamentoId != null && Number(item.id) === Number(highlightLancamentoId);
+              const parearOrigem = modoParearAtivo && modoParearOrigemKey != null && rowKey === modoParearOrigemKey;
+              const parearCandidato = modoParearAtivo && !parearOrigem;
               const pendente = item.etapa === ETAPAS.IMPORTADO;
               const fechado = item.etapa === ETAPAS.FECHADO;
               let rowBg = idx % 2 === 1 ? 'var(--fin-row-alt)' : 'transparent';
               if (pendente) rowBg = 'var(--fin-row-pendente)';
               if (selected) rowBg = 'var(--fin-row-selected)';
               if (destacado) rowBg = 'var(--fin-row-selected)';
+              if (parearOrigem) rowBg = 'var(--fin-row-selected)';
 
               return (
                 <tr
@@ -144,7 +150,20 @@ function ExtratoTableInner({
                   data-lancamento-id={item.id}
                   className={`group border-b transition-colors cursor-pointer ${
                     fechado ? 'opacity-70' : ''
-                  } ${destacado ? 'ring-2 ring-inset ring-indigo-500/70' : ''}`}
+                  } ${destacado ? 'ring-2 ring-inset ring-indigo-500/70' : ''} ${
+                    parearOrigem ? 'ring-2 ring-inset ring-indigo-500/70' : ''
+                  } ${
+                    parearCandidato
+                      ? 'hover:ring-2 hover:ring-inset hover:ring-emerald-500/60'
+                      : ''
+                  }`}
+                  title={
+                    parearCandidato
+                      ? 'Clique para parear com o lançamento aberto'
+                      : parearOrigem
+                        ? 'Lançamento aberto no painel'
+                        : undefined
+                  }
                   style={{
                     borderColor: 'var(--vl-border, #e2e8f0)',
                     background: rowBg,

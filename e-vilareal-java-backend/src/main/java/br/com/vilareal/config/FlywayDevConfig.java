@@ -16,6 +16,9 @@ public class FlywayDevConfig {
 
     @Bean
     public FlywayMigrationStrategy flywayMigrationStrategy() {
-        return Flyway::migrate;
+        return flyway -> {
+            flyway.repair();
+            flyway.migrate();
+        };
     }
 }
