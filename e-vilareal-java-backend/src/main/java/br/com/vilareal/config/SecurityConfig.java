@@ -103,10 +103,10 @@ public class SecurityConfig {
                 .exceptionHandling(e -> e
                         .authenticationEntryPoint(securityProblemSupport)
                         .accessDeniedHandler(securityProblemSupport))
-                .addFilterBefore(assinadorHttpsEnforcementFilter, JwtAuthenticationFilter.class)
-                .addFilterBefore(assinadorAccessLogFilter, JwtAuthenticationFilter.class)
-                .addFilterBefore(assinadorSecretAuthFilter, JwtAuthenticationFilter.class)
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(assinadorSecretAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(assinadorAccessLogFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(assinadorHttpsEnforcementFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 
