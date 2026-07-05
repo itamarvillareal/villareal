@@ -31,6 +31,12 @@ function itemMenuPermitido(item, podeFn) {
   return podeFn(item.id);
 }
 
+/** Rota do submenu Financeiro (e similares). */
+function rotaNavFilho(ch) {
+  if (ch.id === 'financeiro') return '/financeiro/extrato';
+  return `/${ch.id}`;
+}
+
 /** Rota padrão ao expandir um grupo do menu lateral. */
 function rotaPadraoGrupo(grupoId, subs) {
   switch (grupoId) {
@@ -298,7 +304,7 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
                     {subs.map((ch) => (
                         <NavLink
                           key={ch.id}
-                          to={ch.id === 'financeiro' ? '/financeiro/extrato' : `/${ch.id}`}
+                          to={rotaNavFilho(ch)}
                           end={ch.id !== 'clientes/lista'}
                           onClick={closeMobileDrawer}
                           className={({ isActive }) => {
@@ -313,7 +319,19 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
                             } else if (ch.id === 'iptu') {
                               ativo = path === '/iptu' || path.startsWith('/iptu/');
                             } else if (ch.id === 'financeiro') {
-                              ativo = path === '/financeiro' || path.startsWith('/financeiro/');
+                              ativo =
+                                path === '/financeiro/extrato' ||
+                                path.startsWith('/financeiro/extrato/') ||
+                                path === '/financeiro/inbox' ||
+                                path.startsWith('/financeiro/inbox/');
+                            } else if (ch.id === 'calculos') {
+                              ativo = path === '/calculos';
+                            } else if (ch.id === 'calculos/acordos') {
+                              ativo = path === '/calculos/acordos';
+                            } else if (ch.id === 'financeiro/relatorios') {
+                              ativo =
+                                path === '/financeiro/relatorios' ||
+                                path.startsWith('/financeiro/relatorios/');
                             }
                             return `flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium transition-all duration-200 border-l-2 ${
                               ativo
@@ -323,7 +341,15 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
                           }}
                         >
                           <SidebarMenuIcon id={ch.id} className="w-3.5 h-3.5 shrink-0" />
-                          <span className="leading-snug">{ch.label}</span>
+                          <span className="leading-snug flex-1 min-w-0">{ch.label}</span>
+                          {ch.id === 'calculos/acordos' && acordosVencidos > 0 ? (
+                            <span
+                              className="notification-badge flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white"
+                              title={`${acordosVencidos} parcela(s) de acordo vencida(s)`}
+                            >
+                              {acordosVencidos > 99 ? '99+' : acordosVencidos}
+                            </span>
+                          ) : null}
                         </NavLink>
                       ))}
                   </div>

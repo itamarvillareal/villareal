@@ -16,6 +16,7 @@ import {
   LazyCadastroClientes,
   LazyCadastroPessoas,
   LazyCalculos,
+  LazyCalculosAcordos,
   LazyConfiguracoes,
   LazyDiagnosticos,
   LazyRelatorioTarefas,
@@ -483,6 +484,7 @@ function App() {
                 element={<Navigate to="/recebiveis?tipo=HONORARIOS" replace />}
               />
               <Route path="/relatorio-calculos" element={<LazyRelatorioCalculos />} />
+              <Route path="/calculos/acordos" element={<LazyCalculosAcordos />} />
               <Route path="/calculos" element={<LazyCalculos />} />
               <Route path="/topicos" element={<LazyTopicos />} />
               <Route path="/topicos/gerente" element={<LazyGerenteTopicos />} />

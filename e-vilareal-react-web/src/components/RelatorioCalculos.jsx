@@ -287,10 +287,10 @@ export function RelatorioCalculos() {
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => navigate('/calculos', { state: { abaCalculos: 'Acordos' } })}
+              onClick={() => navigate('/calculos/acordos')}
               className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border border-indigo-300 bg-white text-indigo-800 text-sm font-medium hover:bg-indigo-50"
             >
-              Aba Acordos (rápido)
+              Acordos (rápido)
             </button>
             <button
               type="button"

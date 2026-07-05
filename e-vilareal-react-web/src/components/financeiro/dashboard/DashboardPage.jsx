@@ -6,6 +6,7 @@ import { featureFlags } from '../../../config/featureFlags.js';
 import { obterSaudeFinanceiroApi } from '../../../repositories/financeiroRepository.js';
 import { DashboardSkeleton } from '../shared/LoadingSkeleton.jsx';
 import { ETAPAS, INBOX_TIPOS } from '../constants/financeiroConstants.js';
+import { pathInboxFinanceiro } from '../financeiroNavLinks.js';
 
 function etapaCount(saude, etapa) {
   return Number(saude?.porEtapa?.[etapa] ?? 0);
@@ -187,7 +188,7 @@ export function DashboardPage() {
           value={pendentes}
           sublabel={pctPendentes}
           tone="amber"
-          to={`/financeiro/inbox?tipo=${INBOX_TIPOS.classificar}`}
+          to={pathInboxFinanceiro('', INBOX_TIPOS.classificar)}
         />
         <KpiCard
           label="Compensações válidas"
@@ -197,7 +198,7 @@ export function DashboardPage() {
           label="Revisar"
           value={saude?.gruposInconsistentes}
           tone="red"
-          to={`/financeiro/inbox?tipo=${INBOX_TIPOS.inconsistentes}`}
+          to={pathInboxFinanceiro('', INBOX_TIPOS.inconsistentes)}
         />
       </div>
 
@@ -274,7 +275,7 @@ function PendenciaLink({ label, count, tipo }) {
   return (
     <li>
       <Link
-        to={`/financeiro/inbox?tipo=${tipo}`}
+        to={pathInboxFinanceiro('', tipo)}
         className="flex justify-between items-center py-1.5 px-2 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200"
       >
         <span>{label}</span>

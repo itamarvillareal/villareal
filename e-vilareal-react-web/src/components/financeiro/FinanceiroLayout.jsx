@@ -1,5 +1,5 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { NavLink, Outlet, useMatch, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useMatch, useNavigate } from 'react-router-dom';
 import {
   BarChart3,
   CreditCard,
@@ -25,6 +25,7 @@ import { FinanceiroToastProvider } from './shared/Toast.jsx';
 import { DashboardSkeleton } from './shared/LoadingSkeleton.jsx';
 import { BancoItem } from './shared/BancoItem.jsx';
 import { ExtratoImportModal } from './extrato/ExtratoImportModal.jsx';
+import { pathExtratoFinanceiro, pathInboxFinanceiro } from './financeiroNavLinks.js';
 import { ModalPesquisaValorLancamento } from './pesquisa/ModalPesquisaValorLancamento.jsx';
 import { FaturaCartaoImportModal } from './cartao/FaturaCartaoImportModal.jsx';
 import {
@@ -64,6 +65,7 @@ function FinanceiroShell({
   onClosePesquisaValor,
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const cartaoRouteMatch = useMatch('/financeiro/cartao/:id');
   const cartaoNumeroRoute =
     cartaoRouteMatch?.params?.id != null && cartaoRouteMatch.params.id !== ''
@@ -73,13 +75,13 @@ function FinanceiroShell({
 
   const globalShortcuts = useMemo(
     () => [
-      { key: 'i', ctrl: true, handler: () => navigate('/financeiro/inbox/classificar') },
-      { key: 'e', ctrl: true, handler: () => navigate('/financeiro/extrato') },
+      { key: 'i', ctrl: true, handler: () => navigate(pathInboxFinanceiro(location.search)) },
+      { key: 'e', ctrl: true, handler: () => navigate(pathExtratoFinanceiro(location.search)) },
       { key: 'd', alt: true, handler: () => navigate('/financeiro') },
       { key: '/', handler: () => focusFinanceiroBusca() },
       { key: 'Escape', handler: () => handleFinanceiroEscape() },
     ],
-    [navigate],
+    [navigate, location.search],
   );
 
   useKeyboardShortcuts(globalShortcuts);
@@ -126,7 +128,7 @@ function FinanceiroShell({
           {totalPendentes > 0 ? (
             <button
               type="button"
-              onClick={() => navigate('/financeiro/inbox')}
+              onClick={() => navigate(pathInboxFinanceiro(location.search))}
               className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300"
             >
               {totalPendentes.toLocaleString('pt-BR')} pendentes
@@ -189,12 +191,30 @@ function FinanceiroShell({
                   <LayoutDashboard className="w-[15px] h-[15px] shrink-0" />
                   Painel
                 </NavLink>
-                <NavLink to="/financeiro/extrato" className={navClass}>
+                <NavLink
+                  to={pathExtratoFinanceiro(location.search)}
+                  className={() =>
+                    navClass({
+                      isActive:
+                        location.pathname === '/financeiro/extrato' ||
+                        location.pathname.startsWith('/financeiro/extrato/'),
+                    })
+                  }
+                >
                   <FileText className="w-[15px] h-[15px] shrink-0" />
                   Extrato
                 </NavLink>
-                <NavLink to="/financeiro/inbox" className={navClass}>
-                  <Inbox className="w-[15px] h-[15px] shrink-0" />
+                <NavLink
+                  to={pathInboxFinanceiro(location.search)}
+                  className={() =>
+                    navClass({
+                      isActive:
+                        location.pathname === '/financeiro/inbox' ||
+                        location.pathname.startsWith('/financeiro/inbox/'),
+                    })
+                  }
+                >
+                  <Inbox className="w-[15px] h-[15px] shrink-0 ml-3" />
                   Inbox
                   {totalPendentes > 0 ? (
                     <span className="ml-auto text-[11px] font-medium px-1.5 rounded-full bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300">

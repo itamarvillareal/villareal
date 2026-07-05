@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useSearchParams } from 'react-router-dom';
 import { INBOX_TIPOS } from '../constants/financeiroConstants.js';
 
 const TABS = [
@@ -12,6 +12,10 @@ const TABS = [
 ];
 
 export const InboxTabs = memo(function InboxTabs({ counts = {} }) {
+  const [searchParams] = useSearchParams();
+  const qs = searchParams.toString();
+  const suffix = qs ? `?${qs}` : '';
+
   return (
     <nav className="flex flex-wrap gap-1 p-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
       {TABS.map(({ tipo, label }) => {
@@ -19,7 +23,7 @@ export const InboxTabs = memo(function InboxTabs({ counts = {} }) {
         return (
           <NavLink
             key={tipo}
-            to={`/financeiro/inbox/${tipo}`}
+            to={`/financeiro/inbox/${tipo}${suffix}`}
             className={({ isActive }) =>
               `px-3.5 py-1.5 text-[13px] rounded-lg border transition-colors ${
                 isActive

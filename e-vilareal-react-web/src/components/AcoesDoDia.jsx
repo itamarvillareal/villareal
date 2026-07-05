@@ -377,17 +377,10 @@ export function AcoesDoDia() {
                     <div className="mt-2">
                       <button
                         type="button"
-                        onClick={() =>
-                          navigate('/calculos', {
-                            state: {
-                              ...buildRouterStateChaveClienteProcesso(item.codigoCliente, item.numeroInterno),
-                              abaCalculos: 'Acordos',
-                            },
-                          })
-                        }
+                        onClick={() => navigate('/calculos/acordos')}
                         className="inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-md bg-red-600 text-white hover:bg-red-700"
                       >
-                        Ver na aba Acordos
+                        Ver em Acordos
                       </button>
                     </div>
                   ) : null}

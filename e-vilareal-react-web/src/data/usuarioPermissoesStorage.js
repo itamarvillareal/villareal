@@ -320,6 +320,9 @@ export function pathParaModuloId(pathname) {
   if (noLead === 'processos/recebiveis') {
     return 'processos/recebiveis';
   }
+  if (noLead === 'financeiro/inbox' || noLead.startsWith('financeiro/inbox/')) {
+    return 'financeiro';
+  }
   if (IDS_MODULO.has(noLead)) return noLead;
   const parts = noLead.split('/');
   for (let i = parts.length; i >= 1; i--) {

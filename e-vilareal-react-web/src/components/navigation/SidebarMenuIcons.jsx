@@ -619,6 +619,7 @@ const MENU_ICONS = {
   'relatorio-resultado-processos/recebiveis': Receipt,
   'calcular-grupo': IconCalculator,
   calculos: IconCalculationsLucide,
+  'calculos/acordos': Scale,
   'relatorio-calculos': IconRelatorioCalculos,
   'admin-imoveis-grupo': IconLandmarkImoveis,
   'imoveis-grupo': IconBuilding,

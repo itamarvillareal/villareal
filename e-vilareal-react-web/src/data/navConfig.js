@@ -53,6 +53,7 @@ export const navItems = [
     label: 'Calcular',
     icon: 'Calculator',
     children: [
+      { id: 'calculos/acordos', label: 'Acordos', icon: 'Scale' },
       { id: 'calculos', label: 'Cálculos', icon: 'Calculator' },
       { id: 'relatorio-calculos', label: 'Relatório de Cálculos', icon: 'Table2' },
     ],

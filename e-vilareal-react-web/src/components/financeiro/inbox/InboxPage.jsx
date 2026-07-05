@@ -60,6 +60,7 @@ import {
   mapParCompensacaoParaUi,
   parKey,
 } from './inboxMappers.js';
+import { INBOX_TIPOS, clampFinanceiroPageSize } from '../constants/financeiroConstants.js';
 
 const TIPOS_VALIDOS = new Set(Object.values(INBOX_TIPOS));
 const FADE_MS = 280;

@@ -86,6 +86,10 @@ export const LazyQuadroRecebiveis = fromNamed(() => import('../components/Quadro
 export const LazyAcoesDoDia = fromNamed(() => import('../components/AcoesDoDia.jsx'), 'AcoesDoDia');
 export const LazyRelatorioCalculos = fromNamed(() => import('../components/RelatorioCalculos.jsx'), 'RelatorioCalculos');
 export const LazyCalculos = fromNamed(() => import('../components/Calculos.jsx'), 'Calculos');
+export const LazyCalculosAcordos = fromNamed(
+  () => import('../components/calculos/CalculosAcordosPage.jsx'),
+  'CalculosAcordosPage'
+);
 export const LazyDiagnosticos = fromNamed(() => import('../components/Diagnosticos.jsx'), 'Diagnosticos');
 export const LazyRelatorioTarefas = fromNamed(() => import('../components/RelatorioTarefas.jsx'), 'RelatorioTarefas');
 export const LazyFinanceiroLayout = fromNamed(
@@ -101,8 +105,8 @@ export const LazyFinanceiroExtrato = fromNamed(
   'ExtratoPage',
 );
 export const LazyFinanceiroInbox = fromNamed(
-  () => import('../components/financeiro/inbox/InboxPage.jsx'),
-  'InboxPage',
+  () => import('../components/financeiro/inbox/InboxRoute.jsx'),
+  'InboxRoute',
 );
 export const LazyFinanceiroConsolidado = fromNamed(
   () => import('../components/financeiro/consolidado/ConsolidadoPage.jsx'),
