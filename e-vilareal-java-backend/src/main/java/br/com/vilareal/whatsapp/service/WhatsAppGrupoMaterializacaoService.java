@@ -85,6 +85,8 @@ public class WhatsAppGrupoMaterializacaoService {
 
     private int regravarTelefone(String phoneNumber, List<WhatsAppVinculoService.ClienteVinculoResumo> clientes) {
         conversaClienteRepository.deleteByPhoneNumber(phoneNumber);
+        // Garante que o DELETE bulk chega ao banco antes dos INSERTs do saveAll (mesma transação).
+        conversaClienteRepository.flush();
         if (clientes.isEmpty()) {
             return 0;
         }

@@ -20,6 +20,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -77,8 +78,10 @@ class WhatsAppGrupoMaterializacaoServiceTest {
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<WhatsAppConversaClienteEntity>> captor = ArgumentCaptor.forClass(List.class);
-        verify(conversaClienteRepository).deleteByPhoneNumber(PHONE);
-        verify(conversaClienteRepository).saveAll(captor.capture());
+        var ordem = inOrder(conversaClienteRepository);
+        ordem.verify(conversaClienteRepository).deleteByPhoneNumber(PHONE);
+        ordem.verify(conversaClienteRepository).flush();
+        ordem.verify(conversaClienteRepository).saveAll(captor.capture());
 
         List<WhatsAppConversaClienteEntity> salvas = captor.getValue();
         assertThat(salvas).hasSize(2);

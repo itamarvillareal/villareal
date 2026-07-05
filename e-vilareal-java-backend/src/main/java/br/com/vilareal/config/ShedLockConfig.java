@@ -1,6 +1,8 @@
 package br.com.vilareal.config;
 
+import net.javacrumbs.shedlock.core.DefaultLockingTaskExecutor;
 import net.javacrumbs.shedlock.core.LockProvider;
+import net.javacrumbs.shedlock.core.LockingTaskExecutor;
 import net.javacrumbs.shedlock.provider.jdbctemplate.JdbcTemplateLockProvider;
 import net.javacrumbs.shedlock.spring.annotation.EnableSchedulerLock;
 import org.springframework.context.annotation.Bean;
@@ -32,5 +34,10 @@ public class ShedLockConfig {
                         // Usa o relógio do banco (evita problemas de clock skew entre nós).
                         .usingDbTime()
                         .build());
+    }
+
+    @Bean
+    public LockingTaskExecutor lockingTaskExecutor(LockProvider lockProvider) {
+        return new DefaultLockingTaskExecutor(lockProvider);
     }
 }

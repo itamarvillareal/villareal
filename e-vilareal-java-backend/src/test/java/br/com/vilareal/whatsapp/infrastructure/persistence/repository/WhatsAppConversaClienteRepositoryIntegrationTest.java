@@ -56,6 +56,29 @@ class WhatsAppConversaClienteRepositoryIntegrationTest extends AbstractIntegrati
     }
 
     @Test
+    void deleteFlushSaveAll_mesmaUk_comLinhaAntiga_naoViolaConstraint() {
+        String phone = PHONE_PREFIX + "0632";
+        Instant antigo = Instant.parse("2026-07-04T09:00:00Z");
+        Instant novo = Instant.parse("2026-07-05T09:00:00Z");
+
+        repository.save(linha(phone, "00000632", "Antigo", antigo));
+        repository.flush();
+
+        repository.deleteByPhoneNumber(phone);
+        repository.flush();
+        repository.saveAll(List.of(linha(phone, "00000632", "Novo", novo)));
+        repository.flush();
+
+        assertThat(repository.findByPhoneNumber(phone))
+                .singleElement()
+                .satisfies(row -> {
+                    assertThat(row.getClienteCodigo()).isEqualTo("00000632");
+                    assertThat(row.getClienteNome()).isEqualTo("Novo");
+                    assertThat(row.getAtualizadoEm()).isEqualTo(novo);
+                });
+    }
+
+    @Test
     void findDistinctClientes_retornaCodigosUnicosOrdenados() {
         String phoneA = PHONE_PREFIX + "0010";
         String phoneB = PHONE_PREFIX + "0011";

@@ -1,11 +1,13 @@
 package br.com.vilareal.whatsapp.api;
 
+import br.com.vilareal.whatsapp.dto.WhatsAppGrupoMaterializacaoEmAndamentoResponse;
 import br.com.vilareal.whatsapp.dto.WhatsAppGrupoDTO;
 import br.com.vilareal.whatsapp.dto.WhatsAppGrupoMaterializacaoResultDTO;
 import br.com.vilareal.whatsapp.service.WhatsAppGrupoListService;
-import br.com.vilareal.whatsapp.service.WhatsAppGrupoMaterializacaoService;
+import br.com.vilareal.whatsapp.service.WhatsAppGrupoMaterializacaoLockService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,12 +22,13 @@ import java.util.List;
 @Tag(name = "WhatsApp Grupos", description = "Materialização de clientes por conversa (abas por cliente)")
 public class WhatsAppGrupoController {
 
-    private final WhatsAppGrupoMaterializacaoService materializacaoService;
+    private final WhatsAppGrupoMaterializacaoLockService materializacaoLockService;
     private final WhatsAppGrupoListService grupoListService;
 
     public WhatsAppGrupoController(
-            WhatsAppGrupoMaterializacaoService materializacaoService, WhatsAppGrupoListService grupoListService) {
-        this.materializacaoService = materializacaoService;
+            WhatsAppGrupoMaterializacaoLockService materializacaoLockService,
+            WhatsAppGrupoListService grupoListService) {
+        this.materializacaoLockService = materializacaoLockService;
         this.grupoListService = grupoListService;
     }
 
@@ -41,8 +44,13 @@ public class WhatsAppGrupoController {
             summary = "Materializar clientes por conversa agora",
             description =
                     "Executa uma rodada completa do job de grupos (telefones distintos em whatsapp_messages). "
-                            + "Requer ROLE_ADMIN.")
-    public ResponseEntity<WhatsAppGrupoMaterializacaoResultDTO> materializarAgora() {
-        return ResponseEntity.ok(materializacaoService.executarRodada());
+                            + "Requer ROLE_ADMIN. Compartilha o lock ShedLock do tick agendado; retorna 409 se já "
+                            + "houver materialização em andamento.")
+    public ResponseEntity<?> materializarAgora() {
+        return materializacaoLockService
+                .executarRodadaComLock()
+                .<ResponseEntity<?>>map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.status(HttpStatus.CONFLICT)
+                        .body(WhatsAppGrupoMaterializacaoEmAndamentoResponse.padrao()));
     }
 }

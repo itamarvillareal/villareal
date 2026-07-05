@@ -1,6 +1,5 @@
 package br.com.vilareal.whatsapp.service;
 
-import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -14,20 +13,20 @@ public class WhatsAppGrupoMaterializacaoJob {
 
     private static final Logger log = LoggerFactory.getLogger(WhatsAppGrupoMaterializacaoJob.class);
 
-    private final WhatsAppGrupoMaterializacaoService materializacaoService;
+    private final WhatsAppGrupoMaterializacaoLockService lockService;
 
-    public WhatsAppGrupoMaterializacaoJob(WhatsAppGrupoMaterializacaoService materializacaoService) {
-        this.materializacaoService = materializacaoService;
+    public WhatsAppGrupoMaterializacaoJob(WhatsAppGrupoMaterializacaoLockService lockService) {
+        this.lockService = lockService;
     }
 
     @Scheduled(fixedDelayString = "${whatsapp.grupos.intervalo-ms:900000}")
-    @SchedulerLock(
-            name = "whatsapp-grupos-materializacao",
-            lockAtMostFor = "PT10M",
-            lockAtLeastFor = "PT30S")
     public void tick() {
         try {
-            materializacaoService.executarRodada();
+            lockService
+                    .executarRodadaComLock()
+                    .ifPresentOrElse(
+                            result -> {},
+                            () -> log.debug("WhatsApp grupos materialização tick ignorado: lock indisponível"));
         } catch (Exception e) {
             log.warn("WhatsApp grupos materialização tick falhou: {}", e.getMessage(), e);
         }
