@@ -5,7 +5,10 @@ import br.com.vilareal.jobrun.application.JobRunTracker;
 import br.com.vilareal.jobrun.domain.JobNames;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
+import br.com.vilareal.processo.application.ProcessoPartesVinculoTextoResolver;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
+import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoParteEntity;
+import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoParteRepository;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.whatsapp.ScheduledMessageStatus;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.ScheduledWhatsAppMessageRepository;
@@ -41,6 +44,7 @@ public class AudienciaReminderJob {
 
     private final WhatsAppConfig whatsAppConfig;
     private final ProcessoRepository processoRepository;
+    private final ProcessoParteRepository processoParteRepository;
     private final ClienteEnvioTelefoneResolver clienteEnvioTelefoneResolver;
     private final ScheduledWhatsAppMessageRepository scheduledRepository;
     private final WhatsAppSchedulerService whatsAppSchedulerService;
@@ -49,12 +53,14 @@ public class AudienciaReminderJob {
     public AudienciaReminderJob(
             WhatsAppConfig whatsAppConfig,
             ProcessoRepository processoRepository,
+            ProcessoParteRepository processoParteRepository,
             ClienteEnvioTelefoneResolver clienteEnvioTelefoneResolver,
             ScheduledWhatsAppMessageRepository scheduledRepository,
             WhatsAppSchedulerService whatsAppSchedulerService,
             JobRunTracker jobRunTracker) {
         this.whatsAppConfig = whatsAppConfig;
         this.processoRepository = processoRepository;
+        this.processoParteRepository = processoParteRepository;
         this.clienteEnvioTelefoneResolver = clienteEnvioTelefoneResolver;
         this.scheduledRepository = scheduledRepository;
         this.whatsAppSchedulerService = whatsAppSchedulerService;
@@ -196,21 +202,34 @@ public class AudienciaReminderJob {
             return 0;
         }
 
-        String nomeCliente = resolverNomeCliente(cliente, processo);
+        String nomeDestinatario = resolverNomeDestinatario(cliente, processo);
         String numeroProcesso = formatNumeroProcesso(processo);
+        List<ProcessoParteEntity> partes =
+                processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(processo.getId());
+        String parteCliente = ProcessoPartesVinculoTextoResolver.parteCliente(processo, partes);
+        String parteAutora = ProcessoPartesVinculoTextoResolver.parteAutora(processo, partes);
         int criados = 0;
 
         for (String telefone : telefones) {
             boolean agendado = whatsAppSchedulerService.agendarLembreteAudiencia(
-                    cliente.getId(), processo.getId(), telefone, nomeCliente, numeroProcesso, dataAudiencia);
+                    cliente.getId(),
+                    processo.getId(),
+                    telefone,
+                    nomeDestinatario,
+                    numeroProcesso,
+                    parteCliente,
+                    parteAutora,
+                    dataAudiencia);
             if (agendado) {
                 criados++;
                 log.info(
-                        "Lembrete agendado para {} ({}) — audiência em {} — processo {}",
-                        nomeCliente,
+                        "Lembrete agendado para {} ({}) — audiência em {} — processo {} — cliente: {} — parte autora: {}",
+                        nomeDestinatario,
                         WhatsAppService.formatPhoneDisplay(telefone),
                         formatarDataHoraBR(dataAudiencia),
-                        numeroProcesso);
+                        numeroProcesso,
+                        parteCliente,
+                        parteAutora);
             }
         }
 
@@ -252,9 +271,14 @@ public class AudienciaReminderJob {
             return 0;
         }
 
-        String nomeCliente = resolverNomeCliente(cliente, processo);
+        String nomeDestinatario = resolverNomeDestinatario(cliente, processo);
         String numeroProcesso = formatNumeroProcesso(processo);
-        List<String> params = List.of(nomeCliente, numeroProcesso, formatarDataHoraBR(dataAudiencia));
+        List<ProcessoParteEntity> partes =
+                processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(processoId);
+        String parteCliente = ProcessoPartesVinculoTextoResolver.parteCliente(processo, partes);
+        String parteAutora = ProcessoPartesVinculoTextoResolver.parteAutora(processo, partes);
+        List<String> params = LembreteAudienciaTemplateParams.montar(
+                nomeDestinatario, numeroProcesso, parteCliente, parteAutora, dataAudiencia);
         int criados = 0;
 
         for (String telefone : telefones) {
@@ -264,7 +288,7 @@ public class AudienciaReminderJob {
                 criados++;
                 log.info(
                         "Reforço véspera agendado para {} ({}) — audiência em {} — envio em {}",
-                        nomeCliente,
+                        nomeDestinatario,
                         WhatsAppService.formatPhoneDisplay(telefone),
                         formatarDataHoraBR(dataAudiencia),
                         formatarDataHoraBR(scheduledAt));
@@ -319,7 +343,7 @@ public class AudienciaReminderJob {
         return DATA_HORA_BR.withZone(ZONE_BRASILIA).format(instant);
     }
 
-    private static String resolverNomeCliente(ClienteEntity cliente, ProcessoEntity processo) {
+    private static String resolverNomeDestinatario(ClienteEntity cliente, ProcessoEntity processo) {
         PessoaEntity pessoaCliente = cliente.getPessoa();
         if (pessoaCliente != null && StringUtils.hasText(pessoaCliente.getNome())) {
             return pessoaCliente.getNome().trim();

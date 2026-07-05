@@ -220,8 +220,10 @@ public class WhatsAppSchedulerService {
             Long clienteId,
             Long processoId,
             String phoneNumber,
-            String nomeCliente,
+            String nomeDestinatario,
             String numeroProcesso,
+            String parteCliente,
+            String parteAutora,
             Instant dataAudiencia) {
         String formattedPhone = WhatsAppService.formatPhoneNumber(phoneNumber);
         if (processoId != null
@@ -231,8 +233,8 @@ public class WhatsAppSchedulerService {
         }
 
         Instant scheduledAt = calcularHorarioEnvio(dataAudiencia, 24, 2);
-        List<String> params =
-                List.of(nomeCliente, numeroProcesso, formatarDataHoraBR(dataAudiencia));
+        List<String> params = LembreteAudienciaTemplateParams.montar(
+                nomeDestinatario, numeroProcesso, parteCliente, parteAutora, dataAudiencia);
 
         agendarMensagem(
                 formattedPhone,

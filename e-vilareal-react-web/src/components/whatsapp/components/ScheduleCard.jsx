@@ -22,6 +22,10 @@ import {
   templateLabel,
 } from '../../../utils/whatsappScheduleUtils.js';
 import { buildScheduledMessagePreview } from '../../../utils/whatsappTemplateUtils.js';
+import {
+  isLembreteAudienciaTemplate,
+  parseLembreteAudienciaParamProcesso,
+} from '../../../utils/lembreteAudienciaUtils.js';
 
 const ICON_MAP = {
   Bell,
@@ -75,9 +79,21 @@ function extrairNomeCliente(item) {
 
 function extrairNumeroProcesso(item) {
   const params = item.templateParams;
-  if (Array.isArray(params) && params[1]) return params[1];
+  if (Array.isArray(params) && params[1]) {
+    if (isLembreteAudienciaTemplate(item.templateName)) {
+      return parseLembreteAudienciaParamProcesso(params[1]).numeroProcesso;
+    }
+    return params[1];
+  }
   if (item.processoId) return `Processo #${item.processoId}`;
   return null;
+}
+
+function extrairPartesLembreteAudiencia(item) {
+  if (!isLembreteAudienciaTemplate(item.templateName)) return null;
+  const params = item.templateParams;
+  if (!Array.isArray(params) || !params[1]) return null;
+  return parseLembreteAudienciaParamProcesso(params[1]);
 }
 
 export function ScheduleCard({ item, compact = false, onCancel, cancelling = false, templates = [] }) {
@@ -89,7 +105,8 @@ export function ScheduleCard({ item, compact = false, onCancel, cancelling = fal
   const showExpand = !compact && mensagemCompleta.length > 160;
 
   const titulo = item.descricao || templateLabel(item.templateName);
-  const nomeCliente = extrairNomeCliente(item);
+  const nomeDestinatario = extrairNomeCliente(item);
+  const partesLembrete = extrairPartesLembreteAudiencia(item);
   const numeroProcesso = extrairNumeroProcesso(item);
   const automatico = String(item.createdBy ?? '').toLowerCase() === 'sistema';
   const telefoneDestino = formatPhoneDisplay(item.phoneNumber) || '—';
@@ -152,10 +169,31 @@ export function ScheduleCard({ item, compact = false, onCancel, cancelling = fal
         </div>
 
         <ul className="space-y-1 text-xs text-slate-600 dark:text-slate-400">
-          {nomeCliente ? (
+          {nomeDestinatario ? (
             <li className="flex items-center gap-1.5">
               <User className="w-3.5 h-3.5 shrink-0 opacity-60" aria-hidden />
-              {nomeCliente}
+              <span>
+                <span className="font-medium text-slate-700 dark:text-slate-300">Para:</span>{' '}
+                {nomeDestinatario}
+              </span>
+            </li>
+          ) : null}
+          {partesLembrete?.parteCliente ? (
+            <li className="flex items-start gap-1.5">
+              <User className="w-3.5 h-3.5 shrink-0 opacity-60 mt-0.5" aria-hidden />
+              <span>
+                <span className="font-medium text-slate-700 dark:text-slate-300">Cliente:</span>{' '}
+                {partesLembrete.parteCliente}
+              </span>
+            </li>
+          ) : null}
+          {partesLembrete?.parteAutora ? (
+            <li className="flex items-start gap-1.5">
+              <User className="w-3.5 h-3.5 shrink-0 opacity-60 mt-0.5" aria-hidden />
+              <span>
+                <span className="font-medium text-slate-700 dark:text-slate-300">Parte autora:</span>{' '}
+                {partesLembrete.parteAutora}
+              </span>
             </li>
           ) : null}
           <li className="flex items-center gap-1.5 tabular-nums">

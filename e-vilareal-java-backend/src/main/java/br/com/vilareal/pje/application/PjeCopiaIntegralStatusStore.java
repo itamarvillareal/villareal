@@ -105,6 +105,10 @@ public class PjeCopiaIntegralStatusStore {
             return "Falha na cópia integral PJe.";
         }
         String m = mensagem.trim();
+        if (m.contains("Timeout") && m.contains("exceeded")) {
+            return "O PJe TRT18 não respondeu a tempo (rede ou proxy). "
+                    + "Verifique o proxy Tailscale/SOCKS5 e tente novamente.";
+        }
         if (m.contains("navigating to") && m.contains("timeout")) {
             return "Não foi possível abrir o PJe TRT18 (proxy Tailscale ou rede). "
                     + "Verifique se o SOCKS5 na máquina residencial está ativo.";

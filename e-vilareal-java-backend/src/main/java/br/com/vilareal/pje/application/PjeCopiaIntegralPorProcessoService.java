@@ -1,11 +1,13 @@
 package br.com.vilareal.pje.application;
 
 import br.com.vilareal.pje.config.PjeTrt18EmailTriggerProperties;
+import br.com.vilareal.pje.config.PjeTrt18Properties;
 import br.com.vilareal.pje.domain.PjeGrau;
 import br.com.vilareal.processo.application.ProcessoDiagnosticoNumeroBuscaUtil;
 import br.com.vilareal.publicacao.application.PublicacaoDriveAndamentosService;
 import br.com.vilareal.publicacao.infrastructure.persistence.entity.PublicacaoEntity;
 import br.com.vilareal.publicacao.infrastructure.persistence.repository.PublicacaoRepository;
+import br.com.vilareal.robot.RobotAutoFreio;
 import br.com.vilareal.totp.domain.TribunalIntegracao;
 import br.com.vilareal.totp.infrastructure.persistence.entity.CredencialTotpEntity;
 import br.com.vilareal.totp.infrastructure.persistence.repository.CredencialTotpRepository;
@@ -36,6 +38,8 @@ public class PjeCopiaIntegralPorProcessoService {
     private final PublicacaoRepository publicacaoRepository;
     private final CredencialTotpRepository credencialTotpRepository;
     private final PjeCopiaIntegralStatusStore statusStore;
+    private final RobotAutoFreio autoFreio;
+    private final PjeTrt18Properties pjeTrt18Properties;
     private final ExecutorService executor;
 
     public PjeCopiaIntegralPorProcessoService(
@@ -45,6 +49,8 @@ public class PjeCopiaIntegralPorProcessoService {
             PublicacaoRepository publicacaoRepository,
             CredencialTotpRepository credencialTotpRepository,
             PjeCopiaIntegralStatusStore statusStore,
+            RobotAutoFreio autoFreio,
+            PjeTrt18Properties pjeTrt18Properties,
             @Qualifier("pjeEmailTriggerExecutor") ExecutorService executor) {
         this.trt18TriggerProperties = trt18TriggerProperties;
         this.copiaIntegralOrchestrator = copiaIntegralOrchestrator;
@@ -52,6 +58,8 @@ public class PjeCopiaIntegralPorProcessoService {
         this.publicacaoRepository = publicacaoRepository;
         this.credencialTotpRepository = credencialTotpRepository;
         this.statusStore = statusStore;
+        this.autoFreio = autoFreio;
+        this.pjeTrt18Properties = pjeTrt18Properties;
         this.executor = executor;
     }
 
@@ -98,6 +106,24 @@ public class PjeCopiaIntegralPorProcessoService {
         return resultado;
     }
 
+    /** Valida login e auto-freio antes de enfileirar (evita toast «em execução» quando já vai falhar). */
+    public Optional<String> validarDisparoAssincrono() {
+        if (resolverLogin().isEmpty()) {
+            return Optional.of(
+                    "Login PJe TRT18 não configurado (cofre TOTP ou PJE_TRT18_LOGIN_PADRAO). "
+                            + "Cadastre a credencial em Admin → TOTP.");
+        }
+        autoFreio.configurarLimite(pjeTrt18Properties.getAutoFreioLimiteErros());
+        if (autoFreio.estaFreiado()) {
+            return Optional.of(
+                    "Robô PJe TRT18 pausado após "
+                            + autoFreio.errosConsecutivos()
+                            + " falhas consecutivas. Aguarde alguns minutos e tente de novo, "
+                            + "ou peça reset do auto-freio.");
+        }
+        return Optional.empty();
+    }
+
     /** Enfileira na thread única PJe; não-fatal. */
     public void dispararAssincrono(String cnj) {
         dispararAssincrono(cnj, null);
@@ -110,6 +136,7 @@ public class PjeCopiaIntegralPorProcessoService {
         }
         String cnjNorm = cnj.trim();
         PjeGrau grau = grauSalvo;
+        statusStore.marcarEmAndamento(cnjNorm);
         executor.execute(() -> {
             try {
                 executarPorCnj(cnjNorm, grau);
@@ -149,12 +176,23 @@ public class PjeCopiaIntegralPorProcessoService {
         }
         PjeCopiaIntegralResult r = resultado.get();
         if (grauSalvo == null && !r.sucesso() && grau == PjeGrau.PRIMEIRO_GRAU) {
-            log.info("PJe cópia integral CNJ {}: falha em 1º grau ({}), tentando 2º grau", cnjNorm, r.mensagem());
+            String causaPrimeiroGrau = r.mensagem();
+            log.info(
+                    "PJe cópia integral CNJ {}: falha em 1º grau ({}), tentando 2º grau",
+                    cnjNorm,
+                    causaPrimeiroGrau);
             Optional<PjeCopiaIntegralResult> segundo =
                     copiaIntegralOrchestrator.executar(PjeGrau.SEGUNDO_GRAU, login, null, cnjNorm);
-            if (segundo.isPresent()) {
+            if (segundo.isPresent() && segundo.get().sucesso()) {
                 return segundo;
             }
+            if (segundo.isPresent()) {
+                return Optional.of(PjeCopiaIntegralResult.falha(
+                        PjeGrau.SEGUNDO_GRAU,
+                        cnjNorm,
+                        causaPrimeiroGrau + " Tentativa em 2º grau: " + segundo.get().mensagem()));
+            }
+            return Optional.of(PjeCopiaIntegralResult.falha(PjeGrau.PRIMEIRO_GRAU, cnjNorm, causaPrimeiroGrau));
         }
         return resultado;
     }

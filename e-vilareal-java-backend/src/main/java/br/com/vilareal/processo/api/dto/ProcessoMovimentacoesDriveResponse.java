@@ -42,10 +42,15 @@ public record ProcessoMovimentacoesDriveResponse(
                 null,
                 null,
                 "PJe TRT18 em execução — o PDF será salvo na subpasta Movimentações do Drive. "
-                        + "Aguarde alguns minutos; a tela avisa sucesso ou erro.",
+                        + "Aguarde; a tela avisa sucesso ou erro em instantes.",
                 null,
                 null,
                 null);
+    }
+
+    public static ProcessoMovimentacoesDriveResponse pjeFalha(String tramitacao, String mensagem) {
+        return new ProcessoMovimentacoesDriveResponse(
+                tramitacao, "FALHA", null, null, null, null, mensagem, null, mensagem, null);
     }
 
     public static ProcessoMovimentacoesDriveResponse semSistema(String tramitacao, String mensagem) {

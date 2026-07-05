@@ -2544,11 +2544,15 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     async (processoId) => {
       const maxTentativas = 40;
       for (let i = 0; i < maxTentativas; i += 1) {
-        await new Promise((resolve) => window.setTimeout(resolve, 15_000));
+        const esperaMs = i === 0 ? 2_000 : 15_000;
+        await new Promise((resolve) => window.setTimeout(resolve, esperaMs));
         try {
           const st = await consultarStatusPjeCopiaIntegral(processoId);
           const fase = String(st?.fase ?? '').toUpperCase();
-          if (fase === 'EM_ANDAMENTO' || fase === 'NENHUM') {
+          if (fase === 'EM_ANDAMENTO') {
+            continue;
+          }
+          if (fase === 'NENHUM' && i < 3) {
             continue;
           }
           if (fase === 'SUCESSO') {
@@ -2565,13 +2569,17 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
             );
             return;
           }
-        } catch {
-          /* polling silencioso */
+        } catch (e) {
+          showProcessoToast(
+            e?.message || 'Erro ao consultar status da cópia integral PJe.',
+            'error',
+          );
+          return;
         }
       }
       showProcessoToast(
-        'PJe ainda em execução ou sem resposta — confira a subpasta Movimentações no Drive em alguns minutos.',
-        'warning',
+        'PJe não concluiu a tempo — confira a subpasta Movimentações no Drive ou tente de novo.',
+        'error',
       );
     },
     [showProcessoToast],
@@ -2601,9 +2609,17 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       if (status === 'INICIADO') {
         showProcessoToast(
           String(r?.mensagem ?? '').trim()
-            || 'PJe TRT18 em execução — aguarde; o PDF irá para a subpasta Movimentações.',
+            || 'PJe TRT18 em execução — aguarde; a tela avisa sucesso ou erro em instantes.',
         );
         void aguardarResultadoPjeCopiaIntegral(id);
+        return;
+      }
+      if (status === 'FALHA') {
+        showProcessoToast(
+          String(r?.mensagem ?? r?.erro ?? '').trim()
+            || 'Falha na cópia integral PJe TRT18.',
+          'error',
+        );
         return;
       }
       if (status === 'PJE_AUTOMACAO_INDISPONIVEL') {

@@ -13,6 +13,8 @@ import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRe
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.util.Optional;
+
 /**
  * Roteia «Obter movimentações» conforme {@code processo.tramitacao}, tribunal/grau PJe
  * e fallback CNJ TRT18 ({@code .5.18.}) quando tramitação ainda não foi preenchida.
@@ -69,11 +71,17 @@ public class ProcessoMovimentacoesDriveService {
                 processoTramitacaoService.preencherSeVazioPorCnj(processoId, cnj);
             }
 
-            PjeGrau grauSalvo = processo.getPjeGrau();
-            pjeCopiaIntegralPorProcessoService.dispararAssincrono(cnj, grauSalvo);
             String tramitacaoResposta = tramitacaoExibicao != null
                     ? tramitacaoExibicao
                     : ProcessoTramitacaoService.TRAMITACAO_PJE;
+
+            Optional<String> erroPreflight = pjeCopiaIntegralPorProcessoService.validarDisparoAssincrono();
+            if (erroPreflight.isPresent()) {
+                return ProcessoMovimentacoesDriveResponse.pjeFalha(tramitacaoResposta, erroPreflight.get());
+            }
+
+            PjeGrau grauSalvo = processo.getPjeGrau();
+            pjeCopiaIntegralPorProcessoService.dispararAssincrono(cnj, grauSalvo);
             return ProcessoMovimentacoesDriveResponse.pjeIniciado(tramitacaoResposta);
         }
 

@@ -2,7 +2,7 @@ export const WHATSAPP_TEMPLATES = [
   {
     value: 'lembrete_audiencia',
     label: 'Lembrete de Audiência',
-    params: ['Nome do cliente', 'Nº do processo', 'Data/hora'],
+    params: ['Nome do destinatário', 'Processo + cliente + parte autora', 'Data/hora'],
   },
   {
     value: 'atualizacao_processo',

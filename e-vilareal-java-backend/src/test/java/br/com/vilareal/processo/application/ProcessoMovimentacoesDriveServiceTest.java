@@ -45,6 +45,7 @@ class ProcessoMovimentacoesDriveServiceTest {
     void executar_tramitacaoPjeTrt18_disparaComGrauSalvo() {
         ProcessoEntity processo = processo(CNJ_TRT18, "PJe", PjeTribunal.PJE_TRT18, PjeGrau.SEGUNDO_GRAU);
         when(processoRepository.findByIdWithClienteAndPessoa(10L)).thenReturn(Optional.of(processo));
+        when(pjeCopiaIntegralPorProcessoService.validarDisparoAssincrono()).thenReturn(Optional.empty());
 
         ProcessoMovimentacoesDriveResponse r = service.executar(10L);
 
@@ -57,12 +58,27 @@ class ProcessoMovimentacoesDriveServiceTest {
     void executar_tramitacaoVaziaCnjTrt18_disparaFallback76639e9() {
         ProcessoEntity processo = processo(CNJ_TRT18, null, null, null);
         when(processoRepository.findByIdWithClienteAndPessoa(11L)).thenReturn(Optional.of(processo));
+        when(pjeCopiaIntegralPorProcessoService.validarDisparoAssincrono()).thenReturn(Optional.empty());
 
         ProcessoMovimentacoesDriveResponse r = service.executar(11L);
 
         assertThat(r.status()).isEqualTo("INICIADO");
         verify(processoTramitacaoService).preencherSeVazioPorCnj(11L, CNJ_TRT18);
         verify(pjeCopiaIntegralPorProcessoService).dispararAssincrono(CNJ_TRT18, null);
+    }
+
+    @Test
+    void executar_pjeAutoFreio_retornaFalhaImediata() {
+        ProcessoEntity processo = processo(CNJ_TRT18, "PJe", PjeTribunal.PJE_TRT18, null);
+        when(processoRepository.findByIdWithClienteAndPessoa(14L)).thenReturn(Optional.of(processo));
+        when(pjeCopiaIntegralPorProcessoService.validarDisparoAssincrono())
+                .thenReturn(Optional.of("Robô PJe TRT18 pausado"));
+
+        ProcessoMovimentacoesDriveResponse r = service.executar(14L);
+
+        assertThat(r.status()).isEqualTo("FALHA");
+        assertThat(r.erro()).contains("pausado");
+        verify(pjeCopiaIntegralPorProcessoService, never()).dispararAssincrono(org.mockito.ArgumentMatchers.anyString(), isNull());
     }
 
     @Test
