@@ -85,6 +85,30 @@ export function extrairMetadadosOfx(ofxText) {
   return { dataInicio, dataFim, saldoLedger };
 }
 
+/** Período e saldo final inferidos das linhas do extrato (PDF BTG etc.). */
+export function extrairMetadadosDeRows(rows) {
+  const isos = (rows ?? []).map((r) => dataLancamentoParaIso(r?.data)).filter(Boolean);
+  let dataInicio = null;
+  let dataFim = null;
+  if (isos.length) {
+    dataInicio = isos.reduce((a, b) => (a < b ? a : b));
+    dataFim = isos.reduce((a, b) => (a > b ? a : b));
+  }
+  let saldoLedger = null;
+  const comSaldo = (rows ?? []).filter((r) => Number.isFinite(Number(r.saldo)));
+  if (comSaldo.length) {
+    const ordenados = [...comSaldo].sort((a, b) => {
+      const da = dataLancamentoParaIso(a.data) ?? '';
+      const db = dataLancamentoParaIso(b.data) ?? '';
+      const c = da.localeCompare(db);
+      if (c !== 0) return c;
+      return String(a.numero ?? '').localeCompare(String(b.numero ?? ''));
+    });
+    saldoLedger = Number(ordenados[ordenados.length - 1].saldo);
+  }
+  return { dataInicio, dataFim, saldoLedger };
+}
+
 /** Valor com sinal para somas (OFX já vem assinado; API pode vir absoluto + natureza). */
 function valorAssinadoParaSoma(t) {
   const n = Number(t?.valor);
@@ -277,13 +301,19 @@ export function prepararExclusaoReparoExtrato(sobramNoSistema) {
   };
 }
 
-export function prepararImportacaoReparoExtrato(faltamNoSistema, nomeBanco, numeroBanco) {
+export function prepararImportacaoReparoExtrato(
+  faltamNoSistema,
+  nomeBanco,
+  numeroBanco,
+  origemImportacao = 'OFX',
+) {
+  const origem = String(origemImportacao ?? 'OFX').trim() || 'OFX';
   const linhas = (faltamNoSistema ?? []).map((row) =>
     sanitizarLancamentoImportacaoExtrato({
       ...row,
       nomeBanco: String(nomeBanco ?? '').trim(),
       numeroBanco: Number(numeroBanco),
-      origemImportacao: 'OFX',
+      origemImportacao: origem,
     }),
   );
   return { linhas, soma: somaValores(linhas) };
@@ -302,18 +332,20 @@ export function prepararImportacaoReparoExtrato(faltamNoSistema, nomeBanco, nume
  * @param {number|null} [opts.sistemaTotalOverride] total ATIVO no banco (quando existenteAll é só o período)
  * @param {number|null} [opts.existenteIgnoradosForaPeriodoOverride]
  */
-export function diagnosticarExtratoComOfxCore({
-  ofxText,
+export function diagnosticarExtratoComArquivoCore({
+  arquivoRows,
+  meta,
   existenteAll,
   existenteMesclagem = null,
   saldoApi = null,
   dataCorteOverride = null,
   sistemaTotalOverride = null,
   existenteIgnoradosForaPeriodoOverride = null,
+  origemImportacao = 'OFX',
 }) {
-  const meta = extrairMetadadosOfx(ofxText);
-  const ofxRows = parseOfxToExtrato(ofxText).map((r) =>
-    sanitizarLancamentoImportacaoExtrato({ ...r, origemImportacao: 'OFX' }),
+  const origem = String(origemImportacao ?? 'OFX').trim() || 'OFX';
+  const ofxRows = (arquivoRows ?? []).map((r) =>
+    sanitizarLancamentoImportacaoExtrato({ ...r, origemImportacao: r.origemImportacao ?? origem }),
   );
 
   const existenteNoPeriodo = existenteDentroPeriodoOfx(
@@ -395,6 +427,32 @@ export function diagnosticarExtratoComOfxCore({
   };
 }
 
+export function diagnosticarExtratoComOfxCore({
+  ofxText,
+  existenteAll,
+  existenteMesclagem = null,
+  saldoApi = null,
+  dataCorteOverride = null,
+  sistemaTotalOverride = null,
+  existenteIgnoradosForaPeriodoOverride = null,
+}) {
+  const meta = extrairMetadadosOfx(ofxText);
+  const ofxRows = parseOfxToExtrato(ofxText).map((r) =>
+    sanitizarLancamentoImportacaoExtrato({ ...r, origemImportacao: 'OFX' }),
+  );
+  return diagnosticarExtratoComArquivoCore({
+    arquivoRows: ofxRows,
+    meta,
+    existenteAll,
+    existenteMesclagem,
+    saldoApi,
+    dataCorteOverride,
+    sistemaTotalOverride,
+    existenteIgnoradosForaPeriodoOverride,
+    origemImportacao: 'OFX',
+  });
+}
+
 /**
  * Alinha extrato com o OFX mestre: exclui sobras e importa faltantes (sem data de corte).
  */
@@ -406,6 +464,7 @@ export async function executarAlinhamentoExtratoComOfxCore({
   diagnosticar,
   removerLote,
   salvarLancamentos,
+  origemImportacao = 'OFX',
   /** Quando true, ignora incoerência LEDGERBAL × efeito do reparo (OFX parcial ou LEDGERBAL enganoso). */
   ignorarIncoerenciaSaldo = false,
 }) {
@@ -434,6 +493,7 @@ export async function executarAlinhamentoExtratoComOfxCore({
     diag.faltamNoSistema,
     nomeBanco,
     numeroBanco,
+    origemImportacao,
   );
 
   const criados = [];

@@ -2,14 +2,24 @@ import { useEffect, useRef, useState } from 'react';
 import { AlignHorizontalJustifyCenter, Trash2, Wrench } from 'lucide-react';
 import { featureFlags } from '../../../config/featureFlags.js';
 import { readOfxFileAsText } from '../../../utils/ofx.js';
-import { isInstituicaoExtratoOfxBloqueado } from '../../../utils/extratoPdfImport.js';
+import {
+  arquivoExtratoEhPdf,
+  carregarLancamentosDeExtratoPdf,
+  isInstituicaoExtratoOfxBloqueado,
+  isInstituicaoExtratoPdfImport,
+  isInstituicaoSicoobOfxMoney,
+  mensagemFalhaExtratoPdf,
+  rotuloFormatosExtratoImport,
+  rotuloInstituicaoExtratoPdf,
+} from '../../../utils/extratoPdfImport.js';
 import { removerLancamentosFinanceiroApiEmLote } from '../../../repositories/financeiroRepository.js';
 import { formatMoeda } from '../shared/financeiroFormat.js';
 import { useFinanceiroToast } from '../shared/Toast.jsx';
 import { dispatchRefreshPendentes } from '../hooks/useKeyboardShortcuts.js';
 import {
   diagnosticarExtratoComOfx,
-  executarAlinhamentoExtratoComOfx,
+  diagnosticarExtratoComArquivo,
+  executarAlinhamentoExtratoReparo,
   prepararExclusaoReparoExtrato,
   prepararImportacaoReparoExtrato,
 } from './extratoRepararDiagnostico.js';
@@ -89,6 +99,28 @@ function TabelaLancamentos({ titulo, linhas, tom }) {
   );
 }
 
+function rotuloArquivoReparar(bancoNome) {
+  if (isInstituicaoExtratoOfxBloqueado(bancoNome)) {
+    return `Arquivo PDF do período (${rotuloInstituicaoExtratoPdf(bancoNome)})`;
+  }
+  if (isInstituicaoSicoobOfxMoney(bancoNome)) {
+    return 'Arquivo OFX ou PDF do período';
+  }
+  return 'Arquivo OFX ou PDF do período';
+}
+
+function acceptArquivoReparar(bancoNome) {
+  if (isInstituicaoExtratoOfxBloqueado(bancoNome)) {
+    return '.pdf,application/pdf';
+  }
+  return '.ofx,.qfx,application/x-ofx,text/plain,.pdf,application/pdf';
+}
+
+function rotuloBotaoAnalisar(bancoNome) {
+  if (isInstituicaoExtratoOfxBloqueado(bancoNome)) return 'Analisar PDF';
+  return 'Analisar extrato';
+}
+
 /**
  * @param {{
  *   bancoNome: string,
@@ -113,7 +145,7 @@ export function ExtratoRepararPanel({
 }) {
   const toast = useFinanceiroToast();
   const inputRef = useRef(null);
-  const ofxTextRef = useRef(String(ofxTextProp ?? ''));
+  const fonteRef = useRef({ tipo: null, ofxText: '', arquivoRows: [] });
   const [arquivo, setArquivo] = useState(null);
   const [analisando, setAnalisando] = useState(false);
   const [resultado, setResultado] = useState(initialDiagnostico);
@@ -124,7 +156,10 @@ export function ExtratoRepararPanel({
   const [alinhando, setAlinhando] = useState(false);
 
   useEffect(() => {
-    ofxTextRef.current = String(ofxTextProp ?? '');
+    const txt = String(ofxTextProp ?? '').trim();
+    if (txt) {
+      fonteRef.current = { tipo: 'ofx', ofxText: txt, arquivoRows: [] };
+    }
   }, [ofxTextProp]);
 
   useEffect(() => {
@@ -137,6 +172,23 @@ export function ExtratoRepararPanel({
 
   const busy = disabled || analisando || excluindo || alinhando;
 
+  const rediagnosticar = async () => {
+    const fonte = fonteRef.current;
+    if (fonte.tipo === 'pdf' && fonte.arquivoRows?.length) {
+      return diagnosticarExtratoComArquivo({
+        arquivoRows: fonte.arquivoRows,
+        numeroBanco,
+      });
+    }
+    if (fonte.tipo === 'ofx' && String(fonte.ofxText ?? '').trim()) {
+      return diagnosticarExtratoComOfx({
+        ofxText: fonte.ofxText,
+        numeroBanco,
+      });
+    }
+    return null;
+  };
+
   const analisarTexto = async (ofxText) => {
     if (!featureFlags.useApiFinanceiro) {
       toast.warn('Reparar extrato exige a API financeira ativa.');
@@ -147,7 +199,7 @@ export function ExtratoRepararPanel({
       return null;
     }
     if (isInstituicaoExtratoOfxBloqueado(bancoNome)) {
-      setErro(`Para ${bancoNome}, o reparo por OFX não está disponível (use PDF).`);
+      setErro(`Para ${bancoNome}, use PDF (${rotuloInstituicaoExtratoPdf(bancoNome)}), não OFX.`);
       return null;
     }
 
@@ -155,7 +207,7 @@ export function ExtratoRepararPanel({
     setErro('');
     const ac = new AbortController();
     try {
-      ofxTextRef.current = ofxText;
+      fonteRef.current = { tipo: 'ofx', ofxText, arquivoRows: [] };
       const diag = await diagnosticarExtratoComOfx({
         ofxText,
         numeroBanco,
@@ -178,9 +230,70 @@ export function ExtratoRepararPanel({
     }
   };
 
+  const analisarRows = async (arquivoRows) => {
+    if (!featureFlags.useApiFinanceiro) {
+      toast.warn('Reparar extrato exige a API financeira ativa.');
+      return null;
+    }
+    if (!arquivoRows?.length) {
+      setErro('Nenhum lançamento encontrado no PDF.');
+      return null;
+    }
+
+    setAnalisando(true);
+    setErro('');
+    const ac = new AbortController();
+    try {
+      fonteRef.current = { tipo: 'pdf', ofxText: '', arquivoRows };
+      const diag = await diagnosticarExtratoComArquivo({
+        arquivoRows,
+        numeroBanco,
+        signal: ac.signal,
+      });
+      setResultado(diag);
+      setConfirmExcluir(false);
+      setConfirmAlinhar(false);
+      if (extratoAlinhadoComOfx(diag)) onAlinhado?.(diag);
+      return diag;
+    } catch (e) {
+      if (e?.name !== 'AbortError') {
+        const msg = e?.message || 'Falha ao analisar o PDF.';
+        setErro(msg);
+        toast.error(msg);
+      }
+      return null;
+    } finally {
+      setAnalisando(false);
+    }
+  };
+
   const analisarArquivo = async () => {
     if (!arquivo) {
-      setErro('Selecione o arquivo OFX (período ou histórico completo).');
+      const hint = isInstituicaoExtratoOfxBloqueado(bancoNome)
+        ? `Selecione o PDF do extrato (${rotuloInstituicaoExtratoPdf(bancoNome)}).`
+        : 'Selecione o arquivo OFX ou PDF (período ou histórico completo).';
+      setErro(hint);
+      return;
+    }
+    if (arquivoExtratoEhPdf(arquivo)) {
+      if (!isInstituicaoExtratoPdfImport(bancoNome)) {
+        setErro(`Para ${bancoNome}, o reparo por PDF não está disponível.`);
+        return;
+      }
+      try {
+        const { rows, texto } = await carregarLancamentosDeExtratoPdf(arquivo, bancoNome);
+        if (!rows?.length) {
+          const msg = mensagemFalhaExtratoPdf(texto, bancoNome);
+          setErro(msg);
+          toast.error(msg);
+          return;
+        }
+        await analisarRows(rows);
+      } catch (e) {
+        const msg = e?.message || 'Falha ao ler o PDF.';
+        setErro(msg);
+        toast.error(msg);
+      }
       return;
     }
     const ofxText = await readOfxFileAsText(arquivo);
@@ -189,7 +302,12 @@ export function ExtratoRepararPanel({
 
   const exclusao = resultado ? prepararExclusaoReparoExtrato(resultado.sobramNoSistema) : null;
   const importacao = resultado
-    ? prepararImportacaoReparoExtrato(resultado.faltamNoSistema, bancoNome, numeroBanco)
+    ? prepararImportacaoReparoExtrato(
+        resultado.faltamNoSistema,
+        bancoNome,
+        numeroBanco,
+        fonteRef.current.tipo === 'pdf' ? 'PDF' : 'OFX',
+      )
     : null;
   const podeAlinhar =
     alinhamentoSaldoCoerenteComOfx(resultado) &&
@@ -215,11 +333,8 @@ export function ExtratoRepararPanel({
       dispatchRefreshPendentes();
       setConfirmExcluir(false);
       setConfirmAlinhar(false);
-      if (ofxTextRef.current) {
-        const diag = await diagnosticarExtratoComOfx({
-          ofxText: ofxTextRef.current,
-          numeroBanco,
-        });
+      const diag = await rediagnosticar();
+      if (diag) {
         setResultado(diag);
         if (extratoAlinhadoComOfx(diag)) onAlinhado?.(diag);
       }
@@ -232,15 +347,18 @@ export function ExtratoRepararPanel({
     }
   };
 
-  const alinharSaldoComOfx = async () => {
-    if (!ofxTextRef.current || !podeAlinhar) return;
+  const alinharSaldoComArquivo = async () => {
+    const fonte = fonteRef.current;
+    if (!podeAlinhar || (fonte.tipo !== 'ofx' && fonte.tipo !== 'pdf')) return;
     setAlinhando(true);
     setErro('');
     try {
-      const r = await executarAlinhamentoExtratoComOfx({
-        ofxText: ofxTextRef.current,
+      const r = await executarAlinhamentoExtratoReparo({
+        ofxText: fonte.tipo === 'ofx' ? fonte.ofxText : undefined,
+        arquivoRows: fonte.tipo === 'pdf' ? fonte.arquivoRows : undefined,
         numeroBanco,
         nomeBanco: bancoNome,
+        origemImportacao: fonte.tipo === 'pdf' ? 'PDF' : 'OFX',
       });
       const { diagFinal, removidos, criados, errosExclusao, errosImportacao } = r;
       setResultado(diagFinal);
@@ -283,12 +401,12 @@ export function ExtratoRepararPanel({
       {showFileInput ? (
         <div className="space-y-2">
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-            Arquivo OFX do período
+            {rotuloArquivoReparar(bancoNome)}
           </label>
           <input
             ref={inputRef}
             type="file"
-            accept=".ofx,.qfx,application/x-ofx,text/plain"
+            accept={acceptArquivoReparar(bancoNome)}
             disabled={busy}
             onChange={(e) => {
               setArquivo(e.target.files?.[0] ?? null);
@@ -296,7 +414,7 @@ export function ExtratoRepararPanel({
               setErro('');
               setConfirmExcluir(false);
               setConfirmAlinhar(false);
-              ofxTextRef.current = '';
+              fonteRef.current = { tipo: null, ofxText: '', arquivoRows: [] };
             }}
             className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-md file:border file:border-slate-300 file:bg-slate-50 file:px-3 file:py-1.5 file:text-sm dark:file:border-slate-600 dark:file:bg-slate-800"
           />
@@ -307,8 +425,13 @@ export function ExtratoRepararPanel({
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-amber-600 bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
           >
             <Wrench className="w-4 h-4" aria-hidden />
-            {analisando ? 'Analisando…' : 'Analisar OFX'}
+            {analisando ? 'Analisando…' : rotuloBotaoAnalisar(bancoNome)}
           </button>
+          {isInstituicaoExtratoOfxBloqueado(bancoNome) ? (
+            <p className="text-xs text-slate-500">
+              Formato aceito: {rotuloFormatosExtratoImport(bancoNome)}.
+            </p>
+          ) : null}
         </div>
       ) : (
         <p className="text-sm text-slate-600 dark:text-slate-400 rounded-lg border border-amber-200 bg-amber-50/80 dark:border-amber-900/50 dark:bg-amber-950/20 px-3 py-2">
@@ -474,7 +597,7 @@ export function ExtratoRepararPanel({
                   <button
                     type="button"
                     disabled={alinhando}
-                    onClick={() => void alinharSaldoComOfx()}
+                    onClick={() => void alinharSaldoComArquivo()}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
                   >
                     <AlignHorizontalJustifyCenter className="w-4 h-4" aria-hidden />

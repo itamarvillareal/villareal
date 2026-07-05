@@ -1,5 +1,9 @@
 import { X } from 'lucide-react';
 import { ExtratoRepararPanel } from './ExtratoRepararPanel.jsx';
+import {
+  isInstituicaoExtratoOfxBloqueado,
+  rotuloFormatosExtratoImport,
+} from '../../../utils/extratoPdfImport.js';
 
 /**
  * @param {{
@@ -30,7 +34,9 @@ export function ExtratoRepararDialog({ open, bancoNome, numeroBanco, onClose }) 
               Reparar extrato — {bancoNome}
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Compara o OFX com o que está gravado. Use o histórico completo para alinhar o saldo.
+              {isInstituicaoExtratoOfxBloqueado(bancoNome)
+                ? `Compara o PDF com o que está gravado (${rotuloFormatosExtratoImport(bancoNome)}). Use o histórico completo para alinhar o saldo.`
+                : 'Compara o OFX ou PDF com o que está gravado. Use o histórico completo para alinhar o saldo.'}
             </p>
           </div>
           <button

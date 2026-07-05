@@ -2,7 +2,9 @@ import fs from 'fs';
 import { describe, expect, it } from 'vitest';
 import {
   diagnosticarExtratoComOfxCore,
+  diagnosticarExtratoComArquivoCore,
   extrairMetadadosOfx,
+  extrairMetadadosDeRows,
   extratoAlinhadoComOfx,
   extratoFielComOfx,
   precisaReparoExtratoComOfx,
@@ -75,6 +77,35 @@ describe('extratoRepararDiagnostico', () => {
     expect(prep.linhas[0].nomeBanco).toBe('CORA');
     expect(prep.linhas[0].numeroBanco).toBe(26);
     expect(prep.linhas[0].origemImportacao).toBe('OFX');
+  });
+
+  it('extrairMetadadosDeRows infere período e saldo final do PDF', () => {
+    const rows = [
+      { data: '01/07/2026', valor: 100, saldo: 100, numero: 'a' },
+      { data: '15/07/2026', valor: -50, saldo: 50, numero: 'b' },
+      { data: '30/07/2026', valor: 25, saldo: 75, numero: 'c' },
+    ];
+    const meta = extrairMetadadosDeRows(rows);
+    expect(meta.dataInicio).toBe('2026-07-01');
+    expect(meta.dataFim).toBe('2026-07-30');
+    expect(meta.saldoLedger).toBe(75);
+  });
+
+  it('diagnosticarExtratoComArquivoCore compara PDF com sistema', () => {
+    const arquivoRows = [
+      { data: '15/07/2026', valor: -10, saldo: 90, numero: 'BTG-1', descricao: 'Pix' },
+    ];
+    const existenteAll = [];
+    const diag = diagnosticarExtratoComArquivoCore({
+      arquivoRows,
+      meta: extrairMetadadosDeRows(arquivoRows),
+      existenteAll,
+      saldoApi: null,
+      origemImportacao: 'PDF',
+    });
+    expect(diag.faltamNoSistema).toHaveLength(1);
+    expect(diag.faltamNoSistema[0].origemImportacao).toBe('PDF');
+    expect(diag.meta.dataInicio).toBe('2026-07-15');
   });
 
   it('precisaReparoExtratoComOfx detecta faltam e sobram no período', () => {
