@@ -1281,7 +1281,7 @@ export function InboxPage() {
       <InboxTabs counts={counts} />
 
       <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
-        <PeriodoSelector value={filters.mes} onChange={setMes} />
+        <PeriodoSelector value={filters.mes} onChange={setMes} incluirTotal />
         <select
           value={bancoAtivo ?? ''}
           onChange={(e) => setBanco(e.target.value ? Number(e.target.value) : null)}

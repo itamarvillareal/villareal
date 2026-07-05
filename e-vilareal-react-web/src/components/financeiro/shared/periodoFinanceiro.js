@@ -64,6 +64,7 @@ export function periodoParaQueryApi(val) {
 
 /** Mantém ano/mes para endpoints que só aceitam esses campos (ex.: pares sugeridos). */
 export function periodoParaAnoMesApi(val) {
+  if (isPeriodoTotal(val)) return {};
   const s = String(val ?? '').trim();
   if (isPeriodoAnoInteiro(s)) {
     return { ano: Number(s) };
