@@ -13,6 +13,7 @@ import {
   parseCadastroFiltroParam,
 } from '../extrato/extratoCadastroFiltro.js';
 import { filtroCompensacaoSemParAtivo } from '../extrato/compensacaoSemPar.js';
+import { normalizarBancosFiltro, parseBancosFiltroParam } from '../inbox/inboxBancosFiltro.js';
 
 const DEBOUNCE_MS = 300;
 
@@ -28,10 +29,8 @@ export function toggleSortDataLancamento(sort) {
 }
 
 function parseBancoParam(params) {
-  const raw = params.get('banco');
-  if (!raw) return null;
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : null;
+  const bancos = parseBancosFiltroParam(params);
+  return bancos.length === 1 ? bancos[0] : null;
 }
 
 function parseLancamentoParam(params) {
@@ -71,8 +70,10 @@ function readTipoDiaParam(params) {
 
 function readFilters(params) {
   const { letras, letrasModo } = parseLetrasFiltroParam(params);
+  const bancos = parseBancosFiltroParam(params);
   return {
-    banco: parseBancoParam(params),
+    bancos,
+    banco: bancos.length === 1 ? bancos[0] : null,
     lancamento: parseLancamentoParam(params),
     mes: params.get('mes') || mesAtualIso(),
     tipoPar: readTipoParParam(params),
@@ -99,7 +100,8 @@ function writeFilters(params, f) {
     if (val == null || val === '' || val === false) next.delete(key);
     else next.set(key, String(val));
   };
-  setOrDel('banco', Number.isFinite(f.banco) ? f.banco : null);
+  const bancosNorm = normalizarBancosFiltro(f.bancos);
+  setOrDel('banco', bancosNorm.length ? bancosNorm.join(',') : null);
   setOrDel('lancamento', Number.isFinite(f.lancamento) ? f.lancamento : null);
   setOrDel('mes', f.mes);
   setOrDel(
@@ -206,8 +208,10 @@ export function useExtratoFilters() {
     const letrasQuery = letrasParaQueryApi(filters);
     const cadastroQuery = cadastroParaQueryApi(filters.cadastro);
     const semParCompensacao = filtroCompensacaoSemParAtivo(filters);
+    const bancos = normalizarBancosFiltro(filters.bancos);
     return {
-      numeroBanco: Number.isFinite(filters.banco) ? filters.banco : undefined,
+      numeroBanco: bancos.length === 1 ? bancos[0] : undefined,
+      numeroBancos: bancos.length > 1 ? bancos : undefined,
       ...periodo,
       etapa: semParCompensacao ? undefined : filters.etapa ?? undefined,
       compensacaoSemPar: semParCompensacao ? true : undefined,
@@ -221,7 +225,7 @@ export function useExtratoFilters() {
       sort: filters.sort,
     };
   }, [
-    filters.banco,
+    filters.bancos,
     filters.mes,
     filters.etapa,
     filters.busca,
@@ -236,7 +240,18 @@ export function useExtratoFilters() {
     filters.sort,
   ]);
 
-  const setBanco = useCallback((banco) => syncUrl({ banco, resetPage: true }), [syncUrl]);
+  const setBanco = useCallback(
+    (banco) =>
+      syncUrl({
+        bancos: banco != null && Number.isFinite(Number(banco)) ? [Number(banco)] : [],
+        resetPage: true,
+      }),
+    [syncUrl],
+  );
+  const setBancos = useCallback(
+    (bancos) => syncUrl({ bancos: normalizarBancosFiltro(bancos), resetPage: true }),
+    [syncUrl],
+  );
   const setMes = useCallback((mes) => syncUrl({ mes, resetPage: true }), [syncUrl]);
   const setTipoPar = useCallback(
     (tipoPar) => syncUrl({ tipoPar: tipoPar || TIPO_PAR_COMPENSAR_TODOS, resetPage: true }),
@@ -301,6 +316,7 @@ export function useExtratoFilters() {
     filters,
     apiQuery,
     setBanco,
+    setBancos,
     setMes,
     setTipoPar,
     setTipoDia,

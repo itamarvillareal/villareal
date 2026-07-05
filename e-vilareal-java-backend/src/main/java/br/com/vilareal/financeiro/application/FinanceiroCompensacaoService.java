@@ -167,11 +167,37 @@ public class FinanceiroCompensacaoService {
             boolean apenasMesmoBanco,
             boolean apenasMesmoDiaCalendario,
             boolean apenasDiaDivergente) {
+        return listarParesSugeridos(
+                numeroBanco,
+                null,
+                ano,
+                mes,
+                page,
+                size,
+                apenasInterbancario,
+                apenasMesmoBanco,
+                apenasMesmoDiaCalendario,
+                apenasDiaDivergente);
+    }
+
+    @Transactional(readOnly = true)
+    public ParesSugeridosCompensacaoResponse listarParesSugeridos(
+            Integer numeroBanco,
+            List<Integer> numeroBancos,
+            Integer ano,
+            Integer mes,
+            int page,
+            int size,
+            boolean apenasInterbancario,
+            boolean apenasMesmoBanco,
+            boolean apenasMesmoDiaCalendario,
+            boolean apenasDiaDivergente) {
+        FiltroNumeroBancos bancos = normalizarFiltroBancos(numeroBanco, numeroBancos);
         int limit = Math.max(1, Math.min(size, MAX_PARES_POR_PAGINA));
         int skip = Math.max(0, page) * limit;
         List<ParCompensacaoSugeridoResponse> todosFiltrados = filtrarParesPorDiaCalendario(
                 obterParesGreedyComCache(
-                        numeroBanco,
+                        bancos,
                         ano,
                         mes,
                         apenasInterbancario,
@@ -192,13 +218,34 @@ public class FinanceiroCompensacaoService {
         return response;
     }
 
+    private record FiltroNumeroBancos(boolean filtrar, List<Integer> numeros) {}
+
+    private static FiltroNumeroBancos normalizarFiltroBancos(Integer numeroBanco, List<Integer> numeroBancos) {
+        LinkedHashSet<Integer> set = new LinkedHashSet<>();
+        if (numeroBancos != null) {
+            for (Integer n : numeroBancos) {
+                if (n != null) {
+                    set.add(n);
+                }
+            }
+        }
+        if (set.isEmpty() && numeroBanco != null) {
+            set.add(numeroBanco);
+        }
+        if (set.isEmpty()) {
+            return new FiltroNumeroBancos(false, List.of(0));
+        }
+        List<Integer> sorted = set.stream().sorted().toList();
+        return new FiltroNumeroBancos(true, sorted);
+    }
+
     private record CacheGreedyPares(List<ParCompensacaoSugeridoResponse> pares, Instant expiraEm) {}
 
     private record CandidatosCompensacao(
             List<ParCompensacaoSugeridoResponse> pares, Map<Long, LancamentoFinanceiroEntity> porId) {}
 
     private List<ParCompensacaoSugeridoResponse> obterParesGreedyComCache(
-            Integer numeroBanco,
+            FiltroNumeroBancos bancos,
             Integer ano,
             Integer mes,
             boolean apenasInterbancario,
@@ -206,7 +253,7 @@ public class FinanceiroCompensacaoService {
             boolean apenasMesmoDiaCalendario,
             boolean apenasDiaDivergente) {
         String chave = chaveCacheGreedy(
-                numeroBanco,
+                bancos,
                 ano,
                 mes,
                 apenasInterbancario,
@@ -219,7 +266,7 @@ public class FinanceiroCompensacaoService {
             return hit.pares();
         }
         List<ParCompensacaoSugeridoResponse> calculado = coletarMelhoresParesGreedy(
-                numeroBanco,
+                bancos,
                 ano,
                 mes,
                 apenasInterbancario,
@@ -234,14 +281,18 @@ public class FinanceiroCompensacaoService {
     }
 
     private static String chaveCacheGreedy(
-            Integer numeroBanco,
+            FiltroNumeroBancos bancos,
             Integer ano,
             Integer mes,
             boolean apenasInterbancario,
             boolean apenasMesmoBanco,
             boolean apenasMesmoDiaCalendario,
             boolean apenasDiaDivergente) {
-        return numeroBanco
+        String bancosKey =
+                bancos.filtrar()
+                        ? bancos.numeros().stream().map(String::valueOf).collect(Collectors.joining(","))
+                        : "ALL";
+        return bancosKey
                 + "|"
                 + ano
                 + "|"
@@ -258,7 +309,7 @@ public class FinanceiroCompensacaoService {
 
     /** Carrega pares SQL (dia útil no banco), uma carga de entidades e seleção greedy. */
     private List<ParCompensacaoSugeridoResponse> coletarMelhoresParesGreedy(
-            Integer numeroBanco,
+            FiltroNumeroBancos bancos,
             Integer ano,
             Integer mes,
             boolean apenasInterbancario,
@@ -266,7 +317,7 @@ public class FinanceiroCompensacaoService {
             boolean apenasMesmoDiaCalendario,
             boolean apenasDiaDivergente) {
         CandidatosCompensacao dados = carregarCandidatosCompensacao(
-                numeroBanco,
+                bancos,
                 ano,
                 mes,
                 apenasInterbancario,
@@ -295,7 +346,7 @@ public class FinanceiroCompensacaoService {
     }
 
     private CandidatosCompensacao carregarCandidatosCompensacao(
-            Integer numeroBanco,
+            FiltroNumeroBancos bancos,
             Integer ano,
             Integer mes,
             boolean apenasInterbancario,
@@ -303,7 +354,8 @@ public class FinanceiroCompensacaoService {
             boolean apenasMesmoDiaCalendario,
             boolean apenasDiaDivergente) {
         long totalSql = lancamentoRepository.countParesCompensacaoSugeridos(
-                numeroBanco,
+                bancos.filtrar(),
+                bancos.numeros(),
                 ano,
                 mes,
                 DIAS_TOLERANCIA_SQL,
@@ -320,7 +372,8 @@ public class FinanceiroCompensacaoService {
         while (sqlOffset < limiteLinhas) {
             int batch = (int) Math.min(SQL_BATCH_SIZE, limiteLinhas - sqlOffset);
             List<Object[]> rows = lancamentoRepository.findParesCompensacaoSugeridosIds(
-                    numeroBanco,
+                    bancos.filtrar(),
+                    bancos.numeros(),
                     ano,
                     mes,
                     DIAS_TOLERANCIA_SQL,
@@ -443,7 +496,7 @@ public class FinanceiroCompensacaoService {
     }
 
     private List<ParCompensacaoSugeridoResponse> coletarParesFiltradosPorDiaUtil(
-            Integer numeroBanco,
+            FiltroNumeroBancos bancos,
             Integer ano,
             Integer mes,
             boolean apenasInterbancario,
@@ -453,7 +506,7 @@ public class FinanceiroCompensacaoService {
             int skip,
             int limit) {
         return obterParesGreedyComCache(
-                        numeroBanco,
+                        bancos,
                         ano,
                         mes,
                         apenasInterbancario,
@@ -551,7 +604,7 @@ public class FinanceiroCompensacaoService {
         boolean apenasInterbancarioSql = "INTERBANCARIO".equals(tipoFiltro);
         boolean apenasMesmoBancoSql = "MESMO_BANCO".equals(tipoFiltro);
         List<ParCompensacaoSugeridoResponse> candidatos = coletarParesFiltradosPorDiaUtil(
-                request.getNumeroBanco(),
+                normalizarFiltroBancos(request.getNumeroBanco(), null),
                 ano,
                 mes,
                 apenasInterbancarioSql,

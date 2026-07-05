@@ -501,7 +501,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             """
             + CompensacaoSqlDiaUtil.WHERE_CONTA_E_AB
             + """
-              AND (:numeroBanco IS NULL OR a.numero_banco = :numeroBanco OR b.numero_banco = :numeroBanco)
+              AND (:filtrarNumeroBancos = false OR a.numero_banco IN (:numeroBancos) OR b.numero_banco IN (:numeroBancos))
               AND (:ano IS NULL OR (YEAR(a.data_lancamento) = :ano AND (:mes IS NULL OR MONTH(a.data_lancamento) = :mes)))
               AND (:apenasInterbancario = false OR a.numero_banco <> b.numero_banco)
               AND (:apenasMesmoBanco = false OR a.numero_banco = b.numero_banco)
@@ -511,7 +511,8 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             LIMIT :limit OFFSET :offset
             """, nativeQuery = true)
     List<Object[]> findParesCompensacaoSugeridosIds(
-            @Param("numeroBanco") Integer numeroBanco,
+            @Param("filtrarNumeroBancos") boolean filtrarNumeroBancos,
+            @Param("numeroBancos") List<Integer> numeroBancos,
             @Param("ano") Integer ano,
             @Param("mes") Integer mes,
             @Param("diasTolerancia") int diasTolerancia,
@@ -545,7 +546,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             """
             + CompensacaoSqlDiaUtil.WHERE_CONTA_E_AB
             + """
-              AND (:numeroBanco IS NULL OR a.numero_banco = :numeroBanco OR b.numero_banco = :numeroBanco)
+              AND (:filtrarNumeroBancos = false OR a.numero_banco IN (:numeroBancos) OR b.numero_banco IN (:numeroBancos))
               AND (:ano IS NULL OR (YEAR(a.data_lancamento) = :ano AND (:mes IS NULL OR MONTH(a.data_lancamento) = :mes)))
               AND (:apenasInterbancario = false OR a.numero_banco <> b.numero_banco)
               AND (:apenasMesmoBanco = false OR a.numero_banco = b.numero_banco)
@@ -553,7 +554,8 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
               AND (:apenasDiaDivergente = false OR a.data_lancamento <> b.data_lancamento)
             """, nativeQuery = true)
     long countParesCompensacaoSugeridos(
-            @Param("numeroBanco") Integer numeroBanco,
+            @Param("filtrarNumeroBancos") boolean filtrarNumeroBancos,
+            @Param("numeroBancos") List<Integer> numeroBancos,
             @Param("ano") Integer ano,
             @Param("mes") Integer mes,
             @Param("diasTolerancia") int diasTolerancia,

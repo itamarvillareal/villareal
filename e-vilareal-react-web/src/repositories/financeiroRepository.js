@@ -1427,6 +1427,7 @@ export async function listarParesSugeridosCompensacaoApi(opts = {}) {
     page = 0,
     size = 50,
     numeroBanco,
+    numeroBancos,
     ano,
     mes,
     apenasInterbancario,
@@ -1435,11 +1436,15 @@ export async function listarParesSugeridosCompensacaoApi(opts = {}) {
     apenasDiaDivergente,
     signal,
   } = opts;
+  const bancosLista = Array.isArray(numeroBancos)
+    ? numeroBancos.filter((n) => n != null && Number.isFinite(Number(n))).map(Number)
+    : [];
   return request('/api/financeiro/lancamentos/pares-sugeridos', {
     query: {
       page,
       size: clampFinanceiroPageSize(size),
-      numeroBanco,
+      numeroBanco: bancosLista.length > 1 ? undefined : numeroBanco,
+      numeroBancos: bancosLista.length > 1 ? bancosLista : undefined,
       ano,
       mes,
       apenasInterbancario: apenasInterbancario ? true : undefined,

@@ -5,7 +5,7 @@ import {
 } from '../../../data/financeiroData.js';
 import { dataCompraCartaoCorrigida } from '../../../utils/cartaoFaturaVencimento.js';
 import { dataNoPeriodo } from '../shared/periodoFinanceiro.js';
-import { formatDataBrCompleta } from '../shared/financeiroFormat.js';
+import { formatDataBrCompleta, formatDataBrCompletaComDiaSemana } from '../shared/financeiroFormat.js';
 import { mapApiLancamentoToExtratoRow } from '../extrato/extratoMappers.js';
 
 /** Linha mínima de par de compensação ({@link ResumoLancamentoParResponse}). */
@@ -15,7 +15,7 @@ export function mapResumoParToExtratoRow(l) {
   return {
     id: Number(l?.id),
     dataLancamento: dataIso,
-    dataExibicao: formatDataBrCompleta(dataIso),
+    dataExibicao: formatDataBrCompletaComDiaSemana(dataIso),
     descricao: String(l?.descricao ?? ''),
     bancoNome: String(l?.banco ?? l?.bancoNome ?? ''),
     numeroBanco: l?.numeroBanco ?? null,

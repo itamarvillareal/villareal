@@ -92,6 +92,7 @@ function FinanceiroShell({
     bancosExpandidos,
     setBancosExpandidos,
     bancoAtivo,
+    bancosAtivos,
     selecionarBanco,
     sidebarCollapsed,
     setSidebarCollapsed,
@@ -236,7 +237,7 @@ function FinanceiroShell({
                     key={b.numero}
                     nome={b.nome}
                     count={b.count}
-                    ativo={bancoAtivo === b.numero}
+                    ativo={bancosAtivos.includes(b.numero)}
                     onClick={() => selecionarBanco(b.numero)}
                   />
                 ))}

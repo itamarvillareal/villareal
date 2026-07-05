@@ -18,7 +18,8 @@ import {
   descartarSemelhantesEscritorioApi,
   sugestoesClassificacaoLoteApi,
 } from '../../../repositories/financeiroRepository.js';
-import { INBOX_TIPOS, INBOX_FILTRO_TODAS_CONTAS, clampFinanceiroPageSize } from '../constants/financeiroConstants.js';
+import { InboxBancosFiltro } from './InboxBancosFiltro.jsx';
+import { normalizarBancosFiltro } from './inboxBancosFiltro.js';
 import { isNumeroCartaoFinanceiro } from '../../../data/financeiroData.js';
 import { useFinanceiro } from '../FinanceiroContext.jsx';
 import { PeriodoSelector } from '../shared/PeriodoSelector.jsx';
@@ -101,7 +102,7 @@ function normalizeSugestoesMap(raw) {
 export function InboxPage() {
   const { tipo: tipoParam } = useParams();
   const tipo = TIPOS_VALIDOS.has(tipoParam) ? tipoParam : INBOX_TIPOS.classificar;
-  const { bancos, cartoes, bancoAtivo, filters, setBanco, setMes, setTipoPar, setTipoDia, setLetraSugestao, setConfianca } =
+  const { bancos, cartoes, bancoAtivo, filters, setBancos, setMes, setTipoPar, setTipoDia, setLetraSugestao, setConfianca } =
     useFinanceiro();
   const toast = useFinanceiroToast();
 
@@ -128,6 +129,7 @@ export function InboxPage() {
   const [fading, setFading] = useState(() => new Set());
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const listRef = useRef(null);
+  const paresRef = useRef([]);
   const countsDebounceRef = useRef(null);
   const refazerRelatorioPendenteRef = useRef(false);
 
@@ -138,24 +140,26 @@ export function InboxPage() {
 
   const periodo = useMemo(() => periodoParaQueryApi(filters.mes), [filters.mes]);
   const periodoAnoMes = useMemo(() => periodoParaAnoMesApi(filters.mes), [filters.mes]);
-  const bancoFiltro = useMemo(() => {
-    if (!Number.isFinite(bancoAtivo)) return undefined;
-    if (isNumeroCartaoFinanceiro(bancoAtivo)) return undefined;
-    return bancoAtivo;
-  }, [bancoAtivo]);
+  const bancosFiltro = useMemo(
+    () => normalizarBancosFiltro(filters.bancos).filter((n) => !isNumeroCartaoFinanceiro(n)),
+    [filters.bancos],
+  );
+  const bancoFiltro = bancosFiltro.length === 1 ? bancosFiltro[0] : undefined;
 
   const cartaoFiltro = useMemo(() => {
-    if (!Number.isFinite(bancoAtivo)) return undefined;
-    if (!isNumeroCartaoFinanceiro(bancoAtivo)) return undefined;
-    return bancoAtivo;
-  }, [bancoAtivo]);
+    const nums = normalizarBancosFiltro(filters.bancos);
+    if (nums.length === 1 && isNumeroCartaoFinanceiro(nums[0])) return nums[0];
+    if (Number.isFinite(bancoAtivo) && isNumeroCartaoFinanceiro(bancoAtivo)) return bancoAtivo;
+    return undefined;
+  }, [filters.bancos, bancoAtivo]);
 
   const filtroInboxConta = useMemo(
     () => ({
       numeroBanco: bancoFiltro,
+      numeroBancos: bancosFiltro.length > 1 ? bancosFiltro : undefined,
       numeroCartao: cartaoFiltro,
     }),
-    [bancoFiltro, cartaoFiltro],
+    [bancoFiltro, bancosFiltro, cartaoFiltro],
   );
 
   const filtroTipoPar = filters.tipoPar ?? TIPO_PAR_TODOS;
@@ -170,8 +174,8 @@ export function InboxPage() {
   );
 
   const chaveFiltrosCompensar = useMemo(
-    () => [filters.mes, bancoFiltro ?? '', cartaoFiltro ?? '', filtroTipoPar, filtroTipoDia].join('|'),
-    [filters.mes, bancoFiltro, cartaoFiltro, filtroTipoPar, filtroTipoDia],
+    () => [filters.mes, bancosFiltro.join(','), cartaoFiltro ?? '', filtroTipoPar, filtroTipoDia].join('|'),
+    [filters.mes, bancosFiltro, cartaoFiltro, filtroTipoPar, filtroTipoDia],
   );
 
   const pageSizeEfetivo = useMemo(() => clampFinanceiroPageSize(pageSize), [pageSize]);
@@ -283,7 +287,7 @@ export function InboxPage() {
     if (tipo === INBOX_TIPOS.semelhantes) {
       setSemelhantesGrupos([]);
     }
-  }, [tipo, filters.mes, bancoAtivo, filtroTipoPar, filtroTipoDia, filtroLetraSugestao, filtroConfianca]);
+  }, [tipo, filters.mes, filters.bancos, bancoAtivo, filtroTipoPar, filtroTipoDia, filtroLetraSugestao, filtroConfianca]);
 
   const contasClassificacao = useMemo(
     () =>
@@ -294,6 +298,10 @@ export function InboxPage() {
   );
 
   useEffect(() => {
+    paresRef.current = pares;
+  }, [pares]);
+
+  useEffect(() => {
     if (!featureFlags.useApiFinanceiro) return undefined;
     if (tipo === INBOX_TIPOS.total) {
       setLoading(false);
@@ -302,7 +310,11 @@ export function InboxPage() {
     }
     const ac = new AbortController();
     let cancelled = false;
-    setLoading(true);
+    const manterListaCompensar =
+      tipo === INBOX_TIPOS.compensar && paresRef.current.length > 0;
+    if (!manterListaCompensar) {
+      setLoading(true);
+    }
     setErro('');
 
     const run = async () => {
@@ -345,6 +357,7 @@ export function InboxPage() {
             size: pageSizeEfetivo,
             ...periodoAnoMes,
             numeroBanco: bancoFiltro,
+            numeroBancos: bancosFiltro.length > 1 ? bancosFiltro : undefined,
             ...queryCompensar,
             signal: ac.signal,
           });
@@ -1017,17 +1030,18 @@ export function InboxPage() {
         const keysRemover = (listaPar ?? []).map(parKey);
         removeComFade(keysRemover, () => {
           setPares((prev) => prev.filter((p) => !keysRemover.includes(parKey(p))));
+          setTotalElements((t) => Math.max(0, t - keysRemover.length));
         });
         setSelected(new Set());
-        setReloadNonce((n) => n + 1);
+        patchCount(INBOX_TIPOS.compensar, -keysRemover.length);
         scheduleLoadCounts();
         dispatchRefreshPendentes();
         if (ok > 0) {
           toast.success(
-            `${ok} sugestão${ok !== 1 ? 'ões' : ''} rejeitada${ok !== 1 ? 's' : ''} — reanalisando outros pares…`,
+            `${ok} sugestão${ok !== 1 ? 'ões' : ''} rejeitada${ok !== 1 ? 's' : ''}. Use «Atualizar lista» para buscar novos pares.`,
           );
         } else {
-          toast.info('Sugestões já estavam rejeitadas; lista atualizada.');
+          toast.info('Sugestões já estavam rejeitadas; removidas da lista.');
         }
       } catch (e) {
         toast.error(`Falha ao rejeitar par: ${e?.message || 'erro desconhecido'}`);
@@ -1035,7 +1049,7 @@ export function InboxPage() {
         setBusy(false);
       }
     },
-    [busy, loading, toast, removeComFade, scheduleLoadCounts],
+    [busy, loading, toast, removeComFade, patchCount, scheduleLoadCounts],
   );
 
   const handleRejeitarPar = useCallback(
@@ -1247,6 +1261,14 @@ export function InboxPage() {
     setReloadNonce((n) => n + 1);
   }, [refazendoRelatorio, busy, loading]);
 
+  const handleAtualizarListaCompensar = useCallback(() => {
+    if (busy || loading) return;
+    setSkipped(new Set());
+    setSelected(new Set());
+    setFocusedIndex(-1);
+    setReloadNonce((n) => n + 1);
+  }, [busy, loading]);
+
   const showBatch = tipo === INBOX_TIPOS.classificar || tipo === INBOX_TIPOS.compensar;
   const empty =
     !loading &&
@@ -1282,28 +1304,25 @@ export function InboxPage() {
 
       <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
         <PeriodoSelector value={filters.mes} onChange={setMes} incluirTotal />
-        <select
-          value={bancoAtivo ?? ''}
-          onChange={(e) => setBanco(e.target.value ? Number(e.target.value) : null)}
-          className="text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1 min-w-[10rem]"
-          aria-label="Filtrar banco ou cartão"
-        >
-          <option value="">{INBOX_FILTRO_TODAS_CONTAS}</option>
-          {bancos.map((b) => (
-            <option key={b.numero} value={b.numero}>
-              {b.nome}
-            </option>
-          ))}
-          {cartoes.length > 0 ? (
-            <optgroup label="Cartões">
-              {cartoes.map((c) => (
-                <option key={`cartao-${c.numero}`} value={c.numero}>
-                  {c.nome}
-                </option>
-              ))}
-            </optgroup>
-          ) : null}
-        </select>
+        <InboxBancosFiltro bancos={bancosFiltro} bancosCatalogo={bancos} onChange={setBancos} />
+        {cartoes.length > 0 ? (
+          <select
+            value={cartaoFiltro ?? ''}
+            onChange={(e) => {
+              const n = e.target.value ? Number(e.target.value) : null;
+              setBancos(n != null ? [n] : bancosFiltro);
+            }}
+            className="text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1 min-w-[8rem]"
+            aria-label="Filtrar cartão"
+          >
+            <option value="">Cartão (todos)</option>
+            {cartoes.map((c) => (
+              <option key={c.numero} value={c.numero}>
+                {c.nome}
+              </option>
+            ))}
+          </select>
+        ) : null}
         {tipo === INBOX_TIPOS.compensar ? (
           <select
             value={filtroTipoPar}
@@ -1358,10 +1377,22 @@ export function InboxPage() {
         {tipo === INBOX_TIPOS.compensar ? (
           <button
             type="button"
+            onClick={handleAtualizarListaCompensar}
+            disabled={busy || loading}
+            className="inline-flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
+            title="Recarrega pares sugeridos do servidor (período e filtros atuais)"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} aria-hidden />
+            Atualizar lista
+          </button>
+        ) : null}
+        {tipo === INBOX_TIPOS.compensar ? (
+          <button
+            type="button"
             onClick={handleRejeitarTodosNaTela}
             disabled={busy || loading || paresVisiveis.length === 0}
             className="inline-flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-md border border-red-200 dark:border-red-800 bg-white dark:bg-slate-800 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-50 font-medium"
-            title="Rejeita todas as sugestões visíveis para o sistema reanalizar outros pares"
+            title="Rejeita todas as sugestões visíveis nesta página"
           >
             <X className="w-3.5 h-3.5" aria-hidden />
             Não são par (todos na tela)
@@ -1494,7 +1525,7 @@ export function InboxPage() {
       ) : null}
 
       <div ref={listRef} className="flex-1 min-h-0 overflow-auto p-3">
-        {loading ? (
+        {loading && !(tipo === INBOX_TIPOS.compensar && pares.length > 0) ? (
           <p className="text-sm text-slate-500 p-4">Carregando…</p>
         ) : erro ? (
           <p className="text-sm text-red-600 dark:text-red-400 p-4">{erro}</p>

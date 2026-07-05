@@ -8,6 +8,18 @@ const par = (tipo, dataA, dataB) => ({
 });
 
 describe('mapLancamentoInbox', () => {
+  it('resumo de par na aba Compensar inclui dia da semana por extenso', () => {
+    const row = mapLancamentoInbox({
+      id: 1,
+      dataLancamento: '2026-04-27',
+      descricao: 'PIX',
+      banco: 'BTG Banking',
+      valor: 100,
+      natureza: 'DEBITO',
+    });
+    expect(row.dataExibicao).toBe('27/04/2026 (Segunda-feira)');
+  });
+
   it('marca lançamento de cartão do inbox para deep link no extrato de cartão', () => {
     const row = mapLancamentoInbox({
       id: 16906,

@@ -31,6 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -146,10 +147,10 @@ class FinanceiroCompensacaoServiceTest {
         itauPix.setValor(new BigDecimal("10934.30"));
 
         when(lancamentoRepository.countParesCompensacaoSugeridos(
-                        any(), any(), any(), eq(3), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean()))
+                        anyBoolean(), anyList(), any(), any(), eq(3), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean()))
                 .thenReturn(2L);
         when(lancamentoRepository.findParesCompensacaoSugeridosIds(
-                        any(), any(), any(), eq(3), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), anyInt(), anyInt()))
+                        anyBoolean(), anyList(), any(), any(), eq(3), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), anyInt(), anyInt()))
                 .thenReturn(
                         List.<Object[]>of(new Object[] {10L, 20L, 2, 2}, new Object[] {10L, 30L, 2, 1}),
                         List.of());
@@ -176,10 +177,10 @@ class FinanceiroCompensacaoServiceTest {
         LancamentoFinanceiroEntity outro = lancamentoOrfao(30L, 2, NaturezaLancamento.CREDITO, quinta);
 
         when(lancamentoRepository.countParesCompensacaoSugeridos(
-                        any(), any(), any(), eq(3), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean()))
+                        anyBoolean(), anyList(), any(), any(), eq(3), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean()))
                 .thenReturn(2L);
         when(lancamentoRepository.findParesCompensacaoSugeridosIds(
-                        any(), any(), any(), eq(3), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), anyInt(), anyInt()))
+                        anyBoolean(), anyList(), any(), any(), eq(3), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), anyInt(), anyInt()))
                 .thenReturn(
                         List.<Object[]>of(new Object[] {10L, 20L, 1, 30}, new Object[] {10L, 30L, 1, 2}),
                         List.of());
@@ -201,10 +202,10 @@ class FinanceiroCompensacaoServiceTest {
         LancamentoFinanceiroEntity itauPix = lancamentoOrfao(30L, 1, NaturezaLancamento.CREDITO, dia, contaN());
 
         when(lancamentoRepository.countParesCompensacaoSugeridos(
-                        any(), any(), any(), eq(3), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean()))
+                        anyBoolean(), anyList(), any(), any(), eq(3), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean()))
                 .thenReturn(1L);
         when(lancamentoRepository.findParesCompensacaoSugeridosIds(
-                        any(), any(), any(), eq(3), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), anyInt(), anyInt()))
+                        anyBoolean(), anyList(), any(), any(), eq(3), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), anyInt(), anyInt()))
                 .thenReturn(List.<Object[]>of(new Object[] {10L, 30L, 2, 1}), List.of());
         when(lancamentoRepository.findAllByIdIn(any())).thenReturn(List.of(bbPix, itauPix));
 
@@ -224,10 +225,10 @@ class FinanceiroCompensacaoServiceTest {
         LancamentoFinanceiroEntity c2 = lancamentoOrfao(4L, 2, NaturezaLancamento.CREDITO, dia);
 
         when(lancamentoRepository.countParesCompensacaoSugeridos(
-                        any(), any(), any(), eq(3), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean()))
+                        anyBoolean(), anyList(), any(), any(), eq(3), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean()))
                 .thenReturn(2L);
         when(lancamentoRepository.findParesCompensacaoSugeridosIds(
-                        any(), any(), any(), eq(3), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), anyInt(), anyInt()))
+                        anyBoolean(), anyList(), any(), any(), eq(3), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), anyInt(), anyInt()))
                 .thenReturn(
                         List.<Object[]>of(new Object[] {1L, 2L, 1, 2}, new Object[] {3L, 4L, 1, 2}),
                         List.of());

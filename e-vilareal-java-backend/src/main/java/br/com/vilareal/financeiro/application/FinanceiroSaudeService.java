@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -82,7 +83,7 @@ public class FinanceiroSaudeService {
                 lancamentoRepository.countGruposCompensacaoInconsistentes(null, null, null));
         response.setParesOrfaosSugeridos(
                 lancamentoRepository.countParesCompensacaoSugeridos(
-                        null, null, null, 3, false, false, false, false));
+                        false, List.of(0), null, null, 3, false, false, false, false));
 
         for (Object[] row : lancamentoRepository.findMesesAbertosResumo()) {
             FinanceiroSaudeMesAbertoDto m = new FinanceiroSaudeMesAbertoDto();

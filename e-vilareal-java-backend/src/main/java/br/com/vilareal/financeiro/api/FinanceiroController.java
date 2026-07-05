@@ -508,6 +508,7 @@ public class FinanceiroController {
     @Operation(description = "Pares de compensação sugeridos (valor oposto, sem grupo, janela de datas).")
     public ParesSugeridosCompensacaoResponse paresSugeridos(
             @RequestParam(value = "numeroBanco", required = false) Integer numeroBanco,
+            @RequestParam(value = "numeroBancos", required = false) List<Integer> numeroBancos,
             @RequestParam(value = "ano", required = false) Integer ano,
             @RequestParam(value = "mes", required = false) Integer mes,
             @RequestParam(value = "apenasInterbancario", defaultValue = "false") boolean apenasInterbancario,
@@ -518,6 +519,7 @@ public class FinanceiroController {
             @RequestParam(value = "size", defaultValue = "50") int size) {
         return financeiroCompensacaoService.listarParesSugeridos(
                 numeroBanco,
+                numeroBancos,
                 ano,
                 mes,
                 page,
