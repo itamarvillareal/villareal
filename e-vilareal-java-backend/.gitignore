@@ -46,3 +46,9 @@ pje-state.json
 # Backups locais de migração (dump SQL, audit TSV) — não commitar
 data/backups/
 data/cora-imports-frozen.flag
+
+# Assinatura CMS — bloqueia PDF/.p7s de teste, exceto par sintético versionado
+src/test/resources/assinatura/**
+!src/test/resources/assinatura/README.md
+!src/test/resources/assinatura/referencia-sintetica.pdf
+!src/test/resources/assinatura/referencia-sintetica.p7s

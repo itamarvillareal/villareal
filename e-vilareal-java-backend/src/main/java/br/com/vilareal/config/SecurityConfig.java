@@ -1,5 +1,9 @@
 package br.com.vilareal.config;
 
+import br.com.vilareal.assinador.AssinadorSecurityConstants;
+import br.com.vilareal.assinador.security.AssinadorAccessLogFilter;
+import br.com.vilareal.assinador.security.AssinadorHttpsEnforcementFilter;
+import br.com.vilareal.assinador.security.AssinadorSecretAuthFilter;
 import br.com.vilareal.security.JwtAuthenticationFilter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -34,10 +38,21 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final SecurityProblemSupport securityProblemSupport;
+    private final AssinadorHttpsEnforcementFilter assinadorHttpsEnforcementFilter;
+    private final AssinadorAccessLogFilter assinadorAccessLogFilter;
+    private final AssinadorSecretAuthFilter assinadorSecretAuthFilter;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, SecurityProblemSupport securityProblemSupport) {
+    public SecurityConfig(
+            JwtAuthenticationFilter jwtAuthenticationFilter,
+            SecurityProblemSupport securityProblemSupport,
+            AssinadorHttpsEnforcementFilter assinadorHttpsEnforcementFilter,
+            AssinadorAccessLogFilter assinadorAccessLogFilter,
+            AssinadorSecretAuthFilter assinadorSecretAuthFilter) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.securityProblemSupport = securityProblemSupport;
+        this.assinadorHttpsEnforcementFilter = assinadorHttpsEnforcementFilter;
+        this.assinadorAccessLogFilter = assinadorAccessLogFilter;
+        this.assinadorSecretAuthFilter = assinadorSecretAuthFilter;
     }
 
     @Bean
@@ -80,12 +95,17 @@ public class SecurityConfig {
                                         "/swagger-ui/**",
                                         "/swagger-ui.html"
                                 ).permitAll()
+                                .requestMatchers(AssinadorSecurityConstants.API_PREFIX + "/**")
+                                .hasAuthority(AssinadorSecurityConstants.ROLE_ASSINADOR)
                                 .anyRequest().authenticated();
                     }
                 })
                 .exceptionHandling(e -> e
                         .authenticationEntryPoint(securityProblemSupport)
                         .accessDeniedHandler(securityProblemSupport))
+                .addFilterBefore(assinadorHttpsEnforcementFilter, JwtAuthenticationFilter.class)
+                .addFilterBefore(assinadorAccessLogFilter, JwtAuthenticationFilter.class)
+                .addFilterBefore(assinadorSecretAuthFilter, JwtAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

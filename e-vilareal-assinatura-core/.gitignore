@@ -1,0 +1,8 @@
+target/
+
+# Assinatura CMS — bloqueia PDF/.p7s de teste, exceto par sintético versionado
+src/test/resources/assinatura/**
+!src/test/resources/assinatura/README.md
+!src/test/resources/assinatura/referencia-sintetica.pdf
+!src/test/resources/assinatura/referencia-sintetica.p7s
+!src/test/resources/assinatura/test-signer.p12

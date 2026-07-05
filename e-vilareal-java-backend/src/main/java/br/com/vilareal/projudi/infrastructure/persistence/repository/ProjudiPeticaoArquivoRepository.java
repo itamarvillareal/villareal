@@ -31,6 +31,13 @@ public interface ProjudiPeticaoArquivoRepository extends JpaRepository<ProjudiPe
     List<ProjudiPeticaoArquivoEntity> findByStatusAndPeticaoIdIn(
             @Param("status") String status, @Param("peticaoIds") List<Long> peticaoIds);
 
+    @Query("""
+            SELECT a FROM ProjudiPeticaoArquivoEntity a
+            JOIN FETCH a.peticao p
+            WHERE a.id = :id
+            """)
+    Optional<ProjudiPeticaoArquivoEntity> findByIdWithPeticao(@Param("id") Long id);
+
     @Override
     Optional<ProjudiPeticaoArquivoEntity> findById(Long id);
 }

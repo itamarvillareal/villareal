@@ -5,6 +5,7 @@ import br.com.vilareal.julia.application.JuliaTriagemService;
 import br.com.vilareal.julia.triagem.TriagemRunResponse;
 import br.com.vilareal.processo.api.dto.*;
 import br.com.vilareal.processo.application.DiagnosticoAguardandoProtocoloAssinarService;
+import br.com.vilareal.processo.application.DiagnosticoAssinaturaAutomaticaService;
 import br.com.vilareal.processo.application.ProcessoApplicationService;
 import br.com.vilareal.processo.application.ProcessoAutosIntegralService;
 import br.com.vilareal.processo.application.ProcessoMovimentacoesConsolidarPdfService;
@@ -48,6 +49,7 @@ public class ProcessosController {
     private final MonitoramentoMovimentacoesService monitoramentoMovimentacoesService;
     private final JuliaTriagemService juliaTriagemService;
     private final DiagnosticoAguardandoProtocoloAssinarService diagnosticoAguardandoProtocoloAssinarService;
+    private final DiagnosticoAssinaturaAutomaticaService diagnosticoAssinaturaAutomaticaService;
 
     public ProcessosController(
             ProcessoApplicationService processoApplicationService,
@@ -57,7 +59,8 @@ public class ProcessosController {
             ProcessoMovimentacoesDriveService processoMovimentacoesDriveService,
             MonitoramentoMovimentacoesService monitoramentoMovimentacoesService,
             JuliaTriagemService juliaTriagemService,
-            DiagnosticoAguardandoProtocoloAssinarService diagnosticoAguardandoProtocoloAssinarService) {
+            DiagnosticoAguardandoProtocoloAssinarService diagnosticoAguardandoProtocoloAssinarService,
+            DiagnosticoAssinaturaAutomaticaService diagnosticoAssinaturaAutomaticaService) {
         this.processoApplicationService = processoApplicationService;
         this.processoAutosIntegralService = processoAutosIntegralService;
         this.processoMovimentacoesConsolidarPdfService = processoMovimentacoesConsolidarPdfService;
@@ -66,6 +69,7 @@ public class ProcessosController {
         this.monitoramentoMovimentacoesService = monitoramentoMovimentacoesService;
         this.juliaTriagemService = juliaTriagemService;
         this.diagnosticoAguardandoProtocoloAssinarService = diagnosticoAguardandoProtocoloAssinarService;
+        this.diagnosticoAssinaturaAutomaticaService = diagnosticoAssinaturaAutomaticaService;
     }
 
     @GetMapping
@@ -215,6 +219,38 @@ public class ProcessosController {
             @RequestParam Long credencialId,
             @RequestBody List<DiagnosticoAguardandoProtocoloItemRequest> processos) {
         return diagnosticoAguardandoProtocoloAssinarService.prepararAssinatura(credencialId, processos);
+    }
+
+    @PostMapping("/diagnostico/aguardando-protocolo/assinar-automatico")
+    @Operation(
+            summary = "Prepara PDFs e enfileira lote para assinatura automática (assinador Windows)",
+            description =
+                    "Reutiliza prepararAssinatura (Drive → PENDENTE_ASSINATURA + PDFs no store-dir). "
+                            + "Cria AssinaturaLote LIBERADO ou reutiliza lote ativo para os mesmos peticaoIds "
+                            + "(idempotente contra clique duplo).")
+    public AssinarAutomaticoResponse assinarAutomaticoDiagnostico(
+            @RequestParam Long credencialId,
+            @RequestBody List<DiagnosticoAguardandoProtocoloItemRequest> processos) {
+        return diagnosticoAssinaturaAutomaticaService.assinarAutomatico(credencialId, processos);
+    }
+
+    @GetMapping("/diagnostico/aguardando-protocolo/lote-assinatura/{loteId}")
+    @Operation(
+            summary = "Status do lote de assinatura automática",
+            description =
+                    "Retorna LIBERADO / EM_ASSINATURA / CONCLUIDO / ERRO. Em ERRO inclui erro_codigo, "
+                            + "erro_mensagem e mensagemUsuario amigável (ex.: TOKEN_OCUPADO).")
+    public LoteAssinaturaStatusResponse statusLoteAssinaturaDiagnostico(@PathVariable Long loteId) {
+        return diagnosticoAssinaturaAutomaticaService.consultarStatus(loteId);
+    }
+
+    @PostMapping("/diagnostico/aguardando-protocolo/lote-assinatura/{loteId}/reliberar")
+    @Operation(
+            summary = "Re-libera lote após erro recuperável (ex.: TOKEN_OCUPADO)",
+            description =
+                    "Volta o lote para LIBERADO sem reprocessar prepararAssinatura — uso do botão «Tentar novamente».")
+    public LoteAssinaturaStatusResponse reliberarLoteAssinaturaDiagnostico(@PathVariable Long loteId) {
+        return diagnosticoAssinaturaAutomaticaService.reliberar(loteId);
     }
 
     @PostMapping("/diagnostico/aguardando-protocolo/lote-assinar-zip")

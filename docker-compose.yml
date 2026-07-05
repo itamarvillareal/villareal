@@ -6,8 +6,8 @@
 services:
   backend:
     build:
-      context: ./e-vilareal-java-backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: e-vilareal-java-backend/Dockerfile
     container_name: vilareal-backend
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
