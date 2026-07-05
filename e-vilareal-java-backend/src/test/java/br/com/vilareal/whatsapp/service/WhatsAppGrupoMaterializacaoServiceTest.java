@@ -29,6 +29,8 @@ class WhatsAppGrupoMaterializacaoServiceTest {
 
     private static final Instant NOW = Instant.parse("2026-07-04T12:00:00Z");
     private static final String PHONE = "5562999887766";
+    private static final String PHONE_PROBLEMA = "5561982103110";
+    private static final String PHONE_OK = "556240519377";
 
     @Mock
     private WhatsAppMessageRepository messageRepository;
@@ -117,5 +119,55 @@ class WhatsAppGrupoMaterializacaoServiceTest {
         verify(conversaClienteRepository, times(2)).saveAll(captor.capture());
         List<List<WhatsAppConversaClienteEntity>> todas = captor.getAllValues();
         assertThat(todas.get(0)).usingRecursiveComparison().isEqualTo(todas.get(1));
+    }
+
+    @Test
+    void cliente632DuplicadoComFormatosDistintos_gravaUmaLinhaCanonica() {
+        when(messageRepository.findDistinctPhoneNumbers()).thenReturn(List.of(PHONE_PROBLEMA));
+        when(vinculoService.resolverClientesPorTelefone(PHONE_PROBLEMA))
+                .thenReturn(List.of(
+                        new WhatsAppVinculoService.ClienteVinculoResumo("632", "WESLEY"),
+                        new WhatsAppVinculoService.ClienteVinculoResumo("00000632", "WESLEY")));
+
+        var result = service.executarRodada();
+
+        assertThat(result.telefonesProcessados()).isEqualTo(1);
+        assertThat(result.linhasClientes()).isEqualTo(1);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<WhatsAppConversaClienteEntity>> captor = ArgumentCaptor.forClass(List.class);
+        verify(conversaClienteRepository).deleteByPhoneNumber(PHONE_PROBLEMA);
+        verify(conversaClienteRepository).saveAll(captor.capture());
+
+        List<WhatsAppConversaClienteEntity> salvas = captor.getValue();
+        assertThat(salvas).hasSize(1);
+        assertThat(salvas.get(0).getClienteCodigo()).isEqualTo("00000632");
+        assertThat(salvas.get(0).getClienteNome()).isEqualTo("WESLEY");
+    }
+
+    @Test
+    void falhaEmUmTelefone_naoAbortaProcessamentoDosDemais() {
+        when(messageRepository.findDistinctPhoneNumbers()).thenReturn(List.of(PHONE_PROBLEMA, PHONE_OK));
+        when(vinculoService.resolverClientesPorTelefone(PHONE_PROBLEMA))
+                .thenReturn(List.of(new WhatsAppVinculoService.ClienteVinculoResumo("00000632", "WESLEY")));
+        when(vinculoService.resolverClientesPorTelefone(PHONE_OK))
+                .thenReturn(List.of(new WhatsAppVinculoService.ClienteVinculoResumo("00000728", "Sette")));
+        when(conversaClienteRepository.saveAll(any()))
+                .thenAnswer(invocation -> {
+                    @SuppressWarnings("unchecked")
+                    List<WhatsAppConversaClienteEntity> linhas = invocation.getArgument(0);
+                    if (!linhas.isEmpty() && PHONE_PROBLEMA.equals(linhas.get(0).getPhoneNumber())) {
+                        throw new RuntimeException("Duplicate entry");
+                    }
+                    return linhas;
+                });
+
+        var result = service.executarRodada();
+
+        assertThat(result.telefonesProcessados()).isEqualTo(2);
+        assertThat(result.linhasClientes()).isEqualTo(1);
+        verify(conversaClienteRepository).deleteByPhoneNumber(PHONE_PROBLEMA);
+        verify(conversaClienteRepository).deleteByPhoneNumber(PHONE_OK);
+        verify(conversaClienteRepository, times(2)).saveAll(any());
     }
 }

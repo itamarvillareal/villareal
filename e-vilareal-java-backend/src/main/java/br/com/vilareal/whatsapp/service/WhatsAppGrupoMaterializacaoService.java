@@ -1,5 +1,6 @@
 package br.com.vilareal.whatsapp.service;
 
+import br.com.vilareal.processo.application.CodigoClienteUtil;
 import br.com.vilareal.whatsapp.dto.WhatsAppGrupoMaterializacaoResultDTO;
 import br.com.vilareal.whatsapp.infrastructure.persistence.entity.WhatsAppConversaClienteEntity;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppConversaClienteRepository;
@@ -13,6 +14,7 @@ import org.springframework.util.StringUtils;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 /**
@@ -47,13 +49,24 @@ public class WhatsAppGrupoMaterializacaoService {
         long inicio = System.nanoTime();
         List<String> telefones = messageRepository.findDistinctPhoneNumbers();
         int linhas = 0;
+        int telefonesComFalha = 0;
         for (String phone : telefones) {
-            linhas += materializarTelefone(phone);
+            try {
+                linhas += materializarTelefone(phone);
+            } catch (Exception e) {
+                telefonesComFalha++;
+                log.warn(
+                        "WhatsApp grupos materialização falhou telefone={}: {}",
+                        phone,
+                        e.getMessage(),
+                        e);
+            }
         }
         long duracaoMs = (System.nanoTime() - inicio) / 1_000_000L;
         log.info(
-                "WhatsApp grupos materialização: telefones={} linhas_cliente={} duracao_ms={}",
+                "WhatsApp grupos materialização: telefones={} telefones_falha={} linhas_cliente={} duracao_ms={}",
                 telefones.size(),
+                telefonesComFalha,
                 linhas,
                 duracaoMs);
         return new WhatsAppGrupoMaterializacaoResultDTO(telefones.size(), linhas, duracaoMs);
@@ -76,16 +89,35 @@ public class WhatsAppGrupoMaterializacaoService {
             return 0;
         }
         Instant agora = clock.instant();
-        List<WhatsAppConversaClienteEntity> linhas = new ArrayList<>(clientes.size());
+        LinkedHashMap<String, WhatsAppConversaClienteEntity> porCodigoCanonico = new LinkedHashMap<>();
         for (WhatsAppVinculoService.ClienteVinculoResumo cliente : clientes) {
-            WhatsAppConversaClienteEntity entity = new WhatsAppConversaClienteEntity();
-            entity.setPhoneNumber(phoneNumber);
-            entity.setClienteCodigo(cliente.codigoCliente());
-            entity.setClienteNome(cliente.nome());
-            entity.setAtualizadoEm(agora);
-            linhas.add(entity);
+            String codigoCanonico = codigoClienteCanonico(cliente.codigoCliente());
+            if (!StringUtils.hasText(codigoCanonico)) {
+                continue;
+            }
+            porCodigoCanonico.putIfAbsent(
+                    codigoCanonico,
+                    novaLinhaCliente(phoneNumber, codigoCanonico, cliente.nome(), agora));
+        }
+        List<WhatsAppConversaClienteEntity> linhas = new ArrayList<>(porCodigoCanonico.values());
+        if (linhas.isEmpty()) {
+            return 0;
         }
         conversaClienteRepository.saveAll(linhas);
         return linhas.size();
+    }
+
+    private static WhatsAppConversaClienteEntity novaLinhaCliente(
+            String phoneNumber, String codigoCanonico, String nome, Instant agora) {
+        WhatsAppConversaClienteEntity entity = new WhatsAppConversaClienteEntity();
+        entity.setPhoneNumber(phoneNumber);
+        entity.setClienteCodigo(codigoCanonico);
+        entity.setClienteNome(nome);
+        entity.setAtualizadoEm(agora);
+        return entity;
+    }
+
+    static String codigoClienteCanonico(String codigoCliente) {
+        return CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(codigoCliente);
     }
 }
