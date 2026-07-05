@@ -40,6 +40,7 @@ export const INBOX_TIPOS = {
   recorrencia: 'recorrencia',
   semelhantes: 'semelhantes',
   inconsistentes: 'inconsistentes',
+  total: 'total',
 };
 
 /** Rótulo do filtro unificado (bancos + cartões) no inbox. */

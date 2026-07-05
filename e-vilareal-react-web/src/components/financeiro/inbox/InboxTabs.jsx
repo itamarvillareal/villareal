@@ -8,6 +8,7 @@ const TABS = [
   { tipo: INBOX_TIPOS.compensar, label: 'Compensar' },
   { tipo: INBOX_TIPOS.fatura, label: 'Fatura' },
   { tipo: INBOX_TIPOS.inconsistentes, label: 'Inconsistentes' },
+  { tipo: INBOX_TIPOS.total, label: 'Total' },
 ];
 
 export const InboxTabs = memo(function InboxTabs({ counts = {} }) {

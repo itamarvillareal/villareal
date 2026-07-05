@@ -14,8 +14,13 @@ import { somarLancamentosExtratoRows } from '../consolidado/consolidadoUtils.js'
 const fmtBrl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const BUSCA_DEBOUNCE_MS = 300;
 
-export function TotalPage() {
-  const [mes, setMes] = useState(mesAtualIso);
+/**
+ * @param {{ embedded?: boolean, mes?: string, onMesChange?: (v: string) => void }} [props]
+ */
+export function TotalPage({ embedded = false, mes: mesProp, onMesChange } = {}) {
+  const [mesLocal, setMesLocal] = useState(mesAtualIso);
+  const mes = mesProp ?? mesLocal;
+  const setMes = onMesChange ?? setMesLocal;
   const [filtroEtapa, setFiltroEtapa] = useState('');
   const [buscaLocal, setBuscaLocal] = useState('');
   const [buscaDebounced, setBuscaDebounced] = useState('');
@@ -113,13 +118,19 @@ export function TotalPage() {
 
   return (
     <div className="relative flex flex-col flex-1 min-h-0 overflow-hidden">
-      <div className="flex-1 min-h-0 overflow-auto p-4 space-y-4 max-w-6xl w-full mx-auto">
-        <header>
-          <h1 className="text-lg font-medium text-slate-900 dark:text-slate-100">Total</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Todos os lançamentos de extratos bancários e cartões de crédito.
-          </p>
-        </header>
+      <div
+        className={`flex-1 min-h-0 overflow-auto space-y-4 max-w-6xl w-full mx-auto ${
+          embedded ? 'p-3' : 'p-4'
+        }`}
+      >
+        {embedded ? null : (
+          <header>
+            <h1 className="text-lg font-medium text-slate-900 dark:text-slate-100">Total</h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+              Todos os lançamentos de extratos bancários e cartões de crédito.
+            </p>
+          </header>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <ResumoCard label="Créditos (página)" value={resumoPagina.creditos} tone="credit" />

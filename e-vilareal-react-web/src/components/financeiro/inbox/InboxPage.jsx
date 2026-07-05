@@ -52,6 +52,7 @@ import { InconsistenciaCard } from './cards/InconsistenciaCard.jsx';
 import { SemelhantesEscritorioGroupCard } from './cards/SemelhantesEscritorioGroupCard.jsx';
 import { dispatchRefreshPendentes } from '../hooks/useKeyboardShortcuts.js';
 import { scrollInboxCardIntoView, useInboxKeyboard } from '../hooks/useInboxKeyboard.js';
+import { TotalPage } from '../total/TotalPage.jsx';
 import {
   filtrarParesCompensacao,
   mapLancamentoInbox,
@@ -228,6 +229,8 @@ export function InboxPage() {
         [INBOX_TIPOS.fatura]: Number(fatura?.totalSugestoes ?? 0),
         [INBOX_TIPOS.inconsistentes]: Number(inconsistentesRes?.total ?? 0),
         [INBOX_TIPOS.semelhantes]: Number(semelhantesRes?.totalItensAcionaveis ?? 0),
+        [INBOX_TIPOS.total]:
+          Number(saude?.totalLancamentos ?? 0) + Number(saude?.totalCartao ?? 0),
       }));
     },
     [filters.mes, periodoAnoMes, filtroInboxConta, tipo],
@@ -292,6 +295,11 @@ export function InboxPage() {
 
   useEffect(() => {
     if (!featureFlags.useApiFinanceiro) return undefined;
+    if (tipo === INBOX_TIPOS.total) {
+      setLoading(false);
+      setErro('');
+      return undefined;
+    }
     const ac = new AbortController();
     let cancelled = false;
     setLoading(true);
@@ -1257,6 +1265,15 @@ export function InboxPage() {
 
   if (!featureFlags.useApiFinanceiro) {
     return <div className="p-6 text-sm text-slate-600 dark:text-slate-400">{erro}</div>;
+  }
+
+  if (tipo === INBOX_TIPOS.total) {
+    return (
+      <div className="flex flex-col min-h-0 h-full overflow-hidden bg-slate-50 dark:bg-slate-950">
+        <InboxTabs counts={counts} />
+        <TotalPage embedded mes={filters.mes} onMesChange={setMes} />
+      </div>
+    );
   }
 
   return (
