@@ -3,6 +3,7 @@ WORKDIR /app
 
 COPY pom.xml .
 COPY e-vilareal-assinatura-core/pom.xml e-vilareal-assinatura-core/
+COPY e-vilareal-assinador-local/pom.xml e-vilareal-assinador-local/
 COPY e-vilareal-java-backend/pom.xml e-vilareal-java-backend/
 RUN mvn -q -DskipTests dependency:go-offline -pl e-vilareal-java-backend -am
 
