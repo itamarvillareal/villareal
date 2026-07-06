@@ -13,4 +13,7 @@ public class PagamentoFaturaVinculoWriteRequest {
 
     @NotNull
     private Long lancamentoCartaoId;
+
+    /** Quando true, aceita divergência de valor (ex.: pagamento planilha × fatura PDF corrigida). */
+    private Boolean ignorarToleranciaValor;
 }

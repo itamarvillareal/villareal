@@ -57,7 +57,7 @@ public class FinanceiroPagamentoFaturaApplicationService {
         LancamentoCartaoEntity cartao = lancamentoCartaoRepository.findById(req.getLancamentoCartaoId())
                 .orElseThrow(() -> new ResourceNotFoundException("Lançamento de cartão não encontrado"));
 
-        validarPar(banco, cartao);
+        validarPar(banco, cartao, req.getIgnorarToleranciaValor());
 
         if (vinculoRepository.findByLancamentoBancoId(banco.getId()).isPresent()) {
             throw new BusinessRuleException("Este lançamento bancário já possui vínculo de pagamento de fatura.");
@@ -111,7 +111,7 @@ public class FinanceiroPagamentoFaturaApplicationService {
         lancamentoCartaoRepository.save(cartao);
     }
 
-    private void validarPar(LancamentoFinanceiroEntity banco, LancamentoCartaoEntity cartao) {
+    private void validarPar(LancamentoFinanceiroEntity banco, LancamentoCartaoEntity cartao, Boolean ignorarTolerancia) {
         if (banco.getNatureza() != NaturezaLancamento.DEBITO) {
             throw new BusinessRuleException("Pagamento de fatura no banco deve ser um débito (saída da conta).");
         }
@@ -128,11 +128,13 @@ public class FinanceiroPagamentoFaturaApplicationService {
             }
             absCartao = cartao.getValor().abs();
         }
-        BigDecimal tol = absCartao.max(absBanco).multiply(new BigDecimal("0.02")).max(new BigDecimal("0.05"));
-        if (absBanco.subtract(absCartao).abs().compareTo(tol) > 0) {
-            throw new BusinessRuleException(
-                    "Valores divergem: banco " + absBanco + " × cartão " + absCartao
-                            + " (tolerância " + tol.setScale(2, java.math.RoundingMode.HALF_UP) + ").");
+        if (!Boolean.TRUE.equals(ignorarTolerancia)) {
+            BigDecimal tol = absCartao.max(absBanco).multiply(new BigDecimal("0.02")).max(new BigDecimal("0.05"));
+            if (absBanco.subtract(absCartao).abs().compareTo(tol) > 0) {
+                throw new BusinessRuleException(
+                        "Valores divergem: banco " + absBanco + " × cartão " + absCartao
+                                + " (tolerância " + tol.setScale(2, java.math.RoundingMode.HALF_UP) + ").");
+            }
         }
     }
 
