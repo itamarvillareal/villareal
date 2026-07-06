@@ -7,6 +7,14 @@ export const WHATSAPP_PANEL_H = 500;
 const VIEWPORT_MARGIN = 8;
 const DRAG_THRESHOLD = 6;
 
+/** Permite arrastar o handle (ex.: FAB `<button>`); ignora cliques em controles filhos. */
+export function shouldStartFloatingDrag(event) {
+  if (event.button !== 0 && event.pointerType === 'mouse') return false;
+  const block = event.target.closest?.('button, a, input, textarea, select');
+  if (block && block !== event.currentTarget) return false;
+  return true;
+}
+
 function readStoredFabPosition() {
   if (typeof window === 'undefined') return null;
   try {
@@ -113,8 +121,7 @@ export function useWhatsAppFloatingPosition({ isOpen, isMobile, onTap }) {
   const startDrag = useCallback(
     (e) => {
       if (isMobile) return;
-      if (e.button !== 0 && e.pointerType === 'mouse') return;
-      if (e.target.closest('button, a, input, textarea, select')) return;
+      if (!shouldStartFloatingDrag(e)) return;
       e.preventDefault();
       e.currentTarget.setPointerCapture?.(e.pointerId);
       const origin = resolvedFab ?? defaultFabPosition();
