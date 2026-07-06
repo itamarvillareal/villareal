@@ -70,13 +70,16 @@ export function ModalCobrancaWhatsAppCalculos({
     if (previewItem.elegivelCobranca === false) {
       return previewItem.motivoInelegivel || 'Processo inelegível para cobrança.';
     }
-    if (previewItem.calculoDesatualizado) {
-      return `Cálculo desatualizado${previewItem.dataCalculo ? ` (${previewItem.dataCalculo})` : ''}. Atualize antes de cobrar.`;
-    }
     return '';
   }, [previewItem]);
 
   const avisoJaCobradoEsteMes = Boolean(previewItem?.jaCobradoEsteMes);
+  const avisoCalculoDesatualizado = Boolean(
+    previewItem?.calculoDesatualizado && previewItem?.elegivelCobranca !== false,
+  );
+  const textoCalculoDesatualizado = previewItem?.dataCalculo
+    ? `Cálculo antigo (${previewItem.dataCalculo}). Você pode enviar a cobrança mesmo assim.`
+    : 'Cálculo antigo. Você pode enviar a cobrança mesmo assim.';
 
   const podeEnviar = Boolean(previewItem && !motivoBloqueio && !enviando && !sucesso);
 
@@ -211,6 +214,12 @@ export function ModalCobrancaWhatsAppCalculos({
                 <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-xs leading-snug">
                   Já foi enviada cobrança para este processo neste mês. Você pode enviar novamente manualmente se
                   necessário.
+                </p>
+              ) : null}
+
+              {avisoCalculoDesatualizado && !motivoBloqueio ? (
+                <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 text-xs leading-snug">
+                  {textoCalculoDesatualizado}
                 </p>
               ) : null}
 

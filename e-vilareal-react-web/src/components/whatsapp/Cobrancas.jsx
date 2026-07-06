@@ -50,12 +50,11 @@ function formatCodigoCliente(cod) {
   return String(n);
 }
 
-/** Seleção automática e envio: exige telefone, elegível e cálculo recente (modo cliente escritório). */
+/** Seleção automática e envio: exige telefone e elegibilidade (modo cliente escritório). */
 function podeSelecionarCobranca(item, modoOrigem) {
   if (!item?.temTelefone || item.jaCobradoEsteMes) return false;
   if (modoOrigem === 'cliente') {
     if (item.elegivelCobranca === false) return false;
-    if (item.calculoDesatualizado) return false;
   }
   return true;
 }
@@ -204,11 +203,8 @@ export function WhatsAppCobrancas() {
       }
       setSelected(auto);
       const ineleg = list.filter((p) => p.elegivelCobranca === false).length;
-      const antigos = list.filter((p) => p.calculoDesatualizado && p.elegivelCobranca !== false).length;
-      if (modoOrigem === 'cliente' && (ineleg > 0 || antigos > 0)) {
-        toast.info(
-          `Pré-seleção segura: ${auto.size} unidade(s). ${ineleg} quitada(s)/sem débito e ${antigos} com cálculo antigo ficaram de fora.`,
-        );
+      if (modoOrigem === 'cliente' && ineleg > 0) {
+        toast.info(`Pré-seleção: ${auto.size} unidade(s). ${ineleg} quitada(s)/sem débito ficaram de fora.`);
       }
       const now = new Date();
       const mesAno = `${tituloOrigem} - ${MESES[now.getMonth()]}/${now.getFullYear()}`;
@@ -444,11 +440,7 @@ export function WhatsAppCobrancas() {
                               checked={selected.has(key)}
                               disabled={disabled}
                               title={
-                                p.elegivelCobranca === false
-                                  ? p.motivoInelegivel || 'Inelegível'
-                                  : p.calculoDesatualizado
-                                    ? 'Cálculo desatualizado — atualize antes de cobrar'
-                                    : undefined
+                                p.elegivelCobranca === false ? p.motivoInelegivel || 'Inelegível' : undefined
                               }
                               onChange={() => {
                                 setSelected((prev) => {
@@ -476,11 +468,8 @@ export function WhatsAppCobrancas() {
                                   </span>
                                   {p.calculoDesatualizado ? (
                                     <span className="block text-amber-700 dark:text-amber-400">
-                                      Cálculo antigo{p.dataCalculo ? ` (${p.dataCalculo})` : ''}
+                                      Cálculo antigo{p.dataCalculo ? ` (${p.dataCalculo})` : ''} — envio permitido
                                     </span>
-                                  ) : null}
-                                  {!selecionavel && p.elegivelCobranca !== false && p.calculoDesatualizado ? (
-                                    <span className="block text-slate-500">Não pré-selecionado</span>
                                   ) : null}
                                 </div>
                               )}
