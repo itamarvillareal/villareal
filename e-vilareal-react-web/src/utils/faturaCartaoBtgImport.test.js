@@ -41,4 +41,22 @@ describe('faturaCartaoBtgImport', () => {
       parseDataCelulaFaturaBtg(new Date(2026, 11, 30), { mesVencimento: 1, anoVencimento: 2026 }),
     ).toBe('2025-12-30');
   });
+
+  it('inclui saldo fatura anterior do resumo para bater Total da Fatura', () => {
+    const matrix = [
+      ['Fatura Cartão de Crédito', '', '', '', '', 'Outubro/2024', ''],
+      ['Vencimento', '', '01/10', '', 'Saldo fatura anterior e pagamentos', '', -1000],
+      ['', '', '', '', 'Total da Fatura', '', 60615.72],
+      ['Data', 'Descrição', '', 'Valor'],
+      ['2024-09-16', 'Pagamento de fatura', '', -1000],
+      ['Data', 'Descrição', '', 'Valor', 'Tipo de compra', 'Final Cartão'],
+      ['2024-09-20', 'Compra Teste', '', 61615.72, 'Compra à vista', '1234'],
+    ];
+    const { rows, meta } = parseMatrixFaturaBtg(matrix);
+    expect(meta.conferenciaTotal?.ok).toBe(true);
+    expect(meta.somaCalculada).toBe(60615.72);
+    expect(rows.some((r) => r.descricao === 'Saldo fatura anterior e pagamentos' && r.valor === -1000)).toBe(
+      true,
+    );
+  });
 });

@@ -49,7 +49,9 @@ export function FaturaCartaoImportModal({ open, onClose, cartao, onSuccess }) {
       const parsed = await parseArquivoFaturaCartao(f, { senhaExcel: senha || null });
       if (!parsed.ok) {
         if (parsed.precisaSenhaExcel) {
-          toast.info('Informe a senha do Excel (geralmente o CPF) e tente novamente.');
+          toast.info('Informe a senha do Excel (BTG: CPF do titular, somente números) e clique em «Desbloquear e ler planilha».');
+        } else if (parsed.senhaExcelIncorreta) {
+          toast.error(parsed.message);
         } else {
           toast.error(parsed.message);
         }

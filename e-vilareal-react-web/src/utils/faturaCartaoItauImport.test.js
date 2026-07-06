@@ -110,6 +110,45 @@ Lançamentos
     expect(rows).toHaveLength(2);
   });
 
+  it('parseFaturaCartaoItauPdfTextCorreio (PDF tradicional DD/MM)', () => {
+    const texto = `
+Vencimento: 10/07/2026
+Total desta fatura 924,38
+Lançamentos: compras e saques
+ITAMAR ALEXANDRE FELIX V(final 4941)
+DATA ESTABELECIMENTO VALOR EM R$
+05/06 BMB *LIVE INTERNET 129,90
+09/06 DL *UberRides 8,61
+20/06 Metlife Vida*MetLife 558,84
+Lançamentos: produtos e serviços
+DATA PRODUTOS/SERVIÇOS VALOR EM R$
+10/06 PCAUT ENERGIA 034739761 225,61
+11/06 IOF PAGAMENTOCONTA AUT 1,42
+L Total dos lançamentos atuais 924,38
+`;
+    const { rows, meta } = parseFaturaCartaoItauPdfText(texto);
+    expect(rows).toHaveLength(5);
+    expect(meta.dataVencimento).toBe('2026-07-10');
+    expect(meta.somaCalculada).toBe(924.38);
+    expect(meta.conferenciaTotal?.ok).toBe(true);
+  });
+
+  it('parseFaturaCartaoItauPdfTextCorreio cabeçalho colado sem espaço', () => {
+    const texto = `
+Vencimento: 10/02/2026
+Total desta fatura 758,15
+Lançamentos: compras e saques
+ITAMAR ALEXANDRE FELIX V(final 4941)14/01 PCAUT ENERGIA 034739761 199,31
+20/01 METROPOLITAN L SEG P PR 558,84
+L Total dos lançamentos atuais 758,15
+Continua...
+`;
+    const { rows, meta } = parseFaturaCartaoItauPdfText(texto);
+    expect(rows.some((r) => r.valor === 199.31)).toBe(true);
+    expect(meta.somaCalculada).toBeCloseTo(758.15, 2);
+    expect(meta.conferenciaTotal?.ok).toBe(true);
+  });
+
   it('gerarIdEstavelFaturaCartao é determinístico', () => {
     const a = gerarIdEstavelFaturaCartao({
       dataIso: '2025-07-01',

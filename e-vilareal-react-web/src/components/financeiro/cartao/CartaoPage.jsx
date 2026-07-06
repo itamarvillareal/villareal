@@ -221,10 +221,29 @@ export function CartaoPage() {
     return list;
   }, [rows, vencimentoFiltro, etapaFiltro, buscaNome, sortDataAsc]);
 
-  const somaFatura = useMemo(
-    () => rowsFiltradas.reduce((s, row) => s + valorAssinadoLinhaCartao(row), 0),
+  const linhasSemAutoFat = useMemo(
+    () => rowsFiltradas.filter((row) => !ehLancamentoFechamentoAutomatico(row)),
     [rowsFiltradas],
   );
+
+  /** Total da fatura (compras do ciclo), sem AUTO-FAT — alinhado ao dropdown de vencimento. */
+  const totalFaturaCartao = useMemo(() => {
+    const totalDoVencimento =
+      vencimentoFiltro && !buscaNome.trim() && !etapaFiltro
+        ? vencimentosDisponiveis.find((v) => v.iso === vencimentoFiltro)
+        : null;
+    if (totalDoVencimento) return totalDoVencimento.total;
+    return linhasSemAutoFat.reduce((s, row) => s + valorAssinadoLinhaCartao(row), 0);
+  }, [vencimentoFiltro, buscaNome, etapaFiltro, vencimentosDisponiveis, linhasSemAutoFat]);
+
+  const qtdLancamentosFatura = useMemo(() => {
+    const totalDoVencimento =
+      vencimentoFiltro && !buscaNome.trim() && !etapaFiltro
+        ? vencimentosDisponiveis.find((v) => v.iso === vencimentoFiltro)
+        : null;
+    if (totalDoVencimento) return totalDoVencimento.count;
+    return linhasSemAutoFat.length;
+  }, [vencimentoFiltro, buscaNome, etapaFiltro, vencimentosDisponiveis, linhasSemAutoFat]);
 
   const total = rowsFiltradas.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -562,12 +581,12 @@ export function CartaoPage() {
                 </>
               ) : vencimentoFiltro ? (
                 <>
-                  Fatura venc. {formatDataCurta(vencimentoFiltro)}: {formatMoeda(somaFatura)}
+                  Fatura venc. {formatDataCurta(vencimentoFiltro)}: {formatMoeda(totalFaturaCartao)}
                   {' · '}
-                  {rowsFiltradas.length} lanç.
+                  {qtdLancamentosFatura} lanç.
                 </>
               ) : (
-                <>Total geral: {formatMoeda(somaFatura)}</>
+                <>Total geral: {formatMoeda(totalFaturaCartao)}</>
               )}
             </span>
           ) : null}
@@ -664,7 +683,7 @@ export function CartaoPage() {
               : 'Total geral'}
           </span>
           <span className="font-semibold text-slate-900 dark:text-slate-100 tabular-nums">
-            {formatMoeda(somaFatura)} · {rowsFiltradas.length} itens
+            {formatMoeda(totalFaturaCartao)} · {qtdLancamentosFatura} itens
           </span>
         </div>
       ) : null}

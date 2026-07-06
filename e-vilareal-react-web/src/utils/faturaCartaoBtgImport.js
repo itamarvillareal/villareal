@@ -60,6 +60,7 @@ export function extrairResumoFaturaBtgMatrix(matrix) {
   let mesAnoFatura = null;
   let dataVencimento = null;
   let valorTotalFatura = null;
+  let saldoFaturaAnterior = null;
   let rotuloFatura = null;
 
   for (let r = 0; r < Math.min(matrix.length, 20); r += 1) {
@@ -95,10 +96,19 @@ export function extrairResumoFaturaBtgMatrix(matrix) {
           }
         }
       }
+      if (/^saldo\s+fatura\s+anterior/i.test(cells[c])) {
+        for (let cc = c + 1; cc < row.length; cc += 1) {
+          const v = parseValorFaturaCelula(row[cc]);
+          if (v != null && v !== 0) {
+            saldoFaturaAnterior = v;
+            break;
+          }
+        }
+      }
     }
   }
 
-  return { rotuloFatura, dataVencimento, valorTotalFatura, mesAnoFatura };
+  return { rotuloFatura, dataVencimento, valorTotalFatura, saldoFaturaAnterior, mesAnoFatura };
 }
 
 /**
@@ -294,6 +304,35 @@ export function parseMatrixFaturaBtg(matrix, opts = {}) {
     }
   }
 
+  const saldoAnterior = resumo.saldoFaturaAnterior;
+  if (
+    saldoAnterior != null &&
+    Number.isFinite(Number(saldoAnterior)) &&
+    Number(saldoAnterior) !== 0 &&
+    resumo.dataVencimento
+  ) {
+    const descricaoSaldo = 'Saldo fatura anterior e pagamentos';
+    const dataIso = resumo.dataVencimento;
+    rows.push({
+      dataIso,
+      descricao: descricaoSaldo,
+      descricaoDetalhada: 'Resumo BTG (ajuste do total da fatura)',
+      valor: Number(saldoAnterior),
+      parcelamento: '',
+      finalCartao: null,
+      numeroLancamento: gerarIdEstavelFaturaCartao({
+        dataIso,
+        valor: Number(saldoAnterior),
+        descricao: descricaoSaldo,
+        parcelamento: '',
+        finalCartao: '',
+        linha: 0,
+        origem: `${origem}-SALDO`,
+      }),
+      linhaOrigem: 0,
+    });
+  }
+
   const somaCalculada = somarLancamentosFatura(rows);
   const conferencia = conferirTotalFatura({
     somaCalculada,
@@ -307,6 +346,7 @@ export function parseMatrixFaturaBtg(matrix, opts = {}) {
       ignoradosPagamento,
       ignoradosCartao,
       ignoradosResumo,
+      saldoFaturaAnterior: saldoAnterior ?? null,
       dataVencimento: resumo.dataVencimento,
       rotuloFatura: resumo.rotuloFatura,
       valorTotalBanco: resumo.valorTotalFatura,

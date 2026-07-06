@@ -2,6 +2,7 @@
  * Leitura de planilha de fatura (.xlsx), com suporte opcional a arquivo protegido por senha.
  */
 import * as XLSX from 'xlsx';
+import { Buffer as BufferPolyfill } from 'buffer';
 import { parseFaturaCartaoItauWorkbook } from './faturaCartaoItauImport.js';
 import { parseFaturaCartaoBtgWorkbook, planilhaPareceFaturaBtg } from './faturaCartaoBtgImport.js';
 
@@ -11,6 +12,26 @@ export class FaturaCartaoXlsxProtegidoError extends Error {
     this.name = 'FaturaCartaoXlsxProtegidoError';
     this.precisaSenhaExcel = true;
   }
+}
+
+export class FaturaCartaoXlsxSenhaIncorretaError extends Error {
+  constructor(message = 'Senha do Excel incorreta.') {
+    super(message);
+    this.name = 'FaturaCartaoXlsxSenhaIncorretaError';
+    this.senhaExcelIncorreta = true;
+  }
+}
+
+function ensureBufferGlobal() {
+  if (typeof globalThis.Buffer === 'undefined') {
+    globalThis.Buffer = BufferPolyfill;
+  }
+}
+
+/** Polyfills Node (Buffer, events) exigidos por officecrypto-tool/xml2js no browser. */
+async function ensureOfficeCryptoBrowserEnv() {
+  ensureBufferGlobal();
+  await import('events');
 }
 
 /**
@@ -32,10 +53,21 @@ export async function descriptografarFaturaCartaoXlsxSeNecessario(input, opts = 
 
   if (!opts.password) throw new FaturaCartaoXlsxProtegidoError();
 
-  const mod = await import('officecrypto-tool');
-  const officeCrypto = mod.default ?? mod;
-  const decrypted = await officeCrypto.decrypt(bytes, { password: String(opts.password) });
-  return decrypted.buffer.slice(decrypted.byteOffset, decrypted.byteOffset + decrypted.byteLength);
+  await ensureOfficeCryptoBrowserEnv();
+  try {
+    const mod = await import('officecrypto-tool');
+    const officeCrypto = mod.default ?? mod;
+    const decrypted = await officeCrypto.decrypt(bytes, { password: String(opts.password) });
+    return decrypted.buffer.slice(decrypted.byteOffset, decrypted.byteOffset + decrypted.byteLength);
+  } catch (e) {
+    const msg = String(e?.message ?? e);
+    if (/password is incorrect/i.test(msg)) {
+      throw new FaturaCartaoXlsxSenhaIncorretaError(
+        'Senha do Excel incorreta. No BTG, use o CPF do titular (somente números).',
+      );
+    }
+    throw e;
+  }
 }
 
 /**
@@ -61,6 +93,7 @@ export function parseFaturaCartaoXlsxArrayBuffer(buffer, opts = {}) {
  * @param {{ password?: string|null, ignorarPagamento?: boolean, finalCartaoFiltro?: string|null }} [opts]
  */
 export async function lerEParsearFaturaCartaoXlsx(input, opts = {}) {
-  const buffer = await descriptografarFaturaCartaoXlsxSeNecessario(input, opts);
+  const password = opts.password ?? opts.senhaExcel ?? null;
+  const buffer = await descriptografarFaturaCartaoXlsxSeNecessario(input, { ...opts, password });
   return parseFaturaCartaoXlsxArrayBuffer(buffer, opts);
 }

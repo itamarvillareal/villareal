@@ -12,7 +12,9 @@ import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaContabi
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoCartaoEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.CartaoRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaContabilRepository;
+import br.com.vilareal.financeiro.infrastructure.persistence.repository.FaturaCartaoFechamentoRepository;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.LancamentoCartaoRepository;
+import br.com.vilareal.financeiro.infrastructure.persistence.repository.PagamentoFaturaVinculoRepository;
 import br.com.vilareal.pessoa.application.ClienteResolverService;
 import br.com.vilareal.pessoa.application.TitularPessoaRefHelper;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
@@ -43,6 +45,8 @@ public class FinanceiroCartaoApplicationService {
     private final ContaContabilRepository contaContabilRepository;
     private final ProcessoRepository processoRepository;
     private final ClienteResolverService clienteResolverService;
+    private final FaturaCartaoFechamentoRepository faturaCartaoFechamentoRepository;
+    private final PagamentoFaturaVinculoRepository pagamentoFaturaVinculoRepository;
     private final FinanceiroSaudeService financeiroSaudeService;
 
     public FinanceiroCartaoApplicationService(
@@ -51,12 +55,16 @@ public class FinanceiroCartaoApplicationService {
             ContaContabilRepository contaContabilRepository,
             ProcessoRepository processoRepository,
             ClienteResolverService clienteResolverService,
+            FaturaCartaoFechamentoRepository faturaCartaoFechamentoRepository,
+            PagamentoFaturaVinculoRepository pagamentoFaturaVinculoRepository,
             @Lazy FinanceiroSaudeService financeiroSaudeService) {
         this.cartaoRepository = cartaoRepository;
         this.lancamentoCartaoRepository = lancamentoCartaoRepository;
         this.contaContabilRepository = contaContabilRepository;
         this.processoRepository = processoRepository;
         this.clienteResolverService = clienteResolverService;
+        this.faturaCartaoFechamentoRepository = faturaCartaoFechamentoRepository;
+        this.pagamentoFaturaVinculoRepository = pagamentoFaturaVinculoRepository;
         this.financeiroSaudeService = financeiroSaudeService;
     }
 
@@ -112,10 +120,11 @@ public class FinanceiroCartaoApplicationService {
 
     @Transactional
     public void removerLancamento(Long id) {
-        if (!lancamentoCartaoRepository.existsById(id)) {
-            throw new ResourceNotFoundException("Lançamento de cartão não encontrado: " + id);
-        }
-        lancamentoCartaoRepository.deleteById(id);
+        LancamentoCartaoEntity lancamento = lancamentoCartaoRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Lançamento de cartão não encontrado: " + id));
+        pagamentoFaturaVinculoRepository.findByLancamentoCartaoId(id).ifPresent(pagamentoFaturaVinculoRepository::delete);
+        faturaCartaoFechamentoRepository.findByLancamentoCartaoId(id).ifPresent(faturaCartaoFechamentoRepository::delete);
+        lancamentoCartaoRepository.delete(lancamento);
         financeiroSaudeService.invalidarCacheSaude();
     }
 
