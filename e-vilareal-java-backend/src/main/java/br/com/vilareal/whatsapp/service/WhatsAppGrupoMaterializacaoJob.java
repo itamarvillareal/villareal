@@ -2,13 +2,18 @@ package br.com.vilareal.whatsapp.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
  * Job periódico que materializa clientes por conversa WhatsApp em {@code whatsapp_conversa_cliente}.
+ * Desativado por padrão — grupos passaram a ser criados manualmente pelo usuário.
  */
 @Component
+@ConditionalOnProperty(
+        name = "whatsapp.grupos.materializacao-automatica.enabled",
+        havingValue = "true")
 public class WhatsAppGrupoMaterializacaoJob {
 
     private static final Logger log = LoggerFactory.getLogger(WhatsAppGrupoMaterializacaoJob.class);

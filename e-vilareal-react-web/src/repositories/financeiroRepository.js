@@ -458,6 +458,7 @@ export async function listarInboxClassificarPaginaApi(filtros = {}, opts = {}) {
     sort: filtros.sort ?? 'dataLancamento,desc',
     numeroBanco: filtros.numeroBanco ?? undefined,
     numeroCartao: filtros.numeroCartao ?? undefined,
+    apenasBancos: filtros.apenasBancos === true ? true : undefined,
     ano: filtros.ano ?? undefined,
     mes: filtros.mes ?? undefined,
   };

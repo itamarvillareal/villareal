@@ -339,11 +339,12 @@ public class FinanceiroController {
     public InboxClassificarPaginaResponse inboxClassificar(
             @RequestParam(value = "numeroBanco", required = false) Integer numeroBanco,
             @RequestParam(value = "numeroCartao", required = false) Integer numeroCartao,
+            @RequestParam(value = "apenasBancos", required = false) Boolean apenasBancos,
             @RequestParam(value = "ano", required = false) Integer ano,
             @RequestParam(value = "mes", required = false) Integer mes,
             @PageableDefault(size = 50, sort = "dataLancamento", direction = Sort.Direction.DESC) Pageable pageable) {
         Page<LancamentoFinanceiroResponse> page =
-                inboxClassificarService.listarPaginado(numeroBanco, numeroCartao, ano, mes, pageable);
+                inboxClassificarService.listarPaginado(numeroBanco, numeroCartao, apenasBancos, ano, mes, pageable);
         List<Long> ids = page.getContent().stream().map(LancamentoFinanceiroResponse::getId).toList();
         Map<Long, List<SugestaoClassificacaoResponse>> sugestoes =
                 ids.isEmpty() ? Map.of() : financeiroSugestaoService.sugerirLote(ids);

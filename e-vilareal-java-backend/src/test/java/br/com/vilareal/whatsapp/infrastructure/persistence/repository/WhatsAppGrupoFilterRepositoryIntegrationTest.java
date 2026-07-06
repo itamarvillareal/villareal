@@ -1,7 +1,8 @@
 package br.com.vilareal.whatsapp.infrastructure.persistence.repository;
 
 import br.com.vilareal.AbstractIntegrationTest;
-import br.com.vilareal.whatsapp.infrastructure.persistence.entity.WhatsAppConversaClienteEntity;
+import br.com.vilareal.whatsapp.ConversaClienteManualAcao;
+import br.com.vilareal.whatsapp.infrastructure.persistence.entity.WhatsAppConversaClienteManualEntity;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppMessageRepository.ConversationSummaryRow;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -28,7 +29,7 @@ class WhatsAppGrupoFilterRepositoryIntegrationTest extends AbstractIntegrationTe
     private WhatsAppMessageRepository messageRepository;
 
     @Autowired
-    private WhatsAppConversaClienteRepository conversaClienteRepository;
+    private WhatsAppConversaClienteManualRepository manualRepository;
 
     @Autowired
     private WhatsAppConversationArchiveRepository archiveRepository;
@@ -38,7 +39,7 @@ class WhatsAppGrupoFilterRepositoryIntegrationTest extends AbstractIntegrationTe
 
     @AfterEach
     void limpar() {
-        jdbcTemplate.update("DELETE FROM whatsapp_conversa_cliente WHERE phone_number LIKE ?", PHONE_PREFIX + "%");
+        jdbcTemplate.update("DELETE FROM whatsapp_conversa_cliente_manual WHERE phone_number LIKE ?", PHONE_PREFIX + "%");
         jdbcTemplate.update("DELETE FROM whatsapp_conversation_archive WHERE phone_number LIKE ?", PHONE_PREFIX + "%");
         jdbcTemplate.update("DELETE FROM whatsapp_messages WHERE phone_number LIKE ?", PHONE_PREFIX + "%");
     }
@@ -50,8 +51,8 @@ class WhatsAppGrupoFilterRepositoryIntegrationTest extends AbstractIntegrationTe
         Instant agora = Instant.now().truncatedTo(ChronoUnit.SECONDS);
         inserirInbound(phoneFarol, agora);
         inserirInbound(phoneTerra, agora.plusSeconds(1));
-        materializar(phoneFarol, COD_FAROL, "Farol");
-        materializar(phoneTerra, COD_TERRA, "Terra Mundi");
+        incluirManual(phoneFarol, COD_FAROL, "Farol");
+        incluirManual(phoneTerra, COD_TERRA, "Terra Mundi");
 
         Page<ConversationSummaryRow> todas =
                 messageRepository.findConversationSummariesExcluindoAniversario(false, "", PageRequest.of(0, 200));
@@ -64,7 +65,7 @@ class WhatsAppGrupoFilterRepositoryIntegrationTest extends AbstractIntegrationTe
     }
 
     @Test
-    void comClienteCodigo_filtraSomenteConversasDaqueleCliente() {
+    void comClienteCodigo_filtraSomenteConversasDaqueleGrupo() {
         String phoneFarol = PHONE_PREFIX + "0003";
         String phoneTerra = PHONE_PREFIX + "0004";
         String phoneSemCliente = PHONE_PREFIX + "0005";
@@ -72,8 +73,8 @@ class WhatsAppGrupoFilterRepositoryIntegrationTest extends AbstractIntegrationTe
         inserirInbound(phoneFarol, agora);
         inserirInbound(phoneTerra, agora.plusSeconds(1));
         inserirInbound(phoneSemCliente, agora.plusSeconds(2));
-        materializar(phoneFarol, COD_FAROL, "Farol");
-        materializar(phoneTerra, COD_TERRA, "Terra Mundi");
+        incluirManual(phoneFarol, COD_FAROL, "Farol");
+        incluirManual(phoneTerra, COD_TERRA, "Terra Mundi");
 
         Page<ConversationSummaryRow> farol =
                 messageRepository.findConversationSummariesExcluindoAniversario(
@@ -99,8 +100,8 @@ class WhatsAppGrupoFilterRepositoryIntegrationTest extends AbstractIntegrationTe
         Instant agora = Instant.now().truncatedTo(ChronoUnit.SECONDS);
         inserirInbound(phoneFarolAtiva, agora);
         inserirInbound(phoneFarolArquivada, agora.plusSeconds(1));
-        materializar(phoneFarolAtiva, COD_FAROL, "Farol");
-        materializar(phoneFarolArquivada, COD_FAROL, "Farol");
+        incluirManual(phoneFarolAtiva, COD_FAROL, "Farol");
+        incluirManual(phoneFarolArquivada, COD_FAROL, "Farol");
         archiveRepository.upsertArchivedAt(phoneFarolArquivada, agora);
 
         Page<ConversationSummaryRow> ativasFarol =
@@ -124,12 +125,11 @@ class WhatsAppGrupoFilterRepositoryIntegrationTest extends AbstractIntegrationTe
     void listarGruposComContagem_retornaClientesDistintos() {
         String phoneA = PHONE_PREFIX + "0010";
         String phoneB = PHONE_PREFIX + "0011";
-        Instant agora = Instant.parse("2026-07-04T10:00:00Z");
-        materializar(phoneA, COD_FAROL, "Farol");
-        materializar(phoneB, COD_FAROL, "Farol");
-        materializar(phoneB, COD_TERRA, "Terra Mundi");
+        incluirManual(phoneA, COD_FAROL, "Farol");
+        incluirManual(phoneB, COD_FAROL, "Farol");
+        incluirManual(phoneB, COD_TERRA, "Terra Mundi");
 
-        var grupos = conversaClienteRepository.listarGruposComContagem();
+        var grupos = manualRepository.listarGruposEfetivosComContagem();
         var farol = grupos.stream()
                 .filter(g -> COD_FAROL.equals(g.getClienteCodigo().trim()))
                 .findFirst()
@@ -137,13 +137,20 @@ class WhatsAppGrupoFilterRepositoryIntegrationTest extends AbstractIntegrationTe
         assertThat(farol.getQtdConversas()).isEqualTo(2L);
     }
 
-    private void materializar(String phone, String codigo, String nome) {
-        WhatsAppConversaClienteEntity e = new WhatsAppConversaClienteEntity();
+    private void incluirManual(String phone, String codigo, String nome) {
+        manualRepository.save(manual(phone, codigo, nome, ConversaClienteManualAcao.INCLUIR));
+    }
+
+    private static WhatsAppConversaClienteManualEntity manual(
+            String phone, String codigo, String nome, ConversaClienteManualAcao acao) {
+        WhatsAppConversaClienteManualEntity e = new WhatsAppConversaClienteManualEntity();
         e.setPhoneNumber(phone);
         e.setClienteCodigo(codigo);
         e.setClienteNome(nome);
-        e.setAtualizadoEm(Instant.now());
-        conversaClienteRepository.save(e);
+        e.setAcao(acao);
+        e.setCriadoPor("test");
+        e.setCriadoEm(Instant.now());
+        return e;
     }
 
     private void inserirInbound(String phone, Instant createdAt) {

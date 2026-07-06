@@ -22,6 +22,7 @@ import { InboxBancosFiltro } from './InboxBancosFiltro.jsx';
 import { normalizarBancosFiltro } from './inboxBancosFiltro.js';
 import { isNumeroCartaoFinanceiro } from '../../../data/financeiroData.js';
 import { useFinanceiro } from '../FinanceiroContext.jsx';
+import { CARTAO_FILTRO_NENHUM } from '../hooks/useExtratoFilters.js';
 import { PeriodoSelector } from '../shared/PeriodoSelector.jsx';
 import { ConfiancaFiltroSelect } from '../shared/ConfiancaFiltroSelect.jsx';
 import {
@@ -103,7 +104,7 @@ function normalizeSugestoesMap(raw) {
 export function InboxPage() {
   const { tipo: tipoParam } = useParams();
   const tipo = TIPOS_VALIDOS.has(tipoParam) ? tipoParam : INBOX_TIPOS.classificar;
-  const { bancos, cartoes, bancoAtivo, filters, setBancos, setMes, setTipoPar, setTipoDia, setLetraSugestao, setConfianca } =
+  const { bancos, cartoes, bancoAtivo, filters, setBancos, setCartaoFiltro, setMes, setTipoPar, setTipoDia, setLetraSugestao, setConfianca } =
     useFinanceiro();
   const toast = useFinanceiroToast();
 
@@ -148,19 +149,24 @@ export function InboxPage() {
   const bancoFiltro = bancosFiltro.length === 1 ? bancosFiltro[0] : undefined;
 
   const cartaoFiltro = useMemo(() => {
+    if (filters.cartao === CARTAO_FILTRO_NENHUM) return undefined;
+    if (typeof filters.cartao === 'number') return filters.cartao;
     const nums = normalizarBancosFiltro(filters.bancos);
     if (nums.length === 1 && isNumeroCartaoFinanceiro(nums[0])) return nums[0];
     if (Number.isFinite(bancoAtivo) && isNumeroCartaoFinanceiro(bancoAtivo)) return bancoAtivo;
     return undefined;
-  }, [filters.bancos, bancoAtivo]);
+  }, [filters.cartao, filters.bancos, bancoAtivo]);
+
+  const excluirCartoes = filters.cartao === CARTAO_FILTRO_NENHUM;
 
   const filtroInboxConta = useMemo(
     () => ({
       numeroBanco: bancoFiltro,
       numeroBancos: bancosFiltro.length > 1 ? bancosFiltro : undefined,
       numeroCartao: cartaoFiltro,
+      apenasBancos: excluirCartoes ? true : undefined,
     }),
-    [bancoFiltro, bancosFiltro, cartaoFiltro],
+    [bancoFiltro, bancosFiltro, cartaoFiltro, excluirCartoes],
   );
 
   const filtroTipoPar = filters.tipoPar ?? TIPO_PAR_TODOS;
@@ -175,8 +181,16 @@ export function InboxPage() {
   );
 
   const chaveFiltrosCompensar = useMemo(
-    () => [filters.mes, bancosFiltro.join(','), cartaoFiltro ?? '', filtroTipoPar, filtroTipoDia].join('|'),
-    [filters.mes, bancosFiltro, cartaoFiltro, filtroTipoPar, filtroTipoDia],
+    () =>
+      [
+        filters.mes,
+        bancosFiltro.join(','),
+        filters.cartao ?? '',
+        cartaoFiltro ?? '',
+        filtroTipoPar,
+        filtroTipoDia,
+      ].join('|'),
+    [filters.mes, bancosFiltro, filters.cartao, cartaoFiltro, filtroTipoPar, filtroTipoDia],
   );
 
   const pageSizeEfetivo = useMemo(() => clampFinanceiroPageSize(pageSize), [pageSize]);
@@ -288,7 +302,7 @@ export function InboxPage() {
     if (tipo === INBOX_TIPOS.semelhantes) {
       setSemelhantesGrupos([]);
     }
-  }, [tipo, filters.mes, filters.bancos, bancoAtivo, filtroTipoPar, filtroTipoDia, filtroLetraSugestao, filtroConfianca]);
+  }, [tipo, filters.mes, filters.bancos, filters.cartao, bancoAtivo, filtroTipoPar, filtroTipoDia, filtroLetraSugestao, filtroConfianca]);
 
   const contasClassificacao = useMemo(
     () =>
@@ -1308,15 +1322,24 @@ export function InboxPage() {
         <InboxBancosFiltro bancos={bancosFiltro} bancosCatalogo={bancos} onChange={setBancos} />
         {cartoes.length > 0 ? (
           <select
-            value={cartaoFiltro ?? ''}
+            value={
+              filters.cartao === CARTAO_FILTRO_NENHUM
+                ? CARTAO_FILTRO_NENHUM
+                : cartaoFiltro != null
+                  ? String(cartaoFiltro)
+                  : ''
+            }
             onChange={(e) => {
-              const n = e.target.value ? Number(e.target.value) : null;
-              setBancos(n != null ? [n] : bancosFiltro);
+              const v = e.target.value;
+              if (v === '') setCartaoFiltro(null);
+              else if (v === CARTAO_FILTRO_NENHUM) setCartaoFiltro(CARTAO_FILTRO_NENHUM);
+              else setCartaoFiltro(Number(v));
             }}
             className="text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1 min-w-[8rem]"
             aria-label="Filtrar cartão"
           >
             <option value="">Cartão (todos)</option>
+            <option value={CARTAO_FILTRO_NENHUM}>Nenhum</option>
             {cartoes.map((c) => (
               <option key={c.numero} value={c.numero}>
                 {c.nome}

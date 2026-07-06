@@ -58,28 +58,23 @@ public interface WhatsAppConversaClienteManualRepository
     @Modifying
     int deleteByPhoneNumber(String phoneNumber);
 
+    List<WhatsAppConversaClienteManualEntity> findByClienteCodigoAndAcao(
+            String clienteCodigo, ConversaClienteManualAcao acao);
+
+    @Modifying
+    @Query("DELETE FROM WhatsAppConversaClienteManualEntity m WHERE m.clienteCodigo = :clienteCodigo")
+    int deleteByClienteCodigo(@Param("clienteCodigo") String clienteCodigo);
+
     @Query(
             value =
                     """
-                    SELECT eff.cliente_codigo AS clienteCodigo,
-                           MAX(eff.cliente_nome) AS clienteNome,
-                           COUNT(DISTINCT eff.phone_number) AS qtdConversas
-                    FROM (
-                        SELECT wcc.cliente_codigo, wcc.cliente_nome, wcc.phone_number
-                        FROM whatsapp_conversa_cliente wcc
-                        WHERE NOT EXISTS (
-                            SELECT 1 FROM whatsapp_conversa_cliente_manual m
-                            WHERE m.phone_number = wcc.phone_number
-                              AND m.cliente_codigo = wcc.cliente_codigo
-                              AND m.acao = 'EXCLUIR'
-                        )
-                        UNION
-                        SELECT m.cliente_codigo, m.cliente_nome, m.phone_number
-                        FROM whatsapp_conversa_cliente_manual m
-                        WHERE m.acao = 'INCLUIR'
-                    ) eff
-                    GROUP BY eff.cliente_codigo
-                    ORDER BY MAX(eff.cliente_nome) ASC
+                    SELECT m.cliente_codigo AS clienteCodigo,
+                           MAX(m.cliente_nome) AS clienteNome,
+                           COUNT(DISTINCT m.phone_number) AS qtdConversas
+                    FROM whatsapp_conversa_cliente_manual m
+                    WHERE m.acao = 'INCLUIR'
+                    GROUP BY m.cliente_codigo
+                    ORDER BY MAX(m.cliente_nome) ASC
                     """,
             nativeQuery = true)
     List<GrupoClienteRow> listarGruposEfetivosComContagem();

@@ -8,13 +8,6 @@ import {
 } from '../../../repositories/whatsappRepository.js';
 import { padCliente8Cadastro } from '../../../data/cadastroClientesStorage.js';
 
-function tagOrigem(grupo) {
-  if (grupo.incluidoManual && grupo.automatico) return 'auto+manual';
-  if (grupo.incluidoManual) return 'manual';
-  if (grupo.automatico) return 'auto';
-  return '';
-}
-
 export function WhatsAppConversationGruposPanel({ phoneNumber, onChanged, collapsibleOnMobile = true }) {
   const [grupos, setGrupos] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -125,7 +118,7 @@ export function WhatsAppConversationGruposPanel({ phoneNumber, onChanged, collap
 
       <div className={`px-2.5 py-2 ${bodyHiddenOnMobile ? 'max-md:hidden' : ''}`}>
         <p className="hidden md:block text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-          Grupos por cliente
+          Grupos (filtros)
         </p>
         {loading ? (
           <div className="flex items-center gap-2 py-2 text-xs text-slate-500">
@@ -138,29 +131,23 @@ export function WhatsAppConversationGruposPanel({ phoneNumber, onChanged, collap
               <p className="text-xs text-slate-500 py-1">Nenhum grupo vinculado.</p>
             ) : (
               <ul className="flex flex-wrap gap-1.5 py-1">
-                {grupos.map((grupo) => {
-                  const tag = tagOrigem(grupo);
-                  return (
-                    <li
-                      key={grupo.codigo}
-                      className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs dark:border-slate-600 dark:bg-slate-900"
+                {grupos.map((grupo) => (
+                  <li
+                    key={grupo.codigo}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs dark:border-slate-600 dark:bg-slate-900"
+                  >
+                    <span className="font-medium text-slate-800 dark:text-slate-100">{grupo.nome}</span>
+                    <button
+                      type="button"
+                      disabled={salvando}
+                      onClick={() => handleRemover(grupo.codigo)}
+                      className="rounded p-0.5 text-slate-400 hover:text-red-600 disabled:opacity-50"
+                      title="Remover deste grupo"
                     >
-                      <span className="font-medium text-slate-800 dark:text-slate-100">{grupo.nome}</span>
-                      {tag ? (
-                        <span className="text-[10px] uppercase text-emerald-700 dark:text-emerald-400">{tag}</span>
-                      ) : null}
-                      <button
-                        type="button"
-                        disabled={salvando}
-                        onClick={() => handleRemover(grupo.codigo)}
-                        className="rounded p-0.5 text-slate-400 hover:text-red-600 disabled:opacity-50"
-                        title="Remover deste cliente"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </li>
-                  );
-                })}
+                      <X className="h-3 w-3" />
+                    </button>
+                  </li>
+                ))}
               </ul>
             )}
             <div className="mt-1 flex items-center gap-1.5">
@@ -168,7 +155,7 @@ export function WhatsAppConversationGruposPanel({ phoneNumber, onChanged, collap
                 type="text"
                 value={busca}
                 onChange={(e) => setBusca(e.target.value)}
-                placeholder="Código ou nome do cliente"
+                placeholder="Adicionar a grupo (cliente)"
                 className="flex-1 min-w-0 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-900"
               />
               {buscando ? <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" /> : null}

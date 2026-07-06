@@ -38,6 +38,7 @@ import { WhatsAppConversationArchiveButton } from './components/WhatsAppConversa
 import { marcarConversaLidaAsync, applyInboundToConversationList, zeroUnreadAndReportHadUnread, zeroUnreadInConversations } from './utils/whatsappReadUtils.js';
 import { sortConversationsByPinAndRecency, togglePinInConversationList } from './utils/whatsappPinUtils.js';
 import { enrichMessagesWithReactions } from './utils/whatsappReactionAttach.js';
+import { useWhatsAppFloatingPosition } from './useWhatsAppFloatingPosition.js';
 
 function previewConversa(conv) {
   const type = String(conv?.lastMessageType ?? '').toUpperCase();
@@ -47,7 +48,8 @@ function previewConversa(conv) {
   return conv?.lastMessageContent || conv?.lastMessagePreview || '—';
 }
 
-function FloatingConversationList({ conversations, loading, query, onQueryChange, onSelect, onTogglePin, onArchive, onClose }) {
+function FloatingConversationList({ conversations, loading, query, onQueryChange, onSelect, onTogglePin, onArchive, onClose, headerDragProps = {} }) {
+  const { className: dragClassName = '', ...headerDragRest } = headerDragProps;
   const filtered = conversations.filter((c) => {
     const q = query.trim().toLowerCase();
     if (!q) return true;
@@ -58,7 +60,10 @@ function FloatingConversationList({ conversations, loading, query, onQueryChange
 
   return (
     <>
-      <div className="flex items-center justify-between px-3 py-2.5 bg-[#075E54] text-white shrink-0">
+      <div
+        className={`flex items-center justify-between px-3 py-2.5 bg-[#075E54] text-white shrink-0 ${dragClassName}`}
+        {...headerDragRest}
+      >
         <div className="flex items-center gap-2 font-semibold text-sm">
           <MessageCircle className="h-4 w-4" />
           WhatsApp
@@ -153,7 +158,8 @@ function FloatingConversationList({ conversations, loading, query, onQueryChange
   );
 }
 
-function FloatingChatView({ conversation, onBack, onClose, latestInbound, latestMediaReady, onMarkRead }) {
+function FloatingChatView({ conversation, onBack, onClose, latestInbound, latestMediaReady, onMarkRead, headerDragProps = {} }) {
+  const { className: dragClassName = '', ...headerDragRest } = headerDragProps;
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState('');
@@ -350,7 +356,10 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
 
   return (
     <>
-      <div className="flex items-center gap-2 px-3 py-2.5 bg-[#075E54] text-white shrink-0">
+      <div
+        className={`flex items-center gap-2 px-3 py-2.5 bg-[#075E54] text-white shrink-0 ${dragClassName}`}
+        {...headerDragRest}
+      >
         <button type="button" onClick={onBack} className="rounded p-1 hover:bg-white/10 text-sm" aria-label="Voltar">
           ←
         </button>
@@ -468,6 +477,29 @@ export function WhatsAppFloatingChat() {
   const [conversations, setConversations] = useState([]);
   const [loadingConversations, setLoadingConversations] = useState(false);
   const [query, setQuery] = useState('');
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 640px)').matches : false,
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px)');
+    const onChange = () => setIsMobile(mq.matches);
+    onChange();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  const openPanel = useCallback(() => {
+    ctx?.clearNotifications();
+    setIsOpen(true);
+  }, [ctx]);
+
+  const { containerStyle, containerClassName, dragHandleProps, resetPosition } = useWhatsAppFloatingPosition({
+    isOpen,
+    isMobile,
+    onTap: openPanel,
+  });
+  const { className: fabDragClassName = '', ...fabDragRest } = dragHandleProps;
 
   const unreadCount = ctx?.unreadCount ?? 0;
   const latestInbound = ctx?.latestInbound ?? null;
@@ -578,11 +610,6 @@ export function WhatsAppFloatingChat() {
     [selectedConversation, loadConversations],
   );
 
-  const openPanel = () => {
-    ctx?.clearNotifications();
-    setIsOpen(true);
-  };
-
   const closePanel = () => {
     setIsOpen(false);
     setSelectedConversation(null);
@@ -596,17 +623,24 @@ export function WhatsAppFloatingChat() {
   }
 
   return (
-    <div className="whatsapp-floating-container fixed bottom-6 right-6 z-[9999] max-sm:bottom-0 max-sm:right-0">
+    <div
+      className={`whatsapp-floating-container fixed z-[9999] ${containerClassName}`}
+      style={containerStyle}
+    >
       {!isOpen ? (
         <button
           type="button"
-          onClick={openPanel}
-          className="whatsapp-floating-button relative flex h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-lg transition hover:scale-105"
-          aria-label="Abrir WhatsApp"
+          {...fabDragRest}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            resetPosition();
+          }}
+          className={`whatsapp-floating-button relative flex h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-lg transition hover:scale-105 ${fabDragClassName}`}
+          aria-label="Abrir WhatsApp. Arraste para mover."
         >
           <MessageCircle className="h-7 w-7" />
           {unreadCount > 0 ? (
-            <span className="floating-badge absolute -top-1 -right-1 flex min-w-5 h-5 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold text-white">
+            <span className="floating-badge pointer-events-none absolute -top-1 -right-1 flex min-w-5 h-5 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold text-white">
               {unreadCount > 99 ? '99+' : unreadCount}
             </span>
           ) : null}
@@ -621,6 +655,7 @@ export function WhatsAppFloatingChat() {
               latestInbound={latestInbound}
               latestMediaReady={latestMediaReady}
               onMarkRead={handleMarkConversationRead}
+              headerDragProps={dragHandleProps}
             />
           ) : (
             <FloatingConversationList
@@ -632,6 +667,7 @@ export function WhatsAppFloatingChat() {
               onTogglePin={toggleConversationPin}
               onArchive={archiveConversation}
               onClose={closePanel}
+              headerDragProps={dragHandleProps}
             />
           )}
         </div>

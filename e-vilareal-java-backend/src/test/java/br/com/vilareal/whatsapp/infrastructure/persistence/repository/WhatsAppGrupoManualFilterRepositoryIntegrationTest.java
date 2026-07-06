@@ -44,7 +44,7 @@ class WhatsAppGrupoManualFilterRepositoryIntegrationTest extends AbstractIntegra
     }
 
     @Test
-    void incluirManualConversaSemAutoApareceNaAba() {
+    void incluirManualConversaApareceNaAba() {
         String phone = PHONE_PREFIX + "0001";
         inserirInbound(phone);
         manualRepository.save(manual(phone, COD_TERRA, "Terra Mundi", ConversaClienteManualAcao.INCLUIR));
@@ -59,11 +59,10 @@ class WhatsAppGrupoManualFilterRepositoryIntegrationTest extends AbstractIntegra
     }
 
     @Test
-    void excluirManualConversaComAutoNaoApareceNaAba() {
+    void vinculoAutomaticoSemInclusaoManualNaoApareceNaAba() {
         String phone = PHONE_PREFIX + "0002";
         inserirInbound(phone);
         automaticoRepository.save(auto(phone, COD_TERRA, "Terra Mundi"));
-        manualRepository.save(manual(phone, COD_TERRA, "Terra Mundi", ConversaClienteManualAcao.EXCLUIR));
 
         Page<ConversationSummaryRow> filtrada =
                 messageRepository.findConversationSummariesExcluindoAniversario(
@@ -85,21 +84,6 @@ class WhatsAppGrupoManualFilterRepositoryIntegrationTest extends AbstractIntegra
                 .findFirst();
         assertThat(terra).isPresent();
         assertThat(terra.orElseThrow().getQtdConversas()).isEqualTo(1L);
-    }
-
-    @Test
-    void reMaterializacaoAutomaticaNaoApagaManual() {
-        String phone = PHONE_PREFIX + "0004";
-        inserirInbound(phone);
-        automaticoRepository.save(auto(phone, COD_TERRA, "Terra Mundi"));
-        manualRepository.save(manual(phone, COD_TERRA, "Terra Mundi", ConversaClienteManualAcao.EXCLUIR));
-
-        automaticoRepository.deleteByPhoneNumber(phone);
-        automaticoRepository.save(auto(phone, COD_TERRA, "Terra Mundi"));
-
-        assertThat(manualRepository.findByPhoneNumber(phone)).hasSize(1);
-        assertThat(manualRepository.findByPhoneNumber(phone).getFirst().getAcao())
-                .isEqualTo(ConversaClienteManualAcao.EXCLUIR);
     }
 
     private static WhatsAppConversaClienteEntity auto(String phone, String codigo, String nome) {

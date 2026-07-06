@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ExternalLink, Link2, Loader2, MessageCircle, MessageSquarePlus, Search, Send, ChevronUp, ChevronDown, ChevronLeft, X, Trash2, Camera, ImageMinus, MoreVertical } from 'lucide-react';
+import { ExternalLink, Link2, Loader2, MessageCircle, MessageSquarePlus, Pencil, Plus, Search, Send, ChevronUp, ChevronDown, ChevronLeft, X, Trash2, Camera, ImageMinus, MoreVertical } from 'lucide-react';
 import { ConfirmDialog } from '../financeiro/shared/ConfirmDialog.jsx';
 import { ChatBubble } from './components/ChatBubble.jsx';
 import { DaySeparator } from './components/DaySeparator.jsx';
@@ -39,6 +39,7 @@ import { WhatsAppUnreadBadge, unreadCountOf } from './components/WhatsAppUnreadB
 import { WhatsAppConversationPinButton } from './components/WhatsAppConversationPinButton.jsx';
 import { WhatsAppConversationArchiveButton } from './components/WhatsAppConversationArchiveButton.jsx';
 import { WhatsAppConversationGruposPanel } from './components/WhatsAppConversationGruposPanel.jsx';
+import { ModalGrupoWhatsApp } from './components/ModalGrupoWhatsApp.jsx';
 import { WhatsAppConversationSelectionBar } from './components/WhatsAppConversationSelectionBar.jsx';
 import { WhatsAppConversationDeleteButton } from './components/WhatsAppConversationDeleteButton.jsx';
 import { WHATSAPP_DELETE_CONVERSATION_CONFIRM, WHATSAPP_DELETE_MESSAGE_CONFIRM } from './utils/whatsappDeleteCopy.js';
@@ -260,6 +261,8 @@ export function WhatsAppConversas() {
   const [showArchivedView, setShowArchivedView] = useState(false);
   const [selectedClienteCodigo, setSelectedClienteCodigo] = useState(null);
   const [grupos, setGrupos] = useState([]);
+  const [modalGrupoOpen, setModalGrupoOpen] = useState(false);
+  const [modalGrupoModo, setModalGrupoModo] = useState('criar');
   const [conversations, setConversations] = useState([]);
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [conversationsPageLoaded, setConversationsPageLoaded] = useState(0);
@@ -452,12 +455,32 @@ export function WhatsAppConversas() {
   const recarregarGruposAbas = useCallback(async () => {
     try {
       const list = await getWhatsAppGrupos();
-      setGrupos(Array.isArray(list) ? list : []);
+      const next = Array.isArray(list) ? list : [];
+      setGrupos(next);
+      setSelectedClienteCodigo((atual) =>
+        atual && !next.some((g) => g.codigo === atual) ? null : atual,
+      );
     } catch {
       /* mantém abas atuais */
     }
     void loadConversations({ silent: true });
   }, [loadConversations]);
+
+  const abrirModalNovoGrupo = useCallback(() => {
+    setModalGrupoModo('criar');
+    setModalGrupoOpen(true);
+  }, []);
+
+  const abrirModalEditarGrupo = useCallback(() => {
+    if (!selectedClienteCodigo) return;
+    setModalGrupoModo('editar');
+    setModalGrupoOpen(true);
+  }, [selectedClienteCodigo]);
+
+  const grupoSelecionado = useMemo(
+    () => grupos.find((g) => g.codigo === selectedClienteCodigo) ?? null,
+    [grupos, selectedClienteCodigo],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -1198,11 +1221,11 @@ export function WhatsAppConversas() {
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
             </button>
           </form>
-          {grupos.length > 0 ? (
+          <div className="space-y-1.5">
             <div
-              className="flex gap-1.5 overflow-x-auto pb-0.5 -mx-0.5 px-0.5 scroll-smooth"
+              className="flex gap-1.5 overflow-x-auto pb-0.5 -mx-0.5 px-0.5 scroll-smooth items-center"
               role="tablist"
-              aria-label="Filtrar por cliente"
+              aria-label="Filtrar por grupo"
             >
               <button
                 type="button"
@@ -1239,8 +1262,28 @@ export function WhatsAppConversas() {
                   </button>
                 );
               })}
+              <button
+                type="button"
+                onClick={abrirModalNovoGrupo}
+                className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border border-dashed border-emerald-500 text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Grupo
+              </button>
             </div>
-          ) : null}
+            {grupoSelecionado ? (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={abrirModalEditarGrupo}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:text-emerald-800"
+                >
+                  <Pencil className="h-3 w-3" />
+                  Editar grupo «{grupoSelecionado.nome}»
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto">
@@ -1818,6 +1861,13 @@ export function WhatsAppConversas() {
         onConfirm={() => void confirmDeleteConversation()}
         onCancel={() => setPendingDeleteConversationPhone('')}
         danger
+      />
+      <ModalGrupoWhatsApp
+        open={modalGrupoOpen}
+        modo={modalGrupoModo}
+        grupoInicial={grupoSelecionado}
+        onClose={() => setModalGrupoOpen(false)}
+        onSalvo={() => void recarregarGruposAbas()}
       />
       </div>
     </div>

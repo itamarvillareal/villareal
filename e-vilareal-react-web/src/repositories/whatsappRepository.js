@@ -96,6 +96,33 @@ export async function getWhatsAppGrupos(signal) {
   return request('/api/whatsapp/grupos', { signal });
 }
 
+export async function getWhatsAppGrupoSugestoesConversas(clienteCodigo, signal) {
+  return request(`/api/whatsapp/grupos/${encodeURIComponent(clienteCodigo)}/sugestoes-conversas`, { signal });
+}
+
+export async function criarWhatsAppGrupo(clienteCodigo, phoneNumbers, signal) {
+  return request('/api/whatsapp/grupos', {
+    method: 'POST',
+    body: { clienteCodigo, phoneNumbers },
+    signal,
+  });
+}
+
+export async function atualizarWhatsAppGrupo(clienteCodigo, phoneNumbers, signal) {
+  return request(`/api/whatsapp/grupos/${encodeURIComponent(clienteCodigo)}`, {
+    method: 'PUT',
+    body: { phoneNumbers },
+    signal,
+  });
+}
+
+export async function excluirWhatsAppGrupo(clienteCodigo, signal) {
+  return request(`/api/whatsapp/grupos/${encodeURIComponent(clienteCodigo)}`, {
+    method: 'DELETE',
+    signal,
+  });
+}
+
 export async function getWhatsAppConversationGrupos(phoneNumber, signal) {
   return request(`/api/whatsapp/conversations/${encodeURIComponent(phoneNumber)}/grupos`, { signal });
 }

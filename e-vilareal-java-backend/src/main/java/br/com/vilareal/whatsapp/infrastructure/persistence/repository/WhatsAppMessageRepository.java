@@ -198,26 +198,11 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                       )
                       AND (
                           :clienteCodigo = ''
-                          OR (
-                              (
-                                  EXISTS (
-                                      SELECT 1 FROM whatsapp_conversa_cliente wcc
-                                      WHERE wcc.phone_number = w.phone_number
-                                        AND wcc.cliente_codigo = :clienteCodigo
-                                  )
-                                  AND NOT EXISTS (
-                                      SELECT 1 FROM whatsapp_conversa_cliente_manual m
-                                      WHERE m.phone_number = w.phone_number
-                                        AND m.cliente_codigo = :clienteCodigo
-                                        AND m.acao = 'EXCLUIR'
-                                  )
-                              )
-                              OR EXISTS (
-                                  SELECT 1 FROM whatsapp_conversa_cliente_manual m
-                                  WHERE m.phone_number = w.phone_number
-                                    AND m.cliente_codigo = :clienteCodigo
-                                    AND m.acao = 'INCLUIR'
-                              )
+                          OR EXISTS (
+                              SELECT 1 FROM whatsapp_conversa_cliente_manual m
+                              WHERE m.phone_number = w.phone_number
+                                AND m.cliente_codigo = :clienteCodigo
+                                AND m.acao = 'INCLUIR'
                           )
                       )
                     GROUP BY w.phone_number
@@ -254,26 +239,11 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
                           )
                           AND (
                               :clienteCodigo = ''
-                              OR (
-                                  (
-                                      EXISTS (
-                                          SELECT 1 FROM whatsapp_conversa_cliente wcc
-                                          WHERE wcc.phone_number = w.phone_number
-                                            AND wcc.cliente_codigo = :clienteCodigo
-                                      )
-                                      AND NOT EXISTS (
-                                          SELECT 1 FROM whatsapp_conversa_cliente_manual m
-                                          WHERE m.phone_number = w.phone_number
-                                            AND m.cliente_codigo = :clienteCodigo
-                                            AND m.acao = 'EXCLUIR'
-                                      )
-                                  )
-                                  OR EXISTS (
-                                      SELECT 1 FROM whatsapp_conversa_cliente_manual m
-                                      WHERE m.phone_number = w.phone_number
-                                        AND m.cliente_codigo = :clienteCodigo
-                                        AND m.acao = 'INCLUIR'
-                                  )
+                              OR EXISTS (
+                                  SELECT 1 FROM whatsapp_conversa_cliente_manual m
+                                  WHERE m.phone_number = w.phone_number
+                                    AND m.cliente_codigo = :clienteCodigo
+                                    AND m.acao = 'INCLUIR'
                               )
                           )
                         GROUP BY w.phone_number

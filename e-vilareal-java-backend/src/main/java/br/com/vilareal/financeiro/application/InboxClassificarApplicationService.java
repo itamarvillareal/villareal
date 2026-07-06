@@ -32,9 +32,17 @@ public class InboxClassificarApplicationService {
 
     @Transactional(readOnly = true)
     public Page<LancamentoFinanceiroResponse> listarPaginado(
-            Integer numeroBanco, Integer numeroCartao, Integer ano, Integer mes, Pageable pageable) {
+            Integer numeroBanco,
+            Integer numeroCartao,
+            Boolean apenasBancos,
+            Integer ano,
+            Integer mes,
+            Pageable pageable) {
         if (numeroCartao != null) {
             return financeiroCartaoService.listarInboxClassificarPaginado(numeroCartao, ano, mes, pageable);
+        }
+        if (Boolean.TRUE.equals(apenasBancos)) {
+            return listarBancosPaginado(numeroBanco, ano, mes, pageable);
         }
         if (numeroBanco != null) {
             return listarBancosPaginado(numeroBanco, ano, mes, pageable);

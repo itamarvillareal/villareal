@@ -9,7 +9,6 @@ import br.com.vilareal.processo.application.CodigoClienteUtil;
 import br.com.vilareal.whatsapp.ConversaClienteManualAcao;
 import br.com.vilareal.whatsapp.dto.WhatsAppConversaGrupoItemDTO;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppConversaClienteManualRepository;
-import br.com.vilareal.whatsapp.infrastructure.persistence.repository.WhatsAppConversaClienteRepository;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -24,19 +23,16 @@ import java.util.List;
 public class WhatsAppConversaGrupoManualService {
 
     private final WhatsAppConversaClienteManualRepository manualRepository;
-    private final WhatsAppConversaClienteRepository automaticoRepository;
     private final ClienteRepository clienteRepository;
     private final WhatsAppConversaGrupoResolucaoService resolucaoService;
     private final Clock clock;
 
     public WhatsAppConversaGrupoManualService(
             WhatsAppConversaClienteManualRepository manualRepository,
-            WhatsAppConversaClienteRepository automaticoRepository,
             ClienteRepository clienteRepository,
             WhatsAppConversaGrupoResolucaoService resolucaoService,
             Clock clock) {
         this.manualRepository = manualRepository;
-        this.automaticoRepository = automaticoRepository;
         this.clienteRepository = clienteRepository;
         this.resolucaoService = resolucaoService;
         this.clock = clock;
@@ -72,42 +68,7 @@ public class WhatsAppConversaGrupoManualService {
         if (!StringUtils.hasText(codigo)) {
             throw new BusinessRuleException("Código de cliente inválido.");
         }
-
-        boolean temAutomatico = automaticoRepository.findByPhoneNumber(canonico).stream()
-                .anyMatch(a -> codigo.equals(CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(a.getClienteCodigo())));
-
-        var manualOpt = manualRepository.findByPhoneNumberAndClienteCodigo(canonico, codigo);
-        if (temAutomatico) {
-            String nome = manualOpt
-                    .map(m -> m.getClienteNome())
-                    .filter(StringUtils::hasText)
-                    .orElseGet(() -> automaticoRepository.findByPhoneNumber(canonico).stream()
-                            .filter(a ->
-                                    codigo.equals(CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(a.getClienteCodigo())))
-                            .map(a -> a.getClienteNome())
-                            .findFirst()
-                            .orElseGet(() -> resolverNomeCliente(codigo)));
-            manualRepository.upsert(
-                    canonico,
-                    codigo,
-                    nome,
-                    ConversaClienteManualAcao.EXCLUIR.name(),
-                    resolveCriadoPor(),
-                    clock.instant());
-        } else if (manualOpt.isPresent()
-                && manualOpt.orElseThrow().getAcao() == ConversaClienteManualAcao.INCLUIR) {
-            manualRepository.deleteByPhoneNumberAndClienteCodigo(canonico, codigo);
-        } else {
-            String nome = resolverNomeCliente(codigo);
-            manualRepository.upsert(
-                    canonico,
-                    codigo,
-                    nome,
-                    ConversaClienteManualAcao.EXCLUIR.name(),
-                    resolveCriadoPor(),
-                    clock.instant());
-        }
-
+        manualRepository.deleteByPhoneNumberAndClienteCodigo(canonico, codigo);
         return resolucaoService.listarGruposEfetivosDaConversa(canonico);
     }
 

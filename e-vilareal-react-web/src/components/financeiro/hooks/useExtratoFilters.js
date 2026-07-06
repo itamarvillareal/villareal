@@ -14,6 +14,9 @@ import {
 } from '../extrato/extratoCadastroFiltro.js';
 import { filtroCompensacaoSemParAtivo } from '../extrato/compensacaoSemPar.js';
 import { normalizarBancosFiltro, parseBancosFiltroParam } from '../inbox/inboxBancosFiltro.js';
+import { isNumeroCartaoFinanceiro } from '../../../data/financeiroData.js';
+
+export const CARTAO_FILTRO_NENHUM = 'nenhum';
 
 const DEBOUNCE_MS = 300;
 
@@ -68,12 +71,23 @@ function readTipoDiaParam(params) {
   return TIPO_DIA_COMPENSAR_TODOS;
 }
 
+function readCartaoParam(params) {
+  const raw = String(params.get('cartao') ?? '').trim();
+  if (raw === CARTAO_FILTRO_NENHUM) return CARTAO_FILTRO_NENHUM;
+  const n = Number(raw);
+  if (Number.isFinite(n) && n > 0 && isNumeroCartaoFinanceiro(n)) return n;
+  const bancos = parseBancosFiltroParam(params);
+  if (bancos.length === 1 && isNumeroCartaoFinanceiro(bancos[0])) return bancos[0];
+  return null;
+}
+
 function readFilters(params) {
   const { letras, letrasModo } = parseLetrasFiltroParam(params);
   const bancos = parseBancosFiltroParam(params);
   return {
     bancos,
     banco: bancos.length === 1 ? bancos[0] : null,
+    cartao: readCartaoParam(params),
     lancamento: parseLancamentoParam(params),
     mes: params.get('mes') || mesAtualIso(),
     tipoPar: readTipoParParam(params),
@@ -103,6 +117,14 @@ function writeFilters(params, f) {
   const bancosNorm = normalizarBancosFiltro(f.bancos);
   setOrDel('banco', bancosNorm.length ? bancosNorm.join(',') : null);
   setOrDel('lancamento', Number.isFinite(f.lancamento) ? f.lancamento : null);
+  setOrDel(
+    'cartao',
+    f.cartao === CARTAO_FILTRO_NENHUM
+      ? CARTAO_FILTRO_NENHUM
+      : Number.isFinite(f.cartao)
+        ? f.cartao
+        : null,
+  );
   setOrDel('mes', f.mes);
   setOrDel(
     'tipoPar',
@@ -252,6 +274,19 @@ export function useExtratoFilters() {
     (bancos) => syncUrl({ bancos: normalizarBancosFiltro(bancos), resetPage: true }),
     [syncUrl],
   );
+  const setCartaoFiltro = useCallback(
+    (cartao) =>
+      pushParams((prev) => {
+        const bancos = normalizarBancosFiltro(prev.bancos).filter((n) => !isNumeroCartaoFinanceiro(n));
+        return {
+          ...prev,
+          bancos,
+          cartao: cartao ?? null,
+          page: 0,
+        };
+      }),
+    [pushParams],
+  );
   const setMes = useCallback((mes) => syncUrl({ mes, resetPage: true }), [syncUrl]);
   const setTipoPar = useCallback(
     (tipoPar) => syncUrl({ tipoPar: tipoPar || TIPO_PAR_COMPENSAR_TODOS, resetPage: true }),
@@ -317,6 +352,7 @@ export function useExtratoFilters() {
     apiQuery,
     setBanco,
     setBancos,
+    setCartaoFiltro,
     setMes,
     setTipoPar,
     setTipoDia,

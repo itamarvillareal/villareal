@@ -30,6 +30,15 @@ public class WhatsAppGrupoListService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public java.util.Optional<WhatsAppGrupoDTO> buscarGrupo(String clienteCodigo) {
+        String codigo = normalizarFiltroClienteCodigo(clienteCodigo);
+        if (!StringUtils.hasText(codigo)) {
+            return java.util.Optional.empty();
+        }
+        return listarGrupos().stream().filter(g -> codigo.equals(g.codigo())).findFirst();
+    }
+
     /** Normaliza código para filtro SQL; vazio = sem filtro (aba Todas). */
     public static String normalizarFiltroClienteCodigo(String clienteCodigo) {
         if (!StringUtils.hasText(clienteCodigo)) {
