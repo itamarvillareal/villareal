@@ -41,6 +41,7 @@ public interface CitacaoTentativaRepository extends JpaRepository<CitacaoTentati
             JOIN FETCH t.pessoaEndereco pe
             LEFT JOIN FETCH pe.municipio m
             LEFT JOIN FETCH m.estado
+            LEFT JOIN FETCH t.andamentoSolicitacao
             WHERE t.id = :id
             """)
     Optional<CitacaoTentativaEntity> findByIdDetalhado(@Param("id") Long id);
