@@ -945,6 +945,53 @@ public class QualificacaoPessoaUtil {
         return cep.trim();
     }
 
+    /**
+     * Endereço resumido para interlocutória / cópia: {@code rua, bairro, cidade/UF, CEP 00.000-000}.
+     * Omite partes nulas ou em branco.
+     */
+    public static String formatarEnderecoParaPeca(String rua, String bairro, String cidade, String uf, String cep) {
+        java.util.List<String> partes = new java.util.ArrayList<>();
+        if (StringUtils.hasText(rua)) {
+            partes.add(rua.trim());
+        }
+        if (StringUtils.hasText(bairro)) {
+            partes.add(bairro.trim());
+        }
+        if (StringUtils.hasText(cidade) || StringUtils.hasText(uf)) {
+            String loc = "";
+            if (StringUtils.hasText(cidade)) {
+                loc = cidade.trim();
+            }
+            if (StringUtils.hasText(uf)) {
+                loc = loc.isEmpty() ? uf.trim().toUpperCase(Locale.ROOT) : loc + "/" + uf.trim().toUpperCase(Locale.ROOT);
+            }
+            partes.add(loc);
+        }
+        String base = String.join(", ", partes);
+        if (StringUtils.hasText(cep)) {
+            String fmt = formatarCep(cep);
+            if (!fmt.isBlank()) {
+                base = base.isEmpty() ? "CEP " + fmt : base + ", CEP " + fmt;
+            }
+        }
+        return base;
+    }
+
+    public static String formatarEnderecoParaPeca(PessoaEnderecoItemResponse e) {
+        if (e == null) {
+            return "";
+        }
+        String uf = e.getEstado();
+        if (!StringUtils.hasText(uf) && e.getMunicipio() != null) {
+            uf = e.getMunicipio().getUf();
+        }
+        String cidade = e.getCidade();
+        if (!StringUtils.hasText(cidade) && e.getMunicipio() != null) {
+            cidade = e.getMunicipio().getNome();
+        }
+        return formatarEnderecoParaPeca(e.getRua(), e.getBairro(), cidade, uf, e.getCep());
+    }
+
     public static String formatarCpf(String cpf) {
         if (cpf == null || cpf.isBlank()) {
             return "";

@@ -11,6 +11,7 @@ import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.projudi.ProjudiOrquestradorGate;
 import br.com.vilareal.projudi.ProjudiTeorService.MovimentacaoProjudi;
+import br.com.vilareal.citacao.application.CitacaoAutoLinkService;
 import br.com.vilareal.notificacao.api.dto.NotificacaoResultado;
 import br.com.vilareal.notificacao.application.NotificacaoMovimentacaoService;
 import br.com.vilareal.notificacao.domain.NotificacaoEnvioStatus;
@@ -60,6 +61,9 @@ class MonitoramentoMovimentacoesServiceTest {
     @Mock
     private NotificacaoMovimentacaoService notificacaoMovimentacaoService;
 
+    @Mock
+    private CitacaoAutoLinkService citacaoAutoLinkService;
+
     private MonitoramentoMovimentacoesService service;
 
     @BeforeEach
@@ -72,6 +76,7 @@ class MonitoramentoMovimentacoesServiceTest {
                 consultaProcessoExecucaoRepository,
                 orquestradorGate,
                 notificacaoMovimentacaoService,
+                citacaoAutoLinkService,
                 clock,
                 1L);
     }

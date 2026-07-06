@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
+import { getContextoAuditoriaUsuario } from '../../services/auditoriaCliente.js';
 import { formatPhoneFromContato } from '../../utils/whatsappFormat.js';
 import { X, Plus, Trash2 } from 'lucide-react';
 
@@ -46,7 +47,20 @@ export function ModalContatos({ open, onClose, contatos, onChange }) {
   const navigate = useNavigate();
   const [tipo, setTipo] = useState('email');
   const [valor, setValor] = useState('');
-  const [usuario, setUsuario] = useState('Usuário');
+  const [usuarioRegistro, setUsuarioRegistro] = useState(
+    () => getContextoAuditoriaUsuario().usuarioNome,
+  );
+
+  useEffect(() => {
+    const atualizar = () => setUsuarioRegistro(getContextoAuditoriaUsuario().usuarioNome);
+    if (open) atualizar();
+    window.addEventListener('vilareal:usuario-sessao-atualizada', atualizar);
+    window.addEventListener('vilareal:operador-estacao-atualizado', atualizar);
+    return () => {
+      window.removeEventListener('vilareal:usuario-sessao-atualizada', atualizar);
+      window.removeEventListener('vilareal:operador-estacao-atualizado', atualizar);
+    };
+  }, [open]);
 
   useCloseOnEscape(open, onClose);
 
@@ -62,7 +76,7 @@ export function ModalContatos({ open, onClose, contatos, onChange }) {
 
   const adicionar = () => {
     const v = valor?.trim();
-    const u = usuario?.trim() || 'Usuário';
+    const u = usuarioRegistro?.trim() || 'Usuário';
     if (!v) return;
     if (tipo === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return;
     const now = new Date().toISOString();
@@ -169,10 +183,12 @@ export function ModalContatos({ open, onClose, contatos, onChange }) {
                 <label className="block text-xs font-medium text-slate-500 mb-1">Registrado por</label>
                 <input
                   type="text"
-                  value={usuario}
-                  onChange={(e) => setUsuario(e.target.value)}
-                  placeholder="Usuário"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  value={usuarioRegistro}
+                  readOnly
+                  tabIndex={-1}
+                  aria-readonly="true"
+                  title={usuarioRegistro}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-100 text-slate-600 cursor-default"
                 />
               </div>
               <button

@@ -3,6 +3,8 @@ package br.com.vilareal.pessoa.api.dto;
 import br.com.vilareal.localidade.api.dto.MunicipioResumoResponse;
 import io.swagger.v3.oas.annotations.media.Schema;
 
+import java.time.LocalDate;
+
 @Schema(description = "Endereço persistido")
 public class PessoaEnderecoItemResponse {
 
@@ -17,6 +19,10 @@ public class PessoaEnderecoItemResponse {
     private Integer municipioId;
     private MunicipioResumoResponse municipio;
     private String cidadeLegado;
+
+    private String origem;
+
+    private LocalDate dataOrigem;
 
     public Long getId() {
         return id;
@@ -104,5 +110,21 @@ public class PessoaEnderecoItemResponse {
 
     public void setCidadeLegado(String cidadeLegado) {
         this.cidadeLegado = cidadeLegado;
+    }
+
+    public String getOrigem() {
+        return origem;
+    }
+
+    public void setOrigem(String origem) {
+        this.origem = origem;
+    }
+
+    public LocalDate getDataOrigem() {
+        return dataOrigem;
+    }
+
+    public void setDataOrigem(LocalDate dataOrigem) {
+        this.dataOrigem = dataOrigem;
     }
 }

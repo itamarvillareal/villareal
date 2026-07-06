@@ -1345,8 +1345,11 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
     const id = Number(editIdRef.current);
     if (!Number.isFinite(id) || id < 1 || !featureFlags.useApiPessoasComplementares) return;
     if (!enderecosAlteradosPeloUsuarioRef.current) return;
-    await salvarEnderecosPessoa(id, enderecosRef.current);
-    const recarregados = await carregarEnderecosPessoa(id);
+    const resp = await salvarEnderecosPessoa(id, enderecosRef.current);
+    if (resp?.avisos?.length) {
+      setToastDocumento({ mensagem: resp.avisos.join(' ') });
+    }
+    const recarregados = resp?.enderecos?.length ? resp.enderecos : await carregarEnderecosPessoa(id);
     const normalizados = enderecosApiParaUi(recarregados || []);
     enderecosRef.current = normalizados;
     setEnderecos(normalizados);
@@ -2697,6 +2700,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
         }}
         nomePessoa={form.nome}
         codigoPessoa={form.codigo}
+        pessoaId={editIdRef.current}
         enderecos={enderecos}
         onChange={atualizarEnderecos}
         sugestaoEndereco={extracaoEndereco}

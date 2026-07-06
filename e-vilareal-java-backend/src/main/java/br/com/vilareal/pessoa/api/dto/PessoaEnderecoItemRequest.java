@@ -3,13 +3,16 @@ package br.com.vilareal.pessoa.api.dto;
 import br.com.vilareal.localidade.api.dto.MunicipioResumoResponse;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+
+import java.time.LocalDate;
 
 @Schema(description = "Endereço (ModalEnderecos)")
 public class PessoaEnderecoItemRequest {
 
-    @NotNull
+    @Schema(description = "Id persistido — omitir em endereço novo")
+    private Long id;
+
     private Integer numero;
 
     @NotBlank
@@ -32,6 +35,14 @@ public class PessoaEnderecoItemRequest {
     private Integer municipioId;
 
     private Boolean autoPreenchido = false;
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
 
     public Integer getNumero() {
         return numero;

@@ -1,8 +1,39 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Search } from 'lucide-react';
+import { X, Search, Layers } from 'lucide-react';
 import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 import { obterMunicipio } from '../../repositories/municipiosRepository.js';
+import {
+  carregarEnderecosPessoa,
+  enderecosApiParaUi,
+  incluirEnderecosLotePessoa,
+} from '../../repositories/pessoasEnderecosContatosRepository.js';
+import { featureFlags } from '../../config/featureFlags.js';
 import { MunicipioAutocomplete } from '../ui/MunicipioAutocomplete.jsx';
+
+const ORIGENS_ENDERECO = [
+  { value: 'SISBAJUD', label: 'SISBAJUD' },
+  { value: 'INFOJUD', label: 'INFOJUD' },
+  { value: 'RENAJUD', label: 'RENAJUD' },
+  { value: 'SIEL', label: 'SIEL' },
+  { value: 'INFORMADO_CLIENTE', label: 'Informado pelo cliente' },
+  { value: 'DOS_AUTOS', label: 'Dos autos' },
+  { value: 'MANUAL', label: 'Manual' },
+  { value: 'OUTRO', label: 'Outro' },
+];
+
+function rotuloOrigem(val) {
+  if (!val) return null;
+  const hit = ORIGENS_ENDERECO.find((o) => o.value === val);
+  return hit?.label ?? val;
+}
+
+function formatarDataOrigem(val) {
+  if (!val) return null;
+  const s = String(val).slice(0, 10);
+  const [y, m, d] = s.split('-');
+  if (y && m && d) return `${d}/${m}/${y}`;
+  return s;
+}
 
 function formatarCepExibicao(valor) {
   const digitos = String(valor ?? '').replace(/\D/g, '').slice(0, 8);
@@ -65,6 +96,7 @@ export function ModalEnderecos({
   onClose,
   nomePessoa,
   codigoPessoa,
+  pessoaId,
   enderecos,
   onChange,
   sugestaoEndereco = null,
@@ -81,6 +113,17 @@ export function ModalEnderecos({
   const [buscandoCep, setBuscandoCep] = useState(false);
   const [editandoIndex, setEditandoIndex] = useState(-1);
   const [erroFormulario, setErroFormulario] = useState('');
+  const [loteAberto, setLoteAberto] = useState(false);
+  const [loteLinhas, setLoteLinhas] = useState('');
+  const [loteOrigem, setLoteOrigem] = useState('SISBAJUD');
+  const [loteDataOrigem, setLoteDataOrigem] = useState(() => {
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  });
+  const [loteMunicipio, setLoteMunicipio] = useState(null);
+  const [loteSalvando, setLoteSalvando] = useState(false);
+  const [loteResumo, setLoteResumo] = useState('');
   const sessaoAbertaRef = useRef(false);
 
   useCloseOnEscape(open, onClose);
@@ -251,6 +294,52 @@ export function ModalEnderecos({
     }
   };
 
+  const salvarLote = async () => {
+    const id = Number(pessoaId);
+    if (!featureFlags.useApiPessoasComplementares || !Number.isFinite(id) || id < 1) {
+      setErroFormulario('Salve a pessoa antes de incluir endereços em lote.');
+      return;
+    }
+    if (!loteMunicipio?.municipioId) {
+      setErroFormulario('Selecione o município para os endereços do lote.');
+      return;
+    }
+    const linhas = String(loteLinhas || '')
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    if (!linhas.length) {
+      setErroFormulario('Informe ao menos uma linha de endereço.');
+      return;
+    }
+    setErroFormulario('');
+    setLoteSalvando(true);
+    setLoteResumo('');
+    try {
+      const resp = await incluirEnderecosLotePessoa(id, {
+        origem: loteOrigem,
+        dataOrigem: loteDataOrigem || null,
+        enderecos: linhas.map((rua, idx) => ({
+          numero: lista.length + idx + 1,
+          rua,
+          municipioId: loteMunicipio.municipioId,
+          autoPreenchido: false,
+        })),
+      });
+      const inseridos = Number(resp?.inseridos ?? 0);
+      const ignorados = Number(resp?.ignorados ?? 0);
+      setLoteResumo(`${inseridos} inserido(s), ${ignorados} ignorado(s) (já existiam)`);
+      const recarregados = await carregarEnderecosPessoa(id);
+      const normalizados = enderecosApiParaUi(recarregados || resp?.enderecos || []);
+      onChange(normalizados);
+      setLoteLinhas('');
+    } catch (e) {
+      setErroFormulario(e?.message || 'Falha ao salvar lote de endereços.');
+    } finally {
+      setLoteSalvando(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
       <div
@@ -275,6 +364,78 @@ export function ModalEnderecos({
               {codigoPessoa != null && <p className="text-sm text-gray-500">Código: {codigoPessoa}</p>}
             </div>
           )}
+          {featureFlags.useApiPessoasComplementares ? (
+            <div className="mb-4">
+              <button
+                type="button"
+                onClick={() => setLoteAberto((v) => !v)}
+                className="inline-flex items-center gap-2 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-900 hover:bg-indigo-100"
+              >
+                <Layers className="w-4 h-4" />
+                {loteAberto ? 'Fechar lote' : 'Adicionar em lote / busca oficial'}
+              </button>
+              {loteAberto ? (
+                <div className="mt-3 rounded-lg border border-indigo-200 bg-indigo-50/50 p-3 space-y-3">
+                  <p className="text-xs text-indigo-900">
+                    Uma linha por endereço (logradouro). Todos usarão o município selecionado abaixo.
+                  </p>
+                  <textarea
+                    value={loteLinhas}
+                    onChange={(e) => setLoteLinhas(e.target.value)}
+                    rows={5}
+                    placeholder={'Rua Exemplo, 100 — Centro\nAv. Principal, s/n'}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono"
+                  />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Origem</label>
+                      <select
+                        value={loteOrigem}
+                        onChange={(e) => setLoteOrigem(e.target.value)}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      >
+                        {ORIGENS_ENDERECO.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Data da consulta</label>
+                      <input
+                        type="date"
+                        value={loteDataOrigem}
+                        onChange={(e) => setLoteDataOrigem(e.target.value)}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Município (todos)</label>
+                    <MunicipioAutocomplete
+                      value={loteMunicipio}
+                      onChange={setLoteMunicipio}
+                      uf={loteMunicipio?.municipio?.uf || loteMunicipio?.uf || 'GO'}
+                      idPrefix="endereco-lote"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={loteSalvando}
+                      onClick={() => void salvarLote()}
+                      className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                    >
+                      {loteSalvando ? 'Salvando…' : 'Salvar lote'}
+                    </button>
+                    {loteResumo ? <span className="text-sm text-emerald-800 font-medium">{loteResumo}</span> : null}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <div className="space-y-3 mb-4">
             {editandoIndex >= 0 ? (
               <p className="text-sm text-blue-800 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
@@ -423,6 +584,12 @@ export function ModalEnderecos({
                       {e.bairro ? ` – ${e.bairro}` : ''}
                       {e.cidade || e.estado ? ` – ${e.cidade || ''} ${e.estado || ''}`.trim() : ''}
                       {e.cep ? ` – CEP ${formatarCepExibicao(e.cep)}` : ''}
+                      {e.origem ? (
+                        <span className="block text-xs text-slate-500 mt-0.5">
+                          Origem: {rotuloOrigem(e.origem)}
+                          {e.dataOrigem ? ` · ${formatarDataOrigem(e.dataOrigem)}` : ''}
+                        </span>
+                      ) : null}
                     </span>
                     <span className="shrink-0 flex gap-2">
                       <button

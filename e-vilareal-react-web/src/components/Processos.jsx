@@ -156,6 +156,7 @@ import { ModalCriarTarefaContextual } from './ModalCriarTarefaContextual.jsx';
 import { ModalConsultaPeriodicaProcesso } from './consultas-periodicas/ModalConsultaPeriodicaProcesso.jsx';
 import { ProcessoWhatsAppContatosSecao } from './whatsapp/ProcessoWhatsAppContatosSecao.jsx';
 import { ProcessoRemuneracaoSecao } from './processos/ProcessoRemuneracaoSecao.jsx';
+import { ProcessoCitacaoPainel } from './processos/ProcessoCitacaoPainel.jsx';
 import { ModalPeticionamentoProcesso } from './projudi/ModalPeticionamentoProcesso.jsx';
 import { PessoaEmbedModal } from './PessoaEmbedModal.jsx';
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
@@ -187,6 +188,7 @@ import {
   listarAndamentosProcesso,
   sincronizarAndamentosIncremental,
   mapApiAndamentoToHistoricoItem,
+  ORIGENS_ANDAMENTO_HISTORICO,
   entradaHistoricoPertenceAoUsuarioAtivo,
   upsertPrazoFatalProcesso,
   alterarAtivoProcesso,
@@ -578,6 +580,15 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   useEffect(() => {
     const s = intentStateForHydration && typeof intentStateForHydration === 'object' ? intentStateForHydration : null;
     setLinhaOrigemContaCorrente(s?.contaCorrenteLinha ?? null);
+    if (s?.tabProcesso === 'citacao' && featureFlags.useApiCitacao) {
+      setTabAtiva('citacao');
+      if (s.citacaoProcessoParteId != null) {
+        setCitacaoParteInicial(Number(s.citacaoProcessoParteId));
+      }
+      if (s.citacaoMovProjudi != null) {
+        setCitacaoMovSugerido(String(s.citacaoMovProjudi));
+      }
+    }
   }, [intentRevisionForHydration, location.pathname, intentStateForHydration]);
   const [parteCliente, setParteCliente] = useState('');
   const [edicaoDesabilitada, setEdicaoDesabilitada] = useState(true);
@@ -598,6 +609,11 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const parteOpostaIds = useMemo(
     () => parteOpostaEntradas.map((e) => e.pessoaId),
     [parteOpostaEntradas]
+  );
+  const partesReuProcesso = useMemo(
+    () =>
+      (partesProcessoApi || []).filter((p) => String(p.polo || '').trim().toUpperCase() === 'REU'),
+    [partesProcessoApi],
   );
   const [modalVinculoPartes, setModalVinculoPartes] = useState(null); // 'detalhes' | null
   const [buscaPessoaVinculo, setBuscaPessoaVinculo] = useState('');
@@ -658,6 +674,10 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [pjeTribunalDraft, setPjeTribunalDraft] = useState('');
   const [pjeGrauDraft, setPjeGrauDraft] = useState('PRIMEIRO_GRAU');
   const [tabAtiva, setTabAtiva] = useState('historico');
+  const [partesProcessoApi, setPartesProcessoApi] = useState([]);
+  const [filtroOrigemHistorico, setFiltroOrigemHistorico] = useState('');
+  const [citacaoParteInicial, setCitacaoParteInicial] = useState(null);
+  const [citacaoMovSugerido, setCitacaoMovSugerido] = useState(null);
   const [historicoToast, setHistoricoToast] = useState(null);
   const showProcessoToast = useCallback((message, variant = 'success') => {
     const msg = String(message ?? '').trim();
@@ -2796,6 +2816,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     setClienteProcessoApiId(null);
     setParteClienteEntradas([]);
     setParteOpostaEntradas([]);
+    setPartesProcessoApi([]);
     setParteCliente('');
     setParteOposta('');
     setNumeroProcessoNovo('');
@@ -2986,6 +3007,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
       const partes = await listarPartesProcesso(procApi.id);
       if (seq !== carregarProcessoApiSeqRef.current) return;
+      setPartesProcessoApi(Array.isArray(partes) ? partes : []);
       aplicarListaPartesApiNaUi(partes, papelCarregado);
       await carregarHistoricoApi(procApi.id, seq);
 
@@ -3167,6 +3189,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       }
       if (pid && deveRefetchPartes) {
         const partesAtualizadas = await listarPartesProcesso(pid);
+        setPartesProcessoApi(Array.isArray(partesAtualizadas) ? partesAtualizadas : []);
         aplicarListaPartesApiNaUi(partesAtualizadas);
       }
       salvarHistoricoDoProcesso(snapshot);
@@ -3627,8 +3650,13 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     }
   }
 
-  const totalPaginasHistorico = Math.max(1, Math.ceil(historico.length / HISTORICO_POR_PAGINA));
-  const historicoPaginado = historico.slice(
+  const historicoFiltrado = useMemo(() => {
+    if (!filtroOrigemHistorico) return historico;
+    return historico.filter((h) => (h.origem || 'MANUAL') === filtroOrigemHistorico);
+  }, [historico, filtroOrigemHistorico]);
+
+  const totalPaginasHistorico = Math.max(1, Math.ceil(historicoFiltrado.length / HISTORICO_POR_PAGINA));
+  const historicoPaginado = historicoFiltrado.slice(
     (paginaHistorico - 1) * HISTORICO_POR_PAGINA,
     paginaHistorico * HISTORICO_POR_PAGINA
   );
@@ -4906,10 +4934,41 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                 <ProcessosTabButton id="tab-whatsapp" label="WhatsApp" active={tabAtiva === 'whatsapp'} onClick={() => setTabAtiva('whatsapp')} />
                 <ProcessosTabButton id="tab-observacoes" label="Observações" active={tabAtiva === 'observacoes'} onClick={() => setTabAtiva('observacoes')} />
                 <ProcessosTabButton id="tab-execucao" label="Execução" active={tabAtiva === 'execucao'} onClick={() => setTabAtiva('execucao')} />
+                {featureFlags.useApiCitacao ? (
+                  <ProcessosTabButton id="tab-citacao" label="Citação" active={tabAtiva === 'citacao'} onClick={() => setTabAtiva('citacao')} />
+                ) : null}
               </div>
+              {tabAtiva === 'citacao' && featureFlags.useApiCitacao ? (
+                <div className="border border-slate-200 rounded-b-xl overflow-hidden bg-white shadow-sm">
+                  <ProcessoCitacaoPainel
+                    processoId={processoApiId}
+                    partesReu={partesReuProcesso}
+                    parteInicialId={citacaoParteInicial}
+                    movProjudiSugerido={citacaoMovSugerido}
+                  />
+                </div>
+              ) : null}
               {tabAtiva === 'historico' && (
                 <div className="border border-slate-200 rounded-b-xl overflow-hidden bg-white shadow-sm p-0">
                   <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex flex-wrap items-end gap-3">
+                    <div className="w-44">
+                      <label className="block text-sm font-medium text-slate-700 mb-0.5">Origem</label>
+                      <select
+                        value={filtroOrigemHistorico}
+                        onChange={(e) => {
+                          setFiltroOrigemHistorico(e.target.value);
+                          setPaginaHistorico(1);
+                        }}
+                        className={`${inputClass} py-1.5`}
+                      >
+                        <option value="">Todas</option>
+                        {Object.entries(ORIGENS_ANDAMENTO_HISTORICO).map(([k, label]) => (
+                          <option key={k} value={k}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                     <div className="flex-1 min-w-[200px]">
                       <label className="block text-sm font-medium text-slate-700 mb-0.5">Próxima informação</label>
                       <input
@@ -5042,6 +5101,11 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                                 <td className="whitespace-nowrap py-1.5 pl-2 pr-6 align-top text-slate-700">Inf.: {h.inf}</td>
                                 <td className="min-w-0 py-1.5 pl-2 pr-3 align-top text-slate-800">
                                   <div className="truncate" title={h.info}>
+                                    {h.origem === 'CITACAO' ? (
+                                      <span className="mr-1.5 inline-flex rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-violet-800">
+                                        Citação
+                                      </span>
+                                    ) : null}
                                     {h.info}
                                   </div>
                                 </td>

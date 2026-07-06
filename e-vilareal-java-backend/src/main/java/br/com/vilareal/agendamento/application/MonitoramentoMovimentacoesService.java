@@ -54,6 +54,7 @@ public class MonitoramentoMovimentacoesService {
     private final ConsultaProcessoExecucaoRepository consultaProcessoExecucaoRepository;
     private final ProjudiOrquestradorGate orquestradorGate;
     private final NotificacaoMovimentacaoService notificacaoMovimentacaoService;
+    private final br.com.vilareal.citacao.application.CitacaoAutoLinkService citacaoAutoLinkService;
     private final Clock clock;
     private final Long credencialIdPadrao;
 
@@ -64,6 +65,7 @@ public class MonitoramentoMovimentacoesService {
             ConsultaProcessoExecucaoRepository consultaProcessoExecucaoRepository,
             ProjudiOrquestradorGate orquestradorGate,
             NotificacaoMovimentacaoService notificacaoMovimentacaoService,
+            br.com.vilareal.citacao.application.CitacaoAutoLinkService citacaoAutoLinkService,
             Clock clock,
             @Value("${projudi.orquestrador.credencial-id-padrao:1}") Long credencialIdPadrao) {
         this.listagemService = listagemService;
@@ -72,6 +74,7 @@ public class MonitoramentoMovimentacoesService {
         this.consultaProcessoExecucaoRepository = consultaProcessoExecucaoRepository;
         this.orquestradorGate = orquestradorGate;
         this.notificacaoMovimentacaoService = notificacaoMovimentacaoService;
+        this.citacaoAutoLinkService = citacaoAutoLinkService;
         this.clock = clock;
         this.credencialIdPadrao = credencialIdPadrao;
     }
@@ -148,6 +151,10 @@ public class MonitoramentoMovimentacoesService {
             entity.setDataConsulta(dataConsulta);
             movimentacaoMonitoradaRepository.save(entity);
             novasPersistidas.add(entity);
+
+            if (!baseline) {
+                citacaoAutoLinkService.processarNovaMovimentacao(entity.getId());
+            }
 
             if (!baseline) {
                 novasDto.add(NovaMovimentacaoMonitoradaResponse.builder()

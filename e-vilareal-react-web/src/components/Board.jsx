@@ -23,7 +23,8 @@ import {
   listarTarefasOperacionais,
   patchStatusTarefaOperacional,
 } from '../repositories/tarefasOperacionaisRepository.js';
-import { buildRouterStateChaveClienteProcesso } from '../domain/camposProcessoCliente.js';
+import { buildRouterStateChaveClienteProcesso, buildLinkDestinoProcesso } from '../domain/camposProcessoCliente.js';
+import { buscarProcessoPorId } from '../repositories/processosRepository.js';
 import { mensagemErroAmigavel } from '../utils/mensagemErroAmigavel.js';
 
 /**
@@ -605,6 +606,49 @@ export function Board() {
     setModalAcoesPendencia(null);
   }
 
+  async function navegarPainelCitacaoDaTarefa(item) {
+    const processoId = item?.processoId;
+    if (!processoId) {
+      setErroLocalizarPendencia('Tarefa sem processo vinculado na API.');
+      return;
+    }
+    try {
+      const proc = await buscarProcessoPorId(processoId);
+      const cod = proc?.codigoCliente ?? proc?.cliente?.codigo ?? proc?.clienteCodigo ?? '';
+      const num = proc?.numeroInterno ?? proc?.numero_interno;
+      const movMatch = String(item.texto || '').match(/Mov\.?\s*(\d+)/i);
+      setModalConsultaPendencia(null);
+      navigate(
+        buildLinkDestinoProcesso('/processos', cod, num, {
+          tabProcesso: 'citacao',
+          processoApiId: processoId,
+          citacaoMovProjudi: movMatch ? movMatch[1] : undefined,
+        }),
+      );
+    } catch (e) {
+      setErroLocalizarPendencia(mensagemErroAmigavel(e, 'abrir o painel de citação'));
+    }
+  }
+
+  async function concluirTarefaDaConsulta(item) {
+    const apiId = item?.apiId;
+    if (!apiId) {
+      setErroLocalizarPendencia('Tarefa ainda não persistida na API.');
+      return;
+    }
+    setApiMutationBusy(true);
+    try {
+      await patchStatusTarefaOperacional(apiId, { status: 'CONCLUIDA' });
+      setModalConsultaPendencia(null);
+      setApiSuccessTarefas('Tarefa concluída com sucesso.');
+      refreshTarefasApi();
+    } catch (e) {
+      setErroLocalizarPendencia(mensagemErroAmigavel(e, 'concluir a tarefa'));
+    } finally {
+      setApiMutationBusy(false);
+    }
+  }
+
   useCloseOnEscape(!!modalPendencias, reverterAlteracaoModal);
   useCloseOnEscape(!!modalAcoesPendencia, fecharModalAcoesPendencia);
   useCloseOnEscape(!!modalConsultaPendencia, () => setModalConsultaPendencia(null));
@@ -1055,6 +1099,16 @@ export function Board() {
                     <span className="font-medium">ID (API):</span> {String(modalConsultaPendencia.apiId)}
                   </div>
                 )}
+                {modalConsultaPendencia.origem != null && modalConsultaPendencia.origem !== '' && (
+                  <div className="text-sm text-slate-700">
+                    <span className="font-medium">Origem:</span> {String(modalConsultaPendencia.origem)}
+                  </div>
+                )}
+                {modalConsultaPendencia.processoId != null && (
+                  <div className="text-sm text-slate-700">
+                    <span className="font-medium">Processo (API):</span> {String(modalConsultaPendencia.processoId)}
+                  </div>
+                )}
                 <div className="text-sm text-slate-700">
                   <span className="font-medium">Texto:</span> {modalConsultaPendencia.texto || ''}
                 </div>
@@ -1076,6 +1130,11 @@ export function Board() {
                       : String(modalConsultaPendencia.dataLimite)}
                   </div>
                 )}
+                {modalConsultaPendencia.origem === 'CITACAO_AUTO_LINK' ? (
+                  <p className="text-xs text-violet-900 bg-violet-50 border border-violet-200 rounded px-3 py-2">
+                    Confirme manualmente qual tentativa SOLICITADO recebeu o retorno (use o nº da movimentação no campo PROJUDI), depois conclua esta tarefa.
+                  </p>
+                ) : null}
                 <div className="text-sm text-slate-700">
                   <span className="font-medium">Criada em:</span>{' '}
                   {modalConsultaPendencia.criadoEm ? new Date(modalConsultaPendencia.criadoEm).toLocaleString('pt-BR') : '—'}
@@ -1085,7 +1144,26 @@ export function Board() {
                   {modalConsultaPendencia.finalizadoEm ? new Date(modalConsultaPendencia.finalizadoEm).toLocaleString('pt-BR') : '—'}
                 </div>
               </div>
-              <div className="px-6 py-4 border-t border-slate-200 flex justify-center bg-white">
+              <div className="px-6 py-4 border-t border-slate-200 flex flex-wrap justify-center gap-2 bg-white">
+                {modalConsultaPendencia.origem === 'CITACAO_AUTO_LINK' && featureFlags.useApiCitacao ? (
+                  <button
+                    type="button"
+                    className="px-4 py-2 rounded border border-violet-300 bg-violet-50 text-violet-900 text-sm font-medium hover:bg-violet-100"
+                    onClick={() => void navegarPainelCitacaoDaTarefa(modalConsultaPendencia)}
+                  >
+                    Abrir painel de citação
+                  </button>
+                ) : null}
+                {modalConsultaPendencia.apiId != null && modalConsultaPendencia.status !== 'CONCLUIDA' ? (
+                  <button
+                    type="button"
+                    disabled={apiMutationBusy}
+                    className="px-4 py-2 rounded border border-emerald-300 bg-emerald-50 text-emerald-900 text-sm font-medium hover:bg-emerald-100 disabled:opacity-50"
+                    onClick={() => void concluirTarefaDaConsulta(modalConsultaPendencia)}
+                  >
+                    Concluir tarefa
+                  </button>
+                ) : null}
                 <button type="button" className="px-10 py-2 rounded border border-slate-300 bg-white text-slate-800 hover:bg-slate-50" onClick={() => setModalConsultaPendencia(null)}>
                   OK
                 </button>

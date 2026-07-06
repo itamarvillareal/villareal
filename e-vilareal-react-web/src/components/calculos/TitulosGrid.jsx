@@ -25,6 +25,7 @@ const TitulosGrid = memo(function TitulosGrid({
   showAvisoParcelasVazias,
   isLoading,
   onTituloFieldChange,
+  onFocusTituloCampo,
   onAbrirDatasEspeciais,
   onPaginaAnterior,
   onPaginaProxima,
@@ -155,6 +156,7 @@ const TitulosGrid = memo(function TitulosGrid({
                             dataVencimento: normalizarTextoDataBRparaSalvar(e.target.value),
                           })
                         }
+                        onFocus={() => onFocusTituloCampo?.(globalIdx, 'dataVencimento')}
                         className="w-full min-w-0 max-w-full box-border px-1 py-1 max-lg:py-2 max-lg:text-base border border-slate-300 rounded text-sm tabular-nums"
                       />
                     ) : (
@@ -185,6 +187,7 @@ const TitulosGrid = memo(function TitulosGrid({
                             valorInicial: formatBRL(n),
                           });
                         }}
+                        onFocus={() => onFocusTituloCampo?.(globalIdx, 'valorInicial')}
                         className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
                       />
                     ) : (

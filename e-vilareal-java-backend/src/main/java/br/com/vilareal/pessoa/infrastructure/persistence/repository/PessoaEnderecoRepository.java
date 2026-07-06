@@ -20,6 +20,12 @@ public interface PessoaEnderecoRepository extends JpaRepository<PessoaEnderecoEn
             """)
     List<PessoaEnderecoEntity> findByPessoa_IdOrderByNumeroOrdemAsc(@Param("pessoaId") Long pessoaId);
 
+    @Query("SELECT COALESCE(MAX(e.numeroOrdem), 0) FROM PessoaEnderecoEntity e WHERE e.pessoa.id = :pessoaId")
+    int findMaxNumeroOrdemByPessoaId(@Param("pessoaId") Long pessoaId);
+
+    @Query("SELECT e FROM PessoaEnderecoEntity e JOIN FETCH e.pessoa WHERE e.id = :id")
+    java.util.Optional<PessoaEnderecoEntity> findByIdWithPessoa(@Param("id") Long id);
+
     long countByImportacaoId(String importacaoId);
 
     long deleteByImportacaoId(String importacaoId);

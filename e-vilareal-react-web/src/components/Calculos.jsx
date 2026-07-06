@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { useLocation } from 'react-router-dom';
-import { X, ChevronUp, ChevronDown, BarChart2, ExternalLink, RefreshCw, Check, FolderOpen } from 'lucide-react';
+import { X, ChevronUp, ChevronDown, BarChart2, ExternalLink, RefreshCw, Check, FolderOpen, MessageCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getLancamentosContaCorrente } from '../data/financeiroData';
 import {
@@ -57,6 +57,8 @@ import {
 import { featureFlags } from '../config/featureFlags.js';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import { buildRouterStateChaveClienteProcesso, extrairIntentNavegacaoProcessos } from '../domain/camposProcessoCliente.js';
+import { getContextoAuditoriaUsuario, registrarAuditoria } from '../services/auditoriaCliente.js';
+import { getRotuloModuloPorPathname } from '../data/usuarioPermissoesStorage.js';
 import { mergeDebitosCalculosMultiSheet } from '../utils/mergeDebitosCalculosPlanilha.js';
 import { listarProcessosResumoPorCodigoCliente } from '../repositories/processosRepository.js';
 import { resolverTextosPartesCabecalhoCalculo } from '../data/processosDadosRelatorio.js';
@@ -68,6 +70,8 @@ import {
   titulosGradeTemValor,
 } from '../data/calculosDebitosTitulos.js';
 import TitulosGrid from './calculos/TitulosGrid.jsx';
+import { ModalCobrancaWhatsAppCalculos } from './calculos/ModalCobrancaWhatsAppCalculos.jsx';
+import { sugerirProximaDataVencimento } from './calculos/calculosTitulosGridUtils.js';
 import { IndicesAtualizacaoConferenciaModal } from './calculos/IndicesAtualizacaoConferenciaModal.jsx';
 import { parseValorMonetarioBr } from '../utils/parseValorMonetarioBr.js';
 import { formatValorMoedaCampo } from '../utils/moneyBr.js';
@@ -116,6 +120,8 @@ function normalizarProc(val) {
   if (Number.isNaN(n) || n < 1) return 1;
   return Math.floor(n);
 }
+
+let __ultimoCalculosRodadaLog = '';
 
 /** Normaliza quantidade informada pelo usuário (0–9999); vazio vira "00"; até 99 com dois dígitos. */
 function formatarQuantidadeParcelasExibicao(s) {
@@ -200,6 +206,13 @@ function normalizarTextoDataBRparaSalvar(s) {
   const d0 = parseDateBRModulo(t);
   if (d0 && !Number.isNaN(d0.getTime())) return formatDateBRFromDate(d0);
   const parts = t.split(/[/-]/).map((p) => p.trim());
+  if (parts.length === 2) {
+    const dd = String(Math.min(31, Math.max(1, Number(parts[0]) || 0))).padStart(2, '0');
+    const mm = String(Math.min(12, Math.max(1, Number(parts[1]) || 0))).padStart(2, '0');
+    const yyyy = String(new Date().getFullYear());
+    const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+    return Number.isNaN(d.getTime()) ? '' : formatDateBRFromDate(d);
+  }
   if (parts.length !== 3) return '';
   const dd = String(Math.min(31, Math.max(1, Number(parts[0]) || 0))).padStart(2, '0');
   const mm = String(Math.min(12, Math.max(1, Number(parts[1]) || 0))).padStart(2, '0');
@@ -586,6 +599,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   }
 
   // Datas Especiais (por linha)
+  const [modalCobrancaWhatsApp, setModalCobrancaWhatsApp] = useState(false);
   const [modalDatasEspeciais, setModalDatasEspeciais] = useState(false);
   const [linhaModalIdx, setLinhaModalIdx] = useState(null); // índice global dentro de rodadaAtual.titulos
   const [indicesRefreshToken, setIndicesRefreshToken] = useState(0); // força recarregar índices quando datas especiais mudarem
@@ -1058,6 +1072,30 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   const rodadaExisteNoEstado = rodadasState[rodadaKey] != null;
   const calculoTravadoAceito = Boolean(rodadaAtual.parcelamentoAceito);
   const calculoAceito = aceitarPagamento || calculoTravadoAceito;
+
+  useEffect(() => {
+    const logKey = rodadaKey;
+    const t = window.setTimeout(() => {
+      if (logKey === __ultimoCalculosRodadaLog) return;
+      __ultimoCalculosRodadaLog = logKey;
+      const path = isEmbedded ? '/calculos' : (location.pathname || '/calculos').replace(/\/+$/, '') || '/calculos';
+      const mod = getRotuloModuloPorPathname(path);
+      const { usuarioNome } = getContextoAuditoriaUsuario();
+      const nomeCliente = String(rodadaAtual.cabecalho?.autor ?? '').trim();
+      const dimPart = dimensaoNorm > 0 ? `, dimensão ${dimensaoNorm}` : '';
+      const nomePart = nomeCliente ? ` do cliente ${nomeCliente}` : '';
+      registrarAuditoria({
+        modulo: mod,
+        tela: path,
+        tipoAcao: 'ACESSO_MODULO',
+        descricao: `Usuário ${usuarioNome} acessou cálculos${nomePart} (código ${codigoClienteNorm}, proc. ${procNorm}${dimPart}).`,
+        registroAfetadoId: `${codigoClienteNorm}:${procNorm}`,
+        registroAfetadoNome: nomeCliente || null,
+        observacoesTecnicas: dimensaoNorm > 0 ? `dimensao=${dimensaoNorm}` : null,
+      });
+    }, 1000);
+    return () => clearTimeout(t);
+  }, [rodadaKey, codigoClienteNorm, procNorm, dimensaoNorm, location.pathname, isEmbedded, rodadaAtual.cabecalho?.autor]);
 
   useEffect(() => {
     const dc = String(rodadaAtual.dataCalculoRodada ?? '').trim();
@@ -2042,6 +2080,30 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     fecharModalDatasEspeciais();
   }
 
+  function handleFocusTituloCampo(globalIdx, campo) {
+    if (globalIdx < 1) return;
+    const titulosRodada = rodadaAtual.titulos || [];
+    const prev = titulosRodada[globalIdx - 1];
+    if (!prev) return;
+    const cur = titulosRodada[globalIdx] ?? {};
+
+    if (campo === 'dataVencimento') {
+      if (String(cur.dataVencimento ?? '').trim()) return;
+      const prevData = normalizarTextoDataBRparaSalvar(String(prev.dataVencimento ?? '').trim());
+      if (!prevData) return;
+      const sugestao = sugerirProximaDataVencimento(prevData, periodicidade);
+      if (sugestao) atualizarTituloNaRodada(globalIdx, { dataVencimento: sugestao });
+      return;
+    }
+
+    if (campo === 'valorInicial') {
+      if (String(cur.valorInicial ?? '').trim()) return;
+      const prevValor = String(prev.valorInicial ?? '').trim();
+      if (!prevValor) return;
+      atualizarTituloNaRodada(globalIdx, { valorInicial: prevValor });
+    }
+  }
+
   function atualizarTituloNaRodada(indexGlobal, patch) {
     setRodadasState((prev) => {
       const cur = prev[rodadaKey];
@@ -2813,6 +2875,14 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
             >
               Gerar no Word
             </button>
+            <button
+              type="button"
+              onClick={() => setModalCobrancaWhatsApp(true)}
+              className="w-full px-2 py-2 lg:py-1.5 rounded border border-emerald-300 bg-emerald-50 text-emerald-900 text-xs font-medium hover:bg-emerald-100 flex items-center justify-center gap-1.5"
+            >
+              <MessageCircle className="w-4 h-4 shrink-0" aria-hidden />
+              Cobrança WhatsApp
+            </button>
             <button type="button" className="w-full px-2 py-2 lg:py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50">Email Automático</button>
           </div>
         </aside>
@@ -2834,6 +2904,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
               showAvisoParcelasVazias={showAvisoParcelasTitulosVazios}
               isLoading={featureFlags.useApiCalculos && carregandoRodadaApi}
               onTituloFieldChange={handleTituloFieldChange}
+              onFocusTituloCampo={handleFocusTituloCampo}
               onAbrirDatasEspeciais={handleAbrirDatasEspeciais}
               onPaginaAnterior={handlePaginaAnterior}
               onPaginaProxima={handlePaginaProxima}
@@ -3884,6 +3955,14 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
         hojeBR={hojeBR}
         indicesMensaisINPC={indicesMensaisINPC}
         indicesMensaisIPCA={indicesMensaisIPCA}
+      />
+
+      <ModalCobrancaWhatsAppCalculos
+        open={modalCobrancaWhatsApp}
+        onClose={() => setModalCobrancaWhatsApp(false)}
+        codigoCliente={codigoClienteNorm}
+        numeroProcesso={procNorm}
+        dimensao={dimensaoNorm}
       />
     </div>
   );

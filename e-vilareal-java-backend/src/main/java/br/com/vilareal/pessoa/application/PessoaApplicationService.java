@@ -1,5 +1,6 @@
 package br.com.vilareal.pessoa.application;
 
+import br.com.vilareal.citacao.infrastructure.persistence.repository.CitacaoTentativaRepository;
 import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
 import br.com.vilareal.common.text.Utf8MojibakeUtil;
@@ -8,6 +9,8 @@ import br.com.vilareal.localidade.application.MunicipioDerivacaoService;
 import br.com.vilareal.localidade.application.MunicipioUsoService;
 import br.com.vilareal.localidade.infrastructure.persistence.entity.MunicipioEntity;
 import br.com.vilareal.pessoa.api.dto.*;
+import br.com.vilareal.pessoa.domain.EnderecoDedupUtil;
+import br.com.vilareal.pessoa.domain.EnderecoOrigem;
 import br.com.vilareal.pessoa.infrastructure.persistence.PessoaSpecifications;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.*;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.*;
@@ -24,8 +27,13 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -44,6 +52,7 @@ public class PessoaApplicationService {
     private final MunicipioUsoService municipioUsoService;
     private final MunicipioDerivacaoService municipioDerivacaoService;
     private final MunicipioApplicationService municipioApplicationService;
+    private final CitacaoTentativaRepository citacaoTentativaRepository;
 
     public PessoaApplicationService(
             PessoaRepository pessoaRepository,
@@ -57,7 +66,8 @@ public class PessoaApplicationService {
             JdbcTemplate jdbcTemplate,
             MunicipioUsoService municipioUsoService,
             MunicipioDerivacaoService municipioDerivacaoService,
-            MunicipioApplicationService municipioApplicationService) {
+            MunicipioApplicationService municipioApplicationService,
+            CitacaoTentativaRepository citacaoTentativaRepository) {
         this.pessoaRepository = pessoaRepository;
         this.complementarRepository = complementarRepository;
         this.enderecoRepository = enderecoRepository;
@@ -70,6 +80,7 @@ public class PessoaApplicationService {
         this.municipioUsoService = municipioUsoService;
         this.municipioDerivacaoService = municipioDerivacaoService;
         this.municipioApplicationService = municipioApplicationService;
+        this.citacaoTentativaRepository = citacaoTentativaRepository;
     }
 
     @Transactional(readOnly = true)
@@ -267,27 +278,140 @@ public class PessoaApplicationService {
     }
 
     @Transactional
-    public List<PessoaEnderecoItemResponse> substituirEnderecos(Long pessoaId, List<PessoaEnderecoItemRequest> itens) {
+    public PessoaEnderecosMergeResponse substituirEnderecos(Long pessoaId, List<PessoaEnderecoItemRequest> itens) {
         PessoaEntity p = pessoaRepository.findById(pessoaId)
                 .orElseThrow(() -> new ResourceNotFoundException("Pessoa não encontrada: " + pessoaId));
-        enderecoRepository.deleteByPessoa_Id(pessoaId);
-        for (PessoaEnderecoItemRequest r : itens) {
+
+        List<PessoaEnderecoEntity> existentes =
+                enderecoRepository.findByPessoa_IdOrderByNumeroOrdemAsc(pessoaId);
+        Map<Long, PessoaEnderecoEntity> porId = new HashMap<>();
+        for (PessoaEnderecoEntity e : existentes) {
+            porId.put(e.getId(), e);
+        }
+
+        Set<Long> idsMantidos = new HashSet<>();
+        List<String> avisos = new ArrayList<>();
+        int proximoNumeroOrdem = enderecoRepository.findMaxNumeroOrdemByPessoaId(pessoaId);
+
+        List<PessoaEnderecoItemRequest> lista = itens != null ? itens : List.of();
+        for (PessoaEnderecoItemRequest r : lista) {
+            if (r.getId() != null) {
+                PessoaEnderecoEntity e = porId.get(r.getId());
+                if (e == null) {
+                    throw new BusinessRuleException("Endereço não encontrado para esta pessoa: id=" + r.getId());
+                }
+                aplicarCamposEndereco(e, r, e.getNumeroOrdem(), null, null);
+                enderecoRepository.save(e);
+                idsMantidos.add(e.getId());
+            } else {
+                proximoNumeroOrdem++;
+                PessoaEnderecoEntity e = new PessoaEnderecoEntity();
+                e.setPessoa(p);
+                aplicarCamposEndereco(e, r, proximoNumeroOrdem, null, null);
+                enderecoRepository.save(e);
+                idsMantidos.add(e.getId());
+                porId.put(e.getId(), e);
+            }
+        }
+
+        for (PessoaEnderecoEntity e : existentes) {
+            if (idsMantidos.contains(e.getId())) {
+                continue;
+            }
+            if (citacaoTentativaRepository.existsByPessoaEndereco_Id(e.getId())) {
+                avisos.add("O endereço '" + resumirRua(e.getRua())
+                        + "' não pôde ser removido porque já foi usado em tentativa de citação.");
+                continue;
+            }
+            enderecoRepository.delete(e);
+        }
+
+        PessoaEnderecosMergeResponse resp = new PessoaEnderecosMergeResponse();
+        resp.setEnderecos(listarEnderecos(pessoaId));
+        resp.setAvisos(avisos);
+        return resp;
+    }
+
+    @Transactional
+    public PessoaEnderecoLoteResponse incluirEnderecosLote(Long pessoaId, PessoaEnderecoLoteRequest req) {
+        PessoaEntity p = pessoaRepository.findById(pessoaId)
+                .orElseThrow(() -> new ResourceNotFoundException("Pessoa não encontrada: " + pessoaId));
+        String origem = EnderecoOrigem.normalizar(req.getOrigem());
+        LocalDate dataOrigem = req.getDataOrigem();
+
+        List<PessoaEnderecoEntity> atuais = enderecoRepository.findByPessoa_IdOrderByNumeroOrdemAsc(pessoaId);
+        Set<String> chavesExistentes = new HashSet<>();
+        for (PessoaEnderecoEntity e : atuais) {
+            chavesExistentes.add(EnderecoDedupUtil.chave(e));
+        }
+
+        int proximoNumeroOrdem = enderecoRepository.findMaxNumeroOrdemByPessoaId(pessoaId);
+        int inseridos = 0;
+        int ignorados = 0;
+
+        for (PessoaEnderecoItemRequest item : req.getEnderecos()) {
+            String rua = item.getRua() != null ? item.getRua().trim() : "";
+            if (rua.isEmpty()) {
+                continue;
+            }
+            String cep = item.getCep() != null ? item.getCep().replaceAll("\\D", "") : "";
+            String chave = EnderecoDedupUtil.chave(rua, cep);
+            if (chavesExistentes.contains(chave)) {
+                ignorados++;
+                continue;
+            }
+            proximoNumeroOrdem++;
             PessoaEnderecoEntity e = new PessoaEnderecoEntity();
             e.setPessoa(p);
-            e.setNumeroOrdem(r.getNumero());
-            e.setRua(Utf8MojibakeUtil.corrigir(r.getRua()));
-            e.setBairro(Utf8MojibakeUtil.corrigir(r.getBairro()));
-            if (r.getMunicipioId() == null) {
-                throw new BusinessRuleException("municipioId é obrigatório no endereço.");
-            }
-            MunicipioEntity municipio = municipioUsoService.carregarObrigatorio(r.getMunicipioId());
-            municipioDerivacaoService.aplicarEmEndereco(e, municipio);
-            municipioUsoService.registrarUso(municipio.getId());
-            e.setCep(r.getCep() != null ? Utf8MojibakeUtil.corrigir(r.getCep().replaceAll("\\D", "")) : null);
-            e.setAutoPreenchido(Boolean.TRUE.equals(r.getAutoPreenchido()));
+            aplicarCamposEndereco(e, item, proximoNumeroOrdem, origem, dataOrigem);
             enderecoRepository.save(e);
+            chavesExistentes.add(chave);
+            inseridos++;
         }
-        return listarEnderecos(pessoaId);
+
+        PessoaEnderecoLoteResponse resp = new PessoaEnderecoLoteResponse();
+        resp.setInseridos(inseridos);
+        resp.setIgnorados(ignorados);
+        resp.setEnderecos(listarEnderecos(pessoaId));
+        return resp;
+    }
+
+    /** Mapeamento compartilhado com o módulo de citação. */
+    public PessoaEnderecoItemResponse mapEndereco(PessoaEnderecoEntity e) {
+        return toEnderecoResponse(e);
+    }
+
+    private void aplicarCamposEndereco(
+            PessoaEnderecoEntity e,
+            PessoaEnderecoItemRequest r,
+            int numeroOrdem,
+            String origem,
+            LocalDate dataOrigem) {
+        e.setNumeroOrdem(numeroOrdem);
+        e.setRua(Utf8MojibakeUtil.corrigir(r.getRua()));
+        e.setBairro(Utf8MojibakeUtil.corrigir(r.getBairro()));
+        if (r.getMunicipioId() == null) {
+            throw new BusinessRuleException("municipioId é obrigatório no endereço.");
+        }
+        MunicipioEntity municipio = municipioUsoService.carregarObrigatorio(r.getMunicipioId());
+        municipioDerivacaoService.aplicarEmEndereco(e, municipio);
+        municipioUsoService.registrarUso(municipio.getId());
+        e.setCep(r.getCep() != null ? Utf8MojibakeUtil.corrigir(r.getCep().replaceAll("\\D", "")) : null);
+        e.setAutoPreenchido(Boolean.TRUE.equals(r.getAutoPreenchido()));
+        if (origem != null) {
+            e.setOrigem(origem);
+        }
+        if (dataOrigem != null) {
+            e.setDataOrigem(dataOrigem);
+        }
+    }
+
+    private static String resumirRua(String rua) {
+        if (rua == null) {
+            return "";
+        }
+        String t = rua.trim();
+        return t.length() > 80 ? t.substring(0, 77) + "..." : t;
     }
 
     @Transactional(readOnly = true)
@@ -449,6 +573,8 @@ public class PessoaApplicationService {
         }
         r.setCep(Utf8MojibakeUtil.corrigir(e.getCep()));
         r.setAutoPreenchido(e.getAutoPreenchido());
+        r.setOrigem(Utf8MojibakeUtil.corrigir(e.getOrigem()));
+        r.setDataOrigem(e.getDataOrigem());
         return r;
     }
 

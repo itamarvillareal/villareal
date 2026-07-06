@@ -5,6 +5,9 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.Instant;
+import java.time.LocalDate;
+
 @Entity
 @Table(name = "pessoa_endereco")
 @Getter
@@ -52,4 +55,16 @@ public class PessoaEnderecoEntity {
 
     @Column(name = "auto_preenchido", nullable = false)
     private Boolean autoPreenchido = false;
+
+    @Column(length = 30)
+    private String origem;
+
+    @Column(name = "data_origem")
+    private LocalDate dataOrigem;
+
+    @Column(name = "criado_em", insertable = false, updatable = false)
+    private Instant criadoEm;
+
+    @Column(name = "atualizado_em", insertable = false, updatable = false)
+    private Instant atualizadoEm;
 }

@@ -14,6 +14,7 @@ function instantApiParaIso(v) {
 export function enderecosApiParaUi(arr) {
   if (!Array.isArray(arr)) return [];
   return arr.map((e) => ({
+    id: e.id != null ? Number(e.id) : null,
     numero: e.numero,
     rua: e.rua ?? '',
     bairro: e.bairro ?? '',
@@ -24,6 +25,8 @@ export function enderecosApiParaUi(arr) {
     cidadeLegado: e.cidadeLegado ?? null,
     cep: e.cep != null ? String(e.cep) : '',
     autoPreenchido: Boolean(e.autoPreenchido),
+    origem: e.origem ?? null,
+    dataOrigem: e.dataOrigem ?? null,
   }));
 }
 
@@ -38,7 +41,7 @@ export function enderecosUiParaApi(items) {
       const municipioId = Number(e.municipioId);
       if (!Number.isFinite(municipioId) || municipioId <= 0) return null;
       const cepDigits = String(e.cep ?? '').replace(/\D/g, '').slice(0, 8);
-      return {
+      const item = {
         numero,
         rua,
         bairro: String(e.bairro ?? '').trim() || null,
@@ -46,6 +49,11 @@ export function enderecosUiParaApi(items) {
         cep: cepDigits || null,
         autoPreenchido: Boolean(e.autoPreenchido),
       };
+      const idPersist = Number(e.id);
+      if (Number.isFinite(idPersist) && idPersist > 0) {
+        item.id = Math.floor(idPersist);
+      }
+      return item;
     })
     .filter(Boolean);
 }
@@ -120,9 +128,29 @@ export async function salvarEnderecosPessoa(pessoaId, itemsUi) {
   if (comRua.length > body.length) {
     throw new Error('Um ou mais endereços estão sem município válido selecionado.');
   }
-  return request(`/api/pessoas/${id}/enderecos`, {
+  const resp = await request(`/api/pessoas/${id}/enderecos`, {
     method: 'PUT',
     body,
+  });
+  if (resp && typeof resp === 'object' && Array.isArray(resp.enderecos)) {
+    return {
+      enderecos: resp.enderecos,
+      avisos: Array.isArray(resp.avisos) ? resp.avisos : [],
+    };
+  }
+  return {
+    enderecos: Array.isArray(resp) ? resp : [],
+    avisos: [],
+  };
+}
+
+export async function incluirEnderecosLotePessoa(pessoaId, payload) {
+  if (!featureFlags.useApiPessoasComplementares) return null;
+  const id = Number(pessoaId);
+  if (!Number.isFinite(id) || id < 1) return null;
+  return request(`/api/pessoas/${id}/enderecos/lote`, {
+    method: 'POST',
+    body: payload,
   });
 }
 

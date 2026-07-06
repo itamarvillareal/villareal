@@ -27,6 +27,13 @@ export function normalizarTextoDataBRparaSalvar(s) {
   const d0 = parseDateBRModulo(t);
   if (d0 && !Number.isNaN(d0.getTime())) return formatDateBRFromDate(d0);
   const parts = t.split(/[/-]/).map((p) => p.trim());
+  if (parts.length === 2) {
+    const dd = String(Math.min(31, Math.max(1, Number(parts[0]) || 0))).padStart(2, '0');
+    const mm = String(Math.min(12, Math.max(1, Number(parts[1]) || 0))).padStart(2, '0');
+    const yyyy = String(new Date().getFullYear());
+    const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+    return Number.isNaN(d.getTime()) ? '' : formatDateBRFromDate(d);
+  }
   if (parts.length !== 3) return '';
   const dd = String(Math.min(31, Math.max(1, Number(parts[0]) || 0))).padStart(2, '0');
   const mm = String(Math.min(12, Math.max(1, Number(parts[1]) || 0))).padStart(2, '0');
@@ -49,4 +56,38 @@ export function parseBRL(str) {
 export function formatBRL(n) {
   const v = Number(n) || 0;
   return `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/** Soma meses mantendo o dia quando possível (ex.: 31/01 + 1 mês → último dia de fevereiro). */
+function addMonthsDate(d, months) {
+  const m = Math.round(Number(months) || 0);
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const day = x.getDate();
+  x.setMonth(x.getMonth() + m);
+  if (x.getDate() !== day) {
+    x.setDate(0);
+  }
+  return x;
+}
+
+/**
+ * Próxima data de vencimento sugerida a partir da linha anterior, conforme periodicidade do painel.
+ * @param {string} dataAnteriorBr — dd/mm/aaaa
+ * @param {string} [periodicidadeId] — mensal | quinzenal | semanal | diaria
+ */
+export function sugerirProximaDataVencimento(dataAnteriorBr, periodicidadeId = 'mensal') {
+  const base = parseDateBRModulo(normalizarTextoDataBRparaSalvar(dataAnteriorBr));
+  if (!base) return '';
+  const per = String(periodicidadeId ?? 'mensal').trim().toLowerCase();
+  let next;
+  if (per === 'diaria') {
+    next = new Date(base.getFullYear(), base.getMonth(), base.getDate() + 1);
+  } else if (per === 'semanal') {
+    next = new Date(base.getFullYear(), base.getMonth(), base.getDate() + 7);
+  } else if (per === 'quinzenal') {
+    next = new Date(base.getFullYear(), base.getMonth(), base.getDate() + 15);
+  } else {
+    next = addMonthsDate(base, 1);
+  }
+  return formatDateBRFromDate(next);
 }

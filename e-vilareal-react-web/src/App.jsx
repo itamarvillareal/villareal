@@ -167,6 +167,8 @@ function Layout() {
       const now = Date.now();
       if (__ultimoLogNavegacao.path === path && now - __ultimoLogNavegacao.t < 900) return;
       __ultimoLogNavegacao = { path, t: now };
+      // Calculos.jsx registra código/proc/dimensão da rodada acessada.
+      if (path === '/calculos') return;
       const mod = getRotuloModuloPorPathname(path);
       const { usuarioNome } = getContextoAuditoriaUsuario();
       registrarAuditoria({

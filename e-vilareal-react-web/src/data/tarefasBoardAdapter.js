@@ -38,6 +38,9 @@ export function itemFromApi(t) {
     status: t.status ?? null,
     prioridade: t.prioridade ?? null,
     dataLimite: t.dataLimite ?? null,
+    processoId: t.processoId ?? null,
+    clienteId: t.clienteId ?? null,
+    origem: t.origem ?? null,
   };
 }
 

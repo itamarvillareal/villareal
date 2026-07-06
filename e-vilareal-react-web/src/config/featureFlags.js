@@ -30,6 +30,8 @@ export const featureFlags = {
   useApiTopicos: import.meta.env.VITE_USE_API_TOPICOS === 'true',
   /** Rodadas + config de cálculo em MySQL (`calculo_rodada`, `calculo_cliente_config`) via `/api/calculos`. */
   useApiCalculos: import.meta.env.VITE_USE_API_CALCULOS === 'true',
+  /** Painel de citação do réu + lote de endereços (`/api/processos/.../citacao`). */
+  useApiCitacao: import.meta.env.VITE_USE_API_CITACAO === 'true',
   /**
    * Tela de login JWT antes do app. Por enquanto fica desligado por padrão.
    * Para voltar a exigir login/senha: `VITE_REQUIRE_API_AUTH=true` no build/env.

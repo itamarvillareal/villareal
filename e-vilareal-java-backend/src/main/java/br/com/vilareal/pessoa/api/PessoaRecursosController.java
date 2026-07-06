@@ -47,10 +47,17 @@ public class PessoaRecursosController {
     }
 
     @PutMapping("/{id}/enderecos")
-    public List<PessoaEnderecoItemResponse> substituirEnderecos(
+    public PessoaEnderecosMergeResponse substituirEnderecos(
             @PathVariable Long id,
             @Valid @RequestBody List<PessoaEnderecoItemRequest> body) {
         return pessoaService.substituirEnderecos(id, body);
+    }
+
+    @PostMapping("/{id}/enderecos/lote")
+    public PessoaEnderecoLoteResponse incluirEnderecosLote(
+            @PathVariable Long id,
+            @Valid @RequestBody PessoaEnderecoLoteRequest body) {
+        return pessoaService.incluirEnderecosLote(id, body);
     }
 
     @GetMapping("/{id}/contatos")

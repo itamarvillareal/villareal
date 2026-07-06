@@ -1643,8 +1643,18 @@ export function mapApiAndamentoToHistoricoItem(a, idx = 0, total = 1) {
     usuarioLogin: login || null,
     usuarioId: Number.isFinite(usuarioIdNum) && usuarioIdNum >= 1 ? usuarioIdNum : null,
     numero: String(total - idx).padStart(4, '0'),
+    origem: a?.origem != null ? String(a.origem).trim().toUpperCase() : null,
+    origemAutomatica: Boolean(a?.origemAutomatica ?? a?.origem_automatica),
   };
 }
+
+/** Rótulos de origem de andamento exibidos no histórico. */
+export const ORIGENS_ANDAMENTO_HISTORICO = {
+  MANUAL: 'Manual',
+  CITACAO: 'Citação',
+  IMPORT_PLANILHA: 'Importação planilha',
+  PROJUDI: 'PROJUDI',
+};
 
 /**
  * `id` vindo da linha histórico na UI: só confiamos como FK do servidor quando veio da API
