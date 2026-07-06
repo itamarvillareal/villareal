@@ -1,20 +1,19 @@
 #!/usr/bin/env node
 /**
- * Passos operacionais pós-import PDF Itaú:
- * 1. Remove AUTO-FAT legado MC Black (vencimento dia 10 duplicado)
- * 2. Recalcula fechamentos (AUTO-FAT venc 25)
- * 3. Cria vínculos pagamento fatura — Visa (match valor + janela de data)
+ * Pós-import PDF Itaú — limpeza, fechamento, mapeamento e vínculos banco↔AUTO-FAT.
  *
  * Uso:
  *   node scripts/sync-fatura-pagamentos-itau.mjs --base-url=http://localhost:8080
  *   node scripts/sync-fatura-pagamentos-itau.mjs --base-url=https://portal.villarealadvocacia.adv.br
- *   node scripts/sync-fatura-pagamentos-itau.mjs --dry-run
  */
 import './lib/load-vilareal-import-env.mjs';
 
-const TOL_VALOR = 0.06;
+const TOL_VALOR_MIN = 0.06;
+const TOL_VALOR_PCT = 0.02;
 const VISA_DIAS_ANTES = 3;
 const VISA_DIAS_DEPOIS = 31;
+const MC_DIAS_ANTES = 5;
+const MC_DIAS_DEPOIS = 50;
 
 function parseArgs(argv) {
   const out = {
@@ -25,17 +24,23 @@ function parseArgs(argv) {
     skipLimpar: false,
     skipFechamento: false,
     skipVinculos: false,
+    skipMapeamento: false,
   };
   for (const a of argv) {
     if (a === '--dry-run') out.dryRun = true;
     else if (a === '--skip-limpar') out.skipLimpar = true;
     else if (a === '--skip-fechamento') out.skipFechamento = true;
     else if (a === '--skip-vinculos') out.skipVinculos = true;
+    else if (a === '--skip-mapeamento') out.skipMapeamento = true;
     else if (a.startsWith('--base-url=')) out.baseUrl = a.slice(11).replace(/\/$/, '');
     else if (a.startsWith('--login=')) out.login = a.slice(8);
     else if (a.startsWith('--senha=')) out.senha = a.slice(8);
   }
   return out;
+}
+
+function tolValor(ref) {
+  return Math.max(TOL_VALOR_MIN, Math.abs(Number(ref) || 0) * TOL_VALOR_PCT);
 }
 
 async function login(opts) {
@@ -73,40 +78,6 @@ async function deletarLancamentoCartao(token, baseUrl, id) {
     headers: { Authorization: `Bearer ${token}` },
   });
   return res.status;
-}
-
-/** Remove compras legado (PLANILHA etc.) com competência dia 10 quando o mês já tem FATURA_PDF no dia 25. */
-async function limparComprasLegadoMcDia10(opts, token, mc, fats) {
-  const lista = await listarLancamentosCartao(token, opts.baseUrl, mc.id);
-  const mesesPdf25 = new Set(
-    lista
-      .filter((l) => String(l.origem) === 'FATURA_PDF')
-      .map((l) => String(l.dataCompetencia ?? '').slice(0, 7))
-      .filter((ym) => ym.length === 7),
-  );
-  const candidatos = lista.filter((l) => {
-    if (/^AUTO-FAT-/i.test(String(l.numeroLancamento ?? ''))) return false;
-    if (String(l.origem) === 'FATURA_PDF') return false;
-    const comp = String(l.dataCompetencia ?? '').slice(0, 10);
-    if (!comp || !comp.endsWith('-10')) return false;
-    const ym = comp.slice(0, 7);
-    return mesesPdf25.has(ym);
-  });
-  console.log(`\n[1b] Compras legado MC (competência dia 10, mês com PDF dia 25): ${candidatos.length}`);
-  let removidos = 0;
-  let erros = 0;
-  for (const l of candidatos) {
-    if (opts.dryRun) {
-      console.log(`  [dry-run] DELETE compra id=${l.id} ${String(l.dataCompetencia).slice(0, 10)} ${l.origem}`);
-      removidos += 1;
-      continue;
-    }
-    const status = await deletarLancamentoCartao(token, opts.baseUrl, l.id);
-    if (status === 204) removidos += 1;
-    else erros += 1;
-  }
-  console.log(`  → ${removidos} removido(s), ${erros} erro(s)`);
-  return { removidos, erros };
 }
 
 async function executarFechamento(token, baseUrl) {
@@ -175,13 +146,34 @@ async function listarDebitosPersonnalite(token, baseUrl) {
   return out;
 }
 
+async function listarMapeamentos(token, baseUrl) {
+  const res = await fetch(`${baseUrl}/api/financeiro/cartao-banco-mapeamento`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+  });
+  if (!res.ok) throw new Error(`GET mapeamento: ${res.status}`);
+  return res.json();
+}
+
+async function atualizarMapeamento(token, baseUrl, id, body) {
+  const res = await fetch(`${baseUrl}/api/financeiro/cartao-banco-mapeamento/${id}`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`PUT mapeamento: ${res.status} ${(await res.text()).slice(0, 300)}`);
+  return res.json();
+}
+
 function ehAutoFatLegadoMc(l) {
   const num = String(l.numeroLancamento ?? '');
   if (!/^AUTO-FAT-/i.test(num)) return false;
   const comp = String(l.dataCompetencia ?? l.dataLancamento ?? '').slice(0, 10);
   if (!comp) return false;
-  const day = Number(comp.slice(8, 10));
-  return day === 10;
+  return Number(comp.slice(8, 10)) === 10;
 }
 
 function addDays(iso, delta) {
@@ -190,15 +182,77 @@ function addDays(iso, delta) {
   return d.toISOString().slice(0, 10);
 }
 
-function findBankDebit(debits, valor, venc, usedIds) {
-  const min = addDays(venc, -VISA_DIAS_ANTES);
-  const max = addDays(venc, VISA_DIAS_DEPOIS);
-  return debits.find((d) => {
-    if (usedIds.has(d.id)) return false;
-    if (Math.abs(Math.abs(Number(d.valor)) - valor) > TOL_VALOR) return false;
+function diasEntre(a, b) {
+  return Math.round((new Date(`${b}T12:00:00`) - new Date(`${a}T12:00:00`)) / 86400000);
+}
+
+function findBankDebit(debits, valor, venc, usedIds, diasAntes, diasDepois) {
+  const min = addDays(venc, -diasAntes);
+  const max = addDays(venc, diasDepois);
+  const tol = tolValor(valor);
+  let melhor = null;
+  for (const d of debits) {
+    if (usedIds.has(d.id)) continue;
+    const dv = Math.abs(Number(d.valor));
+    if (Math.abs(dv - valor) > tol) continue;
     const dt = String(d.dataLancamento ?? '').slice(0, 10);
-    return dt >= min && dt <= max;
+    if (dt < min || dt > max) continue;
+    const diff = Math.abs(dv - valor);
+    if (!melhor || diff < melhor.diff) melhor = { d, diff };
+  }
+  return melhor?.d ?? null;
+}
+
+/** MC: débito ~dia 10 do mês seguinte ao vencimento 25. */
+function findBankDebitMc(debits, valor, venc, usedIds) {
+  return findBankDebit(debits, valor, venc, usedIds, MC_DIAS_ANTES, MC_DIAS_DEPOIS);
+}
+
+async function limparComprasLegadoMcDia10(opts, token, mc) {
+  const lista = await listarLancamentosCartao(token, opts.baseUrl, mc.id);
+  const mesesPdf25 = new Set(
+    lista
+      .filter((l) => String(l.origem) === 'FATURA_PDF')
+      .map((l) => String(l.dataCompetencia ?? '').slice(0, 7))
+      .filter((ym) => ym.length === 7),
+  );
+  const candidatos = lista.filter((l) => {
+    if (/^AUTO-FAT-/i.test(String(l.numeroLancamento ?? ''))) return false;
+    if (String(l.origem) === 'FATURA_PDF') return false;
+    const comp = String(l.dataCompetencia ?? '').slice(0, 10);
+    if (!comp || !comp.endsWith('-10')) return false;
+    return mesesPdf25.has(comp.slice(0, 7));
   });
+  console.log(`\n[1b] Compras legado MC (competência dia 10): ${candidatos.length}`);
+  let removidos = 0;
+  for (const l of candidatos) {
+    if (opts.dryRun) {
+      removidos += 1;
+      continue;
+    }
+    if ((await deletarLancamentoCartao(token, opts.baseUrl, l.id)) === 204) removidos += 1;
+  }
+  console.log(`  → ${removidos} removido(s)`);
+}
+
+async function limparPlanilhaVisaJan25(opts, token, visa) {
+  const lista = await listarLancamentosCartao(token, opts.baseUrl, visa.id);
+  const candidatos = lista.filter(
+    (l) =>
+      String(l.origem) === 'PLANILHA' &&
+      String(l.dataCompetencia ?? '').startsWith('2025-01') &&
+      !/^AUTO-FAT-/i.test(String(l.numeroLancamento ?? '')),
+  );
+  console.log(`\n[1c] PLANILHA residual Visa jan/25: ${candidatos.length}`);
+  let removidos = 0;
+  for (const l of candidatos) {
+    if (opts.dryRun) {
+      removidos += 1;
+      continue;
+    }
+    if ((await deletarLancamentoCartao(token, opts.baseUrl, l.id)) === 204) removidos += 1;
+  }
+  console.log(`  → ${removidos} removido(s)`);
 }
 
 async function limparAutoFatLegadoMc(opts, token, mc) {
@@ -206,57 +260,53 @@ async function limparAutoFatLegadoMc(opts, token, mc) {
   const legado = fats.filter(ehAutoFatLegadoMc);
   console.log(`\n[1] AUTO-FAT legado MC (venc dia 10): ${legado.length}`);
   let removidos = 0;
-  let erros = 0;
-  for (const l of legado.sort((a, b) => String(a.dataCompetencia).localeCompare(String(b.dataCompetencia)))) {
-    const comp = String(l.dataCompetencia ?? '').slice(0, 10);
-    const val = Math.abs(Number(l.valor)).toFixed(2);
+  for (const l of legado) {
     if (opts.dryRun) {
-      console.log(`  [dry-run] DELETE id=${l.id} ${comp} ${val} ${l.numeroLancamento}`);
       removidos += 1;
       continue;
     }
-    const status = await deletarLancamentoCartao(token, opts.baseUrl, l.id);
-    if (status === 204) {
-      console.log(`  removido id=${l.id} ${comp} ${val}`);
-      removidos += 1;
-    } else {
-      console.log(`  ERRO id=${l.id} ${comp} HTTP ${status}`);
-      erros += 1;
-    }
+    if ((await deletarLancamentoCartao(token, opts.baseUrl, l.id)) === 204) removidos += 1;
   }
-  console.log(`  → ${removidos} removido(s), ${erros} erro(s)`);
-  return { removidos, erros };
+  console.log(`  → ${removidos} removido(s)`);
 }
 
-async function recalcularFechamento(opts, token) {
-  console.log('\n[2] fechamento-fatura/executar');
-  if (opts.dryRun) {
-    console.log('  [dry-run] skip');
-    return { fechamentosProcessados: 0 };
+async function corrigirMapeamentoMc(opts, token, mc) {
+  const maps = await listarMapeamentos(token, opts.baseUrl);
+  const regra = maps.find((m) => Number(m.cartaoId) === Number(mc.id));
+  if (!regra) {
+    console.log('\n[5] Mapeamento MC: regra não encontrada');
+    return;
   }
-  const r = await executarFechamento(token, opts.baseUrl);
-  console.log(`  → ${r.fechamentosProcessados ?? 0} fechamento(s) processado(s)`);
-  return r;
+  if (String(regra.padraoDescricao).toUpperCase().includes('CARTAO PERSONNALITE')) {
+    console.log('\n[5] Mapeamento MC: já OK (CARTAO PERSONNALITE)');
+    return;
+  }
+  const body = {
+    cartaoId: regra.cartaoId,
+    numeroBanco: regra.numeroBanco,
+    padraoDescricao: 'CARTAO PERSONNALITE',
+    tipoMatch: regra.tipoMatch || 'CONTAINS',
+    toleranciaValor: Number(regra.toleranciaValor) || 0.05,
+    toleranciaDias: Number(regra.toleranciaDias) || 31,
+    ativo: regra.ativo !== false,
+  };
+  console.log('\n[5] Mapeamento MC: MASTERCARD BLACK → CARTAO PERSONNALITE');
+  if (opts.dryRun) return;
+  await atualizarMapeamento(token, opts.baseUrl, regra.id, body);
+  console.log('  → atualizado id=' + regra.id);
 }
 
-async function vincularVisa(opts, token, visa) {
-  const vinculos = await listarVinculos(token, opts.baseUrl);
-  const cartoesVinculados = new Set(vinculos.map((v) => Number(v.lancamentoCartaoId)));
-  const bancosVinculados = new Set(vinculos.map((v) => Number(v.lancamentoBancoId)));
-
-  const fats = await listarLancamentosCartao(token, opts.baseUrl, visa.id, { fechamentoAutomatico: true });
+async function vincularCartao(opts, token, cartao, debits, usedBanco, usedCartao, label, findFn, compFim) {
+  const fats = await listarLancamentosCartao(token, opts.baseUrl, cartao.id, { fechamentoAutomatico: true });
   const autofats = fats
     .filter((f) => {
       const comp = String(f.dataCompetencia ?? '').slice(0, 10);
-      return comp >= '2025-01-01' && comp <= '2026-06-30';
+      return comp >= '2025-01-01' && comp <= compFim;
     })
-    .filter((f) => !cartoesVinculados.has(Number(f.id)))
+    .filter((f) => !usedCartao.has(Number(f.id)))
     .sort((a, b) => String(a.dataCompetencia).localeCompare(String(b.dataCompetencia)));
 
-  const debits = await listarDebitosPersonnalite(token, opts.baseUrl);
-  const usedBanco = new Set(bancosVinculados);
-
-  console.log(`\n[3] Vínculos Visa (candidatos AUTO-FAT: ${autofats.length})`);
+  console.log(`\n[3] Vínculos ${label} (candidatos: ${autofats.length})`);
   let criados = 0;
   let pulados = 0;
   let erros = 0;
@@ -264,29 +314,28 @@ async function vincularVisa(opts, token, visa) {
   for (const f of autofats) {
     const venc = String(f.dataCompetencia ?? '').slice(0, 10);
     const val = Math.abs(Number(f.valor));
-    const banco = findBankDebit(debits, val, venc, usedBanco);
+    const banco = findFn(debits, val, venc, usedBanco);
     if (!banco) {
-      console.log(`  SKIP ${venc} ${val.toFixed(2)} — sem débito banco`);
       pulados += 1;
       continue;
     }
     if (opts.dryRun) {
-      console.log(
-        `  [dry-run] VINCULO banco=${banco.id} ${String(banco.dataLancamento).slice(0, 10)} ↔ cartão=${f.id} ${venc}`,
-      );
       usedBanco.add(banco.id);
+      usedCartao.add(Number(f.id));
       criados += 1;
+      console.log(`  [dry-run] ${venc} ${val.toFixed(2)} ↔ banco ${String(banco.dataLancamento).slice(0, 10)}`);
       continue;
     }
     try {
       await criarVinculo(token, opts.baseUrl, banco.id, f.id);
       usedBanco.add(banco.id);
+      usedCartao.add(Number(f.id));
       console.log(
         `  OK ${venc} ${val.toFixed(2)} ↔ banco ${String(banco.dataLancamento).slice(0, 10)} (ids ${banco.id}/${f.id})`,
       );
       criados += 1;
     } catch (e) {
-      console.log(`  ERRO ${venc} ids ${banco.id}/${f.id}: ${e.message}`);
+      console.log(`  ERRO ${venc}: ${e.message}`);
       erros += 1;
     }
   }
@@ -307,9 +356,41 @@ async function main() {
   if (!opts.skipLimpar) {
     await limparComprasLegadoMcDia10(opts, token, mc);
     await limparAutoFatLegadoMc(opts, token, mc);
+    await limparPlanilhaVisaJan25(opts, token, visa);
   }
-  if (!opts.skipFechamento) await recalcularFechamento(opts, token);
-  if (!opts.skipVinculos) await vincularVisa(opts, token, visa);
+
+  if (!opts.skipFechamento) {
+    console.log('\n[2] fechamento-fatura/executar');
+    if (!opts.dryRun) {
+      const r = await executarFechamento(token, opts.baseUrl);
+      console.log(`  → ${r.fechamentosProcessados ?? 0} fechamento(s) processado(s)`);
+    }
+  }
+
+  if (!opts.skipMapeamento) await corrigirMapeamentoMc(opts, token, mc);
+
+  if (!opts.skipVinculos) {
+    const vinculos = await listarVinculos(token, opts.baseUrl);
+    const usedBanco = new Set(vinculos.map((v) => Number(v.lancamentoBancoId)));
+    const usedCartao = new Set(vinculos.map((v) => Number(v.lancamentoCartaoId)));
+    const debits = await listarDebitosPersonnalite(token, opts.baseUrl);
+
+    const findVisa = (d, v, ven, u) =>
+      findBankDebit(d, v, ven, u, VISA_DIAS_ANTES, VISA_DIAS_DEPOIS);
+
+    await vincularCartao(opts, token, visa, debits, usedBanco, usedCartao, 'Visa', findVisa, '2026-07-31');
+    await vincularCartao(opts, token, mc, debits, usedBanco, usedCartao, 'MC Black', findBankDebitMc, '2026-06-30');
+
+    const debRest = debits.filter((d) => !usedBanco.has(d.id));
+    const mcFat = await listarLancamentosCartao(token, opts.baseUrl, mc.id, { fechamentoAutomatico: true });
+    const mcPend = mcFat.filter((f) => !usedCartao.has(Number(f.id)) && String(f.dataCompetencia || '') >= '2025-01-01');
+    if (debRest.length || mcPend.length) {
+      console.log(`\n[!] Sem par automático: ${debRest.length} débito(s) banco, ${mcPend.length} AUTO-FAT MC`);
+      for (const d of debRest) {
+        console.log(`  banco ${String(d.dataLancamento).slice(0, 10)} ${Math.abs(Number(d.valor)).toFixed(2)} id=${d.id}`);
+      }
+    }
+  }
 
   console.log('\nConcluído.');
 }

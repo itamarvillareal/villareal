@@ -128,9 +128,11 @@ public class FinanceiroPagamentoFaturaApplicationService {
             }
             absCartao = cartao.getValor().abs();
         }
-        if (absBanco.subtract(absCartao).abs().compareTo(new BigDecimal("0.05")) > 0) {
+        BigDecimal tol = absCartao.max(absBanco).multiply(new BigDecimal("0.02")).max(new BigDecimal("0.05"));
+        if (absBanco.subtract(absCartao).abs().compareTo(tol) > 0) {
             throw new BusinessRuleException(
-                    "Valores divergem: banco " + absBanco + " × cartão " + absCartao + " (tolerância R$ 0,05).");
+                    "Valores divergem: banco " + absBanco + " × cartão " + absCartao
+                            + " (tolerância " + tol.setScale(2, java.math.RoundingMode.HALF_UP) + ").");
         }
     }
 
