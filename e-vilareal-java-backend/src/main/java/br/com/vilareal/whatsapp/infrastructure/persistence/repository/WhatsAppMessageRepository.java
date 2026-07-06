@@ -413,4 +413,48 @@ public interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage
 
     @Query("SELECT DISTINCT w.phoneNumber FROM WhatsAppMessageEntity w WHERE w.deletedAt IS NULL ORDER BY w.phoneNumber ASC")
     List<String> findDistinctPhoneNumbers();
+
+    boolean existsByPhoneNumberAndDeletedAtIsNull(String phoneNumber);
+
+    @Query(
+            value =
+                    """
+                    SELECT DISTINCT w.phone_number
+                    FROM whatsapp_messages w
+                    WHERE w.deleted_at IS NULL
+                      AND w.phone_number LIKE CONCAT('%', :digits, '%')
+                    ORDER BY (
+                        SELECT MAX(m.created_at)
+                        FROM whatsapp_messages m
+                        WHERE m.phone_number = w.phone_number AND m.deleted_at IS NULL
+                    ) DESC
+                    LIMIT :lim
+                    """,
+            nativeQuery = true)
+    List<String> findPhoneNumbersByDigitsContaining(@Param("digits") String digits, @Param("lim") int lim);
+
+    @Query(
+            value =
+                    """
+                    SELECT DISTINCT w.phone_number
+                    FROM whatsapp_messages w
+                    WHERE w.deleted_at IS NULL
+                      AND EXISTS (
+                        SELECT 1
+                        FROM whatsapp_messages c
+                        WHERE c.phone_number = w.phone_number
+                          AND c.deleted_at IS NULL
+                          AND c.contact_name IS NOT NULL
+                          AND TRIM(c.contact_name) <> ''
+                          AND LOWER(c.contact_name) LIKE LOWER(CONCAT('%', :term, '%'))
+                      )
+                    ORDER BY (
+                        SELECT MAX(m.created_at)
+                        FROM whatsapp_messages m
+                        WHERE m.phone_number = w.phone_number AND m.deleted_at IS NULL
+                    ) DESC
+                    LIMIT :lim
+                    """,
+            nativeQuery = true)
+    List<String> findPhoneNumbersByContactNameContaining(@Param("term") String term, @Param("lim") int lim);
 }

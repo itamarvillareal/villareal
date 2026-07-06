@@ -37,6 +37,7 @@ import br.com.vilareal.whatsapp.dto.RecentConversationDTO;
 import br.com.vilareal.whatsapp.dto.WhatsAppIaHabilitadaDTO;
 import br.com.vilareal.whatsapp.dto.WhatsAppConversaGrupoItemDTO;
 import br.com.vilareal.whatsapp.dto.WhatsAppConversationDTO;
+import br.com.vilareal.whatsapp.dto.WhatsAppConversationSearchItemDTO;
 import br.com.vilareal.whatsapp.dto.WhatsAppMessageDTO;
 import br.com.vilareal.whatsapp.dto.WhatsAppMessageSearchResultDTO;
 import br.com.vilareal.whatsapp.dto.WhatsAppProcessoContextItemDTO;
@@ -55,6 +56,7 @@ import br.com.vilareal.whatsapp.service.WhatsAppConversationArchiveService;
 import br.com.vilareal.whatsapp.service.WhatsAppConversaGrupoManualService;
 import br.com.vilareal.whatsapp.service.WhatsAppConversationPinService;
 import br.com.vilareal.whatsapp.service.WhatsAppConversationReadService;
+import br.com.vilareal.whatsapp.service.WhatsAppConversationSearchService;
 import br.com.vilareal.whatsapp.service.WhatsAppConversationWindowService;
 import br.com.vilareal.whatsapp.service.WhatsAppIniciarConversaService;
 import br.com.vilareal.whatsapp.service.WhatsAppConversationContextService;
@@ -141,6 +143,7 @@ public class WhatsAppController {
     private final WhatsAppConversationWindowService conversationWindowService;
     private final WhatsAppNomeExibicaoService nomeExibicaoService;
     private final WhatsAppContactPhotoService contactPhotoService;
+    private final WhatsAppConversationSearchService conversationSearchService;
 
     public WhatsAppController(
             WhatsAppService whatsAppService,
@@ -164,7 +167,8 @@ public class WhatsAppController {
             WhatsAppIniciarConversaService iniciarConversaService,
             WhatsAppConversationWindowService conversationWindowService,
             WhatsAppNomeExibicaoService nomeExibicaoService,
-            WhatsAppContactPhotoService contactPhotoService) {
+            WhatsAppContactPhotoService contactPhotoService,
+            WhatsAppConversationSearchService conversationSearchService) {
         this.whatsAppService = whatsAppService;
         this.whatsAppSchedulerService = whatsAppSchedulerService;
         this.whatsAppMessageRepository = whatsAppMessageRepository;
@@ -187,6 +191,7 @@ public class WhatsAppController {
         this.conversationWindowService = conversationWindowService;
         this.nomeExibicaoService = nomeExibicaoService;
         this.contactPhotoService = contactPhotoService;
+        this.conversationSearchService = conversationSearchService;
     }
 
     @GetMapping("/iniciar/telefones")
@@ -341,6 +346,16 @@ public class WhatsAppController {
         Map<String, String> fotosPorTelefone = contactPhotoService.resolverUrlsPorTelefone(phones);
         return ResponseEntity.ok(rows.map(row -> toConversationDto(
                 row, contextosPorTelefone.getOrDefault(row.getPhoneNumber(), List.of()), nomesCadastro, fotosPorTelefone)));
+    }
+
+    @GetMapping("/conversations/search")
+    @Operation(summary = "Buscar conversas por nome (cadastro ou perfil WhatsApp) ou telefone parcial")
+    public ResponseEntity<List<WhatsAppConversationSearchItemDTO>> searchConversations(
+            @RequestParam(name = "q") String termo, @RequestParam(defaultValue = "20") int limit) {
+        if (termo == null || termo.trim().length() < 2) {
+            return ResponseEntity.ok(List.of());
+        }
+        return ResponseEntity.ok(conversationSearchService.buscar(termo, limit));
     }
 
     @GetMapping("/conversations/context")

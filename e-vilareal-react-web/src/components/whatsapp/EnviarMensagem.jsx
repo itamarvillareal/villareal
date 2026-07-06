@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { MessageComposePreview } from './components/MessageComposePreview.jsx';
 import { TemplateParamsForm, TemplateSelect } from './components/TemplateParamsForm.jsx';
+import { WhatsAppDestinatarioCampo } from './components/WhatsAppDestinatarioCampo.jsx';
 import { useWhatsApp } from './hooks/useWhatsApp.js';
 import { useWhatsAppTemplates } from './hooks/useWhatsAppTemplates.js';
 import { useWhatsAppToast } from './WhatsAppToast.jsx';
@@ -159,6 +160,11 @@ export function WhatsAppEnviarMensagem() {
       </div>
 
       <div className="lg:grid lg:grid-cols-2 lg:items-start lg:gap-6">
+        <div className="space-y-4">
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <WhatsAppDestinatarioCampo phone={phone} onPhoneChange={setPhone} disabled={sending} />
+          </div>
+
         {mode === 'texto' ? (
           <form
             onSubmit={handleSendText}
@@ -170,16 +176,6 @@ export function WhatsAppEnviarMensagem() {
             >
               <AlertTriangle className="w-5 h-5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
               <p>{FREE_TEXT_WINDOW_BANNER}</p>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Telefone</label>
-              <input
-                type="tel"
-                className={processosInputClass}
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="(62) 99999-1234"
-              />
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Mensagem</label>
@@ -201,16 +197,6 @@ export function WhatsAppEnviarMensagem() {
             onSubmit={handleSendTemplate}
             className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900"
           >
-            <div>
-              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Telefone</label>
-              <input
-                type="tel"
-                className={processosInputClass}
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="(62) 99999-1234"
-              />
-            </div>
             <TemplateSelect
               value={templateName}
               onChange={setTemplateName}
@@ -230,6 +216,7 @@ export function WhatsAppEnviarMensagem() {
             </button>
           </form>
         )}
+        </div>
 
         <MessageComposePreview
           text={previewText}

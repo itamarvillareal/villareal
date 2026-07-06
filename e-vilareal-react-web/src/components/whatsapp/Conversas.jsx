@@ -46,6 +46,10 @@ import { WHATSAPP_DELETE_CONVERSATION_CONFIRM, WHATSAPP_DELETE_MESSAGE_CONFIRM }
 import { marcarConversaLidaAsync, applyInboundToConversationList, zeroUnreadAndReportHadUnread, zeroUnreadMultipleAndReport } from './utils/whatsappReadUtils.js';
 import { enrichMessagesWithReactions } from './utils/whatsappReactionAttach.js';
 import { sortConversationsByPinAndRecency, togglePinInConversationList, pinMultipleInConversationList } from './utils/whatsappPinUtils.js';
+import {
+  buscarConversasPorNome,
+  conversationMatchesQuery,
+} from './utils/whatsappConversationSearch.js';
 
 const PAGE_SIZE = 20;
 const CONVERSATIONS_PAGE_SIZE = 50;
@@ -258,6 +262,7 @@ export function WhatsAppConversas() {
     useWhatsAppNotificationContext() ?? {};
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState('');
+  const [searchingConversations, setSearchingConversations] = useState(false);
   const [showArchivedView, setShowArchivedView] = useState(false);
   const [selectedClienteCodigo, setSelectedClienteCodigo] = useState(null);
   const [grupos, setGrupos] = useState([]);
@@ -607,14 +612,9 @@ export function WhatsAppConversas() {
   }, [pendingDeleteConversationPhone, activePhone, resetConversationSearch, loadConversations, toast]);
 
   const filteredConversations = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = query.trim();
     if (!q) return conversations;
-    const digits = q.replace(/\D/g, '');
-    return conversations.filter((conv) => {
-      const phone = formatPhoneDisplay(conv.phoneNumber).toLowerCase();
-      const name = String(conv.contactName ?? '').toLowerCase();
-      return name.includes(q) || phone.includes(q) || conv.phoneNumber.includes(digits);
-    });
+    return conversations.filter((conv) => conversationMatchesQuery(conv, q));
   }, [conversations, query]);
 
   const toggleSelectedPhone = useCallback((phone) => {
@@ -834,11 +834,53 @@ export function WhatsAppConversas() {
 
   const handleSearch = async (e) => {
     e?.preventDefault?.();
-    if (!isValidBrazilPhone(query)) {
-      toast.error('Informe um telefone brasileiro válido (DDD + número).');
+    const trimmed = query.trim();
+    if (!trimmed) return;
+
+    if (isValidBrazilPhone(trimmed)) {
+      await openConversation(trimmed);
       return;
     }
-    await openConversation(query);
+
+    const localMatches = conversations.filter((conv) => conversationMatchesQuery(conv, trimmed));
+    if (localMatches.length === 1) {
+      const conv = localMatches[0];
+      await openConversation(conv.phoneNumber, conv.contactName, conv.contextos, conv.contactPhotoUrl);
+      return;
+    }
+    if (localMatches.length > 1) {
+      return;
+    }
+
+    setSearchingConversations(true);
+    try {
+      const remoto = await buscarConversasPorNome(trimmed);
+      if (remoto.length === 1) {
+        await openConversation(remoto[0].phone, remoto[0].name);
+        return;
+      }
+      if (remoto.length > 1) {
+        setConversations((prev) => {
+          const existing = new Set(prev.map((c) => normalizePhoneForApi(c.phoneNumber)));
+          const novos = remoto
+            .filter((r) => r.phone && !existing.has(r.phone))
+            .map((r) => ({
+              phoneNumber: r.phone,
+              contactName: r.name || null,
+              lastMessagePreview: '',
+              unreadCount: 0,
+              pinned: false,
+            }));
+          return novos.length ? sortConversationsByPinAndRecency([...prev, ...novos]) : prev;
+        });
+        return;
+      }
+      toast.error('Nenhuma conversa encontrada para essa busca.');
+    } catch (err) {
+      toast.error(err?.message || 'Erro ao buscar conversas.');
+    } finally {
+      setSearchingConversations(false);
+    }
   };
 
   const handleLoadMore = async () => {
@@ -1217,8 +1259,8 @@ export function WhatsAppConversas() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Buscar conversa ou telefone"
             />
-            <button type="submit" className={chatComposeBtnClass} disabled={loading} title="Buscar telefone">
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+            <button type="submit" className={chatComposeBtnClass} disabled={loading || searchingConversations} title="Buscar conversa ou telefone">
+              {loading || searchingConversations ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
             </button>
           </form>
           <div className="space-y-1.5">

@@ -92,6 +92,15 @@ export async function getWhatsAppConversations(page = 0, size = 50, opts = {}) {
   });
 }
 
+export async function searchWhatsAppConversations(q, signal) {
+  const term = String(q ?? '').trim();
+  if (term.length < 2) return [];
+  return request('/api/whatsapp/conversations/search', {
+    query: { q: term, limit: 20 },
+    signal,
+  });
+}
+
 export async function getWhatsAppGrupos(signal) {
   return request('/api/whatsapp/grupos', { signal });
 }
