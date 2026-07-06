@@ -129,7 +129,7 @@ public class FinanceiroPagamentoFaturaApplicationService {
             absCartao = cartao.getValor().abs();
         }
         if (!Boolean.TRUE.equals(ignorarTolerancia)) {
-            BigDecimal tol = absCartao.max(absBanco).multiply(new BigDecimal("0.02")).max(new BigDecimal("0.05"));
+            BigDecimal tol = new BigDecimal("0.01");
             if (absBanco.subtract(absCartao).abs().compareTo(tol) > 0) {
                 throw new BusinessRuleException(
                         "Valores divergem: banco " + absBanco + " × cartão " + absCartao
