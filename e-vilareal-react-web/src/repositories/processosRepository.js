@@ -646,6 +646,46 @@ export async function prepararAssinarAguardandoProtocolo(processos, credencialId
 }
 
 /**
+ * Prepara PDFs e enfileira lote para assinatura automática (assinador Windows).
+ * @returns {Promise<{ loteId: number, peticaoIds: number[], totalArquivos: number, loteReutilizado?: boolean }>}
+ */
+export async function assinarAutomaticoAguardandoProtocolo(processos, credencialId) {
+  const body = (Array.isArray(processos) ? processos : []).map(mapItemAguardandoProtocoloParaApi);
+  if (!body.length) {
+    throw new Error('Nenhum processo na lista.');
+  }
+  const cred = String(credencialId ?? '').trim();
+  if (!cred) {
+    throw new Error('Selecione a credencial PROJUDI.');
+  }
+  return request('/api/processos/diagnostico/aguardando-protocolo/assinar-automatico', {
+    method: 'POST',
+    query: { credencialId: cred },
+    body,
+  });
+}
+
+/** @returns {Promise<{ loteId, status, peticaoIds, credencialId, erroCodigo, erroMensagem, mensagemUsuario }>} */
+export async function consultarLoteAssinaturaAguardandoProtocolo(loteId) {
+  const id = String(loteId ?? '').trim();
+  if (!id) {
+    throw new Error('loteId inválido.');
+  }
+  return request(`/api/processos/diagnostico/aguardando-protocolo/lote-assinatura/${id}`);
+}
+
+/** Re-libera lote após erro recuperável (ex.: TOKEN_OCUPADO). */
+export async function reliberarLoteAssinaturaAguardandoProtocolo(loteId) {
+  const id = String(loteId ?? '').trim();
+  if (!id) {
+    throw new Error('loteId inválido.');
+  }
+  return request(`/api/processos/diagnostico/aguardando-protocolo/lote-assinatura/${id}/reliberar`, {
+    method: 'POST',
+  });
+}
+
+/**
  * ZIP com PDFs pendentes do lote preparado (nomes canônicos + manifest informativo).
  * Grava em disco via stream quando possível — evita OOM (Chrome erro 5) com lotes grandes.
  * @param {number[]} peticaoIds

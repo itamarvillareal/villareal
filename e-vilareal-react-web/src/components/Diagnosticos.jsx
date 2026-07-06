@@ -39,6 +39,9 @@ import {
   listarProcessosPorPrazoFatalDiagnostico,
   listarProcessosFaseAguardandoProtocoloDiagnostico,
   prepararAssinarAguardandoProtocolo,
+  assinarAutomaticoAguardandoProtocolo,
+  consultarLoteAssinaturaAguardandoProtocolo,
+  reliberarLoteAssinaturaAguardandoProtocolo,
   baixarZipLoteAguardandoProtocolo,
   uploadAssinadosAguardandoProtocolo,
   listarProcessosVinculoPessoaDiagnostico,
@@ -59,6 +62,12 @@ const ProcessoEmbedModal = lazy(() =>
 
 /** Delay antes de chamar a API enquanto o usuário digita (ms). */
 const DEBOUNCE_BUSCA_PESSOA_API_MS = 320;
+
+/** Intervalo de polling do lote de assinatura automática (ms). */
+const POLL_LOTE_ASSINATURA_MS = 2500;
+
+const MSG_TOKEN_OCUPADO_ASSINADOR =
+  'Token em uso por outro programa. Feche o sai.jar e tente novamente.';
 
 function normalizarBuscaDiag(s) {
   return String(s ?? '')
@@ -371,6 +380,15 @@ export function Diagnosticos() {
   const [prepararAssinarCredenciais, setPrepararAssinarCredenciais] = useState([]);
   const [prepararAssinarErro, setPrepararAssinarErro] = useState('');
   const [prepararAssinarResultado, setPrepararAssinarResultado] = useState(null);
+  const [modalAssinarAutomaticoAberto, setModalAssinarAutomaticoAberto] = useState(false);
+  const [assinarAutomaticoAtivo, setAssinarAutomaticoAtivo] = useState(false);
+  const [assinarAutomaticoLoteId, setAssinarAutomaticoLoteId] = useState(null);
+  const [assinarAutomaticoFase, setAssinarAutomaticoFase] = useState('');
+  const [assinarAutomaticoErro, setAssinarAutomaticoErro] = useState('');
+  const [assinarAutomaticoErroCodigo, setAssinarAutomaticoErroCodigo] = useState('');
+  const [assinarAutomaticoPeticaoCount, setAssinarAutomaticoPeticaoCount] = useState(0);
+  const [assinarAutomaticoReliberando, setAssinarAutomaticoReliberando] = useState(false);
+  const assinarAutomaticoPollRef = useRef(null);
   const [modalUploadAssinadosAberto, setModalUploadAssinadosAberto] = useState(false);
   const [uploadAssinadosArquivos, setUploadAssinadosArquivos] = useState([]);
   const [uploadAssinadosEnviando, setUploadAssinadosEnviando] = useState(false);
@@ -610,6 +628,161 @@ export function Diagnosticos() {
   }, [modalResultadoBuscaPessoaAberto, idPessoaBuscaDiag]);
 
   useEffect(() => {
+    return () => {
+      if (assinarAutomaticoPollRef.current) {
+        clearInterval(assinarAutomaticoPollRef.current);
+        assinarAutomaticoPollRef.current = null;
+      }
+    };
+  }, []);
+
+  function pararPollingAssinarAutomatico() {
+    if (assinarAutomaticoPollRef.current) {
+      clearInterval(assinarAutomaticoPollRef.current);
+      assinarAutomaticoPollRef.current = null;
+    }
+  }
+
+  function fecharModalAssinarAutomatico() {
+    if (assinarAutomaticoAtivo && assinarAutomaticoFase !== 'concluido' && assinarAutomaticoFase !== 'erro') {
+      return;
+    }
+    pararPollingAssinarAutomatico();
+    setModalAssinarAutomaticoAberto(false);
+    setAssinarAutomaticoAtivo(false);
+    setAssinarAutomaticoLoteId(null);
+    setAssinarAutomaticoFase('');
+    setAssinarAutomaticoErro('');
+    setAssinarAutomaticoErroCodigo('');
+    setAssinarAutomaticoPeticaoCount(0);
+    setAssinarAutomaticoReliberando(false);
+  }
+
+  function irParaPeticionamentoProjudi() {
+    fecharModalAssinarAutomatico();
+    setModalResultadoAguardandoProtocoloAberto(false);
+    navigate('/processos/peticionamento-projudi');
+  }
+
+  async function carregarCredenciaisPrepararAssinar() {
+    const rows = await listarCredenciais();
+    const lista = Array.isArray(rows) ? rows : [];
+    setPrepararAssinarCredenciais(lista);
+    if (!prepararAssinarCredencialId && lista.length > 0) {
+      const preferida = lista.find((c) => String(c.cpfUsuario || '').endsWith('5190')) || lista[0];
+      if (preferida?.id != null) {
+        setPrepararAssinarCredencialId(String(preferida.id));
+        return String(preferida.id);
+      }
+    }
+    return String(prepararAssinarCredencialId || '').trim();
+  }
+
+  function aplicarStatusLoteAssinatura(status) {
+    const st = String(status?.status ?? '').toUpperCase();
+    if (st === 'CONCLUIDO') {
+      setAssinarAutomaticoFase('concluido');
+      setAssinarAutomaticoPeticaoCount((prev) =>
+        Array.isArray(status?.peticaoIds) && status.peticaoIds.length > 0
+          ? status.peticaoIds.length
+          : prev,
+      );
+      setAssinarAutomaticoAtivo(false);
+      pararPollingAssinarAutomatico();
+      return true;
+    }
+    if (st === 'ERRO') {
+      setAssinarAutomaticoFase('erro');
+      setAssinarAutomaticoErroCodigo(String(status?.erroCodigo ?? '').trim());
+      setAssinarAutomaticoErro(
+        status?.mensagemUsuario ||
+          status?.erroMensagem ||
+          'Não foi possível concluir a assinatura automática.',
+      );
+      setAssinarAutomaticoAtivo(false);
+      pararPollingAssinarAutomatico();
+      return true;
+    }
+    if (st === 'LIBERADO' || st === 'EM_ASSINATURA') {
+      setAssinarAutomaticoFase('aguardando');
+    }
+    return false;
+  }
+
+  async function consultarLoteAssinaturaUmaVez(loteId) {
+    const status = await consultarLoteAssinaturaAguardandoProtocolo(loteId);
+    return aplicarStatusLoteAssinatura(status);
+  }
+
+  function iniciarPollingLoteAssinatura(loteId) {
+    pararPollingAssinarAutomatico();
+    void consultarLoteAssinaturaUmaVez(loteId);
+    assinarAutomaticoPollRef.current = setInterval(() => {
+      void consultarLoteAssinaturaUmaVez(loteId);
+    }, POLL_LOTE_ASSINATURA_MS);
+  }
+
+  async function iniciarAssinarAutomatico() {
+    if (!resultadoAguardandoProtocolo.length || assinarAutomaticoAtivo) return;
+    setModalAssinarAutomaticoAberto(true);
+    setAssinarAutomaticoFase('preparando');
+    setAssinarAutomaticoErro('');
+    setAssinarAutomaticoErroCodigo('');
+    setAssinarAutomaticoLoteId(null);
+    setAssinarAutomaticoPeticaoCount(0);
+    setAssinarAutomaticoAtivo(true);
+    setAguardandoProtocoloBaixarErro('');
+    pararPollingAssinarAutomatico();
+    try {
+      const credId = await carregarCredenciaisPrepararAssinar();
+      if (!credId) {
+        throw new Error('Nenhuma credencial PROJUDI disponível. Cadastre uma credencial antes de assinar.');
+      }
+      const resp = await assinarAutomaticoAguardandoProtocolo(resultadoAguardandoProtocolo, credId);
+      const loteId = resp?.loteId;
+      if (loteId == null) {
+        throw new Error('Resposta inválida: loteId ausente.');
+      }
+      const qtd = Array.isArray(resp?.peticaoIds) ? resp.peticaoIds.length : 0;
+      setAssinarAutomaticoLoteId(loteId);
+      setAssinarAutomaticoPeticaoCount(qtd);
+      setAssinarAutomaticoFase('aguardando');
+      iniciarPollingLoteAssinatura(loteId);
+    } catch (e) {
+      setAssinarAutomaticoFase('erro');
+      setAssinarAutomaticoErro(mensagemErroAmigavel(e, 'iniciar a assinatura automática'));
+      setAssinarAutomaticoAtivo(false);
+      pararPollingAssinarAutomatico();
+    }
+  }
+
+  async function tentarNovamenteAssinarAutomatico() {
+    const loteId = assinarAutomaticoLoteId;
+    if (loteId == null || assinarAutomaticoReliberando) return;
+    setAssinarAutomaticoReliberando(true);
+    setAssinarAutomaticoErro('');
+    setAssinarAutomaticoErroCodigo('');
+    setAssinarAutomaticoFase('aguardando');
+    setAssinarAutomaticoAtivo(true);
+    try {
+      await reliberarLoteAssinaturaAguardandoProtocolo(loteId);
+      iniciarPollingLoteAssinatura(loteId);
+    } catch (e) {
+      setAssinarAutomaticoFase('erro');
+      setAssinarAutomaticoErro(mensagemErroAmigavel(e, 're-liberar o lote de assinatura'));
+      setAssinarAutomaticoAtivo(false);
+      pararPollingAssinarAutomatico();
+    } finally {
+      setAssinarAutomaticoReliberando(false);
+    }
+  }
+
+  function abrirFluxoManualAssinar() {
+    fecharModalAssinarAutomatico();
+    void abrirModalPrepararAssinar();
+  }
+
+  useEffect(() => {
     if (!modalBuscaPessoaAberto) return;
     const seq = ++buscaPessoaReqSeq.current;
     const raw = String(termoBuscaPessoa ?? '').trim();
@@ -692,16 +865,7 @@ export function Diagnosticos() {
     setPrepararAssinarErro('');
     setModalPrepararAssinarAberto(true);
     try {
-      const rows = await listarCredenciais();
-      const lista = Array.isArray(rows) ? rows : [];
-      setPrepararAssinarCredenciais(lista);
-      if (!prepararAssinarCredencialId && lista.length > 0) {
-        const preferida =
-          lista.find((c) => String(c.cpfUsuario || '').endsWith('5190')) || lista[0];
-        if (preferida?.id != null) {
-          setPrepararAssinarCredencialId(String(preferida.id));
-        }
-      }
+      await carregarCredenciaisPrepararAssinar();
     } catch (e) {
       setPrepararAssinarErro(mensagemErroAmigavel(e, 'carregar credenciais PROJUDI'));
     }
@@ -1987,9 +2151,32 @@ export function Diagnosticos() {
             <div className="px-4 py-3 border-t border-slate-200/80 flex flex-wrap justify-center gap-2 bg-slate-50/90">
               <button
                 type="button"
+                onClick={() => void iniciarAssinarAutomatico()}
+                disabled={
+                  !resultadoAguardandoProtocolo.length ||
+                  aguardandoProtocoloBaixando ||
+                  assinarAutomaticoAtivo
+                }
+                className="min-w-[220px] flex-1 max-w-xs px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-sm font-semibold text-white shadow-lg shadow-violet-500/20 hover:from-violet-500 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+              >
+                {assinarAutomaticoAtivo ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                    Assinando…
+                  </>
+                ) : (
+                  'Assinar automaticamente'
+                )}
+              </button>
+              <button
+                type="button"
                 onClick={() => void abrirModalPrepararAssinar()}
-                disabled={!resultadoAguardandoProtocolo.length || aguardandoProtocoloBaixando}
-                className="min-w-[180px] px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+                disabled={
+                  !resultadoAguardandoProtocolo.length ||
+                  aguardandoProtocoloBaixando ||
+                  assinarAutomaticoAtivo
+                }
+                className="min-w-[220px] flex-1 max-w-xs px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
               >
                 {aguardandoProtocoloBaixando ? (
                   <>
@@ -1997,7 +2184,7 @@ export function Diagnosticos() {
                     Gerando ZIP…
                   </>
                 ) : (
-                  'Baixar Arquivos para Assinar'
+                  'Assinar manualmente (baixar ZIP)'
                 )}
               </button>
               <button
@@ -2015,6 +2202,120 @@ export function Diagnosticos() {
               >
                 OK
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalAssinarAutomaticoAberto && (
+        <div className="fixed inset-0 z-[67] flex items-center justify-center bg-black/45 backdrop-blur-[2px] p-4">
+          <div className="w-full max-w-lg bg-white border border-slate-200/90 shadow-2xl rounded-2xl overflow-hidden ring-1 ring-violet-500/10 flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/20 bg-gradient-to-r from-violet-700 to-indigo-700 text-white shrink-0">
+              <p className="text-base font-semibold">Assinatura automática</p>
+              <button
+                type="button"
+                onClick={fecharModalAssinarAutomatico}
+                disabled={assinarAutomaticoAtivo && assinarAutomaticoFase !== 'concluido' && assinarAutomaticoFase !== 'erro'}
+                className="p-1 rounded-lg text-white/90 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed"
+                aria-label="Fechar"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="px-4 py-5 space-y-4 text-sm text-slate-700">
+              {assinarAutomaticoFase === 'preparando' ? (
+                <div className="flex flex-col items-center gap-3 py-4 text-center">
+                  <Loader2 className="h-8 w-8 animate-spin text-violet-600" aria-hidden />
+                  <p className="font-medium text-slate-800">Preparando…</p>
+                  <p className="text-xs text-slate-500">
+                    Buscando PDFs no Drive e enfileirando lote para o assinador local.
+                  </p>
+                </div>
+              ) : null}
+              {assinarAutomaticoFase === 'aguardando' ? (
+                <div className="flex flex-col items-center gap-3 py-4 text-center">
+                  <Loader2 className="h-8 w-8 animate-spin text-indigo-600" aria-hidden />
+                  <p className="font-medium text-slate-800">Aguardando assinatura no token…</p>
+                  <p className="text-xs text-slate-500">
+                    {assinarAutomaticoPeticaoCount > 0
+                      ? `${assinarAutomaticoPeticaoCount} petição(ões) no lote`
+                      : 'O assinador local deve estar conectado e autenticado.'}
+                    {assinarAutomaticoLoteId != null ? ` · Lote #${assinarAutomaticoLoteId}` : ''}
+                  </p>
+                </div>
+              ) : null}
+              {assinarAutomaticoFase === 'concluido' ? (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50/90 px-4 py-4 text-center space-y-2">
+                  <p className="font-semibold text-emerald-900">
+                    Concluído! {assinarAutomaticoPeticaoCount} petição(ões) assinada(s)
+                  </p>
+                  <p className="text-xs text-emerald-800">
+                    As petições estão com status ASSINADA e prontas para protocolar no PROJUDI.
+                  </p>
+                </div>
+              ) : null}
+              {assinarAutomaticoFase === 'erro' ? (
+                <div className="rounded-lg border border-red-200 bg-red-50/90 px-3 py-3 text-sm text-red-800 space-y-2" role="alert">
+                  <p className="font-medium">
+                    {assinarAutomaticoErroCodigo === 'TOKEN_OCUPADO'
+                      ? MSG_TOKEN_OCUPADO_ASSINADOR
+                      : 'Não foi possível concluir a assinatura automática'}
+                  </p>
+                  {assinarAutomaticoErroCodigo !== 'TOKEN_OCUPADO' && assinarAutomaticoErro ? (
+                    <p className="leading-relaxed">{assinarAutomaticoErro}</p>
+                  ) : null}
+                  {assinarAutomaticoErroCodigo === 'TOKEN_OCUPADO' && assinarAutomaticoErro &&
+                  assinarAutomaticoErro !== MSG_TOKEN_OCUPADO_ASSINADOR ? (
+                    <p className="text-xs leading-relaxed">{assinarAutomaticoErro}</p>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            <div className="px-4 py-3 border-t border-slate-200/80 flex flex-wrap justify-center gap-2 bg-slate-50/90">
+              {assinarAutomaticoFase === 'concluido' ? (
+                <button
+                  type="button"
+                  onClick={irParaPeticionamentoProjudi}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-sm font-semibold text-white"
+                >
+                  Abrir Peticionamento PROJUDI
+                </button>
+              ) : null}
+              {assinarAutomaticoFase === 'erro' && assinarAutomaticoErroCodigo === 'TOKEN_OCUPADO' ? (
+                <button
+                  type="button"
+                  onClick={() => void tentarNovamenteAssinarAutomatico()}
+                  disabled={assinarAutomaticoReliberando || assinarAutomaticoLoteId == null}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-sm font-semibold text-white disabled:opacity-50 inline-flex items-center gap-2"
+                >
+                  {assinarAutomaticoReliberando ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                      Re-liberando…
+                    </>
+                  ) : (
+                    'Tentar novamente'
+                  )}
+                </button>
+              ) : null}
+              {assinarAutomaticoFase === 'erro' ? (
+                <button
+                  type="button"
+                  onClick={abrirFluxoManualAssinar}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-sm font-semibold text-white"
+                >
+                  Assinar manualmente (baixar ZIP)
+                </button>
+              ) : null}
+              {assinarAutomaticoFase === 'erro' || assinarAutomaticoFase === 'concluido' ? (
+                <button
+                  type="button"
+                  onClick={fecharModalAssinarAutomatico}
+                  className="px-6 py-2 rounded-xl border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                >
+                  Fechar
+                </button>
+              ) : null}
             </div>
           </div>
         </div>
