@@ -11,17 +11,19 @@ import './lib/load-vilareal-import-env.mjs';
 
 /** Pareamento cronológico: débito ~dia 10 → fatura MC vencimento 25 mês anterior. */
 const PARES_MC = [
-  { ciclo: 'fev/25', lancamentoBancoId: 270302, lancamentoCartaoId: 17689 },
-  { ciclo: 'mar/25', lancamentoBancoId: 270781, lancamentoCartaoId: 17690 },
-  { ciclo: 'abr/25', lancamentoBancoId: 271236, lancamentoCartaoId: 17691 },
-  { ciclo: 'mai/25', lancamentoBancoId: 271589, lancamentoCartaoId: 17692 },
-  { ciclo: 'jun/25', lancamentoBancoId: 271962, lancamentoCartaoId: 17693 },
-  { ciclo: 'jul/25', lancamentoBancoId: 272333, lancamentoCartaoId: 17694 },
-  { ciclo: 'ago/25', lancamentoBancoId: 272673, lancamentoCartaoId: 17695 },
-  { ciclo: 'set/25', lancamentoBancoId: 273117, lancamentoCartaoId: 18450 },
-  { ciclo: 'out/25', lancamentoBancoId: 273428, lancamentoCartaoId: 18471 },
-  { ciclo: 'nov/25', lancamentoBancoId: 273890, lancamentoCartaoId: 18487 },
-  { ciclo: 'jan/26', lancamentoBancoId: 274723, lancamentoCartaoId: 18517 },
+  { ciclo: 'jan/25', lancamentoBancoId: 269937, vencimento: '2025-01-25' },
+  { ciclo: 'fev/25', lancamentoBancoId: 270302, vencimento: '2025-02-25' },
+  { ciclo: 'mar/25', lancamentoBancoId: 270781, vencimento: '2025-03-25' },
+  { ciclo: 'abr/25', lancamentoBancoId: 271236, vencimento: '2025-04-25' },
+  { ciclo: 'mai/25', lancamentoBancoId: 271589, vencimento: '2025-05-25' },
+  { ciclo: 'jun/25', lancamentoBancoId: 271962, vencimento: '2025-06-25' },
+  { ciclo: 'jul/25', lancamentoBancoId: 272333, vencimento: '2025-07-25' },
+  { ciclo: 'ago/25', lancamentoBancoId: 272673, vencimento: '2025-08-25' },
+  { ciclo: 'set/25', lancamentoBancoId: 273117, vencimento: '2025-09-25' },
+  { ciclo: 'out/25', lancamentoBancoId: 273428, vencimento: '2025-10-25' },
+  { ciclo: 'nov/25', lancamentoBancoId: 273890, vencimento: '2025-11-25' },
+  { ciclo: 'dez/25', lancamentoBancoId: 274233, vencimento: '2025-12-25' },
+  { ciclo: 'jan/26', lancamentoBancoId: 274723, vencimento: '2026-01-25' },
 ];
 
 function parseArgs(argv) {
@@ -60,7 +62,22 @@ async function listarVinculos(token, baseUrl) {
   return res.json();
 }
 
-async function criarVinculoForcado(token, baseUrl, lancamentoBancoId, lancamentoCartaoId) {
+async function listarAutoFatPorVencimento(token, baseUrl, cartaoId) {
+  const res = await fetch(
+    `${baseUrl}/api/financeiro/cartoes/lancamentos?cartaoId=${cartaoId}&fechamentoAutomatico=true`,
+    { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } },
+  );
+  if (!res.ok) throw new Error(`GET AUTO-FAT: ${res.status}`);
+  const fats = await res.json();
+  const map = new Map();
+  for (const f of fats) {
+    const venc = String(f.dataCompetencia ?? '').slice(0, 10);
+    if (venc) map.set(venc, f);
+  }
+  return map;
+}
+
+async function criarVinculo(token, baseUrl, lancamentoBancoId, lancamentoCartaoId) {
   const res = await fetch(`${baseUrl}/api/financeiro/pagamentos-fatura/vinculos`, {
     method: 'POST',
     headers: {
@@ -68,7 +85,7 @@ async function criarVinculoForcado(token, baseUrl, lancamentoBancoId, lancamento
       'Content-Type': 'application/json',
       Accept: 'application/json',
     },
-    body: JSON.stringify({ lancamentoBancoId, lancamentoCartaoId, ignorarToleranciaValor: true }),
+    body: JSON.stringify({ lancamentoBancoId, lancamentoCartaoId }),
   });
   if (!res.ok) {
     const txt = await res.text();
@@ -86,12 +103,26 @@ async function main() {
   const usedBanco = new Set(vinculos.map((v) => Number(v.lancamentoBancoId)));
   const usedCartao = new Set(vinculos.map((v) => Number(v.lancamentoCartaoId)));
 
+  const cartoes = await (await fetch(`${opts.baseUrl}/api/financeiro/cartoes`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+  })).json();
+  const mc = cartoes.find((c) => c.nome === 'Mastercard Black');
+  if (!mc) throw new Error('Cartão Mastercard Black não encontrado');
+  const autoPorVenc = await listarAutoFatPorVencimento(token, opts.baseUrl, mc.id);
+
   let criados = 0;
   let pulados = 0;
   let erros = 0;
 
   for (const par of PARES_MC) {
-    const { ciclo, lancamentoBancoId, lancamentoCartaoId } = par;
+    const { ciclo, lancamentoBancoId, vencimento } = par;
+    const auto = autoPorVenc.get(vencimento);
+    const lancamentoCartaoId = auto ? Number(auto.id) : null;
+    if (!lancamentoCartaoId) {
+      console.log(`  SKIP ${ciclo} — AUTO-FAT não encontrado (${vencimento})`);
+      pulados += 1;
+      continue;
+    }
     if (usedBanco.has(lancamentoBancoId) || usedCartao.has(lancamentoCartaoId)) {
       console.log(`  SKIP ${ciclo} — já vinculado (banco ${lancamentoBancoId} / cartão ${lancamentoCartaoId})`);
       pulados += 1;
@@ -103,7 +134,7 @@ async function main() {
       continue;
     }
     try {
-      const r = await criarVinculoForcado(token, opts.baseUrl, lancamentoBancoId, lancamentoCartaoId);
+      const r = await criarVinculo(token, opts.baseUrl, lancamentoBancoId, lancamentoCartaoId);
       usedBanco.add(lancamentoBancoId);
       usedCartao.add(lancamentoCartaoId);
       console.log(

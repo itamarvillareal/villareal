@@ -58,8 +58,10 @@ async function listarVinculos(token, baseUrl) {
   return res.json();
 }
 
-async function listarLancamentosCartao(token, baseUrl, cartaoId) {
-  const res = await fetch(`${baseUrl}/api/financeiro/cartoes/lancamentos?cartaoId=${cartaoId}`, {
+async function listarLancamentosCartao(token, baseUrl, cartaoId, { fechamentoAutomatico = false } = {}) {
+  const qs = new URLSearchParams({ cartaoId: String(cartaoId) });
+  if (fechamentoAutomatico) qs.set('fechamentoAutomatico', 'true');
+  const res = await fetch(`${baseUrl}/api/financeiro/cartoes/lancamentos?${qs}`, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
   });
   if (!res.ok) throw new Error(`GET lancamentos: ${res.status}`);
@@ -264,7 +266,9 @@ async function main() {
 
       await executarFechamento(token, opts.baseUrl);
 
-      const lista2 = await listarLancamentosCartao(token, opts.baseUrl, cartao.id);
+      const lista2 = await listarLancamentosCartao(token, opts.baseUrl, cartao.id, {
+        fechamentoAutomatico: true,
+      });
       const auto = lista2.find(
         (l) =>
           /^AUTO-FAT-/i.test(String(l.numeroLancamento ?? '')) &&
