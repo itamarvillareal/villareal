@@ -8,6 +8,7 @@ import br.com.vilareal.security.JwtAuthenticationFilter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -21,6 +22,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -65,8 +67,29 @@ public class SecurityConfig {
         return new ProviderManager(provider);
     }
 
+    /**
+     * Cadeia dedicada ao pull do assinador Windows — sem JWT; autenticação via {@link AssinadorSecretAuthFilter}
+     * imediatamente antes do {@link AuthorizationFilter} (inclui re-dispatch ASYNC do long-poll).
+     */
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    @Order(1)
+    public SecurityFilterChain assinadorSecurityFilterChain(HttpSecurity http) throws Exception {
+        http.securityMatcher(AssinadorSecurityConstants.API_PREFIX + "/**")
+                .csrf(AbstractHttpConfigurer::disable)
+                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth.anyRequest().hasAuthority(AssinadorSecurityConstants.ROLE_ASSINADOR))
+                .exceptionHandling(e -> e
+                        .authenticationEntryPoint(securityProblemSupport)
+                        .accessDeniedHandler(securityProblemSupport))
+                .addFilterBefore(assinadorHttpsEnforcementFilter, AuthorizationFilter.class)
+                .addFilterBefore(assinadorAccessLogFilter, AuthorizationFilter.class)
+                .addFilterBefore(assinadorSecretAuthFilter, AuthorizationFilter.class);
+        return http.build();
+    }
+
+    @Bean
+    @Order(2)
+    public SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(c -> c.configurationSource(corsConfigurationSource()))
@@ -95,18 +118,13 @@ public class SecurityConfig {
                                         "/swagger-ui/**",
                                         "/swagger-ui.html"
                                 ).permitAll()
-                                .requestMatchers(AssinadorSecurityConstants.API_PREFIX + "/**")
-                                .hasAuthority(AssinadorSecurityConstants.ROLE_ASSINADOR)
                                 .anyRequest().authenticated();
                     }
                 })
                 .exceptionHandling(e -> e
                         .authenticationEntryPoint(securityProblemSupport)
                         .accessDeniedHandler(securityProblemSupport))
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(assinadorSecretAuthFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(assinadorAccessLogFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(assinadorHttpsEnforcementFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 

@@ -129,9 +129,9 @@ class AssinadorV1ControllerTest {
     }
 
     @Test
-    void semAssinadorId_falhaValidacao() throws Exception {
+    void semAssinadorId_retorna401NoFiltro() throws Exception {
         mockMvc.perform(get("/api/assinador/v1/lotes/pendente")
                         .header(AssinadorSecurityConstants.HEADER_SECRET, SEGREDO))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isUnauthorized());
     }
 }

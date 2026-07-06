@@ -65,9 +65,24 @@ class AssinadorSecretAuthFilterTest {
     void aceitaSegredoCorreto_eDefineRoleAssinador() throws Exception {
         MockHttpServletRequest request = requestAssinador("GET", "/api/assinador/v1/lotes/pendente");
         request.addHeader(AssinadorSecurityConstants.HEADER_SECRET, SEGREDO);
+        request.addHeader(AssinadorSecurityConstants.HEADER_ASSINADOR_ID, "escritorio-win-01");
         filter.doFilter(request, response, chain);
         verify(chain).doFilter(request, response);
-        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        assertThat(authentication).isNotNull();
+        assertThat(authentication.getPrincipal()).isEqualTo("escritorio-win-01");
+        assertThat(authentication.getAuthorities())
+                .extracting("authority")
+                .containsExactly(AssinadorSecurityConstants.ROLE_ASSINADOR);
+    }
+
+    @Test
+    void rejeitaAssinadorIdAusente() throws Exception {
+        MockHttpServletRequest request = requestAssinador("GET", "/api/assinador/v1/lotes/pendente");
+        request.addHeader(AssinadorSecurityConstants.HEADER_SECRET, SEGREDO);
+        filter.doFilter(request, response, chain);
+        assertThat(response.getStatus()).isEqualTo(401);
+        verify(chain, never()).doFilter(request, response);
     }
 
     private static MockHttpServletRequest requestAssinador(String method, String path) {

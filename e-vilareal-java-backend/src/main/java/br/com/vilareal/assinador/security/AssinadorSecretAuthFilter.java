@@ -69,16 +69,25 @@ public class AssinadorSecretAuthFilter extends OncePerRequestFilter {
             return;
         }
 
+        String assinadorId = request.getHeader(AssinadorSecurityConstants.HEADER_ASSINADOR_ID);
+        if (!StringUtils.hasText(assinadorId)) {
+            log.warn("assinador_api_auth assinador_id_ausente path={} ip={}", request.getRequestURI(), request.getRemoteAddr());
+            response.sendError(HttpStatus.UNAUTHORIZED.value(), "Header X-Assinador-Id é obrigatório.");
+            return;
+        }
+
         var auth = new UsernamePasswordAuthenticationToken(
-                "assinador-local",
+                assinadorId.trim(),
                 null,
                 List.of(new SimpleGrantedAuthority(AssinadorSecurityConstants.ROLE_ASSINADOR)));
         SecurityContextHolder.getContext().setAuthentication(auth);
-        try {
-            filterChain.doFilter(request, response);
-        } finally {
-            SecurityContextHolder.clearContext();
-        }
+        filterChain.doFilter(request, response);
+    }
+
+    /** Long-poll usa DeferredResult — o dispatch ASYNC reavalia o AuthorizationFilter; reautenticar aqui. */
+    @Override
+    protected boolean shouldNotFilterAsyncDispatch() {
+        return false;
     }
 
     /** TEMPORÁRIO — diagnóstico de mismatch de segredo; remover após E2E OK. */
