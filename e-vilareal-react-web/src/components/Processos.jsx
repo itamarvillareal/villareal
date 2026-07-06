@@ -550,6 +550,11 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   /** Cadastro de Pessoas em janela suspensa (duplo clique na lista «Nesta parte»). */
   const [pessoaEmbed, setPessoaEmbed] = useState(null);
   const [modalTarefaContextual, setModalTarefaContextual] = useState(null);
+  const [tabAtiva, setTabAtiva] = useState('historico');
+  const [partesProcessoApi, setPartesProcessoApi] = useState([]);
+  const [filtroOrigemHistorico, setFiltroOrigemHistorico] = useState('');
+  const [citacaoParteInicial, setCitacaoParteInicial] = useState(null);
+  const [citacaoMovSugerido, setCitacaoMovSugerido] = useState(null);
 
   useLayoutEffect(() => {
     const intent = isEmbedded
@@ -673,11 +678,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [pjeGrau, setPjeGrau] = useState('');
   const [pjeTribunalDraft, setPjeTribunalDraft] = useState('');
   const [pjeGrauDraft, setPjeGrauDraft] = useState('PRIMEIRO_GRAU');
-  const [tabAtiva, setTabAtiva] = useState('historico');
-  const [partesProcessoApi, setPartesProcessoApi] = useState([]);
-  const [filtroOrigemHistorico, setFiltroOrigemHistorico] = useState('');
-  const [citacaoParteInicial, setCitacaoParteInicial] = useState(null);
-  const [citacaoMovSugerido, setCitacaoMovSugerido] = useState(null);
   const [historicoToast, setHistoricoToast] = useState(null);
   const showProcessoToast = useCallback((message, variant = 'success') => {
     const msg = String(message ?? '').trim();
