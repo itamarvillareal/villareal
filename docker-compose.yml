@@ -53,6 +53,8 @@ services:
       # Assinador local Windows (pull HTTPS + token A3) — segredo só em .env.docker na VPS
       ASSINADOR_API_SECRET: ${ASSINADOR_API_SECRET:?defina ASSINADOR_API_SECRET no .env.docker}
       ASSINADOR_REQUIRE_HTTPS: ${ASSINADOR_REQUIRE_HTTPS:-true}
+      # Diagnóstico temporário assinador: LOGGING_LEVEL_BR_COM_VILAREAL_ASSINADOR_SECURITY=DEBUG no .env.docker
+      LOGGING_LEVEL_BR_COM_VILAREAL_ASSINADOR_SECURITY: ${LOGGING_LEVEL_BR_COM_VILAREAL_ASSINADOR_SECURITY:-}
 
     extra_hosts:
       - "host.docker.internal:host-gateway"

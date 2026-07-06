@@ -18,6 +18,10 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.List;
 
 @Component
@@ -44,19 +48,22 @@ public class AssinadorSecretAuthFilter extends OncePerRequestFilter {
             @NonNull FilterChain filterChain)
             throws ServletException, IOException {
         String configurado = properties.secret();
+        String recebido = request.getHeader(AssinadorSecurityConstants.HEADER_SECRET);
+        logDebugComparacao(request, configurado, recebido);
         if (!StringUtils.hasText(configurado)) {
             log.error("assinador_api_auth configuracao_ausente path={}", request.getRequestURI());
             response.sendError(HttpStatus.SERVICE_UNAVAILABLE.value(), "Assinador API não configurada (ASSINADOR_API_SECRET ausente).");
             return;
         }
 
-        String recebido = request.getHeader(AssinadorSecurityConstants.HEADER_SECRET);
         if (!StringUtils.hasText(recebido)) {
             log.warn("assinador_api_auth ausente path={} ip={}", request.getRequestURI(), request.getRemoteAddr());
             response.sendError(HttpStatus.UNAUTHORIZED.value(), "Header X-Assinador-Secret é obrigatório.");
             return;
         }
-        if (!AssinadorSecretComparator.secretsIguais(configurado.trim(), recebido.trim())) {
+        String esperadoTrim = configurado.trim();
+        String recebidoTrim = recebido.trim();
+        if (!AssinadorSecretComparator.secretsIguais(esperadoTrim, recebidoTrim)) {
             log.warn("assinador_api_auth invalido path={} ip={}", request.getRequestURI(), request.getRemoteAddr());
             response.sendError(HttpStatus.UNAUTHORIZED.value(), "Segredo do assinador inválido.");
             return;
@@ -71,6 +78,53 @@ public class AssinadorSecretAuthFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
         } finally {
             SecurityContextHolder.clearContext();
+        }
+    }
+
+    /** TEMPORÁRIO — diagnóstico de mismatch de segredo; remover após E2E OK. */
+    private void logDebugComparacao(HttpServletRequest request, String configurado, String recebido) {
+        if (!log.isDebugEnabled()) {
+            return;
+        }
+        String esperado = configurado != null ? configurado.trim() : null;
+        String header = recebido != null ? recebido.trim() : null;
+        boolean iguais = AssinadorSecretComparator.secretsIguais(esperado, header);
+        log.debug(
+                "assinador_api_auth_compare path={} esperadoVazio={} esperadoLen={} recebidoLen={} iguais={} "
+                        + "esperadoPontas={} recebidoPontas={} esperadoSha256={} recebidoSha256={}",
+                request.getRequestURI(),
+                !StringUtils.hasText(esperado),
+                esperado != null ? esperado.length() : 0,
+                header != null ? header.length() : 0,
+                iguais,
+                pontasSegredo(esperado),
+                pontasSegredo(header),
+                sha256Hex(esperado),
+                sha256Hex(header));
+    }
+
+    private static String pontasSegredo(String valor) {
+        if (valor == null) {
+            return "null";
+        }
+        if (valor.isEmpty()) {
+            return "[]";
+        }
+        if (valor.length() <= 6) {
+            return "[" + valor + "]";
+        }
+        return valor.substring(0, 3) + "…" + valor.substring(valor.length() - 3);
+    }
+
+    private static String sha256Hex(String valor) {
+        if (valor == null) {
+            return "null";
+        }
+        try {
+            byte[] hash = MessageDigest.getInstance("SHA-256").digest(valor.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash);
+        } catch (NoSuchAlgorithmException e) {
+            return "erro-sha256";
         }
     }
 }
