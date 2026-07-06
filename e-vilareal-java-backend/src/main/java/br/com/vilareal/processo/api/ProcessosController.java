@@ -223,11 +223,11 @@ public class ProcessosController {
 
     @PostMapping("/diagnostico/aguardando-protocolo/assinar-automatico")
     @Operation(
-            summary = "Prepara PDFs e enfileira lote para assinatura automática (assinador Windows)",
+            summary = "Enfileira lote PREPARANDO e prepara PDFs em segundo plano (assinador Windows)",
             description =
-                    "Reutiliza prepararAssinatura (Drive → PENDENTE_ASSINATURA + PDFs no store-dir). "
-                            + "Cria AssinaturaLote LIBERADO ou reutiliza lote ativo para os mesmos peticaoIds "
-                            + "(idempotente contra clique duplo).")
+                    "Retorna loteId imediatamente (status PREPARANDO). O preparo Drive → PENDENTE_ASSINATURA "
+                            + "roda async; polling em GET lote-assinatura/{loteId} até LIBERADO. "
+                            + "Idempotente contra clique duplo (mesma seleção + credencial).")
     public AssinarAutomaticoResponse assinarAutomaticoDiagnostico(
             @RequestParam Long credencialId,
             @RequestBody List<DiagnosticoAguardandoProtocoloItemRequest> processos) {
@@ -238,7 +238,7 @@ public class ProcessosController {
     @Operation(
             summary = "Status do lote de assinatura automática",
             description =
-                    "Retorna LIBERADO / EM_ASSINATURA / CONCLUIDO / ERRO. Em ERRO inclui erro_codigo, "
+                    "Retorna PREPARANDO / LIBERADO / EM_ASSINATURA / CONCLUIDO / ERRO. Em ERRO inclui erro_codigo, "
                             + "erro_mensagem e mensagemUsuario amigável (ex.: TOKEN_OCUPADO).")
     public LoteAssinaturaStatusResponse statusLoteAssinaturaDiagnostico(@PathVariable Long loteId) {
         return diagnosticoAssinaturaAutomaticaService.consultarStatus(loteId);

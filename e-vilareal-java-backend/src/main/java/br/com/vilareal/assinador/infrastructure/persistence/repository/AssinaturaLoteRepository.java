@@ -34,4 +34,7 @@ public interface AssinaturaLoteRepository extends JpaRepository<AssinaturaLoteEn
             ORDER BY l.criadoEm DESC
             """)
     List<AssinaturaLoteEntity> findByStatusIn(@Param("statuses") Collection<AssinaturaLoteStatus> statuses);
+
+    List<AssinaturaLoteEntity> findByStatusAndCredencialIdOrderByCriadoEmDesc(
+            AssinaturaLoteStatus status, Long credencialId);
 }

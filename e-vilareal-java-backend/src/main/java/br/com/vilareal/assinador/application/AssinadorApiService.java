@@ -94,13 +94,8 @@ public class AssinadorApiService {
             throw new BusinessRuleException("Nenhum PDF pendente de assinatura neste lote.");
         }
 
-        Set<String> nomesP7sEsperados = new LinkedHashSet<>();
-        for (ProjudiPeticaoArquivoEntity arquivo : pendentes) {
-            nomesP7sEsperados.add(AssinadorNomeCanonicoUtil.nomeP7sEsperado(arquivo).toLowerCase(Locale.ROOT));
-        }
-
-        List<ArquivoAssinadoRecebido> recebidos = converterP7s(arquivosP7s, nomesP7sEsperados, pendentes.size());
-        List<ItemAssinado> itens = peticaoAssinaturaService.receberAssinados(recebidos);
+        List<ArquivoAssinadoRecebido> recebidos = converterP7s(arquivosP7s, pendentes.size());
+        List<ItemAssinado> itens = peticaoAssinaturaService.receberAssinados(recebidos, false, lote.getPeticaoIds());
 
         ObjectNode resultado = objectMapper.createObjectNode();
         ArrayNode detalhes = resultado.putArray("itens");
@@ -180,8 +175,7 @@ public class AssinadorApiService {
         return arquivo;
     }
 
-    private static List<ArquivoAssinadoRecebido> converterP7s(
-            List<MultipartFile> arquivosP7s, Set<String> nomesEsperados, int quantidadeEsperada) {
+    private static List<ArquivoAssinadoRecebido> converterP7s(List<MultipartFile> arquivosP7s, int quantidadeEsperada) {
         if (arquivosP7s == null || arquivosP7s.isEmpty()) {
             throw new BusinessRuleException("Envie ao menos um arquivo .p7s em arquivosP7s.");
         }
@@ -196,10 +190,6 @@ public class AssinadorApiService {
                 throw new BusinessRuleException("Apenas arquivos .p7s são aceitos: " + nome);
             }
             String nomeNorm = Path.of(nome).getFileName().toString().toLowerCase(Locale.ROOT);
-            if (!nomesEsperados.contains(nomeNorm)) {
-                throw new BusinessRuleException(
-                        "Arquivo .p7s com nome inesperado: " + nome + ". Esperados: " + nomesEsperados);
-            }
             if (!enviados.add(nomeNorm)) {
                 throw new BusinessRuleException("Arquivo duplicado no envio: " + nome);
             }

@@ -113,7 +113,7 @@ class AssinadorApiServiceTest {
 
         MockMultipartFile p7s =
                 new MockMultipartFile("arquivosP7s", "100_1_deadbeef.pdf.p7s", "application/pkcs7-signature", new byte[] {1, 2});
-        when(peticaoAssinaturaService.receberAssinados(any())).thenReturn(List.of(
+        when(peticaoAssinaturaService.receberAssinados(any(), eq(false), eq(List.of(100L)))).thenReturn(List.of(
                 new ItemAssinado(
                         "100_1_deadbeef.pdf.p7s",
                         ProjudiPeticaoAssinaturaService.ResultadoPareamento.PAREADO,
@@ -124,7 +124,7 @@ class AssinadorApiServiceTest {
         AssinadorConcluirResponse resp = service.concluirLote(10L, ASSINADOR_ID, List.of(p7s));
 
         ArgumentCaptor<List<ArquivoAssinadoRecebido>> captor = ArgumentCaptor.forClass(List.class);
-        verify(peticaoAssinaturaService).receberAssinados(captor.capture());
+        verify(peticaoAssinaturaService).receberAssinados(captor.capture(), eq(false), eq(List.of(100L)));
         assertThat(captor.getValue()).hasSize(1);
         verify(assinaturaLoteService).concluirLote(eq(10L), any());
         assertThat(resp.status()).isEqualTo(AssinaturaLoteStatus.CONCLUIDO.name());

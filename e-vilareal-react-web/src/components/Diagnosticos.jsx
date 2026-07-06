@@ -678,8 +678,12 @@ export function Diagnosticos() {
     return String(prepararAssinarCredencialId || '').trim();
   }
 
-  function aplicarStatusLoteAssinatura(status) {
+    function aplicarStatusLoteAssinatura(status) {
     const st = String(status?.status ?? '').toUpperCase();
+    if (st === 'PREPARANDO') {
+      setAssinarAutomaticoFase('preparando');
+      return false;
+    }
     if (st === 'CONCLUIDO') {
       setAssinarAutomaticoFase('concluido');
       setAssinarAutomaticoPeticaoCount((prev) =>
@@ -705,6 +709,9 @@ export function Diagnosticos() {
     }
     if (st === 'LIBERADO' || st === 'EM_ASSINATURA') {
       setAssinarAutomaticoFase('aguardando');
+      if (Array.isArray(status?.peticaoIds) && status.peticaoIds.length > 0) {
+        setAssinarAutomaticoPeticaoCount(status.peticaoIds.length);
+      }
     }
     return false;
   }
@@ -725,7 +732,7 @@ export function Diagnosticos() {
   async function iniciarAssinarAutomatico() {
     if (!resultadoAguardandoProtocolo.length || assinarAutomaticoAtivo) return;
     setModalAssinarAutomaticoAberto(true);
-    setAssinarAutomaticoFase('preparando');
+    setAssinarAutomaticoFase('');
     setAssinarAutomaticoErro('');
     setAssinarAutomaticoErroCodigo('');
     setAssinarAutomaticoLoteId(null);
@@ -743,10 +750,10 @@ export function Diagnosticos() {
       if (loteId == null) {
         throw new Error('Resposta inválida: loteId ausente.');
       }
-      const qtd = Array.isArray(resp?.peticaoIds) ? resp.peticaoIds.length : 0;
       setAssinarAutomaticoLoteId(loteId);
-      setAssinarAutomaticoPeticaoCount(qtd);
-      setAssinarAutomaticoFase('aguardando');
+      if (Array.isArray(resp?.peticaoIds) && resp.peticaoIds.length > 0) {
+        setAssinarAutomaticoPeticaoCount(resp.peticaoIds.length);
+      }
       iniciarPollingLoteAssinatura(loteId);
     } catch (e) {
       setAssinarAutomaticoFase('erro');
@@ -2223,12 +2230,13 @@ export function Diagnosticos() {
               </button>
             </div>
             <div className="px-4 py-5 space-y-4 text-sm text-slate-700">
-              {assinarAutomaticoFase === 'preparando' ? (
+              {assinarAutomaticoFase === 'preparando' || (!assinarAutomaticoFase && assinarAutomaticoAtivo) ? (
                 <div className="flex flex-col items-center gap-3 py-4 text-center">
                   <Loader2 className="h-8 w-8 animate-spin text-violet-600" aria-hidden />
                   <p className="font-medium text-slate-800">Preparando…</p>
                   <p className="text-xs text-slate-500">
                     Buscando PDFs no Drive e enfileirando lote para o assinador local.
+                    {assinarAutomaticoLoteId != null ? ` · Lote #${assinarAutomaticoLoteId}` : ''}
                   </p>
                 </div>
               ) : null}

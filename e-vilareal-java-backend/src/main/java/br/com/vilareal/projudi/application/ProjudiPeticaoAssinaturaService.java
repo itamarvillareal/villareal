@@ -89,18 +89,29 @@ public class ProjudiPeticaoAssinaturaService {
 
     @Transactional
     public List<ItemAssinado> receberAssinados(List<ArquivoAssinadoRecebido> arquivos) {
-        return receberAssinados(arquivos, false);
+        return receberAssinados(arquivos, false, null);
     }
 
     @Transactional
     public List<ItemAssinado> receberAssinados(List<ArquivoAssinadoRecebido> arquivos, boolean substituirConflitos) {
+        return receberAssinados(arquivos, substituirConflitos, null);
+    }
+
+    /**
+     * @param peticaoIdsEscopo quando informado, restringe o pareamento por hash aos arquivos deste lote
+     *     (evita ambiguidade com preparações pendentes de outras tentativas).
+     */
+    @Transactional
+    public List<ItemAssinado> receberAssinados(
+            List<ArquivoAssinadoRecebido> arquivos, boolean substituirConflitos, List<Long> peticaoIdsEscopo) {
         if (arquivos == null || arquivos.isEmpty()) {
             throw new IllegalArgumentException("arquivos é obrigatório (ao menos um .p7s).");
         }
 
+        Set<Long> escopo = normalizarEscopoPeticaoIds(peticaoIdsEscopo);
         List<ItemAssinado> resultados = new ArrayList<>(arquivos.size());
         for (ArquivoAssinadoRecebido item : arquivos) {
-            resultados.add(processarArquivoAssinado(item, substituirConflitos));
+            resultados.add(processarArquivoAssinado(item, substituirConflitos, escopo));
         }
         return resultados;
     }
@@ -139,7 +150,8 @@ public class ProjudiPeticaoAssinaturaService {
         }
     }
 
-    private ItemAssinado processarArquivoAssinado(ArquivoAssinadoRecebido item, boolean substituirConflitos) {
+    private ItemAssinado processarArquivoAssinado(
+            ArquivoAssinadoRecebido item, boolean substituirConflitos, Set<Long> peticaoIdsEscopo) {
         String nome = item.nome() != null ? item.nome() : "";
         byte[] p7sBytes = item.p7sBytes();
         if (p7sBytes == null || p7sBytes.length == 0) {
@@ -162,10 +174,10 @@ public class ProjudiPeticaoAssinaturaService {
 
         String sha = validacao.sha256ConteudoEmbutido();
         Optional<RefCanonicaNome> refNome = parseRefCanonicaDoNome(nome);
-        List<ProjudiPeticaoArquivoEntity> pendentes =
-                arquivoRepository.findByPdfSha256AndStatus(sha, STATUS_ARQUIVO_PENDENTE);
-        List<ProjudiPeticaoArquivoEntity> jaAssinados =
-                arquivoRepository.findByPdfSha256AndStatus(sha, STATUS_ARQUIVO_ASSINADO);
+        List<ProjudiPeticaoArquivoEntity> pendentes = filtrarPorEscopoPeticao(
+                arquivoRepository.findByPdfSha256AndStatus(sha, STATUS_ARQUIVO_PENDENTE), peticaoIdsEscopo);
+        List<ProjudiPeticaoArquivoEntity> jaAssinados = filtrarPorEscopoPeticao(
+                arquivoRepository.findByPdfSha256AndStatus(sha, STATUS_ARQUIVO_ASSINADO), peticaoIdsEscopo);
 
         Optional<ProjudiPeticaoArquivoEntity> alvoPendente =
                 escolherArquivo(pendentes, refNome, substituirConflitos);
@@ -261,6 +273,31 @@ public class ProjudiPeticaoAssinaturaService {
         }
         String base = Path.of(pdfRef).getFileName().toString().toLowerCase(Locale.ROOT);
         return base.contains(ref.peticaoId() + "_" + ref.ordem() + "_" + ref.sha8());
+    }
+
+    private static Set<Long> normalizarEscopoPeticaoIds(List<Long> peticaoIdsEscopo) {
+        if (peticaoIdsEscopo == null || peticaoIdsEscopo.isEmpty()) {
+            return Set.of();
+        }
+        Set<Long> escopo = new HashSet<>();
+        for (Long id : peticaoIdsEscopo) {
+            if (id != null) {
+                escopo.add(id);
+            }
+        }
+        return escopo;
+    }
+
+    private static List<ProjudiPeticaoArquivoEntity> filtrarPorEscopoPeticao(
+            List<ProjudiPeticaoArquivoEntity> candidatos, Set<Long> peticaoIdsEscopo) {
+        if (peticaoIdsEscopo == null || peticaoIdsEscopo.isEmpty()) {
+            return candidatos;
+        }
+        return candidatos.stream()
+                .filter(a -> a.getPeticao() != null
+                        && a.getPeticao().getId() != null
+                        && peticaoIdsEscopo.contains(a.getPeticao().getId()))
+                .toList();
     }
 
     private void gravarAssinaturaNoArquivo(ProjudiPeticaoArquivoEntity arquivo, byte[] p7sBytes, String shaConteudo) {

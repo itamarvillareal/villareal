@@ -5,6 +5,7 @@ import br.com.vilareal.assinador.infrastructure.persistence.entity.AssinaturaLot
 import br.com.vilareal.assinador.infrastructure.persistence.repository.AssinaturaLoteRepository;
 import br.com.vilareal.common.exception.BusinessRuleException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -25,6 +26,57 @@ public class AssinaturaLoteService {
     public AssinaturaLoteService(AssinaturaLoteRepository repository, Clock clock) {
         this.repository = repository;
         this.clock = clock;
+    }
+
+    /** Cria lote vazio em preparo assíncrono (petição ids preenchidos após Drive). */
+    @Transactional
+    public AssinaturaLoteEntity criarLoteEmPreparacao(Long credencialId, JsonNode metaPreparo) {
+        if (credencialId == null) {
+            throw new BusinessRuleException("credencialId é obrigatório.");
+        }
+        AssinaturaLoteEntity lote = new AssinaturaLoteEntity();
+        lote.setStatus(AssinaturaLoteStatus.PREPARANDO);
+        lote.setPeticaoIds(new ArrayList<>());
+        lote.setCredencialId(credencialId);
+        lote.setResultadoJson(metaPreparo);
+        return repository.save(lote);
+    }
+
+    @Transactional
+    public AssinaturaLoteEntity concluirPreparacao(Long loteId, List<Long> peticaoIds, int totalArquivos) {
+        AssinaturaLoteEntity lote = buscarObrigatorio(loteId);
+        exigirStatus(lote, AssinaturaLoteStatus.PREPARANDO, "concluir preparação");
+        List<Long> ids = normalizarPeticaoIds(peticaoIds);
+        if (ids.isEmpty()) {
+            throw new BusinessRuleException("Nenhuma petição após preparo.");
+        }
+        lote.setPeticaoIds(ids);
+        lote.setStatus(AssinaturaLoteStatus.LIBERADO);
+        JsonNode meta = lote.getResultadoJson();
+        if (meta != null && meta.isObject()) {
+            ObjectNode obj = (ObjectNode) meta;
+            obj.put("totalArquivos", totalArquivos);
+        }
+        lote.setErroCodigo(null);
+        lote.setErroMensagem(null);
+        return repository.save(lote);
+    }
+
+    @Transactional
+    public AssinaturaLoteEntity falharPreparacao(Long loteId, String codigo, String mensagem) {
+        if (!StringUtils.hasText(codigo)) {
+            throw new BusinessRuleException("erro_codigo é obrigatório.");
+        }
+        if (!StringUtils.hasText(mensagem)) {
+            throw new BusinessRuleException("erro_mensagem é obrigatório.");
+        }
+        AssinaturaLoteEntity lote = buscarObrigatorio(loteId);
+        exigirStatus(lote, AssinaturaLoteStatus.PREPARANDO, "falhar preparação");
+        lote.setStatus(AssinaturaLoteStatus.ERRO);
+        lote.setErroCodigo(codigo.trim());
+        lote.setErroMensagem(mensagem.trim());
+        limparLock(lote);
+        return repository.save(lote);
     }
 
     @Transactional
