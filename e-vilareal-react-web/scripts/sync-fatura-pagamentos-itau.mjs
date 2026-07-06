@@ -75,6 +75,40 @@ async function deletarLancamentoCartao(token, baseUrl, id) {
   return res.status;
 }
 
+/** Remove compras legado (PLANILHA etc.) com competência dia 10 quando o mês já tem FATURA_PDF no dia 25. */
+async function limparComprasLegadoMcDia10(opts, token, mc, fats) {
+  const lista = await listarLancamentosCartao(token, opts.baseUrl, mc.id);
+  const mesesPdf25 = new Set(
+    lista
+      .filter((l) => String(l.origem) === 'FATURA_PDF')
+      .map((l) => String(l.dataCompetencia ?? '').slice(0, 7))
+      .filter((ym) => ym.length === 7),
+  );
+  const candidatos = lista.filter((l) => {
+    if (/^AUTO-FAT-/i.test(String(l.numeroLancamento ?? ''))) return false;
+    if (String(l.origem) === 'FATURA_PDF') return false;
+    const comp = String(l.dataCompetencia ?? '').slice(0, 10);
+    if (!comp || !comp.endsWith('-10')) return false;
+    const ym = comp.slice(0, 7);
+    return mesesPdf25.has(ym);
+  });
+  console.log(`\n[1b] Compras legado MC (competência dia 10, mês com PDF dia 25): ${candidatos.length}`);
+  let removidos = 0;
+  let erros = 0;
+  for (const l of candidatos) {
+    if (opts.dryRun) {
+      console.log(`  [dry-run] DELETE compra id=${l.id} ${String(l.dataCompetencia).slice(0, 10)} ${l.origem}`);
+      removidos += 1;
+      continue;
+    }
+    const status = await deletarLancamentoCartao(token, opts.baseUrl, l.id);
+    if (status === 204) removidos += 1;
+    else erros += 1;
+  }
+  console.log(`  → ${removidos} removido(s), ${erros} erro(s)`);
+  return { removidos, erros };
+}
+
 async function executarFechamento(token, baseUrl) {
   const res = await fetch(`${baseUrl}/api/financeiro/cartoes/fechamento-fatura/executar`, {
     method: 'POST',
@@ -270,7 +304,10 @@ async function main() {
   const visa = cartoes.find((c) => c.nome === 'Visa');
   if (!mc || !visa) throw new Error('Cartões Visa / Mastercard Black não encontrados');
 
-  if (!opts.skipLimpar) await limparAutoFatLegadoMc(opts, token, mc);
+  if (!opts.skipLimpar) {
+    await limparComprasLegadoMcDia10(opts, token, mc);
+    await limparAutoFatLegadoMc(opts, token, mc);
+  }
   if (!opts.skipFechamento) await recalcularFechamento(opts, token);
   if (!opts.skipVinculos) await vincularVisa(opts, token, visa);
 
