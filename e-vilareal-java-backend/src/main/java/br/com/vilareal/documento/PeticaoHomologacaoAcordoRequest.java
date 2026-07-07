@@ -14,7 +14,9 @@ public record PeticaoHomologacaoAcordoRequest(
         String totalGeral,
         List<PeticaoExecucaoRequest.TituloDto> titulos,
         List<BoletoParcelaDto> boletos,
-        ClausulasHomologacaoDto clausulas) {
+        ClausulasHomologacaoDto clausulas,
+        /** Texto HTML editado na prévia (substitui a montagem automática do corpo). */
+        PeticaoHomologacaoAcordoConteudoPreview conteudoEditado) {
 
     public record BoletoParcelaDto(String valorParcela, String vencimento) {}
 

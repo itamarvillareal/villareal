@@ -407,12 +407,29 @@ public class DocumentoController {
         return respostaPdf(nomeArquivo, pdf, false);
     }
 
+    @PostMapping("/peticao-homologacao-acordo/preview-conteudo")
+    public PeticaoHomologacaoAcordoConteudoPreview previewConteudoPeticaoHomologacaoAcordo(
+            @RequestBody PeticaoHomologacaoAcordoRequest request) {
+        return peticaoHomologacaoAcordoService.montarConteudoPreview(request);
+    }
+
+    @PostMapping("/peticao-homologacao-acordo/preview-pdf")
+    public ResponseEntity<byte[]> previewPdfPeticaoHomologacaoAcordo(
+            @RequestBody PeticaoHomologacaoAcordoPreviewPdfRequest request) {
+        byte[] pdf = peticaoHomologacaoAcordoService.gerarPdfPreview(request);
+        return respostaPdf("01.Homologatoria de Acordo_preview.pdf", pdf, true);
+    }
+
     @PostMapping("/peticao-homologacao-acordo")
-    public ResponseEntity<byte[]> peticaoHomologacaoAcordo(@RequestBody PeticaoHomologacaoAcordoRequest request) {
+    public ResponseEntity<byte[]> peticaoHomologacaoAcordo(
+            @RequestBody PeticaoHomologacaoAcordoRequest request,
+            @RequestParam(value = "preview", required = false, defaultValue = "false") boolean preview) {
         byte[] pdf = peticaoHomologacaoAcordoService.gerar(request);
         String nomeArquivo = "01.Homologatoria de Acordo.pdf";
-        salvarPdfNoDriveAsync(pdf, nomeArquivo, null, null, null, TipoDocumento.PETICAO);
-        return respostaPdf(nomeArquivo, pdf, false);
+        if (!preview) {
+            salvarPdfNoDriveAsync(pdf, nomeArquivo, null, null, null, TipoDocumento.PETICAO);
+        }
+        return respostaPdf(nomeArquivo, pdf, preview);
     }
 
     /**

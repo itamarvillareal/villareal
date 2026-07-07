@@ -66,7 +66,7 @@ export function ModalHomologacaoAcordo({
               Homologatória de Acordo
             </h2>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-              Revise cláusulas e forma de pagamento antes de gerar o PDF.
+              Revise cláusulas e forma de pagamento antes de visualizar a prévia do PDF.
             </p>
           </div>
           <button
@@ -242,10 +242,10 @@ export function ModalHomologacaoAcordo({
             {loading ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                Gerando…
+                Gerando prévia…
               </>
             ) : (
-              'Gerar PDF'
+              'Visualizar prévia'
             )}
           </button>
         </div>

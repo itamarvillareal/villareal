@@ -128,6 +128,7 @@ public final class HomologacaoAcordoTextoBuilder {
     public static String montarCorpoPedidos(ClausulasConfig clausulas) {
         StringBuilder sb = new StringBuilder();
         sb.append("<p class=\"titulo\">DOS PEDIDOS</p>");
+        sb.append("<p class=\"paragrafo\">Diante do exposto, requer de Vossa Excelência:</p>");
         sb.append("<p class=\"pedido\">Seja o acordo noticiado homologado por sentença, para que ")
                 .append("surta seus efeitos jurídicos e legais, sendo o feito extinto com resolução do mérito, com ")
                 .append("fulcro no artigo 487, inciso III, alínea ”b)“ do Código de Processo Civil.</p>");
@@ -162,7 +163,7 @@ public final class HomologacaoAcordoTextoBuilder {
             if (venc.isEmpty() || valor.compareTo(BigDecimal.ZERO) <= 0) {
                 continue;
             }
-            partes.add(esc(venc) + " no valor de " + formatBRL(valor));
+            partes.add("<span class=\"data-unica\">" + esc(venc) + "</span> no valor de " + formatBRL(valor));
         }
         return juntarComPontoVirgula(partes);
     }
@@ -177,7 +178,7 @@ public final class HomologacaoAcordoTextoBuilder {
             String venc = nz(b.vencimento()).trim();
             String extenso = ValorExtensoUtil.reaisPorExtenso(b.valor());
             partes.add(n + "º boleto no valor de " + formatBRL(b.valor()) + " (" + esc(extenso) + ")"
-                    + (venc.isEmpty() ? "" : ", com vencimento em " + esc(venc)));
+                    + (venc.isEmpty() ? "" : ", com vencimento em <span class=\"data-unica\">" + esc(venc) + "</span>"));
             n++;
         }
         return juntarComPontoVirgula(partes);
@@ -213,7 +214,9 @@ public final class HomologacaoAcordoTextoBuilder {
         if (ext.isEmpty()) {
             ext = ValorExtensoUtil.reaisPorExtenso(valor);
         }
-        return "<span class=\"valor-monetario\">" + esc(formatBRL(valor)) + "</span> (" + esc(ext) + ")";
+        return "<span class=\"valor-monetario\"><span class=\"valor-monetario-num\">"
+                + esc(formatBRL(valor))
+                + "</span> (" + esc(ext) + ")</span>";
     }
 
     private static String juntarComPontoVirgula(List<String> partes) {

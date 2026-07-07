@@ -30,6 +30,7 @@
             margin: 16pt 0 0 0;
         }
 
+        /* Autos — logo abaixo do endereçamento (sem recuo de 195pt da execução) */
         .autos,
         p.autos {
             font-family: Arial, sans-serif;
@@ -37,17 +38,24 @@
             text-align: justify;
             text-indent: 4.0cm;
             line-height: 1.21;
-            margin: 195pt 0 12pt 0;
+            margin: 12pt 0 12pt 0;
         }
 
-        .qualificacao-interlocutoria,
-        p.qualificacao-interlocutoria {
+        .qualificacao {
+            font-family: Arial, sans-serif;
+            font-size: 13pt;
+            line-height: 1.21;
+            margin: 0 0 18pt 0;
+        }
+
+        .qualificacao .qualificacao-parte,
+        p.qualificacao-parte {
             font-family: Arial, sans-serif;
             font-size: 13pt;
             text-align: justify;
             text-indent: 4.0cm;
             line-height: 1.21;
-            margin: 0 0 18pt 0;
+            margin: 0;
         }
 
         .corpo {
@@ -111,23 +119,57 @@
         .fecho {
             font-family: "Arial Unicode MS", Arial, sans-serif;
             font-size: 12pt;
+            text-align: justify;
             line-height: 1.21;
             margin-top: 24pt;
         }
 
-        .fecho .fecho-termos {
-            text-align: justify;
-            text-indent: 4.0cm;
-            margin: 0 0 12pt 0;
+        .fecho .fecho-termos,
+        p.fecho-termos {
+            margin: 0;
+            padding: 0;
+            line-height: 1.21;
+            text-indent: 0;
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
+
+        .fecho .fecho-local-data {
+            text-align: center;
+            margin-top: 18pt;
+            page-break-after: avoid;
+        }
+
+        .fecho .assinatura-bloco {
+            text-align: center;
+            margin-top: 28pt;
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
+
+        .fecho .assinatura-bloco .assinatura-nome {
+            font-weight: bold;
+            margin: 0;
+        }
+
+        .fecho .assinatura-bloco .assinatura-doc {
+            font-weight: bold;
+            margin: 0;
         }
 
         .valor-monetario {
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+        }
+
+        .valor-monetario-num,
+        .data-unica {
             white-space: nowrap;
         }
 
-        .corpo em, .qualificacao-interlocutoria em, .fecho em { font-style: italic; }
-        .corpo strong, .qualificacao-interlocutoria strong, .fecho strong { font-weight: bold; }
-        .corpo u, .qualificacao-interlocutoria u, .fecho u { text-decoration: underline; }
+        .corpo em, .qualificacao em, .fecho em { font-style: italic; }
+        .corpo strong, .qualificacao strong, .fecho strong { font-weight: bold; }
+        .corpo u, .qualificacao u, .fecho u { text-decoration: underline; }
     </style>
 </head>
 <body>
@@ -137,15 +179,23 @@
 
 <div class="corpo-documento">
 
+    <th:block th:if="${corpoUnicoHtml != null and !#strings.isEmpty(corpoUnicoHtml)}">
+        <div th:utext="${corpoUnicoHtml}">Corpo editado</div>
+    </th:block>
+
+    <th:block th:unless="${corpoUnicoHtml != null and !#strings.isEmpty(corpoUnicoHtml)}">
     <p class="enderecamento" th:utext="${enderecamentoHtml}">ENDEREÇAMENTO</p>
 
-    <p class="autos" th:if="${autosHtml != null and !#strings.isEmpty(autosHtml)}" th:utext="${autosHtml}">Autos nº</p>
+    <p class="autos"
+       th:if="${autosHtml != null and !#strings.isEmpty(autosHtml)}"
+       th:utext="${autosHtml}">Autos nº</p>
 
-    <div th:utext="${qualificacaoInterlocutorasHtml}">Qualificação interlocutória</div>
+    <div class="qualificacao" th:utext="${qualificacaoInterlocutorasHtml}">Qualificação interlocutória</div>
 
     <div class="corpo" th:utext="${corpoHtml}">Corpo</div>
 
     <div class="fecho" th:utext="${fechoHtml}">Fecho</div>
+    </th:block>
 
 </div>
 

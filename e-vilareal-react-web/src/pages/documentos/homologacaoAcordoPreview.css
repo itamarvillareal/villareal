@@ -1,0 +1,193 @@
+/**
+ * Espelha a formatação do template PDF `peticao-homologacao-acordo.html`
+ * na prévia editável (contentEditable).
+ */
+.doc-homologacao-preview,
+.doc-homologacao-editor-surface .doc-homologacao-preview {
+  box-sizing: border-box;
+  font-family: 'Arial Unicode MS', Arial, sans-serif;
+  font-size: 12pt;
+  line-height: 1.21;
+  color: #000;
+}
+
+.doc-homologacao-preview .corpo-documento,
+.doc-homologacao-editor-surface .corpo-documento {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  padding-left: 15mm;
+  padding-right: 2mm;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  counter-reset: cap pedido-counter;
+}
+
+.doc-homologacao-preview p,
+.doc-homologacao-editor-surface .doc-homologacao-preview p {
+  margin: 0;
+  padding: 0;
+}
+
+.doc-homologacao-preview .enderecamento,
+.doc-homologacao-editor-surface .enderecamento {
+  font-family: 'Arial Unicode MS', Arial, sans-serif;
+  font-size: 12pt;
+  text-align: justify;
+  text-transform: uppercase;
+  font-weight: bold;
+  text-indent: 0;
+  line-height: 1.21;
+  margin: 16pt 0 0;
+}
+
+.doc-homologacao-preview .autos,
+.doc-homologacao-preview p.autos,
+.doc-homologacao-editor-surface .autos {
+  font-family: Arial, sans-serif;
+  font-size: 13pt;
+  text-align: justify;
+  text-indent: 4cm;
+  line-height: 1.21;
+  margin: 12pt 0;
+}
+
+.doc-homologacao-preview .qualificacao,
+.doc-homologacao-editor-surface .qualificacao {
+  font-family: Arial, sans-serif;
+  font-size: 13pt;
+  line-height: 1.21;
+  margin: 0 0 18pt;
+}
+
+.doc-homologacao-preview .qualificacao-parte,
+.doc-homologacao-preview p.qualificacao-parte,
+.doc-homologacao-editor-surface .qualificacao-parte {
+  font-family: Arial, sans-serif;
+  font-size: 13pt;
+  text-align: justify;
+  text-indent: 4cm;
+  line-height: 1.21;
+  margin: 0;
+}
+
+.doc-homologacao-preview .corpo,
+.doc-homologacao-editor-surface .corpo {
+  font-family: 'Arial Unicode MS', Arial, sans-serif;
+  font-size: 12pt;
+  line-height: 1.21;
+}
+
+.doc-homologacao-preview .titulo,
+.doc-homologacao-preview p.titulo,
+.doc-homologacao-editor-surface .titulo {
+  font-family: 'Arial Unicode MS', Arial, sans-serif;
+  font-size: 12pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  text-align: left;
+  text-indent: 0;
+  line-height: 1.21;
+  margin-top: 24pt;
+  margin-bottom: 12pt;
+  counter-increment: cap;
+  counter-reset: pedido-counter;
+}
+
+.doc-homologacao-preview .titulo::before,
+.doc-homologacao-preview p.titulo::before,
+.doc-homologacao-editor-surface .titulo::before {
+  content: counter(cap) '. ';
+  font-weight: bold;
+}
+
+.doc-homologacao-preview .paragrafo,
+.doc-homologacao-preview p.paragrafo,
+.doc-homologacao-editor-surface .paragrafo {
+  font-family: 'Arial Unicode MS', Arial, sans-serif;
+  font-size: 12pt;
+  text-align: justify;
+  text-indent: 4cm;
+  line-height: 1.21;
+  margin-top: 12pt;
+  margin-bottom: 12pt;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+.doc-homologacao-preview .pedido,
+.doc-homologacao-preview p.pedido,
+.doc-homologacao-editor-surface .pedido {
+  font-family: 'Arial Unicode MS', Arial, sans-serif;
+  font-size: 12pt;
+  text-align: justify;
+  text-indent: 4cm;
+  line-height: 1.21;
+  margin-top: 9pt;
+  margin-bottom: 9pt;
+  counter-increment: pedido-counter;
+}
+
+.doc-homologacao-preview .pedido::before,
+.doc-homologacao-preview p.pedido::before,
+.doc-homologacao-editor-surface .pedido::before {
+  content: counter(pedido-counter, lower-alpha) ') ';
+  font-weight: normal;
+}
+
+.doc-homologacao-preview .fecho,
+.doc-homologacao-editor-surface .fecho {
+  font-family: 'Arial Unicode MS', Arial, sans-serif;
+  font-size: 12pt;
+  text-align: justify;
+  line-height: 1.21;
+  margin-top: 24pt;
+}
+
+.doc-homologacao-preview .fecho-termos,
+.doc-homologacao-preview p.fecho-termos,
+.doc-homologacao-editor-surface .fecho-termos {
+  margin: 0;
+  padding: 0;
+  line-height: 1.21;
+  text-indent: 0;
+}
+
+.doc-homologacao-preview .fecho-local-data,
+.doc-homologacao-preview p.fecho-local-data,
+.doc-homologacao-editor-surface .fecho-local-data {
+  text-align: center;
+  margin-top: 18pt;
+}
+
+.doc-homologacao-preview .assinatura-bloco,
+.doc-homologacao-editor-surface .assinatura-bloco {
+  text-align: center;
+  margin-top: 28pt;
+}
+
+.doc-homologacao-preview .assinatura-nome,
+.doc-homologacao-preview p.assinatura-nome,
+.doc-homologacao-editor-surface .assinatura-nome {
+  font-weight: bold;
+  margin: 0;
+}
+
+.doc-homologacao-preview .assinatura-doc,
+.doc-homologacao-preview p.assinatura-doc,
+.doc-homologacao-editor-surface .assinatura-doc {
+  font-weight: bold;
+  margin: 0;
+}
+
+.doc-homologacao-preview .valor-monetario-num,
+.doc-homologacao-preview .data-unica,
+.doc-homologacao-editor-surface .valor-monetario-num,
+.doc-homologacao-editor-surface .data-unica {
+  white-space: nowrap;
+}
+
+.doc-homologacao-preview mark,
+.doc-homologacao-editor-surface mark {
+  background-color: #fef08a;
+}

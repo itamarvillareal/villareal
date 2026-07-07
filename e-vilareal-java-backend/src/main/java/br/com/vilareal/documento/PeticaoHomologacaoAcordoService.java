@@ -53,6 +53,52 @@ public class PeticaoHomologacaoAcordoService {
         if (req == null || req.processoId() == null) {
             throw new IllegalArgumentException("processoId é obrigatório");
         }
+        if (req.conteudoEditado() != null && StringUtils.hasText(req.conteudoEditado().corpoUnico())) {
+            return gerarPdfFromConteudo(req.conteudoEditado(), req.processoId());
+        }
+        return gerarPdfFromVariaveis(resolverVariaveis(req), req.processoId());
+    }
+
+    @Transactional(readOnly = true)
+    public PeticaoHomologacaoAcordoConteudoPreview montarConteudoPreview(PeticaoHomologacaoAcordoRequest req) {
+        if (req == null || req.processoId() == null) {
+            throw new IllegalArgumentException("processoId é obrigatório");
+        }
+        return new PeticaoHomologacaoAcordoConteudoPreview(montarCorpoUnico(resolverVariaveis(req)));
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] gerarPdfPreview(PeticaoHomologacaoAcordoPreviewPdfRequest request) {
+        if (request == null || request.conteudo() == null) {
+            throw new IllegalArgumentException("conteudo é obrigatório");
+        }
+        if (request.processoId() == null) {
+            throw new IllegalArgumentException("processoId é obrigatório");
+        }
+        return gerarPdfFromConteudo(request.conteudo(), request.processoId());
+    }
+
+    private byte[] gerarPdfFromConteudo(PeticaoHomologacaoAcordoConteudoPreview conteudo, Long processoId) {
+        TemaDocumento tema = temaResolver.resolverPorProcessoId(processoId);
+        Map<String, Object> vars = new HashMap<>();
+        vars.put("corpoUnicoHtml", DocumentoReformatarCorpoUnicoHtml.extrairHtmlParaPdf(conteudo.corpoUnico()));
+        return pdfService.gerarPdfDeTemplate("documentos/peticao-homologacao-acordo", vars, tema);
+    }
+
+    private byte[] gerarPdfFromVariaveis(VariaveisHomologacao vars, Long processoId) {
+        TemaDocumento tema = temaResolver.resolverPorProcessoId(processoId);
+        Map<String, Object> variables = new HashMap<>();
+        variables.put("enderecamentoHtml", vars.enderecamentoHtml());
+        variables.put("autosHtml", vars.autosHtml());
+        variables.put("qualificacaoInterlocutorasHtml", vars.qualificacaoInterlocutorasHtml());
+        variables.put("corpoHtml", vars.corpoHtml());
+        variables.put("fechoHtml", vars.fechoHtml());
+        variables.put("advogadoNome", vars.advogadoNome());
+        variables.put("advogadoOab", vars.advogadoOab());
+        return pdfService.gerarPdfDeTemplate("documentos/peticao-homologacao-acordo", variables, tema);
+    }
+
+    private VariaveisHomologacao resolverVariaveis(PeticaoHomologacaoAcordoRequest req) {
         if (req.boletos() == null || req.boletos().isEmpty()) {
             throw new IllegalArgumentException("Informe ao menos um boleto no plano de pagamento.");
         }
@@ -106,33 +152,46 @@ public class PeticaoHomologacaoAcordoService {
         String localData = pdfService.montarLocalData(cidadeEstado, data);
         String advogadoNome = tema.advogadoNomeEfetivo();
         String advogadoOab = tema.advogadoOabEfetivo();
-        String nomeCliente = nomeSimples(autores).toUpperCase(Locale.ROOT);
-        String cnpjCliente = resolverCnpjCliente(autores);
 
-        String fechoHtml = "<p class=\"fecho-termos\">Nestes termos,<br/>Pede deferimento.</p>"
-                + "<p style=\"text-align:center;margin-top:18pt;\">" + esc(localData) + "</p>"
-                + "<p style=\"text-align:center;margin-top:36pt;font-weight:bold;margin-bottom:0;\">"
-                + esc(advogadoNome) + "</p>"
-                + "<p style=\"text-align:center;font-weight:bold;margin:0;\">" + esc(advogadoOab) + "</p>";
-        if (!nomeCliente.isEmpty()) {
-            fechoHtml += "<p style=\"text-align:center;margin-top:36pt;font-weight:bold;margin-bottom:0;\">"
-                    + esc(nomeCliente) + "</p>";
-            if (!cnpjCliente.isEmpty()) {
-                fechoHtml += "<p style=\"text-align:center;font-weight:bold;margin:0;\">CNPJ "
-                        + esc(cnpjCliente) + "</p>";
-            }
-        }
+        String fechoHtml = montarFechoHomologacaoHtml(localData, advogadoNome, advogadoOab, autores, reus);
 
-        Map<String, Object> vars = new HashMap<>();
-        vars.put("enderecamentoHtml", enderecamentoHtml);
-        vars.put("autosHtml", autosHtml);
-        vars.put("qualificacaoInterlocutorasHtml", qualificacaoInterlocutorasHtml);
-        vars.put("corpoHtml", corpoHtml);
-        vars.put("fechoHtml", fechoHtml);
-        vars.put("advogadoNome", advogadoNome);
-        vars.put("advogadoOab", advogadoOab);
-        return pdfService.gerarPdfDeTemplate("documentos/peticao-homologacao-acordo", vars, tema);
+        return new VariaveisHomologacao(
+                enderecamentoHtml,
+                autosHtml,
+                qualificacaoInterlocutorasHtml,
+                corpoHtml,
+                fechoHtml,
+                advogadoNome,
+                advogadoOab);
     }
+
+    static String montarCorpoUnico(VariaveisHomologacao vars) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<div class=\"doc-edicao-preview doc-homologacao-preview\">");
+        sb.append(DocumentoReformatarCorpoUnicoHtml.montarCabecalhoEdicaoPreview(
+                vars.advogadoNome(), vars.advogadoOab()));
+        sb.append("<div class=\"corpo-documento\">");
+        sb.append("<p class=\"enderecamento\">").append(vars.enderecamentoHtml()).append("</p>");
+        if (StringUtils.hasText(vars.autosHtml())) {
+            sb.append("<p class=\"autos\">").append(vars.autosHtml()).append("</p>");
+        }
+        sb.append("<div class=\"qualificacao\">")
+                .append(vars.qualificacaoInterlocutorasHtml())
+                .append("</div>");
+        sb.append("<div class=\"corpo\">").append(vars.corpoHtml()).append("</div>");
+        sb.append("<div class=\"fecho\">").append(vars.fechoHtml()).append("</div>");
+        sb.append("</div></div>");
+        return sb.toString();
+    }
+
+    private record VariaveisHomologacao(
+            String enderecamentoHtml,
+            String autosHtml,
+            String qualificacaoInterlocutorasHtml,
+            String corpoHtml,
+            String fechoHtml,
+            String advogadoNome,
+            String advogadoOab) {}
 
     static String montarQualificacaoInterlocutoriaHtml(
             List<ProcessoParteEntity> autores, List<ProcessoParteEntity> reus) {
@@ -142,10 +201,90 @@ public class PeticaoHomologacaoAcordoService {
         boolean pluralReu = reus.size() > 1;
         String qualAutor = pluralAutor ? "já devidamente qualificados" : "já devidamente qualificado";
         String qualReu = pluralReu ? "também já devidamente qualificados" : "também já devidamente qualificado";
-        return "<p class=\"qualificacao-interlocutoria\">"
-                + "<strong>" + esc(nomeAutor) + "</strong>, " + qualAutor + " na Ação que move em face de "
-                + "<strong>" + esc(nomeReu) + "</strong>, " + qualReu
+        return "<p class=\"qualificacao-parte\">"
+                + "<strong>" + nbspNome(nomeAutor) + "</strong>, " + qualAutor + " na Ação que move em face de "
+                + "<strong>" + nbspNome(nomeReu) + "</strong>, " + qualReu
                 + ", vem respeitosamente à presença de Vossa Excelência, expor e ao final requerer:</p>";
+    }
+
+    static String montarFechoHomologacaoHtml(
+            String localData,
+            String advogadoNome,
+            String advogadoOab,
+            List<ProcessoParteEntity> autores,
+            List<ProcessoParteEntity> reus) {
+        StringBuilder fecho = new StringBuilder();
+        fecho.append("<p class=\"fecho-termos\">Nestes termos,<br/>Pede deferimento.</p>")
+                .append("<p class=\"fecho-local-data\">")
+                .append(esc(localData))
+                .append("</p>")
+                .append(blocoAssinaturaAdvogado(advogadoNome, advogadoOab));
+        for (ProcessoParteEntity parte : autores) {
+            fecho.append(blocoAssinaturaParte(parte));
+        }
+        for (ProcessoParteEntity parte : reus) {
+            fecho.append(blocoAssinaturaParte(parte));
+        }
+        return fecho.toString();
+    }
+
+    private static String blocoAssinaturaAdvogado(String advogadoNome, String advogadoOab) {
+        return "<div class=\"assinatura-bloco\">"
+                + "<p class=\"assinatura-nome\">"
+                + esc(advogadoNome)
+                + "</p>"
+                + "<p class=\"assinatura-doc\">"
+                + esc(advogadoOab)
+                + "</p>"
+                + "</div>";
+    }
+
+    private static String blocoAssinaturaParte(ProcessoParteEntity parte) {
+        String nome = nomeParte(parte);
+        if (!StringUtils.hasText(nome)) {
+            return "";
+        }
+        DocumentoParte doc = resolverDocumentoParte(parte.getPessoa());
+        StringBuilder bloco = new StringBuilder();
+        bloco.append("<div class=\"assinatura-bloco\">")
+                .append("<p class=\"assinatura-nome\">")
+                .append(esc(nome.toUpperCase(Locale.ROOT)))
+                .append("</p>");
+        if (doc != null) {
+            bloco.append("<p class=\"assinatura-doc\">")
+                    .append(esc(doc.rotulo()))
+                    .append(' ')
+                    .append(esc(doc.valorFormatado()))
+                    .append("</p>");
+        }
+        bloco.append("</div>");
+        return bloco.toString();
+    }
+
+    private static String nomeParte(ProcessoParteEntity parte) {
+        if (parte == null) {
+            return "";
+        }
+        if (parte.getPessoa() != null && StringUtils.hasText(parte.getPessoa().getNome())) {
+            return parte.getPessoa().getNome().trim();
+        }
+        return StringUtils.hasText(parte.getNomeLivre()) ? parte.getNomeLivre().trim() : "";
+    }
+
+    private record DocumentoParte(String rotulo, String valorFormatado) {}
+
+    private static DocumentoParte resolverDocumentoParte(PessoaEntity pessoa) {
+        if (pessoa == null || !StringUtils.hasText(pessoa.getCpf())) {
+            return null;
+        }
+        String digitos = pessoa.getCpf().replaceAll("\\D", "");
+        if (digitos.length() == 14) {
+            return new DocumentoParte("CNPJ", QualificacaoPessoaUtil.formatarCnpj(digitos));
+        }
+        if (digitos.length() == 11) {
+            return new DocumentoParte("CPF", QualificacaoPessoaUtil.formatarCpf(digitos));
+        }
+        return null;
     }
 
     static String montarEnderecamentoPadrao(ProcessoEntity processo) {
@@ -235,18 +374,8 @@ public class PeticaoHomologacaoAcordoService {
         return lista;
     }
 
-    private static String resolverCnpjCliente(List<ProcessoParteEntity> autores) {
-        for (ProcessoParteEntity parte : autores) {
-            PessoaEntity pessoa = parte.getPessoa();
-            if (pessoa == null) {
-                continue;
-            }
-            String doc = nz(pessoa.getCpf()).replaceAll("\\D", "");
-            if (doc.length() == 14) {
-                return QualificacaoPessoaUtil.formatarCnpj(doc);
-            }
-        }
-        return "";
+    private static String nbspNome(String nome) {
+        return esc(nome).replace(" ", "&nbsp;");
     }
 
     private static String nomeSimples(List<ProcessoParteEntity> partes) {

@@ -4,7 +4,12 @@
 
 import { fetchCalculoRodada, fetchCalculoRodadasResumo } from '../repositories/calculosRepository.js';
 import { resolverProcessoId } from '../repositories/processosRepository.js';
-import { gerarPeticaoHomologacaoAcordo, downloadPdfBlob } from '../repositories/documentosRepository.js';
+import {
+  gerarPeticaoHomologacaoAcordo,
+  previewConteudoPeticaoHomologacaoAcordo,
+  previewPdfPeticaoHomologacaoAcordo,
+  downloadPdfBlob,
+} from '../repositories/documentosRepository.js';
 import { padCliente8Config } from '../data/clienteConfigCalculoStorage.js';
 import { carregarCalculoSalvo } from './peticaoExecucaoDeRodada.js';
 import {
@@ -70,10 +75,7 @@ export async function carregarCalculoAceitoHomologacao({
   };
 }
 
-/**
- * Gera o PDF da petição de homologação de acordo.
- */
-export async function gerarPeticaoHomologacaoDeCalculoAceito({
+async function prepararHomologacao({
   codigoCliente,
   numeroInterno,
   dimensao = 0,
@@ -123,6 +125,58 @@ export async function gerarPeticaoHomologacaoDeCalculoAceito({
     clausulas,
   });
 
+  return { dados, body, boletos, carregado };
+}
+
+function paramsHomologacaoComuns(input) {
+  return {
+    codigoCliente: input.codigoCliente,
+    numeroInterno: input.numeroInterno,
+    dimensao: input.dimensao ?? 0,
+    enderecamento: input.enderecamento,
+    dataIso: input.dataIso,
+    numeroCnj: input.numeroCnj,
+    unidade: input.unidade,
+    clausulas: input.clausulas,
+    dadosPreCarregados: input.dadosPreCarregados ?? null,
+  };
+}
+
+/**
+ * Monta o HTML editável da homologatória (corpo único para a prévia).
+ */
+export async function previewConteudoHomologacaoDeCalculoAceito(input) {
+  const { body, dados, boletos } = await prepararHomologacao(paramsHomologacaoComuns(input));
+  const conteudo = await previewConteudoPeticaoHomologacaoAcordo(body);
+  return { conteudo, body, dados, boletos, processoId: body.processoId };
+}
+
+/**
+ * Gera prévia inline do PDF a partir do conteúdo editado (sem salvar no Drive).
+ */
+export async function previewPdfHomologacaoEditada(conteudo, processoId) {
+  return previewPdfPeticaoHomologacaoAcordo(conteudo, { processoId });
+}
+
+/**
+ * Gera prévia inline do PDF da homologatória (sem salvar no Drive).
+ * @deprecated Prefer previewConteudoHomologacaoDeCalculoAceito + previewPdfHomologacaoEditada.
+ */
+export async function previewPeticaoHomologacaoDeCalculoAceito(input) {
+  const { conteudo, body, dados, boletos, processoId } =
+    await previewConteudoHomologacaoDeCalculoAceito(input);
+  const blob = await previewPdfHomologacaoEditada(conteudo, processoId);
+  return { blob, conteudo, dados, body, boletos, processoId };
+}
+
+/**
+ * Gera o PDF final da homologatória (download + salva no Drive).
+ */
+export async function gerarPeticaoHomologacaoDeCalculoAceito(input, conteudoEditado = null) {
+  const { body, dados, boletos } = await prepararHomologacao(paramsHomologacaoComuns(input));
+  if (conteudoEditado) {
+    body.conteudoEditado = conteudoEditado;
+  }
   const blob = await gerarPeticaoHomologacaoAcordo(body);
   downloadPdfBlob(blob, NOME_ARQUIVO_HOMOLOGACAO);
   return { dados, body, boletos };

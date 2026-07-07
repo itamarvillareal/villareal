@@ -417,6 +417,32 @@ export function gerarPeticaoHomologacaoAcordo(body, opts = {}) {
   return postPdf('/api/documentos/peticao-homologacao-acordo', body, opts);
 }
 
+/** Prévia inline da homologatória (sem salvar no Drive). */
+export function previewPeticaoHomologacaoAcordo(body, opts = {}) {
+  return postPdf('/api/documentos/peticao-homologacao-acordo', body, { ...opts, preview: true });
+}
+
+/** Monta o HTML editável da homologatória antes da prévia do PDF. */
+export async function previewConteudoPeticaoHomologacaoAcordo(body, opts = {}) {
+  return request('/api/documentos/peticao-homologacao-acordo/preview-conteudo', {
+    method: 'POST',
+    body,
+    signal: opts.signal,
+  });
+}
+
+/** Gera prévia do PDF a partir do conteúdo editado na tela. */
+export async function previewPdfPeticaoHomologacaoAcordo(conteudo, { processoId, signal } = {}) {
+  return postPdf(
+    '/api/documentos/peticao-homologacao-acordo/preview-pdf',
+    {
+      conteudo,
+      processoId: processoId != null && processoId !== '' ? Number(processoId) : null,
+    },
+    { signal, preview: true },
+  );
+}
+
 export function nomeArquivoProcuracaoPdf(nomeOutorgante) {
   const base = (nomeOutorgante || 'cliente')
     .normalize('NFD')

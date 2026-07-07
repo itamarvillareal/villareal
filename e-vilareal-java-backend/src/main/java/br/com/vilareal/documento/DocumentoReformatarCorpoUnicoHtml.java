@@ -30,18 +30,20 @@ public final class DocumentoReformatarCorpoUnicoHtml {
 
     private DocumentoReformatarCorpoUnicoHtml() {}
 
-    public static String montar(DocumentoReformatarConteudoRequest req) {
-        String advogadoNome = valorOuPadrao(req.advogadoNome(), ADVOGADO_NOME_PADRAO);
-        String advogadoOab = valorOuPadrao(req.advogadoOab(), ADVOGADO_OAB_PADRAO);
-        String logo = carregarLogoDataUri();
+    /** Cabeçalho timbrado da prévia editável (removido na geração do PDF final). */
+    public static String montarCabecalhoEdicaoPreview(String advogadoNome, String advogadoOab) {
+        return montarCabecalhoEdicaoPreview(
+                valorOuPadrao(advogadoNome, ADVOGADO_NOME_PADRAO),
+                valorOuPadrao(advogadoOab, ADVOGADO_OAB_PADRAO),
+                carregarLogoDataUri());
+    }
 
+    static String montarCabecalhoEdicaoPreview(String advogadoNome, String advogadoOab, String logoDataUri) {
         StringBuilder sb = new StringBuilder();
-        sb.append("<div class=\"doc-edicao-preview\" style=\"font-family:Arial,sans-serif;font-size:12pt;line-height:1.35;color:#000;\">");
-
-        sb.append("<div data-doc-part=\"cabecalho\" style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:18pt;\">");
-        if (StringUtils.hasText(logo)) {
+        sb.append("<div data-doc-part=\"cabecalho\" contenteditable=\"false\" style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:18pt;\">");
+        if (StringUtils.hasText(logoDataUri)) {
             sb.append("<img data-doc-part=\"logo\" contenteditable=\"false\" src=\"")
-                    .append(logo)
+                    .append(logoDataUri)
                     .append("\" alt=\"Villa Real e Advogados\" style=\"height:88px;width:auto;max-width:224px;object-fit:contain;\" />");
         } else {
             sb.append("<div data-doc-part=\"logo\" contenteditable=\"false\" style=\"font-weight:bold;font-size:14pt;\">VILLA REAL</div>");
@@ -54,6 +56,18 @@ public final class DocumentoReformatarCorpoUnicoHtml {
                 .append(escapeTexto(advogadoOab))
                 .append("</p>");
         sb.append("</div></div>");
+        return sb.toString();
+    }
+
+    public static String montar(DocumentoReformatarConteudoRequest req) {
+        String advogadoNome = valorOuPadrao(req.advogadoNome(), ADVOGADO_NOME_PADRAO);
+        String advogadoOab = valorOuPadrao(req.advogadoOab(), ADVOGADO_OAB_PADRAO);
+        String logo = carregarLogoDataUri();
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("<div class=\"doc-edicao-preview\" style=\"font-family:Arial,sans-serif;font-size:12pt;line-height:1.35;color:#000;\">");
+
+        sb.append(montarCabecalhoEdicaoPreview(advogadoNome, advogadoOab, logo));
 
         if (StringUtils.hasText(req.enderecamento())) {
             sb.append("<p data-doc-part=\"enderecamento\" style=\"margin:16pt 0 12pt;font-size:13pt;text-align:justify;\">")

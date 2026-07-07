@@ -43,6 +43,7 @@ import { ENDERECAMENTOS } from './constants.js';
 import { btnGhost, btnPrimary, btnSecondary } from './documentosStyles.js';
 import { CollapsibleSection } from './components/CollapsibleSection.jsx';
 import { ModalHomologacaoAcordo } from './components/ModalHomologacaoAcordo.jsx';
+import { PreviewHomologacaoAcordo } from './components/PreviewHomologacaoAcordo.jsx';
 import { DadosProcesso, resolveEnderecamento } from './components/DadosProcesso.jsx';
 import { DadosPartes } from './components/DadosPartes.jsx';
 import { FatosDoCaso, resolveTipoPeca } from './components/FatosDoCaso.jsx';
@@ -444,6 +445,15 @@ export function GerarDocumento() {
     enderecamento: dadosProcesso?.enderecamento || '',
     data: hojeBR(),
   }));
+  const [homologPreviewVisivel, setHomologPreviewVisivel] = useState(false);
+  const [homologPreviewParams, setHomologPreviewParams] = useState(null);
+  const [homologPreviewConteudo, setHomologPreviewConteudo] = useState(null);
+  const [homologPreviewProcessoId, setHomologPreviewProcessoId] = useState(null);
+  const [homologPreviewPdfUrl, setHomologPreviewPdfUrl] = useState(null);
+  const [loadingHomologPreview, setLoadingHomologPreview] = useState(false);
+  const [loadingHomologFinal, setLoadingHomologFinal] = useState(false);
+  const homologPreviewPdfUrlRef = useRef(null);
+  const homologPreviewRef = useRef(null);
 
   useEffect(() => {
     if (!mensagemSucesso) return undefined;
@@ -517,6 +527,65 @@ export function GerarDocumento() {
     setManualPreviewVisivel(false);
     setManualPreviewPayload(null);
   }, [revogarManualPreviewUrl]);
+
+  const revogarHomologPreviewPdfUrl = useCallback(() => {
+    if (homologPreviewPdfUrlRef.current) {
+      URL.revokeObjectURL(homologPreviewPdfUrlRef.current);
+      homologPreviewPdfUrlRef.current = null;
+    }
+    setHomologPreviewPdfUrl(null);
+  }, []);
+
+  useEffect(() => () => revogarHomologPreviewPdfUrl(), [revogarHomologPreviewPdfUrl]);
+
+  const fecharHomologPreview = useCallback(() => {
+    setHomologPreviewVisivel(false);
+    setHomologPreviewParams(null);
+    setHomologPreviewConteudo(null);
+    setHomologPreviewProcessoId(null);
+    revogarHomologPreviewPdfUrl();
+  }, [revogarHomologPreviewPdfUrl]);
+
+  const montarInputHomologacao = useCallback(
+    ({ clausulas, dimensao }) => ({
+      codigoCliente: codigoClienteProcesso,
+      numeroInterno: numeroInternoProcesso,
+      dimensao: dimensao ?? dimensaoHomolog,
+      enderecamento: formHomolog.enderecamento.trim(),
+      dataIso: dataBRparaISO(formHomolog.data),
+      numeroCnj: dadosProcesso?.numeroProcesso || '',
+      unidade: dadosProcesso?.unidade || homologCalc.dados?.cabecalho?.unidade || '',
+      clausulas,
+      dadosPreCarregados: {
+        dados: homologCalc.dados,
+        elegivel: homologCalc.elegivel,
+        motivo: homologCalc.motivo,
+        boletos: homologCalc.boletos,
+      },
+    }),
+    [
+      codigoClienteProcesso,
+      numeroInternoProcesso,
+      dimensaoHomolog,
+      formHomolog.enderecamento,
+      formHomolog.data,
+      dadosProcesso?.numeroProcesso,
+      dadosProcesso?.unidade,
+      homologCalc.dados,
+      homologCalc.elegivel,
+      homologCalc.motivo,
+      homologCalc.boletos,
+    ],
+  );
+
+  const atualizarHomologPreviewPdf = async (conteudo, processoId) => {
+    const { previewPdfHomologacaoEditada } = await import('../../services/peticaoHomologacaoDeRodada.js');
+    const blob = await previewPdfHomologacaoEditada(conteudo, processoId);
+    revogarHomologPreviewPdfUrl();
+    const url = URL.createObjectURL(blob);
+    homologPreviewPdfUrlRef.current = url;
+    setHomologPreviewPdfUrl(url);
+  };
 
   useEffect(() => () => revogarManualPreviewUrl(), [revogarManualPreviewUrl]);
 
@@ -791,36 +860,74 @@ export function GerarDocumento() {
     }
   };
 
-  const handleConfirmarHomologacao = async ({ clausulas, dimensao }) => {
+  const handlePreviewHomologacao = async ({ clausulas, dimensao }) => {
     setMensagemErro('');
-    setLoading(true);
+    setLoadingHomologPreview(true);
+    const params = { clausulas, dimensao };
+    setHomologPreviewParams(params);
+    setHomologPreviewVisivel(true);
+    setHomologPreviewConteudo(null);
+    setHomologPreviewProcessoId(null);
+    setModalHomologOpen(false);
+    revogarHomologPreviewPdfUrl();
+    window.requestAnimationFrame(() => {
+      homologPreviewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    try {
+      const { previewConteudoHomologacaoDeCalculoAceito } = await import(
+        '../../services/peticaoHomologacaoDeRodada.js'
+      );
+      const { conteudo, processoId } = await previewConteudoHomologacaoDeCalculoAceito(
+        montarInputHomologacao(params),
+      );
+      setHomologPreviewConteudo(conteudo);
+      setHomologPreviewProcessoId(processoId);
+      await atualizarHomologPreviewPdf(conteudo, processoId);
+    } catch (e) {
+      setMensagemErro(e?.message || 'Falha ao gerar prévia da homologatória.');
+      fecharHomologPreview();
+    } finally {
+      setLoadingHomologPreview(false);
+    }
+  };
+
+  const handleAtualizarPreviewHomologacao = async () => {
+    if (!homologPreviewConteudo || !homologPreviewProcessoId) return;
+    setMensagemErro('');
+    setLoadingHomologPreview(true);
+    try {
+      await atualizarHomologPreviewPdf(homologPreviewConteudo, homologPreviewProcessoId);
+    } catch (e) {
+      setMensagemErro(e?.message || 'Falha ao atualizar prévia.');
+    } finally {
+      setLoadingHomologPreview(false);
+    }
+  };
+
+  const handleGerarHomologacaoFinal = async () => {
+    if (!homologPreviewParams || !homologPreviewConteudo) return;
+    setMensagemErro('');
+    setLoadingHomologFinal(true);
     try {
       const { gerarPeticaoHomologacaoDeCalculoAceito } = await import(
         '../../services/peticaoHomologacaoDeRodada.js'
       );
-      await gerarPeticaoHomologacaoDeCalculoAceito({
-        codigoCliente: codigoClienteProcesso,
-        numeroInterno: numeroInternoProcesso,
-        dimensao: dimensao ?? dimensaoHomolog,
-        enderecamento: formHomolog.enderecamento.trim(),
-        dataIso: dataBRparaISO(formHomolog.data),
-        numeroCnj: dadosProcesso?.numeroProcesso || '',
-        unidade: dadosProcesso?.unidade || homologCalc.dados?.cabecalho?.unidade || '',
-        clausulas,
-        dadosPreCarregados: {
-          dados: homologCalc.dados,
-          elegivel: homologCalc.elegivel,
-          motivo: homologCalc.motivo,
-          boletos: homologCalc.boletos,
-        },
-      });
-      setModalHomologOpen(false);
+      await gerarPeticaoHomologacaoDeCalculoAceito(
+        montarInputHomologacao(homologPreviewParams),
+        homologPreviewConteudo,
+      );
       setMensagemSucesso('Petição de homologatória de acordo gerada com sucesso.');
+      fecharHomologPreview();
     } catch (e) {
       setMensagemErro(e?.message || 'Falha ao gerar a homologatória de acordo.');
     } finally {
-      setLoading(false);
+      setLoadingHomologFinal(false);
     }
+  };
+
+  const handleVoltarHomologPreview = () => {
+    fecharHomologPreview();
+    setModalHomologOpen(true);
   };
 
   const handleGerarProcuracao = async () => {
@@ -1373,8 +1480,8 @@ export function GerarDocumento() {
               <div className="space-y-4">
                 <p className="text-sm text-slate-600 dark:text-slate-400">
                   Usa o cálculo com parcelamento aceito (cliente {codigoClienteProcesso} / proc.{' '}
-                  {numeroInternoProcesso}). O arquivo será baixado como{' '}
-                  <strong>01.Homologatoria de Acordo.pdf</strong>.
+                  {numeroInternoProcesso}). Revise a prévia do PDF antes de gerar a versão final (
+                  <strong>01.Homologatoria de Acordo.pdf</strong>).
                 </p>
 
                 {homologCalc.loading ? (
@@ -1408,12 +1515,34 @@ export function GerarDocumento() {
                   <button
                     type="button"
                     className={btnPrimary}
-                    disabled={loading || homologCalc.loading || !homologCalc.elegivel}
+                    disabled={
+                      loading ||
+                      loadingHomologPreview ||
+                      loadingHomologFinal ||
+                      homologCalc.loading ||
+                      !homologCalc.elegivel ||
+                      homologPreviewVisivel
+                    }
                     onClick={() => setModalHomologOpen(true)}
                   >
-                    Gerar Homologatória de Acordo
+                    Configurar e visualizar prévia
                   </button>
                 </div>
+
+                {homologPreviewVisivel ? (
+                  <div ref={homologPreviewRef}>
+                    <PreviewHomologacaoAcordo
+                      conteudo={homologPreviewConteudo}
+                      pdfUrl={homologPreviewPdfUrl}
+                      loading={loadingHomologPreview}
+                      gerandoFinal={loadingHomologFinal}
+                      onConteudoChange={setHomologPreviewConteudo}
+                      onAtualizar={handleAtualizarPreviewHomologacao}
+                      onGerarFinal={handleGerarHomologacaoFinal}
+                      onVoltar={handleVoltarHomologPreview}
+                    />
+                  </div>
+                ) : null}
               </div>
             )}
           </CollapsibleSection>
@@ -1949,8 +2078,8 @@ export function GerarDocumento() {
       <ModalHomologacaoAcordo
         open={modalHomologOpen}
         onClose={() => setModalHomologOpen(false)}
-        onConfirm={handleConfirmarHomologacao}
-        loading={loading}
+        onConfirm={handlePreviewHomologacao}
+        loading={loadingHomologPreview}
         dimensoesAceitas={dimensoesAceitas}
         dimensaoSelecionada={dimensaoHomolog}
         onDimensaoChange={setDimensaoHomolog}
@@ -1967,6 +2096,7 @@ export function GerarDocumento() {
             : null
         }
         boletos={homologCalc.boletos}
+        initialClausulas={homologPreviewParams?.clausulas}
       />
     </div>
   );
