@@ -157,164 +157,248 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
         List<String> refsLocaisEscritos = new ArrayList<>();
 
         for (DiagnosticoAguardandoProtocoloItemRequest item : processos) {
-            if (loteAssinaturaId != null) {
-                verificarLoteAindaPreparando(loteAssinaturaId, refsLocaisEscritos);
-            }
-
             String cod = normalizarCodigo(item.getCodigoCliente());
             Integer proc = item.getNumeroInterno();
-            String cnj = resolverCnj(item, cod, proc);
-            if (!StringUtils.hasText(cod) || proc == null || !StringUtils.hasText(cnj)) {
-                resumos.add(new ResumoProcessoPrepararAssinar(
-                        cnj != null ? cnj : "", cod != null ? cod : "", 0, 0, 0, true));
-                continue;
-            }
-
-            int registradas = 0;
-            int reutilizadas = 0;
-            int ignoradasJaAssinadas = 0;
-            boolean semArquivos = false;
-
-            List<PdfDriveItem> pdfs;
             try {
-                DrivePastaProcessoDto pastaDto =
-                        documentoDrivePastaService.resolverPastaRaizProcesso(googleDriveService, cod, proc);
-                if (pastaDto == null || !StringUtils.hasText(pastaDto.pastaId())) {
-                    log.info("Preparar Assinar: pasta do processo não resolvida ({}/{})", cod, proc);
-                    semArquivos = true;
-                    resumos.add(new ResumoProcessoPrepararAssinar(cnj, cod, 0, 0, 0, true));
+                if (loteAssinaturaId != null) {
+                    verificarLoteAindaPreparando(loteAssinaturaId, refsLocaisEscritos);
+                }
+
+                String cnj = resolverCnj(item, cod, proc);
+                if (!StringUtils.hasText(cod) || proc == null || !StringUtils.hasText(cnj)) {
+                    resumos.add(resumoSemArquivos(cnj != null ? cnj : "", cod != null ? cod : ""));
                     continue;
                 }
 
-                String pastaAssinarId =
-                        googleDriveService.encontrarPastaExistente(PASTA_ASSINAR, pastaDto.pastaId());
-                if (!StringUtils.hasText(pastaAssinarId)) {
-                    log.info("Preparar Assinar: subpasta Assinar ausente ({}/{})", cod, proc);
-                    semArquivos = true;
-                    resumos.add(new ResumoProcessoPrepararAssinar(cnj, cod, 0, 0, 0, true));
-                    continue;
+                ResultadoUmProcesso resultado =
+                        prepararUmProcesso(credencialId, cod, proc, cnj, sincronizarDriveNoRegistro, refsLocaisEscritos);
+                resumos.add(resultado.resumo());
+                if (resultado.peticaoId() != null) {
+                    peticaoIds.add(resultado.peticaoId());
+                    totalArquivos += resultado.arquivosRegistrados();
                 }
-
-                List<DriveArquivoDto> filhos = googleDriveService.listarConteudo(pastaAssinarId);
-                pdfs = new ArrayList<>();
-                int ignoradosCanonicoDrive = 0;
-                for (DriveArquivoDto arq : filhos) {
-                    if (arq == null || "pasta".equals(arq.tipo()) || !StringUtils.hasText(arq.id())) {
-                        continue;
-                    }
-                    String nome = arq.nome() != null ? arq.nome().trim() : "documento";
-                    if (!nome.toLowerCase().endsWith(".pdf")) {
-                        continue;
-                    }
-                    if (isNomeCanonicoStorePdf(nome)) {
-                        ignoradosCanonicoDrive++;
-                        continue;
-                    }
-                    try {
-                        byte[] bytes = googleDriveService.baixarBytesArquivo(arq.id());
-                        pdfs.add(new PdfDriveItem(nome, bytes));
-                    } catch (Exception e) {
-                        log.warn(
-                                "Preparar Assinar: falha ao baixar {} ({}/{}): {}",
-                                nome,
-                                cod,
-                                proc,
-                                e.getMessage());
-                    }
-                }
-                if (ignoradosCanonicoDrive > 0) {
-                    log.info(
-                            "Preparar Assinar: {} cópia(s) canônica(s) ignorada(s) na pasta Assinar ({}/{})",
-                            ignoradosCanonicoDrive,
-                            cod,
-                            proc);
-                }
+            } catch (PreparoCanceladoException e) {
+                throw e;
             } catch (Exception e) {
-                log.warn("Preparar Assinar: falha no Drive ({}/{}): {}", cod, proc, e.getMessage());
-                semArquivos = true;
-                resumos.add(new ResumoProcessoPrepararAssinar(cnj, cod, 0, 0, 0, true));
-                continue;
+                log.warn(
+                        "Preparar Assinar: processo ignorado ({}/{}): {}",
+                        cod != null ? cod : "?",
+                        proc != null ? proc : "?",
+                        e.getMessage(),
+                        e);
+                resumos.add(resumoErro(
+                        "",
+                        cod != null ? cod : "",
+                        resumirMotivoErro(e)));
             }
-
-            if (pdfs.isEmpty()) {
-                semArquivos = true;
-                resumos.add(new ResumoProcessoPrepararAssinar(cnj, cod, 0, 0, 0, true));
-                continue;
-            }
-
-            String cnjDigitos = ProjudiNumeroReduzidoUtil.somenteDigitos(cnj);
-            if (cnjTemFilaProtocoloAtiva(cnj, cnjDigitosComFilaProtocoloAtiva())) {
-                log.info(
-                        "Preparar Assinar: processo {} ({}/{}) já possui petição na fila PROJUDI — ignorado",
-                        cnj,
-                        cod,
-                        proc);
-                resumos.add(new ResumoProcessoPrepararAssinar(cnj, cod, 0, 0, 0, true));
-                continue;
-            }
-
-            List<ArquivoParaAssinar> paraRegistrar = new ArrayList<>();
-            Set<String> sha256VistosNaPassagem = new HashSet<>();
-
-            for (PdfDriveItem pdf : pdfs) {
-                String sha256 = ProjudiAssinaturaP7sUtil.sha256(pdf.bytes());
-                if (!sha256VistosNaPassagem.add(sha256)) {
-                    log.debug(
-                            "Preparar Assinar: hash duplicado na mesma passagem — ignorado ({}, CNJ {})",
-                            pdf.nomeOriginal(),
-                            cnjDigitos);
-                    continue;
-                }
-                DedupResultado dedup = classificarDedup(sha256, cnjDigitos);
-                if (dedup.shouldIgnore()) {
-                    ignoradasJaAssinadas++;
-                    continue;
-                }
-                paraRegistrar.add(new ArquivoParaAssinar(
-                        pdf.bytes(), inferirIdArquivoTipo(pdf.nomeOriginal()), pdf.nomeOriginal()));
-            }
-
-            if (!paraRegistrar.isEmpty()) {
-                ProjudiPeticaoEntity peticao = peticaoRegistroService.registrarPeticao(
-                        credencialId, cnj, null, paraRegistrar, sincronizarDriveNoRegistro);
-                for (ProjudiPeticaoArquivoEntity arquivo : peticao.getArquivos()) {
-                    if (StringUtils.hasText(arquivo.getPdfRef())) {
-                        refsLocaisEscritos.add(arquivo.getPdfRef());
-                    }
-                }
-                peticaoIds.add(peticao.getId());
-                registradas += paraRegistrar.size();
-                totalArquivos += paraRegistrar.size();
-            }
-
-            resumos.add(new ResumoProcessoPrepararAssinar(
-                    cnj, cod, registradas, reutilizadas, ignoradasJaAssinadas, semArquivos));
         }
 
         if (peticaoIds.isEmpty() || totalArquivos == 0) {
-            long semArquivosDrive =
-                    resumos.stream().filter(ResumoProcessoPrepararAssinar::semArquivos).count();
-            if (semArquivosDrive == resumos.size()) {
-                throw new BusinessRuleException(
-                        "Nenhum PDF na pasta «Assinar» do Google Drive nos "
-                                + resumos.size()
-                                + " processo(s) listados. Coloque os PDFs na subpasta «Assinar» de cada processo "
-                                + "(não use Petição, Movimentações ou outras pastas) e tente novamente.");
-            }
-            long ignoradas = resumos.stream().mapToLong(ResumoProcessoPrepararAssinar::ignoradasJaAssinadas).sum();
-            if (ignoradas > 0) {
-                throw new BusinessRuleException(
-                        "Nenhum PDF disponível para nova assinatura. "
-                                + ignoradas
-                                + " arquivo(s) já constam como protocolados no PROJUDI e não podem ser refeitos. "
-                                + "Substitua os PDFs na pasta «Assinar» por versões novas (conteúdo diferente) ou "
-                                + "retire os já protocolados do lote.");
-            }
-            throw new BusinessRuleException(
-                    "Nenhum PDF pendente para assinar. Verifique a pasta «Assinar» no Drive e tente novamente.");
+            throw new BusinessRuleException(montarMensagemNenhumPdfPreparado(resumos));
         }
 
         return new PrepararAssinarResultado(new ArrayList<>(peticaoIds), resumos, totalArquivos);
+    }
+
+    /** Mensagem agregada quando nenhuma petição foi preparada (uso em sync e async). */
+    public static String montarMensagemNenhumPdfPreparado(List<ResumoProcessoPrepararAssinar> resumos) {
+        long erros = resumos.stream().filter(ResumoProcessoPrepararAssinar::ignoradoPorErro).count();
+        if (erros > 0) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("Nenhum PDF preparado. ")
+                    .append(erros)
+                    .append(" processo(s) ignorado(s) por erro — verifique o cadastro:");
+            for (ResumoProcessoPrepararAssinar r : resumos) {
+                if (!r.ignoradoPorErro()) {
+                    continue;
+                }
+                sb.append("\n- ")
+                        .append(formatarChaveProcessoResumo(r))
+                        .append(": ")
+                        .append(r.motivoErro() != null ? r.motivoErro() : "erro desconhecido");
+            }
+            return sb.toString();
+        }
+        long semArquivosDrive = resumos.stream().filter(ResumoProcessoPrepararAssinar::semArquivos).count();
+        if (semArquivosDrive == resumos.size()) {
+            return "Nenhum PDF na pasta «Assinar» do Google Drive nos "
+                    + resumos.size()
+                    + " processo(s) listados. Coloque os PDFs na subpasta «Assinar» de cada processo "
+                    + "(não use Petição, Movimentações ou outras pastas) e tente novamente.";
+        }
+        long ignoradas = resumos.stream().mapToLong(ResumoProcessoPrepararAssinar::ignoradasJaAssinadas).sum();
+        if (ignoradas > 0) {
+            return "Nenhum PDF disponível para nova assinatura. "
+                    + ignoradas
+                    + " arquivo(s) já constam como protocolados no PROJUDI e não podem ser refeitos. "
+                    + "Substitua os PDFs na pasta «Assinar» por versões novas (conteúdo diferente) ou "
+                    + "retire os já protocolados do lote.";
+        }
+        return "Nenhum PDF pendente para assinar. Verifique a pasta «Assinar» no Drive e tente novamente.";
+    }
+
+    private record ResultadoUmProcesso(
+            ResumoProcessoPrepararAssinar resumo, Long peticaoId, int arquivosRegistrados) {}
+
+    private ResultadoUmProcesso prepararUmProcesso(
+            Long credencialId,
+            String cod,
+            Integer proc,
+            String cnj,
+            boolean sincronizarDriveNoRegistro,
+            List<String> refsLocaisEscritos) {
+        int registradas = 0;
+        int reutilizadas = 0;
+        int ignoradasJaAssinadas = 0;
+        boolean semArquivos = false;
+
+        List<PdfDriveItem> pdfs;
+        try {
+            DrivePastaProcessoDto pastaDto =
+                    documentoDrivePastaService.resolverPastaRaizProcesso(googleDriveService, cod, proc);
+            if (pastaDto == null || !StringUtils.hasText(pastaDto.pastaId())) {
+                log.info("Preparar Assinar: pasta do processo não resolvida ({}/{})", cod, proc);
+                return new ResultadoUmProcesso(resumoSemArquivos(cnj, cod), null, 0);
+            }
+
+            String pastaAssinarId = googleDriveService.encontrarPastaExistente(PASTA_ASSINAR, pastaDto.pastaId());
+            if (!StringUtils.hasText(pastaAssinarId)) {
+                log.info("Preparar Assinar: subpasta Assinar ausente ({}/{})", cod, proc);
+                return new ResultadoUmProcesso(resumoSemArquivos(cnj, cod), null, 0);
+            }
+
+            List<DriveArquivoDto> filhos = googleDriveService.listarConteudo(pastaAssinarId);
+            pdfs = new ArrayList<>();
+            int ignoradosCanonicoDrive = 0;
+            for (DriveArquivoDto arq : filhos) {
+                if (arq == null || "pasta".equals(arq.tipo()) || !StringUtils.hasText(arq.id())) {
+                    continue;
+                }
+                String nome = arq.nome() != null ? arq.nome().trim() : "documento";
+                if (!nome.toLowerCase().endsWith(".pdf")) {
+                    continue;
+                }
+                if (isNomeCanonicoStorePdf(nome)) {
+                    ignoradosCanonicoDrive++;
+                    continue;
+                }
+                try {
+                    byte[] bytes = googleDriveService.baixarBytesArquivo(arq.id());
+                    pdfs.add(new PdfDriveItem(nome, bytes));
+                } catch (Exception e) {
+                    log.warn(
+                            "Preparar Assinar: falha ao baixar {} ({}/{}): {}",
+                            nome,
+                            cod,
+                            proc,
+                            e.getMessage());
+                }
+            }
+            if (ignoradosCanonicoDrive > 0) {
+                log.info(
+                        "Preparar Assinar: {} cópia(s) canônica(s) ignorada(s) na pasta Assinar ({}/{})",
+                        ignoradosCanonicoDrive,
+                        cod,
+                        proc);
+            }
+        } catch (Exception e) {
+            log.warn("Preparar Assinar: falha no Drive ({}/{}): {}", cod, proc, e.getMessage());
+            return new ResultadoUmProcesso(resumoSemArquivos(cnj, cod), null, 0);
+        }
+
+        if (pdfs.isEmpty()) {
+            return new ResultadoUmProcesso(resumoSemArquivos(cnj, cod), null, 0);
+        }
+
+        String cnjDigitos = ProjudiNumeroReduzidoUtil.somenteDigitos(cnj);
+        if (cnjTemFilaProtocoloAtiva(cnj, cnjDigitosComFilaProtocoloAtiva())) {
+            log.info(
+                    "Preparar Assinar: processo {} ({}/{}) já possui petição na fila PROJUDI — ignorado",
+                    cnj,
+                    cod,
+                    proc);
+            return new ResultadoUmProcesso(resumoSemArquivos(cnj, cod), null, 0);
+        }
+
+        List<ArquivoParaAssinar> paraRegistrar = new ArrayList<>();
+        Set<String> sha256VistosNaPassagem = new HashSet<>();
+
+        for (PdfDriveItem pdf : pdfs) {
+            String sha256 = ProjudiAssinaturaP7sUtil.sha256(pdf.bytes());
+            if (!sha256VistosNaPassagem.add(sha256)) {
+                log.debug(
+                        "Preparar Assinar: hash duplicado na mesma passagem — ignorado ({}, CNJ {})",
+                        pdf.nomeOriginal(),
+                        cnjDigitos);
+                continue;
+            }
+            DedupResultado dedup = classificarDedup(sha256, cnjDigitos);
+            if (dedup.shouldIgnore()) {
+                ignoradasJaAssinadas++;
+                continue;
+            }
+            paraRegistrar.add(new ArquivoParaAssinar(
+                    pdf.bytes(), inferirIdArquivoTipo(pdf.nomeOriginal()), pdf.nomeOriginal()));
+        }
+
+        if (paraRegistrar.isEmpty()) {
+            return new ResultadoUmProcesso(
+                    resumoOk(cnj, cod, registradas, reutilizadas, ignoradasJaAssinadas, semArquivos),
+                    null,
+                    0);
+        }
+
+        ProjudiPeticaoEntity peticao = peticaoRegistroService.registrarPeticao(
+                credencialId, cnj, null, paraRegistrar, sincronizarDriveNoRegistro);
+        for (ProjudiPeticaoArquivoEntity arquivo : peticao.getArquivos()) {
+            if (StringUtils.hasText(arquivo.getPdfRef())) {
+                refsLocaisEscritos.add(arquivo.getPdfRef());
+            }
+        }
+        registradas = paraRegistrar.size();
+        return new ResultadoUmProcesso(
+                resumoOk(cnj, cod, registradas, reutilizadas, ignoradasJaAssinadas, semArquivos),
+                peticao.getId(),
+                registradas);
+    }
+
+    private static ResumoProcessoPrepararAssinar resumoSemArquivos(String cnj, String cod) {
+        return new ResumoProcessoPrepararAssinar(cnj, cod, 0, 0, 0, true, false, null);
+    }
+
+    private static ResumoProcessoPrepararAssinar resumoErro(String cnj, String cod, String motivo) {
+        return new ResumoProcessoPrepararAssinar(cnj, cod, 0, 0, 0, false, true, motivo);
+    }
+
+    private static ResumoProcessoPrepararAssinar resumoOk(
+            String cnj,
+            String cod,
+            int registradas,
+            int reutilizadas,
+            int ignoradasJaAssinadas,
+            boolean semArquivos) {
+        return new ResumoProcessoPrepararAssinar(
+                cnj, cod, registradas, reutilizadas, ignoradasJaAssinadas, semArquivos, false, null);
+    }
+
+    private static String formatarChaveProcessoResumo(ResumoProcessoPrepararAssinar r) {
+        String cod = StringUtils.hasText(r.codigoCliente()) ? r.codigoCliente().trim() : "?";
+        if (StringUtils.hasText(r.cnj())) {
+            return cod + " · " + r.cnj().trim();
+        }
+        return cod;
+    }
+
+    private static String resumirMotivoErro(Exception e) {
+        if (e == null) {
+            return "erro desconhecido";
+        }
+        String msg = e.getMessage();
+        if (!StringUtils.hasText(msg)) {
+            return e.getClass().getSimpleName();
+        }
+        msg = msg.trim();
+        return msg.length() > 280 ? msg.substring(0, 277) + "..." : msg;
     }
 
     @Transactional(readOnly = true)

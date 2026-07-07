@@ -11,5 +11,7 @@ public record PrepararAssinarResultado(
             int registradas,
             int reutilizadas,
             int ignoradasJaAssinadas,
-            boolean semArquivos) {}
+            boolean semArquivos,
+            boolean ignoradoPorErro,
+            String motivoErro) {}
 }

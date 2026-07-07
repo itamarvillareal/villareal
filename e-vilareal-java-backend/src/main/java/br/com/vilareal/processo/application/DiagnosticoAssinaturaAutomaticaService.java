@@ -18,6 +18,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
@@ -101,8 +103,24 @@ public class DiagnosticoAssinaturaAutomaticaService {
 
         JsonNode meta = montarMetaPreparo(processos);
         AssinaturaLoteEntity criado = assinaturaLoteService.criarLoteEmPreparacao(credencialId, meta);
-        preparoExecutor.submit(() -> executarPreparoEmBackground(criado.getId(), credencialId, processos));
+        agendarPreparoAposCommit(criado.getId(), credencialId, processos);
         return new AssinarAutomaticoResponse(criado.getId(), List.of(), 0, false);
+    }
+
+    /** Só dispara o executor após commit — evita race em que o lote ainda não é visível na thread de background. */
+    private void agendarPreparoAposCommit(
+            Long loteId, Long credencialId, List<DiagnosticoAguardandoProtocoloItemRequest> processos) {
+        Runnable tarefa = () -> executarPreparoEmBackground(loteId, credencialId, processos);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    preparoExecutor.submit(tarefa);
+                }
+            });
+        } else {
+            preparoExecutor.submit(tarefa);
+        }
     }
 
     @Transactional(readOnly = true)
@@ -134,7 +152,7 @@ public class DiagnosticoAssinaturaAutomaticaService {
                 assinaturaLoteService.falharPreparacao(
                         loteId,
                         "PREPARO_VAZIO",
-                        "Nenhum PDF pendente para assinar. Verifique a pasta «Assinar» no Drive.");
+                        mensagemPreparoVazio(preparado));
                 return;
             }
 
@@ -166,7 +184,12 @@ public class DiagnosticoAssinaturaAutomaticaService {
                     peticaoIds.size(),
                     preparado.totalArquivos());
         } catch (PreparoCanceladoException e) {
-            log.info("Preparo abortado cooperativamente (lote #{}): {}", loteId, e.getMessage());
+            if (e.statusObservado() == AssinaturaLoteStatus.CANCELADO) {
+                log.info("Preparo abortado cooperativamente (lote #{}): {}", loteId, e.getMessage());
+                return;
+            }
+            log.warn("Preparo abortado inesperadamente (lote #{}): {}", loteId, e.getMessage());
+            assinaturaLoteService.falharPreparacao(loteId, "PREPARO_ABORTADO", e.getMessage());
         } catch (BusinessRuleException e) {
             log.warn("Preparo assíncrono falhou (lote #{}): {}", loteId, e.getMessage());
             assinaturaLoteService.falharPreparacao(loteId, "PREPARO_FALHOU", e.getMessage());
@@ -175,6 +198,19 @@ public class DiagnosticoAssinaturaAutomaticaService {
             assinaturaLoteService.falharPreparacao(
                     loteId, "PREPARO_FALHOU", "Falha ao preparar PDFs: " + e.getMessage());
         }
+    }
+
+    private static String mensagemPreparoVazio(PrepararAssinarResultado preparado) {
+        if (preparado != null && preparado.resumo() != null) {
+            long erros = preparado.resumo().stream()
+                    .filter(PrepararAssinarResultado.ResumoProcessoPrepararAssinar::ignoradoPorErro)
+                    .count();
+            if (erros > 0) {
+                return DiagnosticoAguardandoProtocoloAssinarService.montarMensagemNenhumPdfPreparado(
+                        preparado.resumo());
+            }
+        }
+        return "Nenhum PDF pendente para assinar. Verifique a pasta «Assinar» no Drive.";
     }
 
     private Optional<AssinaturaLoteEntity> buscarPreparandoMesmaSelecao(

@@ -84,6 +84,28 @@ class DiagnosticoAssinaturaAutomaticaServiceTest {
     }
 
     @Test
+    void executarPreparoEmBackground_falhaPreparacaoQuandoLoteNaoEncontrado() {
+        List<DiagnosticoAguardandoProtocoloItemRequest> processos = List.of(item("12345678", 1));
+        when(diagnosticoAssinarService.prepararAssinatura(CREDENCIAL_ID, processos, false, 9L))
+                .thenThrow(new PreparoCanceladoException(9L, null));
+
+        service.executarPreparoEmBackground(9L, CREDENCIAL_ID, processos);
+
+        verify(assinaturaLoteService).falharPreparacao(eq(9L), eq("PREPARO_ABORTADO"), any());
+    }
+
+    @Test
+    void executarPreparoEmBackground_falhaPreparacaoQuandoLoteAindaPreparando() {
+        List<DiagnosticoAguardandoProtocoloItemRequest> processos = List.of(item("12345678", 1));
+        when(diagnosticoAssinarService.prepararAssinatura(CREDENCIAL_ID, processos, false, 9L))
+                .thenThrow(new PreparoCanceladoException(9L, AssinaturaLoteStatus.PREPARANDO));
+
+        service.executarPreparoEmBackground(9L, CREDENCIAL_ID, processos);
+
+        verify(assinaturaLoteService).falharPreparacao(eq(9L), eq("PREPARO_ABORTADO"), any());
+    }
+
+    @Test
     void cancelar_marcaLoteComoCancelado() {
         AssinaturaLoteEntity cancelado = lote(12L, AssinaturaLoteStatus.CANCELADO, List.of());
         when(assinaturaLoteService.cancelarPreparacao(12L)).thenReturn(cancelado);
