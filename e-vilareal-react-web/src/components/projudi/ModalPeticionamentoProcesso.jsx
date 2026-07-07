@@ -114,6 +114,10 @@ export function ModalPeticionamentoProcesso({ open, onClose, numeroCnj, clienteN
   }, [open, recarregar]);
 
   const assinadas = useMemo(() => peticoes.filter((p) => p.status === 'ASSINADA'), [peticoes]);
+  const pendentes = useMemo(
+    () => peticoes.filter((p) => p.status === 'PENDENTE_ASSINATURA'),
+    [peticoes],
+  );
   const historico = useMemo(
     () => peticoes.filter((p) => ['PROTOCOLADA', 'ERRO'].includes(p.status)),
     [peticoes],
@@ -292,7 +296,9 @@ export function ModalPeticionamentoProcesso({ open, onClose, numeroCnj, clienteN
               onClick={() => setAba('protocolar')}
             >
               Protocolar
-              {assinadas.length > 0 ? ` (${assinadas.length})` : ''}
+              {pendentes.length + assinadas.length > 0
+                ? ` (${pendentes.length + assinadas.length})`
+                : ''}
             </button>
             <button
               type="button"
@@ -434,13 +440,42 @@ export function ModalPeticionamentoProcesso({ open, onClose, numeroCnj, clienteN
                 </form>
 
                 <div className="space-y-2">
+                  {pendentes.length > 0 ? (
+                    <div className="rounded-lg border border-amber-300 bg-amber-50/80 p-2 space-y-1">
+                      <h3 className="text-xs font-semibold text-amber-900 uppercase tracking-wide">
+                        Pendentes de assinatura ({pendentes.length})
+                      </h3>
+                      <ul className="rounded-lg border border-amber-200 bg-white divide-y divide-amber-100 text-sm">
+                        {pendentes.map((p) => (
+                          <li key={p.id} className="px-2 py-2">
+                            <div className="font-medium">#{p.id}</div>
+                            {(p.arquivos || []).slice(0, 2).map((a) => (
+                              <div key={a.id ?? a.ordem} className="text-xs text-slate-600 truncate">
+                                {a.nomeOriginal} ({labelTipoArquivoPeticao(a.idArquivoTipo)})
+                              </div>
+                            ))}
+                            {(p.arquivos || []).length > 2 ? (
+                              <div className="text-xs text-slate-500">
+                                + {(p.arquivos || []).length - 2} arquivo(s)
+                              </div>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
                   <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-wide">
-                    Fila ({assinadas.length})
+                    Prontas para protocolar ({assinadas.length})
                   </h3>
                   {carregando ? (
                     <Loader2 className="w-4 h-4 animate-spin text-slate-500" aria-hidden />
                   ) : assinadas.length === 0 ? (
-                    <p className="text-sm text-slate-500">Nenhum .p7s pronto. Registre acima.</p>
+                    <p className="text-sm text-slate-500">
+                      {pendentes.length > 0
+                        ? 'Assine os PDFs pendentes e registre os .p7s acima.'
+                        : 'Nenhum .p7s pronto. Registre acima.'}
+                    </p>
                   ) : (
                     <ul className="rounded-lg border border-slate-200 divide-y divide-slate-100 text-sm">
                       {assinadas.map((p) => (

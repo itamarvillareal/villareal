@@ -9,8 +9,12 @@ Ao final, reprocessa falhas em loop (--max-rounds, padrão 8).
 from __future__ import annotations
 
 import argparse
+import base64
 import csv
+import hashlib
+import hmac
 import json
+import os
 import re
 import subprocess
 import sys
@@ -20,10 +24,13 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-BASE = "http://161.97.175.73:8081"
-SSH_HOST = "villareal-vps"
-LOGIN = "itamar"
-SENHA = "123456"
+BASE = os.environ.get("VILAREAL_API_BASE", "http://161.97.175.73:8081").rstrip("/")
+SSH_HOST = os.environ.get("VILAREAL_SSH_HOST", "villareal-vps")
+LOGIN = os.environ.get("VILAREAL_IMPORT_LOGIN", "itamar")
+SENHA = os.environ.get("VILAREAL_IMPORT_SENHA", "123456")
+JWT_SECRET = os.environ.get("VILAREAL_JWT_SECRET", "")
+JWT_UID = int(os.environ.get("VILAREAL_JWT_UID", "1"))
+JWT_EXP_S = int(os.environ.get("VILAREAL_JWT_EXP_S", "86400"))
 PJE_LOGIN = "00733235190"
 CODIGO_CLIENTE = "00000996"
 POLL_MAX_S = 540
@@ -82,7 +89,27 @@ def api(method: str, path: str, token: str, body: dict | None = None, timeout: i
         return e.code, payload
 
 
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+
+def mint_jwt_token() -> str:
+    if not JWT_SECRET:
+        raise RuntimeError("VILAREAL_JWT_SECRET não definido")
+    sub = (LOGIN or "").strip().lower()
+    now = int(time.time())
+    header = _b64url(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
+    payload = _b64url(
+        json.dumps({"uid": JWT_UID, "sub": sub, "iat": now, "exp": now + JWT_EXP_S}, separators=(",", ":")).encode()
+    )
+    msg = f"{header}.{payload}".encode()
+    sig = _b64url(hmac.new(JWT_SECRET.encode(), msg, hashlib.sha256).digest())
+    return f"{header}.{payload}.{sig}"
+
+
 def login() -> str:
+    if JWT_SECRET:
+        return mint_jwt_token()
     _, resp = api("POST", "/api/auth/login", "", {"login": LOGIN, "senha": SENHA})
     token = resp.get("accessToken") if isinstance(resp, dict) else None
     if not token:
@@ -136,7 +163,10 @@ def parse_iso(s: str | None) -> datetime | None:
 
 def ssh_backend_logs_since(since_utc: datetime) -> str:
     since = since_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
-    cmd = ["ssh", SSH_HOST, f"docker logs vilareal-backend --since {since} 2>&1"]
+    if os.environ.get("VILAREAL_DOCKER_LOGS_LOCAL") == "1":
+        cmd = ["docker", "logs", "vilareal-backend", "--since", since]
+    else:
+        cmd = ["ssh", SSH_HOST, f"docker logs vilareal-backend --since {since} 2>&1"]
     try:
         out = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         return out.stdout + out.stderr

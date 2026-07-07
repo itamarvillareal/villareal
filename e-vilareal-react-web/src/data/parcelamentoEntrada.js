@@ -252,8 +252,8 @@ export function montarLinhasPlanoPagamento({
 export function calcularResumoPlanoPagamento(linhas, nParcelas, temEntrada) {
   const nParc = Math.max(0, Math.floor(Number(nParcelas) || 0));
   const start = temEntrada ? 1 : 0;
-  let valorFinalParcelas = 0;
-  let valorHonorarios = 0;
+  let valorParcelasPrincipal = 0;
+  let valorHonorariosParcelas = 0;
   let entradaTotal = 0;
   let honEntrada = 0;
   if (temEntrada && linhas[0]) {
@@ -263,21 +263,24 @@ export function calcularResumoPlanoPagamento(linhas, nParcelas, temEntrada) {
   for (let i = 0; i < nParc; i++) {
     const row = linhas[start + i];
     if (!row) break;
-    valorFinalParcelas += parseBRL(row.valorParcela);
-    valorHonorarios += parseBRL(row.honorariosParcela);
+    valorParcelasPrincipal += parseBRL(row.valorParcela);
+    valorHonorariosParcelas += parseBRL(row.honorariosParcela);
   }
-  valorFinalParcelas = trunc2(valorFinalParcelas);
-  valorHonorarios = trunc2(valorHonorarios);
+  valorParcelasPrincipal = trunc2(valorParcelasPrincipal);
+  valorHonorariosParcelas = trunc2(valorHonorariosParcelas);
   entradaTotal = trunc2(entradaTotal);
-  const valorTotalPagar = trunc2(entradaTotal + valorFinalParcelas + valorHonorarios);
+  /** Soma das prestações (principal + honorários em cada parcela). */
+  const valorFinalParcelas = trunc2(valorParcelasPrincipal + valorHonorariosParcelas);
+  const valorTotalPagar = trunc2(entradaTotal + valorFinalParcelas);
   return {
     parcelasComValor: nParc,
     temEntrada,
     entradaTotal: formatBRL(entradaTotal),
     valorFinalParcelas: formatBRL(valorFinalParcelas),
+    valorFinalParcelasPrincipal: formatBRL(valorParcelasPrincipal),
     valorTotalPagar: formatBRL(valorTotalPagar),
-    valorFinalHonorarios: formatBRL(trunc2(honEntrada + valorHonorarios)),
-    valorHonorariosParcela: nParc > 0 ? formatBRL(trunc2(valorHonorarios / nParc)) : formatBRL(0),
+    valorFinalHonorarios: formatBRL(trunc2(honEntrada + valorHonorariosParcelas)),
+    valorHonorariosParcela: nParc > 0 ? formatBRL(trunc2(valorHonorariosParcelas / nParc)) : formatBRL(0),
     valorCustasParcela: formatBRL(0),
     valorFinalCustas: formatBRL(0),
   };

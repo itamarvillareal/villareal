@@ -352,6 +352,7 @@ export function PeticionamentoProjudi() {
 
   const [aba, setAba] = useState('protocolar');
   const [filaPeticoes, setFilaPeticoes] = useState([]);
+  const [pendentesAssinatura, setPendentesAssinatura] = useState([]);
   const [historicoPeticoes, setHistoricoPeticoes] = useState([]);
   const [historicoMeta, setHistoricoMeta] = useState({ page: 0, totalPages: 0, totalElements: 0 });
   const [historicoDias, setHistoricoDias] = useState(HISTORICO_DIAS_PADRAO);
@@ -390,8 +391,12 @@ export function PeticionamentoProjudi() {
   }, [numeroProcesso, numeroProcessoOrigem]);
 
   const recarregarFila = useCallback(async () => {
-    const rows = await listar('ASSINADA');
-    setFilaPeticoes(Array.isArray(rows) ? rows : []);
+    const [assinadas, pendentes] = await Promise.all([
+      listar('ASSINADA'),
+      listar('PENDENTE_ASSINATURA'),
+    ]);
+    setFilaPeticoes(Array.isArray(assinadas) ? assinadas : []);
+    setPendentesAssinatura(Array.isArray(pendentes) ? pendentes : []);
   }, []);
 
   const carregarHistorico = useCallback(
@@ -475,6 +480,13 @@ export function PeticionamentoProjudi() {
     if (!processoFiltro) return filaPeticoes;
     return filaPeticoes.filter((p) => String(p.numeroProcesso || '').replace(/\D/g, '') === processoFiltro);
   }, [filaPeticoes, processoFiltro]);
+
+  const pendentesFiltradas = useMemo(() => {
+    if (!processoFiltro) return pendentesAssinatura;
+    return pendentesAssinatura.filter(
+      (p) => String(p.numeroProcesso || '').replace(/\D/g, '') === processoFiltro,
+    );
+  }, [pendentesAssinatura, processoFiltro]);
 
   const assinadas = useMemo(
     () => peticoesFiltradas.filter((p) => p.status === 'ASSINADA'),
@@ -1122,13 +1134,43 @@ export function PeticionamentoProjudi() {
                   <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
                   Carregando…
                 </div>
-              ) : assinadas.length === 0 ? (
+              ) : assinadas.length === 0 && pendentesFiltradas.length === 0 ? (
                 <p className="text-sm text-slate-600">
                   Nenhuma petição assinada na fila
                   {processoFiltro ? ' para este processo' : ''}. Registre .p7s acima.
                 </p>
               ) : (
                 <>
+                  {pendentesFiltradas.length > 0 ? (
+                    <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50/80 p-3 mb-3">
+                      <h3 className="text-xs font-semibold text-amber-900">
+                        Pendentes de assinatura ({pendentesFiltradas.length})
+                      </h3>
+                      <p className="text-xs text-amber-800/90">
+                        PDFs registrados aguardando .p7s. Baixe o ZIP, assine e registre os arquivos assinados acima.
+                      </p>
+                      <ul className="rounded-lg border border-amber-200 bg-white divide-y divide-amber-100">
+                        {pendentesFiltradas.map((p) => (
+                          <li key={p.id} className="px-3 py-2 text-sm">
+                            <div className="font-medium text-slate-900">
+                              #{p.id} · <span className="font-mono text-xs">{p.numeroProcesso}</span>
+                            </div>
+                            {(p.arquivos || []).slice(0, 3).map((a) => (
+                              <div key={a.id ?? a.ordem} className="text-xs text-slate-600 truncate">
+                                {a.nomeOriginal} ({labelTipoArquivoPeticao(a.idArquivoTipo)})
+                              </div>
+                            ))}
+                            {(p.arquivos || []).length > 3 ? (
+                              <div className="text-xs text-slate-500">
+                                + {(p.arquivos || []).length - 3} arquivo(s)
+                              </div>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
                   <p className="text-xs text-slate-600">
                     Selecione as petições do <strong>mesmo processo</strong> para uma juntada. O robô envia todos os
                     arquivos e dá um único Concluir.

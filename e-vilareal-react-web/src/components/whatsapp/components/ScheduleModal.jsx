@@ -20,6 +20,7 @@ import { useWhatsAppTemplates } from '../hooks/useWhatsAppTemplates.js';
 import { useCloseOnEscape } from '../../../hooks/useCloseOnEscape.js';
 import { buildComposePreviewText } from '../../../utils/whatsappTemplateUtils.js';
 import { createWhatsAppSchedule, createWhatsAppScheduleBatch } from '../../../repositories/whatsappRepository.js';
+import { WhatsAppDestinatarioCampo } from './WhatsAppDestinatarioCampo.jsx';
 
 const MODE_UNICO = 'unico';
 const MODE_LOTE = 'lote';
@@ -193,16 +194,7 @@ export function ScheduleModal({ open, onClose, onSuccess, initialPhone = '' }) {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Telefone</label>
-            <input
-              type="tel"
-              className={processosInputClass}
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="(62) 99999-1234"
-            />
-          </div>
+          <WhatsAppDestinatarioCampo phone={phone} onPhoneChange={setPhone} disabled={saving} />
           <TemplateSelect
             value={templateName}
             onChange={setTemplateName}

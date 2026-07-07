@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   calcularEntradaCentavos,
   calcularParcelaPrecoMensalPrice,
+  calcularResumoPlanoPagamento,
   montarLinhasPlanoPagamento,
   rateioEntradaESaldos,
   temPlanoPagamento,
@@ -63,5 +64,22 @@ describe('parcelamentoEntrada', () => {
       })
     ).toBe(true);
     expect(temPlanoPagamento({ quantidadeParcelasInformada: '00' })).toBe(false);
+  });
+
+  it('calcularResumoPlanoPagamento soma principal e honorários nas parcelas', () => {
+    const res = calcularResumoPlanoPagamento(
+      [
+        { valorParcela: '1.934,71', honorariosParcela: '386,93' },
+        { valorParcela: '1.934,71', honorariosParcela: '386,93' },
+        { valorParcela: '1.934,71', honorariosParcela: '386,93' },
+        { valorParcela: '1.934,71', honorariosParcela: '386,93' },
+      ],
+      4,
+      false
+    );
+    expect(res.valorFinalParcelasPrincipal).toBe('R$ 7.738,84');
+    expect(res.valorFinalParcelas).toBe('R$ 9.286,56');
+    expect(res.valorTotalPagar).toBe('R$ 9.286,56');
+    expect(res.valorFinalHonorarios).toBe('R$ 1.547,72');
   });
 });

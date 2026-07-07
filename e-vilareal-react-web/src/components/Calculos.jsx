@@ -2822,7 +2822,6 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
             </div>
           )}
           <div className="space-y-1 pt-1.5 border-t border-slate-200">
-            <button type="button" className="w-full px-2 py-2 lg:py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50">Cancelar</button>
             <button type="button" className="w-full px-2 py-2 lg:py-1.5 rounded border border-slate-200 bg-blue-600 text-white text-xs font-medium hover:bg-blue-700">Configurações</button>
             <label className="flex items-center gap-2 text-xs cursor-pointer py-0.5">
               <input
@@ -3202,7 +3201,11 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                           className="w-[4.5rem] px-2 py-1 border border-slate-300 rounded text-sm bg-white text-slate-800 text-right tabular-nums shrink-0 disabled:bg-slate-100 disabled:text-slate-500"
                         />
                       </div>
-                      <p className="flex justify-between gap-2"><span>Valor Final das Parcelas:</span><b>{resumoParcelamento.valorFinalParcelas}</b></p>
+                      <p className="flex justify-between gap-2"><span>Valor Total das Parcelas:</span><b>{resumoParcelamento.valorFinalParcelas}</b></p>
+                      <p className="flex justify-between gap-2 text-xs text-slate-600 dark:text-slate-400">
+                        <span className="pl-2">↳ principal nas parcelas</span>
+                        <span>{resumoParcelamento.valorFinalParcelasPrincipal}</span>
+                      </p>
                       <p className="flex justify-between gap-2"><span>Valor Total Pago (após parcelamento):</span><b>{resumoParcelamento.valorTotalPagar}</b></p>
                       <p className="flex justify-between gap-2"><span>Valor Final dos Honorários:</span><b>{resumoParcelamento.valorFinalHonorarios}</b></p>
                       <p className="flex justify-between gap-2"><span>Valor dos Honorários (Parcela):</span><b>{resumoParcelamento.valorHonorariosParcela}</b></p>
@@ -3213,7 +3216,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                   <div className="border border-slate-300 bg-white p-2">
                     <p className="text-sm font-semibold text-slate-700 mb-2">Informações</p>
                     <div className="space-y-1.5 text-sm">
-                      <p className="flex justify-between gap-2"><span>Valor final Atualizado:</span><b>{resumoParcelamento.valorFinalAtualizado}</b></p>
+                      <p className="flex justify-between gap-2"><span>Valor final Atualizado (débito):</span><b>{resumoParcelamento.valorFinalAtualizado}</b></p>
                       <p className="flex justify-between gap-2"><span>Valor Final Atualizado das Custas:</span><b>{resumoParcelamento.valorFinalAtualizadoCustas}</b></p>
                       <p className="flex justify-between gap-2"><span>Valor Total a ser Pago:</span><b>{resumoParcelamento.valorTotalPagar}</b></p>
                       <div className="flex justify-between items-center gap-2 pt-1 border-t border-slate-200">

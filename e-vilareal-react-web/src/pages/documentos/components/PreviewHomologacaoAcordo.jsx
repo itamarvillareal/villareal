@@ -4,7 +4,10 @@ import { btnPrimary, btnSecondary } from '../documentosStyles.js';
 import '../homologacaoAcordoPreview.css';
 
 const corpoUnicoClass =
-  'doc-homologacao-editor-surface max-w-none min-h-[520px] rounded-b-lg border border-t-0 border-slate-300/90 bg-white px-3 py-4 text-slate-900 shadow-sm transition focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/25 dark:border-slate-600 dark:bg-white dark:text-black [&_mark]:bg-yellow-200';
+  'doc-homologacao-editor-surface max-w-none min-h-[720px] rounded-b-lg border border-t-0 border-slate-300/90 bg-white px-3 py-4 text-slate-900 shadow-sm transition focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/25 dark:border-slate-600 dark:bg-white dark:text-black [&_mark]:bg-yellow-200';
+
+const alturaPainelClass = 'h-[min(92vh,1100px)]';
+const alturaPainelMinClass = 'min-h-[720px]';
 
 export function PreviewHomologacaoAcordo({
   conteudo,
@@ -76,21 +79,25 @@ export function PreviewHomologacaoAcordo({
         </div>
       </header>
 
-      <div className="grid lg:grid-cols-2">
-        <div className="max-h-[min(85vh,960px)] overflow-y-auto border-b border-slate-200 px-4 py-4 dark:border-slate-700 lg:border-b-0 lg:border-r">
+      <div className="grid min-h-0 lg:grid-cols-2">
+        <div
+          className={`${alturaPainelClass} overflow-y-auto border-b border-slate-200 px-3 py-3 dark:border-slate-700 lg:border-b-0 lg:border-r lg:px-4 lg:py-4`}
+        >
           <HtmlEditor
             ariaLabel="Texto da homologatória de acordo"
             value={conteudo.corpoUnico}
             onChange={(corpoUnico) => onConteudoChange?.({ ...conteudo, corpoUnico })}
-            minHeight="520px"
+            minHeight="720px"
             surfaceClassName={corpoUnicoClass}
             toolbar="completo"
           />
         </div>
 
-        <div className="relative min-h-[480px] bg-slate-100 dark:bg-slate-950">
+        <div className={`relative ${alturaPainelMinClass} bg-slate-100 dark:bg-slate-950`}>
           {loading && !pdfUrl ? (
-            <div className="flex min-h-[480px] flex-col items-center justify-center gap-2 text-sm text-slate-500">
+            <div
+              className={`flex ${alturaPainelClass} flex-col items-center justify-center gap-2 text-sm text-slate-500`}
+            >
               <Loader2 className="h-8 w-8 animate-spin text-cyan-600" aria-hidden />
               Gerando prévia do PDF…
             </div>
@@ -98,10 +105,12 @@ export function PreviewHomologacaoAcordo({
             <iframe
               title="Prévia da homologatória de acordo"
               src={pdfUrl}
-              className="h-[min(85vh,960px)] w-full border-0"
+              className={`${alturaPainelClass} w-full border-0`}
             />
           ) : (
-            <div className="flex min-h-[480px] items-center justify-center px-4 text-center text-sm text-slate-500">
+            <div
+              className={`flex ${alturaPainelClass} items-center justify-center px-4 text-center text-sm text-slate-500`}
+            >
               Clique em &quot;Atualizar prévia&quot; para visualizar o PDF.
             </div>
           )}

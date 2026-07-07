@@ -1257,8 +1257,16 @@ export function GerarDocumento() {
     });
   }, [navigate, dadosProcesso]);
 
+  const layoutPreviewAmplo =
+    modoArquivo ||
+    (modoManual && manualPreviewVisivel) ||
+    (modoHomologacao && homologPreviewVisivel) ||
+    (modoContrato && contratoHonorarios && contratoPreviewVisivel && contratoPreviewConteudo);
+
   return (
-    <div className={`mx-auto px-4 py-6 lg:px-6 ${modoArquivo || (modoManual && manualPreviewVisivel) ? 'max-w-7xl pb-8' : modoModelo || modoExecucao ? 'max-w-4xl pb-8' : 'max-w-4xl pb-32'}`}>
+    <div
+      className={`mx-auto py-6 ${layoutPreviewAmplo ? 'max-w-[min(1680px,100%)] px-2 pb-8 lg:px-4' : modoModelo || modoExecucao ? 'max-w-4xl px-4 pb-8 lg:px-6' : 'max-w-4xl px-4 pb-32 lg:px-6'}`}
+    >
       <DocumentosSubmenu />
       <header className="mb-6 flex flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
@@ -1991,6 +1999,7 @@ export function GerarDocumento() {
       !modoArquivo &&
       !modoExecucao &&
       !(modoManual && manualPreviewVisivel) &&
+      !(modoHomologacao && homologPreviewVisivel) &&
       !(modoContrato && contratoHonorarios && contratoPreviewVisivel && contratoPreviewConteudo) ? (
       <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-200 bg-white/95 px-4 py-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 lg:left-56">
         <div className="mx-auto flex max-w-4xl flex-wrap items-center gap-3">

@@ -230,9 +230,11 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
         if (ignoradas > 0) {
             return "Nenhum PDF disponível para nova assinatura. "
                     + ignoradas
-                    + " arquivo(s) já constam como protocolados no PROJUDI e não podem ser refeitos. "
-                    + "Substitua os PDFs na pasta «Assinar» por versões novas (conteúdo diferente) ou "
-                    + "retire os já protocolados do lote.";
+                    + " arquivo(s) já constam na fila PROJUDI (pendentes de assinatura, assinados ou em protocolo) "
+                    + "e não podem ser refeitos. "
+                    + "Veja Peticionamento PROJUDI → «Pendentes de assinatura» ou «Protocolar». "
+                    + "Para um documento novo, altere o conteúdo do PDF na pasta «Assinar» "
+                    + "ou retire os arquivos já registrados do lote.";
         }
         return "Nenhum PDF pendente para assinar. Verifique a pasta «Assinar» no Drive e tente novamente.";
     }
@@ -311,14 +313,6 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
         }
 
         String cnjDigitos = ProjudiNumeroReduzidoUtil.somenteDigitos(cnj);
-        if (cnjTemFilaProtocoloAtiva(cnj, cnjDigitosComFilaProtocoloAtiva())) {
-            log.info(
-                    "Preparar Assinar: processo {} ({}/{}) já possui petição na fila PROJUDI — ignorado",
-                    cnj,
-                    cod,
-                    proc);
-            return new ResultadoUmProcesso(resumoSemArquivos(cnj, cod), null, 0);
-        }
 
         List<ArquivoParaAssinar> paraRegistrar = new ArrayList<>();
         Set<String> sha256VistosNaPassagem = new HashSet<>();
@@ -342,6 +336,13 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
         }
 
         if (paraRegistrar.isEmpty()) {
+            if (cnjTemFilaProtocoloAtiva(cnj, cnjDigitosComFilaProtocoloAtiva())) {
+                log.info(
+                        "Preparar Assinar: processo {} ({}/{}) já possui petição na fila PROJUDI — ignorado",
+                        cnj,
+                        cod,
+                        proc);
+            }
             return new ResultadoUmProcesso(
                     resumoOk(cnj, cod, registradas, reutilizadas, ignoradasJaAssinadas, semArquivos),
                     null,
