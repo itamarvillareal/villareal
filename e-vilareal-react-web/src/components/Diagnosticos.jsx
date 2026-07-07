@@ -42,6 +42,7 @@ import {
   assinarAutomaticoAguardandoProtocolo,
   consultarLoteAssinaturaAguardandoProtocolo,
   reliberarLoteAssinaturaAguardandoProtocolo,
+  cancelarLoteAssinaturaAguardandoProtocolo,
   baixarZipLoteAguardandoProtocolo,
   uploadAssinadosAguardandoProtocolo,
   listarProcessosVinculoPessoaDiagnostico,
@@ -388,6 +389,7 @@ export function Diagnosticos() {
   const [assinarAutomaticoErroCodigo, setAssinarAutomaticoErroCodigo] = useState('');
   const [assinarAutomaticoPeticaoCount, setAssinarAutomaticoPeticaoCount] = useState(0);
   const [assinarAutomaticoReliberando, setAssinarAutomaticoReliberando] = useState(false);
+  const [assinarAutomaticoCancelando, setAssinarAutomaticoCancelando] = useState(false);
   const assinarAutomaticoPollRef = useRef(null);
   const [modalUploadAssinadosAberto, setModalUploadAssinadosAberto] = useState(false);
   const [uploadAssinadosArquivos, setUploadAssinadosArquivos] = useState([]);
@@ -644,7 +646,7 @@ export function Diagnosticos() {
   }
 
   function fecharModalAssinarAutomatico() {
-    if (assinarAutomaticoAtivo && assinarAutomaticoFase !== 'concluido' && assinarAutomaticoFase !== 'erro') {
+    if (assinarAutomaticoAtivo && assinarAutomaticoFase !== 'concluido' && assinarAutomaticoFase !== 'erro' && assinarAutomaticoFase !== 'cancelado') {
       return;
     }
     pararPollingAssinarAutomatico();
@@ -656,6 +658,7 @@ export function Diagnosticos() {
     setAssinarAutomaticoErroCodigo('');
     setAssinarAutomaticoPeticaoCount(0);
     setAssinarAutomaticoReliberando(false);
+    setAssinarAutomaticoCancelando(false);
   }
 
   function irParaPeticionamentoProjudi() {
@@ -683,6 +686,12 @@ export function Diagnosticos() {
     if (st === 'PREPARANDO') {
       setAssinarAutomaticoFase('preparando');
       return false;
+    }
+    if (st === 'CANCELADO') {
+      setAssinarAutomaticoFase('cancelado');
+      setAssinarAutomaticoAtivo(false);
+      pararPollingAssinarAutomatico();
+      return true;
     }
     if (st === 'CONCLUIDO') {
       setAssinarAutomaticoFase('concluido');
@@ -760,6 +769,25 @@ export function Diagnosticos() {
       setAssinarAutomaticoErro(mensagemErroAmigavel(e, 'iniciar a assinatura automática'));
       setAssinarAutomaticoAtivo(false);
       pararPollingAssinarAutomatico();
+    }
+  }
+
+  async function cancelarPreparoAssinarAutomatico() {
+    const loteId = assinarAutomaticoLoteId;
+    if (loteId == null || assinarAutomaticoCancelando) return;
+    setAssinarAutomaticoCancelando(true);
+    try {
+      await cancelarLoteAssinaturaAguardandoProtocolo(loteId);
+      setAssinarAutomaticoFase('cancelado');
+      setAssinarAutomaticoAtivo(false);
+      pararPollingAssinarAutomatico();
+    } catch (e) {
+      setAssinarAutomaticoFase('erro');
+      setAssinarAutomaticoErro(mensagemErroAmigavel(e, 'cancelar o preparo'));
+      setAssinarAutomaticoAtivo(false);
+      pararPollingAssinarAutomatico();
+    } finally {
+      setAssinarAutomaticoCancelando(false);
     }
   }
 
@@ -2222,7 +2250,12 @@ export function Diagnosticos() {
               <button
                 type="button"
                 onClick={fecharModalAssinarAutomatico}
-                disabled={assinarAutomaticoAtivo && assinarAutomaticoFase !== 'concluido' && assinarAutomaticoFase !== 'erro'}
+                disabled={
+                  assinarAutomaticoAtivo
+                  && assinarAutomaticoFase !== 'concluido'
+                  && assinarAutomaticoFase !== 'erro'
+                  && assinarAutomaticoFase !== 'cancelado'
+                }
                 className="p-1 rounded-lg text-white/90 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed"
                 aria-label="Fechar"
               >
@@ -2237,6 +2270,29 @@ export function Diagnosticos() {
                   <p className="text-xs text-slate-500">
                     Buscando PDFs no Drive e enfileirando lote para o assinador local.
                     {assinarAutomaticoLoteId != null ? ` · Lote #${assinarAutomaticoLoteId}` : ''}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void cancelarPreparoAssinarAutomatico()}
+                    disabled={assinarAutomaticoCancelando || assinarAutomaticoLoteId == null}
+                    className="mt-1 px-4 py-2 rounded-xl border border-slate-300 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 inline-flex items-center gap-2"
+                  >
+                    {assinarAutomaticoCancelando ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                        Cancelando…
+                      </>
+                    ) : (
+                      'Cancelar preparo'
+                    )}
+                  </button>
+                </div>
+              ) : null}
+              {assinarAutomaticoFase === 'cancelado' ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50/90 px-4 py-4 text-center space-y-2">
+                  <p className="font-semibold text-amber-900">Preparo cancelado</p>
+                  <p className="text-xs text-amber-800">
+                    O lote não foi liberado para o assinador. Você pode fechar e tentar de novo quando quiser.
                   </p>
                 </div>
               ) : null}
@@ -2315,7 +2371,7 @@ export function Diagnosticos() {
                   Assinar manualmente (baixar ZIP)
                 </button>
               ) : null}
-              {assinarAutomaticoFase === 'erro' || assinarAutomaticoFase === 'concluido' ? (
+              {assinarAutomaticoFase === 'erro' || assinarAutomaticoFase === 'concluido' || assinarAutomaticoFase === 'cancelado' ? (
                 <button
                   type="button"
                   onClick={fecharModalAssinarAutomatico}

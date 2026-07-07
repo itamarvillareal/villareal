@@ -5,6 +5,7 @@ import br.com.vilareal.assinador.domain.AssinaturaLoteStatus;
 import br.com.vilareal.assinador.infrastructure.persistence.entity.AssinaturaLoteEntity;
 import br.com.vilareal.assinador.infrastructure.persistence.repository.AssinaturaLoteRepository;
 import br.com.vilareal.common.exception.BusinessRuleException;
+import br.com.vilareal.processo.application.PreparoCanceladoException;
 import br.com.vilareal.processo.api.dto.AssinarAutomaticoResponse;
 import br.com.vilareal.processo.api.dto.DiagnosticoAguardandoProtocoloItemRequest;
 import br.com.vilareal.processo.api.dto.LoteAssinaturaStatusResponse;
@@ -21,6 +22,8 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -69,21 +72,45 @@ class DiagnosticoAssinaturaAutomaticaServiceTest {
     }
 
     @Test
+    void executarPreparoEmBackground_abortaSemFalharPreparacaoQuandoCancelado() {
+        List<DiagnosticoAguardandoProtocoloItemRequest> processos = List.of(item("12345678", 1));
+        when(diagnosticoAssinarService.prepararAssinatura(CREDENCIAL_ID, processos, false, 9L))
+                .thenThrow(new PreparoCanceladoException(9L, AssinaturaLoteStatus.CANCELADO));
+
+        service.executarPreparoEmBackground(9L, CREDENCIAL_ID, processos);
+
+        verify(assinaturaLoteService, never()).falharPreparacao(anyLong(), any(), any());
+        verify(assinaturaLoteService, never()).concluirPreparacao(anyLong(), any(), anyInt());
+    }
+
+    @Test
+    void cancelar_marcaLoteComoCancelado() {
+        AssinaturaLoteEntity cancelado = lote(12L, AssinaturaLoteStatus.CANCELADO, List.of());
+        when(assinaturaLoteService.cancelarPreparacao(12L)).thenReturn(cancelado);
+
+        LoteAssinaturaStatusResponse status = service.cancelar(12L);
+
+        assertThat(status.status()).isEqualTo(AssinaturaLoteStatus.CANCELADO);
+        verify(assinaturaLoteService).cancelarPreparacao(12L);
+    }
+
+    @Test
     void executarPreparoEmBackground_concluiPreparacao() {
         List<DiagnosticoAguardandoProtocoloItemRequest> processos = List.of(item("12345678", 1));
-        when(diagnosticoAssinarService.prepararAssinatura(CREDENCIAL_ID, processos))
+        when(diagnosticoAssinarService.prepararAssinatura(CREDENCIAL_ID, processos, false, 7L))
                 .thenReturn(new PrepararAssinarResultado(List.of(10L, 11L), List.of(), 3));
         when(assinaturaLoteRepository.findByStatusIn(any())).thenReturn(List.of());
 
         service.executarPreparoEmBackground(7L, CREDENCIAL_ID, processos);
 
         verify(assinaturaLoteService).concluirPreparacao(7L, List.of(10L, 11L), 3);
+        verify(diagnosticoAssinarService).prepararAssinatura(CREDENCIAL_ID, processos, false, 7L);
     }
 
     @Test
     void executarPreparoEmBackground_falhaQuandoSemPdf() {
         List<DiagnosticoAguardandoProtocoloItemRequest> processos = List.of(item("12345678", 1));
-        when(diagnosticoAssinarService.prepararAssinatura(CREDENCIAL_ID, processos))
+        when(diagnosticoAssinarService.prepararAssinatura(CREDENCIAL_ID, processos, false, 8L))
                 .thenReturn(new PrepararAssinarResultado(List.of(), List.of(), 0));
 
         service.executarPreparoEmBackground(8L, CREDENCIAL_ID, processos);

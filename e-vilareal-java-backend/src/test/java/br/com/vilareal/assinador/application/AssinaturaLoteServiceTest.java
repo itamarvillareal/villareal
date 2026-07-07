@@ -133,6 +133,27 @@ class AssinaturaLoteServiceTest {
     }
 
     @Test
+    void cancelarPreparacao_marcaCancelado() {
+        AssinaturaLoteEntity preparando = lote(6L, AssinaturaLoteStatus.PREPARANDO);
+        when(repository.findById(6L)).thenReturn(Optional.of(preparando));
+        when(repository.save(any(AssinaturaLoteEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        AssinaturaLoteEntity cancelado = service.cancelarPreparacao(6L);
+
+        assertThat(cancelado.getStatus()).isEqualTo(AssinaturaLoteStatus.CANCELADO);
+        assertThat(cancelado.getErroCodigo()).isNull();
+    }
+
+    @Test
+    void cancelarPreparacao_rejeitaStatusInvalido() {
+        when(repository.findById(8L)).thenReturn(Optional.of(lote(8L, AssinaturaLoteStatus.LIBERADO)));
+
+        assertThatThrownBy(() -> service.cancelarPreparacao(8L))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("cancelar");
+    }
+
+    @Test
     void reliberarLote_rejeitaStatusInvalido() {
         when(repository.findById(5L)).thenReturn(Optional.of(lote(5L, AssinaturaLoteStatus.LIBERADO)));
 

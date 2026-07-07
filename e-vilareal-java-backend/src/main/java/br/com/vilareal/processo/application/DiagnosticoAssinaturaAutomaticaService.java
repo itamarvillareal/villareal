@@ -117,12 +117,18 @@ public class DiagnosticoAssinaturaAutomaticaService {
         return montarStatus(lote);
     }
 
+    @Transactional
+    public LoteAssinaturaStatusResponse cancelar(Long loteId) {
+        AssinaturaLoteEntity lote = assinaturaLoteService.cancelarPreparacao(loteId);
+        return montarStatus(lote);
+    }
+
     /** Visível para testes (mesmo pacote). */
     void executarPreparoEmBackground(
             Long loteId, Long credencialId, List<DiagnosticoAguardandoProtocoloItemRequest> processos) {
         try {
             PrepararAssinarResultado preparado =
-                    diagnosticoAssinarService.prepararAssinatura(credencialId, processos);
+                    diagnosticoAssinarService.prepararAssinatura(credencialId, processos, false, loteId);
             List<Long> peticaoIds = normalizarIds(preparado.peticaoIds());
             if (peticaoIds.isEmpty()) {
                 assinaturaLoteService.falharPreparacao(
@@ -159,6 +165,8 @@ public class DiagnosticoAssinaturaAutomaticaService {
                     loteId,
                     peticaoIds.size(),
                     preparado.totalArquivos());
+        } catch (PreparoCanceladoException e) {
+            log.info("Preparo abortado cooperativamente (lote #{}): {}", loteId, e.getMessage());
         } catch (BusinessRuleException e) {
             log.warn("Preparo assíncrono falhou (lote #{}): {}", loteId, e.getMessage());
             assinaturaLoteService.falharPreparacao(loteId, "PREPARO_FALHOU", e.getMessage());

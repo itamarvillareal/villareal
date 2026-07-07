@@ -1,5 +1,8 @@
 package br.com.vilareal.processo.application;
 
+import br.com.vilareal.assinador.domain.AssinaturaLoteStatus;
+import br.com.vilareal.assinador.infrastructure.persistence.entity.AssinaturaLoteEntity;
+import br.com.vilareal.assinador.infrastructure.persistence.repository.AssinaturaLoteRepository;
 import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.documento.DocumentoDrivePastaService;
 import br.com.vilareal.documento.DriveArquivoDto;
@@ -65,6 +68,7 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
     private final ProjudiPeticaoAssinaturaService peticaoAssinaturaService;
     private final ProjudiPeticaoArquivoRepository arquivoRepository;
     private final ProjudiPeticaoRepository peticaoRepository;
+    private final AssinaturaLoteRepository assinaturaLoteRepository;
     private final ObjectMapper objectMapper;
     private final Path storeDir;
 
@@ -77,6 +81,7 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
             ProjudiPeticaoAssinaturaService peticaoAssinaturaService,
             ProjudiPeticaoArquivoRepository arquivoRepository,
             ProjudiPeticaoRepository peticaoRepository,
+            AssinaturaLoteRepository assinaturaLoteRepository,
             ObjectMapper objectMapper,
             @Value("${projudi.peticao.store-dir:/Users/itamar/projudi-peticoes}") String storeDirConfig) {
         this.documentoDrivePastaService = documentoDrivePastaService;
@@ -87,6 +92,7 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
         this.peticaoAssinaturaService = peticaoAssinaturaService;
         this.arquivoRepository = arquivoRepository;
         this.peticaoRepository = peticaoRepository;
+        this.assinaturaLoteRepository = assinaturaLoteRepository;
         this.objectMapper = objectMapper;
         this.storeDir = Path.of(storeDirConfig.trim());
     }
@@ -108,6 +114,28 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
     @Transactional
     public PrepararAssinarResultado prepararAssinatura(
             Long credencialId, List<DiagnosticoAguardandoProtocoloItemRequest> processos) {
+        return prepararAssinatura(credencialId, processos, true, null);
+    }
+
+    @Transactional
+    public PrepararAssinarResultado prepararAssinatura(
+            Long credencialId,
+            List<DiagnosticoAguardandoProtocoloItemRequest> processos,
+            boolean sincronizarDriveNoRegistro) {
+        return prepararAssinatura(credencialId, processos, sincronizarDriveNoRegistro, null);
+    }
+
+    /**
+     * @param sincronizarDriveNoRegistro {@code false} no preparo assíncrono (assinatura automática): evita
+     *     re-upload dos PDFs para a pasta «Assinar» — o assinador consome apenas o store-dir local.
+     * @param loteAssinaturaId quando informado, aborta o preparo se o lote deixar de estar {@link AssinaturaLoteStatus#PREPARANDO}.
+     */
+    @Transactional
+    public PrepararAssinarResultado prepararAssinatura(
+            Long credencialId,
+            List<DiagnosticoAguardandoProtocoloItemRequest> processos,
+            boolean sincronizarDriveNoRegistro,
+            Long loteAssinaturaId) {
         if (credencialId == null) {
             throw new BusinessRuleException("credencialId é obrigatório.");
         }
@@ -121,8 +149,13 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
         Set<Long> peticaoIds = new LinkedHashSet<>();
         List<ResumoProcessoPrepararAssinar> resumos = new ArrayList<>();
         int totalArquivos = 0;
+        List<String> refsLocaisEscritos = new ArrayList<>();
 
         for (DiagnosticoAguardandoProtocoloItemRequest item : processos) {
+            if (loteAssinaturaId != null) {
+                verificarLoteAindaPreparando(loteAssinaturaId, refsLocaisEscritos);
+            }
+
             String cod = normalizarCodigo(item.getCodigoCliente());
             Integer proc = item.getNumeroInterno();
             String cnj = resolverCnj(item, cod, proc);
@@ -217,8 +250,13 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
             }
 
             if (!paraRegistrar.isEmpty()) {
-                ProjudiPeticaoEntity peticao =
-                        peticaoRegistroService.registrarPeticao(credencialId, cnj, null, paraRegistrar);
+                ProjudiPeticaoEntity peticao = peticaoRegistroService.registrarPeticao(
+                        credencialId, cnj, null, paraRegistrar, sincronizarDriveNoRegistro);
+                for (ProjudiPeticaoArquivoEntity arquivo : peticao.getArquivos()) {
+                    if (StringUtils.hasText(arquivo.getPdfRef())) {
+                        refsLocaisEscritos.add(arquivo.getPdfRef());
+                    }
+                }
                 peticaoIds.add(peticao.getId());
                 registradas += paraRegistrar.size();
                 totalArquivos += paraRegistrar.size();
@@ -400,6 +438,33 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
                 semConteudo,
                 peticoesQueViraramAssinadas,
                 !substituirConflitos && (!ambiguas.isEmpty() || jaAssinadas > 0));
+    }
+
+    private void verificarLoteAindaPreparando(Long loteId, List<String> refsLocaisEscritos) {
+        AssinaturaLoteStatus status = assinaturaLoteRepository
+                .findById(loteId)
+                .map(AssinaturaLoteEntity::getStatus)
+                .orElse(null);
+        if (status != AssinaturaLoteStatus.PREPARANDO) {
+            removerArquivosLocaisEscritos(refsLocaisEscritos);
+            throw new PreparoCanceladoException(loteId, status);
+        }
+    }
+
+    private void removerArquivosLocaisEscritos(List<String> refsLocaisEscritos) {
+        if (refsLocaisEscritos == null || refsLocaisEscritos.isEmpty()) {
+            return;
+        }
+        for (String ref : refsLocaisEscritos) {
+            if (!StringUtils.hasText(ref)) {
+                continue;
+            }
+            try {
+                Files.deleteIfExists(storeDir.resolve(ref));
+            } catch (Exception e) {
+                log.warn("Preparar Assinar: falha ao remover PDF local (ref={}): {}", ref, e.getMessage());
+            }
+        }
     }
 
     /**

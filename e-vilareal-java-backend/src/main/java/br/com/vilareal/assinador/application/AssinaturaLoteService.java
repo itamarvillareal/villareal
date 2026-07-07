@@ -63,6 +63,17 @@ public class AssinaturaLoteService {
     }
 
     @Transactional
+    public AssinaturaLoteEntity cancelarPreparacao(Long loteId) {
+        AssinaturaLoteEntity lote = buscarObrigatorio(loteId);
+        exigirStatus(lote, AssinaturaLoteStatus.PREPARANDO, "cancelar");
+        lote.setStatus(AssinaturaLoteStatus.CANCELADO);
+        lote.setErroCodigo(null);
+        lote.setErroMensagem(null);
+        limparLock(lote);
+        return repository.save(lote);
+    }
+
+    @Transactional
     public AssinaturaLoteEntity falharPreparacao(Long loteId, String codigo, String mensagem) {
         if (!StringUtils.hasText(codigo)) {
             throw new BusinessRuleException("erro_codigo é obrigatório.");

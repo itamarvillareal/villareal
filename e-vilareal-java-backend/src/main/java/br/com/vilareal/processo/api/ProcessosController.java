@@ -253,6 +253,16 @@ public class ProcessosController {
         return diagnosticoAssinaturaAutomaticaService.reliberar(loteId);
     }
 
+    @PostMapping("/diagnostico/aguardando-protocolo/lote-assinatura/{loteId}/cancelar")
+    @Operation(
+            summary = "Cancela preparo assíncrono (PREPARANDO → CANCELADO)",
+            description =
+                    "Interrompe cooperativemente o job de preparo em segundo plano. Petições parciais "
+                            + "do preparo abortado são revertidas; o assinador não recebe o lote.")
+    public LoteAssinaturaStatusResponse cancelarLoteAssinaturaDiagnostico(@PathVariable Long loteId) {
+        return diagnosticoAssinaturaAutomaticaService.cancelar(loteId);
+    }
+
     @PostMapping("/diagnostico/aguardando-protocolo/lote-assinar-zip")
     @Operation(
             summary = "ZIP com PDFs pendentes do lote preparado",

@@ -83,6 +83,20 @@ public class ProjudiPeticaoRegistroService {
             String numeroProcesso,
             String complemento,
             List<ArquivoParaAssinar> arquivos) {
+        return registrarPeticao(credencialId, numeroProcesso, complemento, arquivos, true);
+    }
+
+    /**
+     * @param sincronizarDrive quando {@code false}, grava só no store-dir local (fluxo assinatura automática:
+     *     PDFs já vieram do Drive; o assinador lê apenas {@code pdfRef} local).
+     */
+    @Transactional
+    public ProjudiPeticaoEntity registrarPeticao(
+            Long credencialId,
+            String numeroProcesso,
+            String complemento,
+            List<ArquivoParaAssinar> arquivos,
+            boolean sincronizarDrive) {
         if (credencialId == null) {
             throw new IllegalArgumentException("credencialId é obrigatório.");
         }
@@ -139,7 +153,10 @@ public class ProjudiPeticaoRegistroService {
             arquivo.setStatus(STATUS_PENDENTE_ASSINATURA);
             peticao.adicionarArquivo(arquivo);
 
-            processoOpt.ifPresent(processo -> copiarPdfParaPastaAssinar(processo, nomeStore, item.pdfBytes(), arquivo));
+            if (sincronizarDrive) {
+                processoOpt.ifPresent(
+                        processo -> copiarPdfParaPastaAssinar(processo, nomeStore, item.pdfBytes(), arquivo));
+            }
         }
 
         return peticaoRepository.save(peticao);

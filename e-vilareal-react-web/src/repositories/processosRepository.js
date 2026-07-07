@@ -685,6 +685,17 @@ export async function reliberarLoteAssinaturaAguardandoProtocolo(loteId) {
   });
 }
 
+/** Cancela preparo assíncrono (PREPARANDO → CANCELADO). */
+export async function cancelarLoteAssinaturaAguardandoProtocolo(loteId) {
+  const id = String(loteId ?? '').trim();
+  if (!id) {
+    throw new Error('loteId inválido.');
+  }
+  return request(`/api/processos/diagnostico/aguardando-protocolo/lote-assinatura/${id}/cancelar`, {
+    method: 'POST',
+  });
+}
+
 /**
  * ZIP com PDFs pendentes do lote preparado (nomes canônicos + manifest informativo).
  * Grava em disco via stream quando possível — evita OOM (Chrome erro 5) com lotes grandes.
