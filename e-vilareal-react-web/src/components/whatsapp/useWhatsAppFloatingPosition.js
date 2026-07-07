@@ -30,39 +30,64 @@ function readStoredFabPosition() {
   return null;
 }
 
-function defaultFabPosition() {
+function getViewportBounds() {
+  if (typeof window === 'undefined') {
+    return { w: 0, h: 0, top: 0, left: 0 };
+  }
+  const vv = window.visualViewport;
   return {
-    x: window.innerWidth - WHATSAPP_FAB_SIZE - 24,
-    y: window.innerHeight - WHATSAPP_FAB_SIZE - 24,
+    w: vv?.width ?? window.innerWidth,
+    h: vv?.height ?? window.innerHeight,
+    top: vv?.offsetTop ?? 0,
+    left: vv?.offsetLeft ?? 0,
   };
 }
 
+function defaultFabPosition() {
+  const { w, h, top, left } = getViewportBounds();
+  const margin = 24;
+  const bottomInset = typeof window !== 'undefined' && window.innerWidth <= 640 ? 16 : 0;
+  return clampFabPosition(
+    left + w - WHATSAPP_FAB_SIZE - margin,
+    top + h - WHATSAPP_FAB_SIZE - margin - bottomInset,
+  );
+}
+
 export function clampFabPosition(x, y) {
-  const maxX = Math.max(VIEWPORT_MARGIN, window.innerWidth - WHATSAPP_FAB_SIZE - VIEWPORT_MARGIN);
-  const maxY = Math.max(VIEWPORT_MARGIN, window.innerHeight - WHATSAPP_FAB_SIZE - VIEWPORT_MARGIN);
+  const { w, h, top, left } = getViewportBounds();
+  const minX = left + VIEWPORT_MARGIN;
+  const minY = top + VIEWPORT_MARGIN;
+  const maxX = left + Math.max(VIEWPORT_MARGIN, w - WHATSAPP_FAB_SIZE - VIEWPORT_MARGIN);
+  const maxY = top + Math.max(VIEWPORT_MARGIN, h - WHATSAPP_FAB_SIZE - VIEWPORT_MARGIN);
   return {
-    x: Math.min(Math.max(VIEWPORT_MARGIN, x), maxX),
-    y: Math.min(Math.max(VIEWPORT_MARGIN, y), maxY),
+    x: Math.min(Math.max(minX, x), maxX),
+    y: Math.min(Math.max(minY, y), maxY),
   };
 }
 
 export function panelPosFromFab(fabX, fabY) {
+  const { w, h, top, left } = getViewportBounds();
   const x = fabX + WHATSAPP_FAB_SIZE - WHATSAPP_PANEL_W;
   const y = fabY + WHATSAPP_FAB_SIZE - WHATSAPP_PANEL_H;
-  const maxX = Math.max(VIEWPORT_MARGIN, window.innerWidth - WHATSAPP_PANEL_W - VIEWPORT_MARGIN);
-  const maxY = Math.max(VIEWPORT_MARGIN, window.innerHeight - WHATSAPP_PANEL_H - VIEWPORT_MARGIN);
+  const minX = left + VIEWPORT_MARGIN;
+  const minY = top + VIEWPORT_MARGIN;
+  const maxX = left + Math.max(VIEWPORT_MARGIN, w - WHATSAPP_PANEL_W - VIEWPORT_MARGIN);
+  const maxY = top + Math.max(VIEWPORT_MARGIN, h - WHATSAPP_PANEL_H - VIEWPORT_MARGIN);
   return {
-    x: Math.min(Math.max(VIEWPORT_MARGIN, x), maxX),
-    y: Math.min(Math.max(VIEWPORT_MARGIN, y), maxY),
+    x: Math.min(Math.max(minX, x), maxX),
+    y: Math.min(Math.max(minY, y), maxY),
   };
 }
 
 function clampPanelPosition(x, y) {
-  const maxX = Math.max(VIEWPORT_MARGIN, window.innerWidth - WHATSAPP_PANEL_W - VIEWPORT_MARGIN);
-  const maxY = Math.max(VIEWPORT_MARGIN, window.innerHeight - WHATSAPP_PANEL_H - VIEWPORT_MARGIN);
+  const { w, h, top, left } = getViewportBounds();
+  const minX = left + VIEWPORT_MARGIN;
+  const minY = top + VIEWPORT_MARGIN;
+  const maxX = left + Math.max(VIEWPORT_MARGIN, w - WHATSAPP_PANEL_W - VIEWPORT_MARGIN);
+  const maxY = top + Math.max(VIEWPORT_MARGIN, h - WHATSAPP_PANEL_H - VIEWPORT_MARGIN);
   return {
-    x: Math.min(Math.max(VIEWPORT_MARGIN, x), maxX),
-    y: Math.min(Math.max(VIEWPORT_MARGIN, y), maxY),
+    x: Math.min(Math.max(minX, x), maxX),
+    y: Math.min(Math.max(minY, y), maxY),
   };
 }
 
@@ -93,25 +118,31 @@ export function useWhatsAppFloatingPosition({ isOpen, isMobile, onTap }) {
   const [fabPos, setFabPos] = useState(() => readStoredFabPosition());
   const dragRef = useRef(null);
 
-  const resolvedFab = useMemo(() => {
-    if (isMobile) return null;
-    return clampFabPosition((fabPos ?? defaultFabPosition()).x, (fabPos ?? defaultFabPosition()).y);
-  }, [fabPos, isMobile]);
+  const resolvedFab = useMemo(
+    () => clampFabPosition((fabPos ?? defaultFabPosition()).x, (fabPos ?? defaultFabPosition()).y),
+    [fabPos],
+  );
 
   const containerStyle = useMemo(() => {
-    if (isMobile || !resolvedFab) return undefined;
+    if (isMobile && isOpen) return undefined;
     const pos = isOpen ? panelPosFromFab(resolvedFab.x, resolvedFab.y) : resolvedFab;
     return { left: `${pos.x}px`, top: `${pos.y}px` };
   }, [isMobile, resolvedFab, isOpen]);
 
   useEffect(() => {
-    if (isMobile) return undefined;
     const onResize = () => {
       setFabPos((prev) => clampFabPosition((prev ?? defaultFabPosition()).x, (prev ?? defaultFabPosition()).y));
     };
     window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, [isMobile]);
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', onResize);
+    vv?.addEventListener('scroll', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      vv?.removeEventListener('resize', onResize);
+      vv?.removeEventListener('scroll', onResize);
+    };
+  }, []);
 
   const resetPosition = useCallback(() => {
     persistFabPosition(null);
@@ -120,11 +151,11 @@ export function useWhatsAppFloatingPosition({ isOpen, isMobile, onTap }) {
 
   const startDrag = useCallback(
     (e) => {
-      if (isMobile) return;
+      if (isMobile && isOpen) return;
       if (!shouldStartFloatingDrag(e)) return;
       e.preventDefault();
       e.currentTarget.setPointerCapture?.(e.pointerId);
-      const origin = resolvedFab ?? defaultFabPosition();
+      const origin = resolvedFab;
       dragRef.current = {
         pointerId: e.pointerId,
         startX: e.clientX,
@@ -134,7 +165,7 @@ export function useWhatsAppFloatingPosition({ isOpen, isMobile, onTap }) {
         moved: false,
       };
     },
-    [isMobile, resolvedFab],
+    [isMobile, isOpen, resolvedFab],
   );
 
   const moveDrag = useCallback(
@@ -188,26 +219,23 @@ export function useWhatsAppFloatingPosition({ isOpen, isMobile, onTap }) {
     [isOpen, onTap],
   );
 
-  const dragHandleProps = useMemo(
-    () =>
-      isMobile
-        ? {}
-        : {
-            onPointerDown: startDrag,
-            onPointerMove: moveDrag,
-            onPointerUp: endDrag,
-            onPointerCancel: endDrag,
-            className: 'touch-none select-none cursor-grab active:cursor-grabbing',
-            title: isOpen
-              ? 'Arraste para mover o painel'
-              : 'Arraste para mover · Clique para abrir · Duplo clique restaura posição',
-          },
-    [isMobile, startDrag, moveDrag, endDrag, isOpen],
-  );
+  const dragHandleProps = useMemo(() => {
+    if (isMobile && isOpen) return {};
+    return {
+      onPointerDown: startDrag,
+      onPointerMove: moveDrag,
+      onPointerUp: endDrag,
+      onPointerCancel: endDrag,
+      className: 'touch-none select-none cursor-grab active:cursor-grabbing',
+      title: isOpen
+        ? 'Arraste para mover o painel'
+        : 'Arraste para mover · Toque para abrir · Duplo toque restaura posição',
+    };
+  }, [isMobile, isOpen, startDrag, moveDrag, endDrag]);
 
   return {
     containerStyle,
-    containerClassName: isMobile ? 'bottom-0 right-0' : '',
+    containerClassName: isMobile && isOpen ? 'inset-0' : '',
     dragHandleProps,
     resetPosition,
     isMobile,
