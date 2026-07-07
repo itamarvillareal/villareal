@@ -5,6 +5,9 @@ import { TablePaginationBar } from './ui/TablePaginationBar.jsx';
 import { MODULOS_PERMISSAO } from '../data/usuarioPermissoesStorage.js';
 import { TIPOS_ACAO_AUDITORIA } from '../services/auditoriaCliente.js';
 import { getUsuariosAtivos } from '../data/agendaPersistenciaData.js';
+import { featureFlags } from '../config/featureFlags.js';
+import { listarUsuarios } from '../repositories/usuariosRepository.js';
+import { gravarSnapshotUsuariosApi } from '../services/syncApiUsuariosSnapshot.js';
 import { getNomeExibicaoUsuario, rotuloUsuarioSelectComTipo } from '../data/usuarioDisplayHelpers.js';
 import { AutorUsuarioExibicao } from './ui/AutorUsuarioExibicao.jsx';
 import { AtividadeProdutividadeChart } from './atividade/AtividadeProdutividadeChart.jsx';
@@ -75,7 +78,35 @@ export function Atividade() {
   const [chartLoading, setChartLoading] = useState(false);
   const [pontosProdutividade, setPontosProdutividade] = useState([]);
 
-  const usuarios = useMemo(() => getUsuariosAtivos() ?? [], []);
+  const [usuarios, setUsuarios] = useState(() => getUsuariosAtivos() ?? []);
+
+  useEffect(() => {
+    const sync = () => setUsuarios(getUsuariosAtivos() ?? []);
+    window.addEventListener('vilareal:usuarios-agenda-atualizados', sync);
+    sync();
+
+    if (!featureFlags.useApiUsuarios) {
+      return () => window.removeEventListener('vilareal:usuarios-agenda-atualizados', sync);
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await listarUsuarios();
+        if (cancelled) return;
+        gravarSnapshotUsuariosApi(data || []);
+        sync();
+      } catch {
+        /* login/snapshot noutro fluxo pode repor a lista */
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('vilareal:usuarios-agenda-atualizados', sync);
+    };
+  }, []);
+
   const usuarioSelecionado = useMemo(
     () => (usuarios || []).find((u) => String(u.id) === String(usuarioId)),
     [usuarios, usuarioId]

@@ -1181,11 +1181,14 @@ export function getUsuariosAtivos() {
     const snap = lerSnapshotUsuariosApi();
     if (Array.isArray(snap) && snap.length > 0) {
       const out = snap
-        .map((u) => enriquecerNomeComCadastroPessoa(usuarioComCamposPadrao(u)))
+        .map((u) => enriquecherNomeComCadastroPessoa(usuarioComCamposPadrao(u)))
         .filter(Boolean);
       agendarMigracaoPermissoesPendenciasIdsLegados();
       return out;
     }
+    // Snapshot vazio: não cair no merge com mock da agenda (id string «itamar» ≠ usuário API id 1).
+    agendarMigracaoPermissoesPendenciasIdsLegados();
+    return [];
   }
   const fromStore = loadUsuariosAtivos();
   const base = Array.isArray(agendaUsuariosBase) ? agendaUsuariosBase : [];
