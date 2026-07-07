@@ -21,19 +21,22 @@ export function WhatsAppLayout() {
 
   return (
     <WhatsAppToastProvider>
-      <div className="flex flex-col h-full min-h-0">
+      <div className="flex flex-1 flex-col min-h-0 w-full max-md:min-h-[calc(100dvh-3.5rem)]">
         <header className="shrink-0 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-4">
           <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2 mb-3">
             <MessageCircle className="w-6 h-6 text-emerald-600" aria-hidden />
             WhatsApp
           </h1>
-          <nav className="flex flex-wrap gap-1" aria-label="Seções WhatsApp">
+          <nav
+            className="flex gap-1 overflow-x-auto pb-1 -mx-1 px-1 scroll-smooth [scrollbar-width:thin]"
+            aria-label="Seções WhatsApp"
+          >
             {TABS.map(({ to, label, icon: Icon }) => (
               <NavLink
                 key={to}
                 to={to}
                 className={({ isActive }) =>
-                  `inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                  `inline-flex shrink-0 items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
                     isActive
                       ? 'bg-emerald-600 text-white shadow-sm'
                       : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
@@ -50,7 +53,7 @@ export function WhatsAppLayout() {
           </div>
         </header>
         <main
-          className={`flex-1 min-h-0 p-4 md:p-6 ${
+          className={`flex-1 min-h-0 p-3 md:p-6 ${
             isConversasRoute ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'
           }`}
         >

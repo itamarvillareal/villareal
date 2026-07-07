@@ -257,7 +257,7 @@ function Layout() {
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden bg-[var(--vl-bg-page)] pb-[env(safe-area-inset-bottom,0px)]">
         <Suspense
           fallback={
-            <div className="flex flex-1 items-center justify-center p-8 text-sm text-slate-600 dark:text-slate-400">
+            <div className="flex flex-1 min-h-[40dvh] items-center justify-center p-8 text-sm text-slate-600 dark:text-slate-400">
               Carregando módulo…
             </div>
           }
@@ -266,7 +266,7 @@ function Layout() {
             resetKey={location.pathname}
             onFechar={() => window.location.reload()}
           >
-            <div className="flex w-full min-w-0 flex-col max-lg:flex-none lg:min-h-0">
+            <div className="flex w-full min-w-0 flex-1 flex-col min-h-0">
               <Outlet />
             </div>
           </ProcessoEmbedErrorBoundary>

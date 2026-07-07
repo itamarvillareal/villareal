@@ -1181,9 +1181,7 @@ export function WhatsAppConversas() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div
-        className={`flex min-h-0 flex-1 flex-col md:flex-row gap-0 overflow-hidden max-w-6xl w-full mx-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm md:h-[calc(100dvh-12rem)] ${
-          activePhone ? 'max-md:flex-1' : ''
-        }`}
+        className="flex min-h-0 flex-1 flex-col md:flex-row gap-0 overflow-hidden max-w-6xl w-full mx-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm max-md:min-h-[calc(100dvh-11rem)] md:h-[calc(100dvh-12rem)]"
       >
       <aside
         className={`w-full md:w-80 shrink-0 flex-col border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/80 min-h-0 ${

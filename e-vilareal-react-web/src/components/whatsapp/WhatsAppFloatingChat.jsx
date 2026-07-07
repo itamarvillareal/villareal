@@ -618,7 +618,7 @@ export function WhatsAppFloatingChat() {
 
   if (!ctx) return null;
 
-  if (location.pathname.startsWith('/whatsapp/conversas')) {
+  if (location.pathname.startsWith('/whatsapp')) {
     return null;
   }
 
