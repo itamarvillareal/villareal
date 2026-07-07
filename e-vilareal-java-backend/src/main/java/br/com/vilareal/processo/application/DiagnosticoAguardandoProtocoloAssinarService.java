@@ -46,6 +46,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -59,6 +60,10 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
     private static final String STATUS_PETICAO_ASSINADA = "ASSINADA";
     private static final String STATUS_PETICAO_PROTOCOLADA = "PROTOCOLADA";
     private static final String STATUS_PETICAO_PROTOCOLANDO = "PROTOCOLANDO";
+
+    /** Cópias geradas pelo backend ({@code peticaoId_ordem_sha8.pdf}) — não são documentos originais do usuário. */
+    private static final Pattern NOME_CANONICO_STORE_PDF =
+            Pattern.compile("^\\d+_\\d+_[a-f0-9]{8}\\.pdf$", Pattern.CASE_INSENSITIVE);
 
     private final DocumentoDrivePastaService documentoDrivePastaService;
     private final GoogleDriveService googleDriveService;
@@ -192,12 +197,17 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
 
                 List<DriveArquivoDto> filhos = googleDriveService.listarConteudo(pastaAssinarId);
                 pdfs = new ArrayList<>();
+                int ignoradosCanonicoDrive = 0;
                 for (DriveArquivoDto arq : filhos) {
                     if (arq == null || "pasta".equals(arq.tipo()) || !StringUtils.hasText(arq.id())) {
                         continue;
                     }
                     String nome = arq.nome() != null ? arq.nome().trim() : "documento";
                     if (!nome.toLowerCase().endsWith(".pdf")) {
+                        continue;
+                    }
+                    if (isNomeCanonicoStorePdf(nome)) {
+                        ignoradosCanonicoDrive++;
                         continue;
                     }
                     try {
@@ -211,6 +221,13 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
                                 proc,
                                 e.getMessage());
                     }
+                }
+                if (ignoradosCanonicoDrive > 0) {
+                    log.info(
+                            "Preparar Assinar: {} cópia(s) canônica(s) ignorada(s) na pasta Assinar ({}/{})",
+                            ignoradosCanonicoDrive,
+                            cod,
+                            proc);
                 }
             } catch (Exception e) {
                 log.warn("Preparar Assinar: falha no Drive ({}/{}): {}", cod, proc, e.getMessage());
@@ -237,9 +254,17 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
             }
 
             List<ArquivoParaAssinar> paraRegistrar = new ArrayList<>();
+            Set<String> sha256VistosNaPassagem = new HashSet<>();
 
             for (PdfDriveItem pdf : pdfs) {
                 String sha256 = ProjudiAssinaturaP7sUtil.sha256(pdf.bytes());
+                if (!sha256VistosNaPassagem.add(sha256)) {
+                    log.debug(
+                            "Preparar Assinar: hash duplicado na mesma passagem — ignorado ({}, CNJ {})",
+                            pdf.nomeOriginal(),
+                            cnjDigitos);
+                    continue;
+                }
                 DedupResultado dedup = classificarDedup(sha256, cnjDigitos);
                 if (dedup.shouldIgnore()) {
                     ignoradasJaAssinadas++;
@@ -577,6 +602,13 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
         }
         long n = Long.parseLong(d);
         return String.format("%08d", n);
+    }
+
+    static boolean isNomeCanonicoStorePdf(String nomeArquivo) {
+        if (!StringUtils.hasText(nomeArquivo)) {
+            return false;
+        }
+        return NOME_CANONICO_STORE_PDF.matcher(nomeArquivo.trim()).matches();
     }
 
     private static int inferirIdArquivoTipo(String nomeOriginal) {
