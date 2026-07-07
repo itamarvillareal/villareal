@@ -19,7 +19,7 @@ import {
 } from '../data/usuarioPermissoesStorage.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { listarUsuarios } from '../repositories/usuariosRepository.js';
-import { gravarSnapshotUsuariosApi } from '../services/syncApiUsuariosSnapshot.js';
+import { gravarSnapshotUsuariosApi, lerSnapshotUsuariosApi } from '../services/syncApiUsuariosSnapshot.js';
 import { clearPublicacoesPreviasSession } from '../data/publicacoesPreviasSession.js';
 
 const AuthContext = createContext(null);
@@ -43,20 +43,24 @@ export function AuthProvider({ children }) {
     if (!featureFlags.requiresApiAuth) return;
     const t = getAccessToken();
     if (!t) return;
-    if (getApiUsuarioSessao()) return;
     let cancelled = false;
     (async () => {
       try {
-        const u = await fetchAuthMe();
-        if (cancelled || u?.id == null) return;
-        setApiUsuarioSessao({ id: u.id, nome: u.nome, login: u.login, perfilId: u.perfilId });
-        setUsuarioSessaoAtualId(String(u.id));
+        if (!getApiUsuarioSessao()) {
+          const u = await fetchAuthMe();
+          if (cancelled || u?.id == null) return;
+          setApiUsuarioSessao({ id: u.id, nome: u.nome, login: u.login, perfilId: u.perfilId });
+          setUsuarioSessaoAtualId(String(u.id));
+        }
         if (featureFlags.useApiUsuarios) {
-          try {
-            const lista = await listarUsuarios();
-            gravarSnapshotUsuariosApi(lista || []);
-          } catch {
-            /* ignore */
+          const snap = lerSnapshotUsuariosApi();
+          if (!snap?.length) {
+            try {
+              const lista = await listarUsuarios();
+              if (!cancelled) gravarSnapshotUsuariosApi(lista || []);
+            } catch {
+              /* ignore */
+            }
           }
         }
       } catch {

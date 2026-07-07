@@ -1181,7 +1181,7 @@ export function getUsuariosAtivos() {
     const snap = lerSnapshotUsuariosApi();
     if (Array.isArray(snap) && snap.length > 0) {
       const out = snap
-        .map((u) => enriquecherNomeComCadastroPessoa(usuarioComCamposPadrao(u)))
+        .map((u) => enriquecerNomeComCadastroPessoa(usuarioComCamposPadrao(u)))
         .filter(Boolean);
       agendarMigracaoPermissoesPendenciasIdsLegados();
       return out;
