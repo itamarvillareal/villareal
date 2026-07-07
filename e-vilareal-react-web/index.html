@@ -17,7 +17,24 @@
     <title>Villa Real — Sistema</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div
+        id="vl-boot-fallback"
+        style="
+          min-height: 100dvh;
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #0f172a;
+          color: #94a3b8;
+          font-family: system-ui, -apple-system, sans-serif;
+          font-size: 14px;
+        "
+      >
+        Carregando…
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

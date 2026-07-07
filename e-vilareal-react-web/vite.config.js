@@ -22,6 +22,11 @@ export default defineConfig(({ mode }) => {
         },
       }),
     ],
+    build: {
+      // iOS Safari antigo (e cache de chunks após deploy) — evita SyntaxError silencioso / tela branca.
+      target: ['es2020', 'safari14', 'chrome87', 'firefox78'],
+      cssTarget: 'safari14',
+    },
     resolve: {
       alias: {
         buffer: 'buffer/',
