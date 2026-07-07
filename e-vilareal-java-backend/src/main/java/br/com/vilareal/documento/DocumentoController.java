@@ -40,6 +40,7 @@ public class DocumentoController {
     private final DocumentoArquivoImportacaoService arquivoImportacaoService;
     private final DocumentoReformatarService reformatarService;
     private final PeticaoExecucaoService peticaoExecucaoService;
+    private final PeticaoHomologacaoAcordoService peticaoHomologacaoAcordoService;
     private final DocumentoPastaAssinarService pastaAssinarService;
 
     public DocumentoController(
@@ -55,6 +56,7 @@ public class DocumentoController {
             DocumentoArquivoImportacaoService arquivoImportacaoService,
             DocumentoReformatarService reformatarService,
             PeticaoExecucaoService peticaoExecucaoService,
+            PeticaoHomologacaoAcordoService peticaoHomologacaoAcordoService,
             DocumentoPastaAssinarService pastaAssinarService) {
         this.pdfService = pdfService;
         this.peticaoAiService = peticaoAiService;
@@ -68,6 +70,7 @@ public class DocumentoController {
         this.arquivoImportacaoService = arquivoImportacaoService;
         this.reformatarService = reformatarService;
         this.peticaoExecucaoService = peticaoExecucaoService;
+        this.peticaoHomologacaoAcordoService = peticaoHomologacaoAcordoService;
         this.pastaAssinarService = pastaAssinarService;
     }
 
@@ -400,6 +403,14 @@ public class DocumentoController {
         byte[] pdf = peticaoExecucaoService.gerar(request);
         LocalDate data = request != null && request.data() != null ? request.data() : LocalDate.now();
         String nomeArquivo = DocumentoDrivePastaService.formatarNomeArquivoPeticao("Execucao", data);
+        salvarPdfNoDriveAsync(pdf, nomeArquivo, null, null, null, TipoDocumento.PETICAO);
+        return respostaPdf(nomeArquivo, pdf, false);
+    }
+
+    @PostMapping("/peticao-homologacao-acordo")
+    public ResponseEntity<byte[]> peticaoHomologacaoAcordo(@RequestBody PeticaoHomologacaoAcordoRequest request) {
+        byte[] pdf = peticaoHomologacaoAcordoService.gerar(request);
+        String nomeArquivo = "01.Homologatoria de Acordo.pdf";
         salvarPdfNoDriveAsync(pdf, nomeArquivo, null, null, null, TipoDocumento.PETICAO);
         return respostaPdf(nomeArquivo, pdf, false);
     }

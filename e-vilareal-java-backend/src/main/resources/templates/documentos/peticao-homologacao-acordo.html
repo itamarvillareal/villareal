@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org" lang="pt-BR">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Petição de Homologação de Acordo</title>
+
+    <th:block th:replace="~{documentos/fragments-peca :: estiloBase}"/>
+
+    <style type="text/css">
+        .corpo-documento {
+            line-height: 1.21;
+            box-sizing: border-box;
+            width: 100%;
+            max-width: 100%;
+            padding-left: 15mm;
+            padding-right: 2mm;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+            counter-reset: cap pedido-counter;
+        }
+
+        .enderecamento {
+            font-family: "Arial Unicode MS", Arial, sans-serif;
+            font-size: 12pt;
+            text-align: justify;
+            text-transform: uppercase;
+            font-weight: bold;
+            text-indent: 0;
+            line-height: 1.21;
+            margin: 16pt 0 0 0;
+        }
+
+        .autos,
+        p.autos {
+            font-family: Arial, sans-serif;
+            font-size: 13pt;
+            text-align: justify;
+            text-indent: 4.0cm;
+            line-height: 1.21;
+            margin: 195pt 0 12pt 0;
+        }
+
+        .qualificacao-interlocutoria,
+        p.qualificacao-interlocutoria {
+            font-family: Arial, sans-serif;
+            font-size: 13pt;
+            text-align: justify;
+            text-indent: 4.0cm;
+            line-height: 1.21;
+            margin: 0 0 18pt 0;
+        }
+
+        .corpo {
+            font-family: "Arial Unicode MS", Arial, sans-serif;
+            font-size: 12pt;
+            line-height: 1.21;
+        }
+
+        .corpo .titulo,
+        p.titulo {
+            font-family: "Arial Unicode MS", Arial, sans-serif;
+            font-size: 12pt;
+            font-weight: bold;
+            text-transform: uppercase;
+            text-align: left;
+            text-indent: 0;
+            line-height: 1.21;
+            margin-top: 24pt;
+            margin-bottom: 12pt;
+            counter-increment: cap;
+            counter-reset: pedido-counter;
+        }
+
+        .corpo .titulo::before,
+        p.titulo::before {
+            content: counter(cap) ". ";
+            font-weight: bold;
+        }
+
+        .corpo .paragrafo,
+        p.paragrafo {
+            font-family: "Arial Unicode MS", Arial, sans-serif;
+            font-size: 12pt;
+            text-align: justify;
+            text-indent: 4.0cm;
+            line-height: 1.21;
+            margin-top: 12pt;
+            margin-bottom: 12pt;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+        }
+
+        .corpo .pedido,
+        p.pedido {
+            font-family: "Arial Unicode MS", Arial, sans-serif;
+            font-size: 12pt;
+            text-align: justify;
+            text-indent: 4.0cm;
+            line-height: 1.21;
+            margin-top: 9pt;
+            margin-bottom: 9pt;
+            counter-increment: pedido-counter;
+        }
+
+        .corpo .pedido::before,
+        p.pedido::before {
+            content: counter(pedido-counter, lower-alpha) ") ";
+            font-weight: normal;
+        }
+
+        .fecho {
+            font-family: "Arial Unicode MS", Arial, sans-serif;
+            font-size: 12pt;
+            line-height: 1.21;
+            margin-top: 24pt;
+        }
+
+        .fecho .fecho-termos {
+            text-align: justify;
+            text-indent: 4.0cm;
+            margin: 0 0 12pt 0;
+        }
+
+        .valor-monetario {
+            white-space: nowrap;
+        }
+
+        .corpo em, .qualificacao-interlocutoria em, .fecho em { font-style: italic; }
+        .corpo strong, .qualificacao-interlocutoria strong, .fecho strong { font-weight: bold; }
+        .corpo u, .qualificacao-interlocutoria u, .fecho u { text-decoration: underline; }
+    </style>
+</head>
+<body>
+
+<th:block th:replace="~{documentos/fragments-peca :: cabecalho}"/>
+<th:block th:replace="~{documentos/fragments-peca :: rodape}"/>
+
+<div class="corpo-documento">
+
+    <p class="enderecamento" th:utext="${enderecamentoHtml}">ENDEREÇAMENTO</p>
+
+    <p class="autos" th:if="${autosHtml != null and !#strings.isEmpty(autosHtml)}" th:utext="${autosHtml}">Autos nº</p>
+
+    <div th:utext="${qualificacaoInterlocutorasHtml}">Qualificação interlocutória</div>
+
+    <div class="corpo" th:utext="${corpoHtml}">Corpo</div>
+
+    <div class="fecho" th:utext="${fechoHtml}">Fecho</div>
+
+</div>
+
+</body>
+</html>

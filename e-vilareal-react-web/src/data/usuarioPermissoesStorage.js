@@ -26,21 +26,36 @@ function readApiUsuarioSessaoRaw() {
 
 /** Id do usuário master — único que pode escolher outros perfis no menu (teste do sistema). */
 export const USUARIO_MASTER_ID = 'itamar';
+/** Login JWT exato do único operador que pode alternar perfil no menu. */
+export const USUARIO_MASTER_LOGIN = 'itamar';
 
-/**
- * Quem pode alternar perfil no menu: mock (Itamar) ou API com JWT (usuário id 1 = admin seed).
- */
-export function idEhUsuarioMasterEstacao(operadorId) {
-  const id = String(operadorId ?? '').trim();
-  if (!id) return false;
-  if (featureFlags.requiresApiAuth) {
-    return id === '1' || id === USUARIO_MASTER_ID;
-  }
-  return id === USUARIO_MASTER_ID;
+export function loginEhUsuarioMaster(login) {
+  return String(login ?? '').trim().toLowerCase() === USUARIO_MASTER_LOGIN;
 }
 
+/**
+ * Operador logado nesta estação é o Itamar — único que pode alternar perfil no menu.
+ * Com JWT: somente login `itamar` (não id 1 genérico nem `itamar.*`).
+ */
 export function isUsuarioMasterEstacao() {
-  return idEhUsuarioMasterEstacao(getOperadorEstacaoId());
+  if (featureFlags.requiresApiAuth) {
+    return loginEhUsuarioMaster(getApiUsuarioSessao()?.login);
+  }
+  return String(getOperadorEstacaoId() ?? '').trim() === USUARIO_MASTER_ID;
+}
+
+/**
+ * Perfil/colaborador corresponde ao Itamar (patrimônio, extratos, personificação).
+ */
+export function idEhUsuarioMasterEstacao(perfilOuOperadorId) {
+  const id = String(perfilOuOperadorId ?? '').trim();
+  if (!id) return false;
+  if (id === USUARIO_MASTER_ID) return true;
+  if (featureFlags.requiresApiAuth) {
+    const api = getApiUsuarioSessao();
+    return Boolean(api && loginEhUsuarioMaster(api.login) && id === String(api.id));
+  }
+  return id === USUARIO_MASTER_ID;
 }
 
 /** Perfil ADMIN no seed (V1__init) — mesma regra de {@link useUsuarioPerfil}. */
@@ -188,15 +203,24 @@ export function getOperadorEstacaoId() {
 
 export function setOperadorEstacaoId(userId) {
   if (typeof window === 'undefined') return;
+  const id = String(userId ?? '').trim();
+  if (!id) return;
+  if (id === USUARIO_MASTER_ID) {
+    if (featureFlags.requiresApiAuth) {
+      if (!loginEhUsuarioMaster(getApiUsuarioSessao()?.login)) return;
+    } else if (String(getOperadorEstacaoId()) !== USUARIO_MASTER_ID) {
+      return;
+    }
+  }
   try {
-    window.localStorage.setItem(STORAGE_OPERADOR_ESTACAO, JSON.stringify(userId));
+    window.localStorage.setItem(STORAGE_OPERADOR_ESTACAO, JSON.stringify(id));
     dispatchOperadorEstacao();
   } catch {
     /* ignore */
   }
 }
 
-/** Master (Itamar no mock ou admin id 1 na API com JWT) pode usar o seletor de perfil para testar como os outros. */
+/** Somente o Itamar pode usar o seletor de perfil para testar como os outros. */
 export function operadorPodeAlternarPerfil() {
   return isUsuarioMasterEstacao();
 }
@@ -345,7 +369,7 @@ export function getUsuarioSessaoAtualId() {
   if (typeof window === 'undefined') return 'itamar';
   if (featureFlags.requiresApiAuth) {
     const api = getApiUsuarioSessao();
-    if (api?.id && !idEhUsuarioMasterEstacao(api.id)) {
+    if (api?.id && !isUsuarioMasterEstacao()) {
       return api.id;
     }
   }
@@ -369,8 +393,14 @@ export function getUsuarioSessaoAtualId() {
 
 export function setUsuarioSessaoAtualId(userId) {
   if (typeof window === 'undefined') return;
+  const id = String(userId ?? '').trim();
+  if (!id) return;
+  if (!isUsuarioMasterEstacao()) {
+    const op = String(getOperadorEstacaoId() ?? '').trim();
+    if (id !== op) return;
+  }
   try {
-    window.localStorage.setItem(STORAGE_USUARIO_SESSAO_ATIVA, JSON.stringify(userId));
+    window.localStorage.setItem(STORAGE_USUARIO_SESSAO_ATIVA, JSON.stringify(id));
     dispatchSessao();
   } catch {
     /* ignore */

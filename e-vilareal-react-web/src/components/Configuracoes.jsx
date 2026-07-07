@@ -8,8 +8,10 @@ import {
   getOperadorEstacaoId,
   setOperadorEstacaoId,
   setUsuarioSessaoAtualId,
+  isUsuarioMasterEstacao,
   USUARIO_MASTER_ID,
 } from '../data/usuarioPermissoesStorage.js';
+import { featureFlags } from '../config/featureFlags.js';
 import {
   obterConfigProjudiProtocoloEmail,
   salvarConfigProjudiProtocoloEmail,
@@ -90,6 +92,8 @@ export function Configuracoes() {
   }
 
   const listaUsuarios = getColaboradoresHumanosAtivos() || [];
+  const mostrarEstacaoMock = !featureFlags.requiresApiAuth;
+  const podeConfigurarEstacao = mostrarEstacaoMock && isUsuarioMasterEstacao();
 
   return (
     <div className="flex-1 flex flex-col min-h-0 p-4 md:p-6 min-h-full bg-gradient-to-br from-slate-100 via-indigo-50/35 to-emerald-50/45 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d]">
@@ -171,31 +175,44 @@ export function Configuracoes() {
           </div>
         </div>
 
-        <div className="border-t border-slate-200 pt-6">
-          <h2 className="text-sm font-semibold text-slate-800">Esta estação (quem usa este computador)</h2>
-          <p className="text-sm text-slate-600 mt-2">
-            O usuário <strong>{USUARIO_MASTER_ID}</strong> (Itamar) é o <strong>master</strong>: só ele pode usar o
-            menu lateral para <strong>testar o sistema com o perfil de outros usuários</strong>. Nas demais estações,
-            defina o usuário principal abaixo — o perfil não poderá ser alterado no menu (apenas as permissões
-            configuradas em <strong>Usuários</strong> para essa pessoa).
-          </p>
-          <label className="block text-xs font-medium text-slate-600 mt-4 mb-1">Usuário principal desta máquina</label>
-          <select
-            value={operadorEstacao}
-            onChange={(e) => onChangeOperadorEstacao(e.target.value)}
-            className="w-full max-w-md rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
-          >
-            {listaUsuarios.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.nome} ({u.id})
-              </option>
-            ))}
-          </select>
-          <p className="text-xs text-slate-500 mt-2">
-            Com <strong>Itamar</strong> selecionado, o seletor de perfil para testes aparece na barra lateral. Com
-            qualquer outro usuário, o menu lateral mostra apenas o perfil fixo.
-          </p>
-        </div>
+        {mostrarEstacaoMock ? (
+          <div className="border-t border-slate-200 pt-6">
+            <h2 className="text-sm font-semibold text-slate-800">Esta estação (quem usa este computador)</h2>
+            <p className="text-sm text-slate-600 mt-2">
+              O usuário <strong>{USUARIO_MASTER_ID}</strong> (Itamar) é o <strong>master</strong>: só ele pode usar o
+              menu lateral para <strong>testar o sistema com o perfil de outros usuários</strong>. Nas demais estações,
+              defina o usuário principal abaixo — o perfil não poderá ser alterado no menu (apenas as permissões
+              configuradas em <strong>Usuários</strong> para essa pessoa).
+            </p>
+            {podeConfigurarEstacao ? (
+              <>
+                <label className="block text-xs font-medium text-slate-600 mt-4 mb-1">
+                  Usuário principal desta máquina
+                </label>
+                <select
+                  value={operadorEstacao}
+                  onChange={(e) => onChangeOperadorEstacao(e.target.value)}
+                  className="w-full max-w-md rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+                >
+                  {listaUsuarios.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.nome} ({u.id})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-500 mt-2">
+                  Com <strong>Itamar</strong> selecionado, o seletor de perfil para testes aparece na barra lateral. Com
+                  qualquer outro usuário, o menu lateral mostra apenas o perfil fixo.
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-slate-600 mt-4">
+                Perfil fixo desta estação: <strong>{operadorEstacao}</strong>. Somente o Itamar pode alterar o usuário
+                principal da máquina.
+              </p>
+            )}
+          </div>
+        ) : null}
 
         <div className="border-t border-slate-200 pt-6">
           <div className="flex items-start gap-3">

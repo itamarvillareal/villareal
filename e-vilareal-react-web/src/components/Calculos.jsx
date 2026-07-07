@@ -716,7 +716,25 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       isDirtyRodadaRef.current = false;
     }, 450);
     return () => {
-      if (saveRodadasTimerRef.current) window.clearTimeout(saveRodadasTimerRef.current);
+      if (saveRodadasTimerRef.current) {
+        window.clearTimeout(saveRodadasTimerRef.current);
+        saveRodadasTimerRef.current = null;
+      }
+      if (!isDirtyRodadaRef.current) return;
+      const rodadas = rodadasStateRef.current;
+      if (featureFlags.useApiCalculos) {
+        if (!hidratacaoConcluida) return;
+        const keysExtra = persistRodadaKeysRef.current;
+        persistRodadaKeysRef.current = null;
+        if (Array.isArray(keysExtra) && keysExtra.length > 0) {
+          saveRodadasCalculos(rodadas, { persistRodadaKeysComValor: keysExtra });
+        } else {
+          saveRodadasCalculos(rodadas, { persistRodadaKey: rodadaKey });
+        }
+      } else {
+        saveRodadasCalculos(rodadas);
+      }
+      isDirtyRodadaRef.current = false;
     };
   }, [rodadasState, hidratacaoConcluida, rodadaKey]);
 
@@ -2225,6 +2243,12 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
 
   function atualizarParcelaNaRodada(indexGlobal, patch) {
     if (aceitarPagamento && !modoAlteracao && !patchParcelaSoDataPagamento(patch)) return;
+    isDirtyRodadaRef.current = true;
+    for (const k of paginasRodadaCacheRef.current.keys()) {
+      if (String(k).startsWith(`${rodadaKey}:`)) {
+        paginasRodadaCacheRef.current.delete(k);
+      }
+    }
     setRodadasState((prev) => {
       const cur = prev[rodadaKey];
       if (!cur) return prev;
@@ -2253,6 +2277,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
 
   function atualizarHonorarioDataRecebimento(chave, dataBr) {
     if (aceitarPagamento && !modoAlteracao) return;
+    isDirtyRodadaRef.current = true;
     setRodadasState((prev) => {
       const cur = prev[rodadaKey];
       if (!cur) return prev;

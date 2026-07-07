@@ -412,6 +412,11 @@ export function gerarPeticaoExecucao(body, opts = {}) {
   return postPdf('/api/documentos/peticao-execucao', body, opts);
 }
 
+/** Gera a petição de Homologação de Acordo (PDF). Retorna Blob. */
+export function gerarPeticaoHomologacaoAcordo(body, opts = {}) {
+  return postPdf('/api/documentos/peticao-homologacao-acordo', body, opts);
+}
+
 export function nomeArquivoProcuracaoPdf(nomeOutorgante) {
   const base = (nomeOutorgante || 'cliente')
     .normalize('NFD')

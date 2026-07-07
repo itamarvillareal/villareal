@@ -4,6 +4,7 @@ import {
   FileSignature,
   FileText,
   FileUp,
+  Handshake,
   Layers,
   Loader2,
   Scale,
@@ -41,6 +42,7 @@ import {
 import { ENDERECAMENTOS } from './constants.js';
 import { btnGhost, btnPrimary, btnSecondary } from './documentosStyles.js';
 import { CollapsibleSection } from './components/CollapsibleSection.jsx';
+import { ModalHomologacaoAcordo } from './components/ModalHomologacaoAcordo.jsx';
 import { DadosProcesso, resolveEnderecamento } from './components/DadosProcesso.jsx';
 import { DadosPartes } from './components/DadosPartes.jsx';
 import { FatosDoCaso, resolveTipoPeca } from './components/FatosDoCaso.jsx';
@@ -170,6 +172,7 @@ const MODO_CONTRATO = 'contrato';
 const MODO_MODELO = 'modelo';
 const MODO_ARQUIVO = 'arquivo';
 const MODO_EXECUCAO = 'execucao';
+const MODO_HOMOLOGACAO = 'homologacao';
 
 const estadoInicialIA = () => ({
   enderecamentoSelect: '',
@@ -367,6 +370,7 @@ export function GerarDocumento() {
   const modoModelo = modo === MODO_MODELO;
   const modoArquivo = modo === MODO_ARQUIVO;
   const modoExecucao = modo === MODO_EXECUCAO;
+  const modoHomologacao = modo === MODO_HOMOLOGACAO;
 
   const codigoClienteProcesso = dadosProcesso?.codigoCliente;
   const numeroInternoProcesso = dadosProcesso?.numeroInterno;
@@ -425,6 +429,21 @@ export function GerarDocumento() {
   }));
   // Cálculo salvo carregado para a petição de execução: { loading, dados, erro }.
   const [execCalc, setExecCalc] = useState({ loading: false, dados: null, erro: '' });
+  const [homologCalc, setHomologCalc] = useState({
+    loading: false,
+    dados: null,
+    erro: '',
+    elegivel: false,
+    motivo: '',
+    boletos: [],
+  });
+  const [dimensoesAceitas, setDimensoesAceitas] = useState([]);
+  const [dimensaoHomolog, setDimensaoHomolog] = useState(0);
+  const [modalHomologOpen, setModalHomologOpen] = useState(false);
+  const [formHomolog, setFormHomolog] = useState(() => ({
+    enderecamento: dadosProcesso?.enderecamento || '',
+    data: hojeBR(),
+  }));
 
   useEffect(() => {
     if (!mensagemSucesso) return undefined;
@@ -665,6 +684,82 @@ export function GerarDocumento() {
     };
   }, [modoExecucao, temChaveProcesso, codigoClienteProcesso, numeroInternoProcesso]);
 
+  // Carrega dimensões aceitas e cálculo elegível (modo Homologatória).
+  useEffect(() => {
+    if (!modoHomologacao || !temChaveProcesso) {
+      setHomologCalc({ loading: false, dados: null, erro: '', elegivel: false, motivo: '', boletos: [] });
+      setDimensoesAceitas([]);
+      return undefined;
+    }
+    let cancelado = false;
+    setHomologCalc((s) => ({ ...s, loading: true, erro: '' }));
+    (async () => {
+      try {
+        const { listarDimensoesAceitasProcesso, carregarCalculoAceitoHomologacao } = await import(
+          '../../services/peticaoHomologacaoDeRodada.js'
+        );
+        const dims = await listarDimensoesAceitasProcesso({
+          codigoCliente: codigoClienteProcesso,
+          numeroInterno: numeroInternoProcesso,
+        });
+        if (cancelado) return;
+        setDimensoesAceitas(dims);
+        if (!dims.length) {
+          setHomologCalc({
+            loading: false,
+            dados: null,
+            erro: '',
+            elegivel: false,
+            motivo:
+              'Não há cálculo aceito para este processo. Aceite o parcelamento na tela de Cálculos antes de gerar a homologatória.',
+            boletos: [],
+          });
+          return;
+        }
+        const dimEfetiva = dims.some((d) => d.dimensao === dimensaoHomolog)
+          ? dimensaoHomolog
+          : dims[0].dimensao;
+        if (dimEfetiva !== dimensaoHomolog) {
+          setDimensaoHomolog(dimEfetiva);
+          return;
+        }
+        const carregado = await carregarCalculoAceitoHomologacao({
+          codigoCliente: codigoClienteProcesso,
+          numeroInterno: numeroInternoProcesso,
+          dimensao: dimEfetiva,
+        });
+        if (cancelado) return;
+        setHomologCalc({
+          loading: false,
+          dados: carregado.dados,
+          erro: carregado.elegivel ? '' : carregado.motivo,
+          elegivel: carregado.elegivel,
+          motivo: carregado.motivo,
+          boletos: carregado.boletos,
+        });
+      } catch (e) {
+        if (cancelado) return;
+        setHomologCalc({
+          loading: false,
+          dados: null,
+          erro: e?.message || 'Falha ao carregar cálculo aceito.',
+          elegivel: false,
+          motivo: '',
+          boletos: [],
+        });
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [
+    modoHomologacao,
+    temChaveProcesso,
+    codigoClienteProcesso,
+    numeroInternoProcesso,
+    dimensaoHomolog,
+  ]);
+
   const handleGerarExecucao = async () => {
     setMensagemErro('');
     if (!temChaveProcesso) {
@@ -691,6 +786,38 @@ export function GerarDocumento() {
       });
     } catch (e) {
       setMensagemErro(e?.message || 'Falha ao gerar a petição de execução.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleConfirmarHomologacao = async ({ clausulas, dimensao }) => {
+    setMensagemErro('');
+    setLoading(true);
+    try {
+      const { gerarPeticaoHomologacaoDeCalculoAceito } = await import(
+        '../../services/peticaoHomologacaoDeRodada.js'
+      );
+      await gerarPeticaoHomologacaoDeCalculoAceito({
+        codigoCliente: codigoClienteProcesso,
+        numeroInterno: numeroInternoProcesso,
+        dimensao: dimensao ?? dimensaoHomolog,
+        enderecamento: formHomolog.enderecamento.trim(),
+        dataIso: dataBRparaISO(formHomolog.data),
+        numeroCnj: dadosProcesso?.numeroProcesso || '',
+        unidade: dadosProcesso?.unidade || homologCalc.dados?.cabecalho?.unidade || '',
+        clausulas,
+        dadosPreCarregados: {
+          dados: homologCalc.dados,
+          elegivel: homologCalc.elegivel,
+          motivo: homologCalc.motivo,
+          boletos: homologCalc.boletos,
+        },
+      });
+      setModalHomologOpen(false);
+      setMensagemSucesso('Petição de homologatória de acordo gerada com sucesso.');
+    } catch (e) {
+      setMensagemErro(e?.message || 'Falha ao gerar a homologatória de acordo.');
     } finally {
       setLoading(false);
     }
@@ -1182,6 +1309,24 @@ export function GerarDocumento() {
             <Scale className="h-4 w-4" aria-hidden />
             Execução
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={modoHomologacao}
+            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${
+              modoHomologacao
+                ? 'bg-white text-cyan-700 shadow-sm dark:bg-slate-900 dark:text-cyan-300'
+                : 'text-slate-600 hover:text-slate-900 dark:text-slate-400'
+            }`}
+            onClick={() => {
+              setModo(MODO_HOMOLOGACAO);
+              setErrors({});
+              setMensagemErro('');
+            }}
+          >
+            <Handshake className="h-4 w-4" aria-hidden />
+            Homologatória
+          </button>
         </div>
       </header>
 
@@ -1217,7 +1362,62 @@ export function GerarDocumento() {
       )}
 
       <div className="space-y-4">
-        {modoExecucao ? (
+        {modoHomologacao ? (
+          <CollapsibleSection title="Homologatória de Acordo (cálculo aceito)" defaultOpen>
+            {!temChaveProcesso ? (
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                Abra esta tela pelo botão <strong>Gerar Documento</strong> dentro de um processo
+                para gerar a petição de homologação com o acordo já aceito nos Cálculos.
+              </p>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  Usa o cálculo com parcelamento aceito (cliente {codigoClienteProcesso} / proc.{' '}
+                  {numeroInternoProcesso}). O arquivo será baixado como{' '}
+                  <strong>01.Homologatoria de Acordo.pdf</strong>.
+                </p>
+
+                {homologCalc.loading ? (
+                  <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Carregando cálculo aceito…
+                  </div>
+                ) : homologCalc.erro || homologCalc.motivo ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
+                    {homologCalc.erro || homologCalc.motivo}
+                  </div>
+                ) : homologCalc.dados ? (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm dark:border-slate-700 dark:bg-slate-800/60">
+                    <div className="flex flex-wrap gap-x-6 gap-y-1 text-slate-700 dark:text-slate-200">
+                      <span>
+                        Dimensão: <strong>{dimensaoHomolog}</strong>
+                      </span>
+                      <span>
+                        <strong>{homologCalc.dados.titulos.length}</strong> título(s)
+                      </span>
+                      <span>
+                        Total: <strong>{homologCalc.dados.resumo?.total}</strong>
+                      </span>
+                      <span>
+                        Boletos: <strong>{homologCalc.boletos.length}</strong>
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div>
+                  <button
+                    type="button"
+                    className={btnPrimary}
+                    disabled={loading || homologCalc.loading || !homologCalc.elegivel}
+                    onClick={() => setModalHomologOpen(true)}
+                  >
+                    Gerar Homologatória de Acordo
+                  </button>
+                </div>
+              </div>
+            )}
+          </CollapsibleSection>
+        ) : modoExecucao ? (
           <CollapsibleSection title="Petição de Execução (a partir do cálculo salvo)" defaultOpen>
             {!temChaveProcesso ? (
               <p className="text-sm text-slate-600 dark:text-slate-400">
@@ -1745,6 +1945,29 @@ export function GerarDocumento() {
           />
         </Suspense>
       ) : null}
+
+      <ModalHomologacaoAcordo
+        open={modalHomologOpen}
+        onClose={() => setModalHomologOpen(false)}
+        onConfirm={handleConfirmarHomologacao}
+        loading={loading}
+        dimensoesAceitas={dimensoesAceitas}
+        dimensaoSelecionada={dimensaoHomolog}
+        onDimensaoChange={setDimensaoHomolog}
+        enderecamento={formHomolog.enderecamento}
+        onEnderecamentoChange={(v) => setFormHomolog((f) => ({ ...f, enderecamento: v }))}
+        data={formHomolog.data}
+        onDataChange={(v) => setFormHomolog((f) => ({ ...f, data: v }))}
+        resumoCalculo={
+          homologCalc.dados
+            ? {
+                titulos: homologCalc.dados.titulos.length,
+                total: homologCalc.dados.resumo?.total,
+              }
+            : null
+        }
+        boletos={homologCalc.boletos}
+      />
     </div>
   );
 }
