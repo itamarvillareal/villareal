@@ -80,7 +80,7 @@ class DiagnosticoAssinaturaAutomaticaServiceTest {
         service.executarPreparoEmBackground(9L, CREDENCIAL_ID, processos);
 
         verify(assinaturaLoteService, never()).falharPreparacao(anyLong(), any(), any());
-        verify(assinaturaLoteService, never()).concluirPreparacao(anyLong(), any(), anyInt());
+        verify(assinaturaLoteService, never()).concluirPreparacao(anyLong(), any(), anyInt(), any());
     }
 
     @Test
@@ -125,7 +125,7 @@ class DiagnosticoAssinaturaAutomaticaServiceTest {
 
         service.executarPreparoEmBackground(7L, CREDENCIAL_ID, processos);
 
-        verify(assinaturaLoteService).concluirPreparacao(7L, List.of(10L, 11L), 3);
+        verify(assinaturaLoteService).concluirPreparacao(eq(7L), eq(List.of(10L, 11L)), eq(3), any());
         verify(diagnosticoAssinarService).prepararAssinatura(CREDENCIAL_ID, processos, false, 7L);
     }
 

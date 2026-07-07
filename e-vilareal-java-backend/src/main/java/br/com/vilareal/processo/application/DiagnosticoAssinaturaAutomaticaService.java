@@ -177,7 +177,11 @@ public class DiagnosticoAssinaturaAutomaticaService {
                 return;
             }
 
-            assinaturaLoteService.concluirPreparacao(loteId, peticaoIds, preparado.totalArquivos());
+            assinaturaLoteService.concluirPreparacao(
+                    loteId,
+                    peticaoIds,
+                    preparado.totalArquivos(),
+                    objectMapper.valueToTree(preparado.resumo()));
             log.info(
                     "Preparo assíncrono concluído: lote #{} — {} petição(ões), {} PDF(s)",
                     loteId,

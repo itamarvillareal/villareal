@@ -154,6 +154,28 @@ class AssinaturaLoteServiceTest {
     }
 
     @Test
+    void concluirPreparacao_gravaResumoPreparoNoResultadoJson() {
+        AssinaturaLoteEntity preparando = lote(9L, AssinaturaLoteStatus.PREPARANDO);
+        preparando.setResultadoJson(JsonNodeFactory.instance.objectNode().put("fingerprint", "abc"));
+        when(repository.findById(9L)).thenReturn(Optional.of(preparando));
+        when(repository.save(any(AssinaturaLoteEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        var resumo = JsonNodeFactory.instance.arrayNode().add(
+                JsonNodeFactory.instance.objectNode()
+                        .put("cnj", "0000000-00.0000.0.00.0000")
+                        .put("ignoradoPorErro", true)
+                        .put("motivoErro", "cadastro inválido"));
+
+        AssinaturaLoteEntity liberado = service.concluirPreparacao(9L, List.of(10L), 2, resumo);
+
+        assertThat(liberado.getStatus()).isEqualTo(AssinaturaLoteStatus.LIBERADO);
+        assertThat(liberado.getResultadoJson().get("totalArquivos").asInt()).isEqualTo(2);
+        assertThat(liberado.getResultadoJson().get("resumoPreparo").isArray()).isTrue();
+        assertThat(liberado.getResultadoJson().get("resumoPreparo").get(0).get("motivoErro").asText())
+                .isEqualTo("cadastro inválido");
+    }
+
+    @Test
     void reliberarLote_rejeitaStatusInvalido() {
         when(repository.findById(5L)).thenReturn(Optional.of(lote(5L, AssinaturaLoteStatus.LIBERADO)));
 

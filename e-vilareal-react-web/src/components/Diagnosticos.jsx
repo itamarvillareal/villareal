@@ -70,6 +70,41 @@ const POLL_LOTE_ASSINATURA_MS = 2500;
 const MSG_TOKEN_OCUPADO_ASSINADOR =
   'Token em uso por outro programa. Feche o sai.jar e tente novamente.';
 
+function filtrarResumoIgnoradosPorErro(resumo) {
+  if (!Array.isArray(resumo)) return [];
+  return resumo.filter((r) => r?.ignoradoPorErro);
+}
+
+function extrairResumoPreparoDoLote(status) {
+  const json = status?.resultadoJson;
+  if (Array.isArray(json?.resumoPreparo)) return json.resumoPreparo;
+  return [];
+}
+
+function formatarLinhaResumoIgnorado(r) {
+  const partes = [r?.codigoCliente, r?.cnj].filter((p) => String(p ?? '').trim());
+  const chave = partes.length ? partes.join(' · ') : '—';
+  return `${chave}: ${r?.motivoErro || 'erro desconhecido'}`;
+}
+
+function ResumoProcessosIgnoradosBanner({ resumoIgnorados }) {
+  if (!resumoIgnorados?.length) return null;
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50/90 px-3 py-3 text-sm text-amber-900 space-y-2">
+      <p className="font-medium">
+        {resumoIgnorados.length} processo(s) ignorado(s) por erro — verifique o cadastro
+      </p>
+      <ul className="text-xs space-y-1 list-disc pl-4">
+        {resumoIgnorados.map((r, i) => (
+          <li key={i} className="font-mono leading-relaxed">
+            {formatarLinhaResumoIgnorado(r)}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function normalizarBuscaDiag(s) {
   return String(s ?? '')
     .toLowerCase()
@@ -390,6 +425,7 @@ export function Diagnosticos() {
   const [assinarAutomaticoPeticaoCount, setAssinarAutomaticoPeticaoCount] = useState(0);
   const [assinarAutomaticoReliberando, setAssinarAutomaticoReliberando] = useState(false);
   const [assinarAutomaticoCancelando, setAssinarAutomaticoCancelando] = useState(false);
+  const [assinarAutomaticoResumoIgnorados, setAssinarAutomaticoResumoIgnorados] = useState([]);
   const assinarAutomaticoPollRef = useRef(null);
   const [modalUploadAssinadosAberto, setModalUploadAssinadosAberto] = useState(false);
   const [uploadAssinadosArquivos, setUploadAssinadosArquivos] = useState([]);
@@ -659,6 +695,7 @@ export function Diagnosticos() {
     setAssinarAutomaticoPeticaoCount(0);
     setAssinarAutomaticoReliberando(false);
     setAssinarAutomaticoCancelando(false);
+    setAssinarAutomaticoResumoIgnorados([]);
   }
 
   function irParaPeticionamentoProjudi() {
@@ -682,6 +719,10 @@ export function Diagnosticos() {
   }
 
     function aplicarStatusLoteAssinatura(status) {
+    const ignorados = filtrarResumoIgnoradosPorErro(extrairResumoPreparoDoLote(status));
+    if (ignorados.length > 0) {
+      setAssinarAutomaticoResumoIgnorados(ignorados);
+    }
     const st = String(status?.status ?? '').toUpperCase();
     if (st === 'PREPARANDO') {
       setAssinarAutomaticoFase('preparando');
@@ -746,6 +787,7 @@ export function Diagnosticos() {
     setAssinarAutomaticoErroCodigo('');
     setAssinarAutomaticoLoteId(null);
     setAssinarAutomaticoPeticaoCount(0);
+    setAssinarAutomaticoResumoIgnorados([]);
     setAssinarAutomaticoAtivo(true);
     setAguardandoProtocoloBaixarErro('');
     pararPollingAssinarAutomatico();
@@ -2306,6 +2348,9 @@ export function Diagnosticos() {
                       : 'O assinador local deve estar conectado e autenticado.'}
                     {assinarAutomaticoLoteId != null ? ` · Lote #${assinarAutomaticoLoteId}` : ''}
                   </p>
+                  <div className="w-full text-left">
+                    <ResumoProcessosIgnoradosBanner resumoIgnorados={assinarAutomaticoResumoIgnorados} />
+                  </div>
                 </div>
               ) : null}
               {assinarAutomaticoFase === 'concluido' ? (
@@ -2316,6 +2361,7 @@ export function Diagnosticos() {
                   <p className="text-xs text-emerald-800">
                     As petições estão com status ASSINADA e prontas para protocolar no PROJUDI.
                   </p>
+                  <ResumoProcessosIgnoradosBanner resumoIgnorados={assinarAutomaticoResumoIgnorados} />
                 </div>
               ) : null}
               {assinarAutomaticoFase === 'erro' ? (
@@ -2444,14 +2490,22 @@ export function Diagnosticos() {
                     {prepararAssinarResultado.totalArquivos ?? 0} PDF(s) no ZIP ·{' '}
                     {(prepararAssinarResultado.peticaoIds || []).length} petição(ões)
                   </p>
-                  {Array.isArray(prepararAssinarResultado.resumo) &&
-                    prepararAssinarResultado.resumo.map((r, i) => (
-                      <p key={i} className="text-xs font-mono leading-relaxed">
-                        {r.cnj || '—'}: {r.registradas ?? 0} registrada(s), {r.reutilizadas ?? 0}{' '}
-                        reaproveitada(s), {r.ignoradasJaAssinadas ?? 0} já assinada(s)
-                        {r.semArquivos ? ', sem arquivos' : ''}
-                      </p>
-                    ))}
+                  {Array.isArray(prepararAssinarResultado.resumo) ? (
+                    <>
+                      <ResumoProcessosIgnoradosBanner
+                        resumoIgnorados={filtrarResumoIgnoradosPorErro(prepararAssinarResultado.resumo)}
+                      />
+                      {prepararAssinarResultado.resumo
+                        .filter((r) => !r?.ignoradoPorErro)
+                        .map((r, i) => (
+                          <p key={i} className="text-xs font-mono leading-relaxed">
+                            {r.cnj || '—'}: {r.registradas ?? 0} registrada(s), {r.reutilizadas ?? 0}{' '}
+                            reaproveitada(s), {r.ignoradasJaAssinadas ?? 0} já assinada(s)
+                            {r.semArquivos ? ', sem arquivos' : ''}
+                          </p>
+                        ))}
+                    </>
+                  ) : null}
                 </div>
               ) : null}
             </div>

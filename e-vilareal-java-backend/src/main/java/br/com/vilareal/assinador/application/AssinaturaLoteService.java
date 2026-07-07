@@ -44,6 +44,12 @@ public class AssinaturaLoteService {
 
     @Transactional
     public AssinaturaLoteEntity concluirPreparacao(Long loteId, List<Long> peticaoIds, int totalArquivos) {
+        return concluirPreparacao(loteId, peticaoIds, totalArquivos, null);
+    }
+
+    @Transactional
+    public AssinaturaLoteEntity concluirPreparacao(
+            Long loteId, List<Long> peticaoIds, int totalArquivos, JsonNode resumoPreparo) {
         AssinaturaLoteEntity lote = buscarObrigatorio(loteId);
         exigirStatus(lote, AssinaturaLoteStatus.PREPARANDO, "concluir preparação");
         List<Long> ids = normalizarPeticaoIds(peticaoIds);
@@ -56,6 +62,9 @@ public class AssinaturaLoteService {
         if (meta != null && meta.isObject()) {
             ObjectNode obj = (ObjectNode) meta;
             obj.put("totalArquivos", totalArquivos);
+            if (resumoPreparo != null) {
+                obj.set("resumoPreparo", resumoPreparo);
+            }
         }
         lote.setErroCodigo(null);
         lote.setErroMensagem(null);
