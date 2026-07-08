@@ -1467,7 +1467,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                   const vp = String(p.valorParcela ?? '').trim();
                   const hp = String(p.honorariosParcela ?? '').trim();
                   if (!vp && !hp) continue;
-                  const totalLinha = formatBRL(parseBRL(vp) + parseBRL(hp));
+                  const totalLinha = formatBRL(parseBRL(vp));
                   linhas.push({
                     rotulo: rotuloLinhaPlanoPagamento(p, i, temEnt).replace(/:$/, ''),
                     dataVencimento: p.dataVencimento ?? '',
@@ -2943,7 +2943,8 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                 <strong>dimensão</strong>, os títulos e o parcelamento exibidos passam a ser os dessa dimensão — cada combinação
                 cliente/processo/dimensão mantém parcelamento e totais próprios.{' '}
                 Com <strong>quantidade de parcelas</strong> e <strong>taxa de juros de parcelamento</strong> (% ao mês) informados,
-                o valor de cada parcela e o <strong>honorário por parcela</strong> são calculados automaticamente (prestação fixa — Tabela Price)
+                o <strong>valor de cada parcela</strong> é calculado automaticamente (Tabela Price). A coluna{' '}
+                <strong>Honor. Parc.</strong> mostra a fatia informativa de honorários — <strong>não soma ao total</strong>.
                 sobre o total dos títulos e sobre a soma dos honorários da aba Títulos, com a mesma taxa.
               </p>
               <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -2998,7 +2999,9 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                         <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-24">Parcela</th>
                         <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-28">Data Venc.</th>
                         <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-40">Valor</th>
-                        <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-40">Honor. Parc.</th>
+                        <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-40 text-slate-500">
+                          Honor. Parc. <span className="font-normal">(info.)</span>
+                        </th>
                         <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700">Obs.</th>
                       </tr>
                     </thead>
@@ -3047,19 +3050,8 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                                 />
                               ) : row.valorParcela}
                             </td>
-                            <td className="border border-slate-200 px-2 py-1">
-                              {podeEditar ? (
-                                <input
-                                  type="text"
-                                  value={row.honorariosParcela}
-                                  onChange={(e) => atualizarParcelaNaRodada(globalIdx, { honorariosParcela: e.target.value })}
-                                  onBlur={(e) => {
-                                    const raw = String(e.target.value ?? '').trim();
-                                    atualizarParcelaNaRodada(globalIdx, { honorariosParcela: raw === '' ? '' : formatBRL(parseBRL(raw)) });
-                                  }}
-                                  className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
-                                />
-                              ) : row.honorariosParcela}
+                            <td className="border border-slate-200 px-2 py-1 text-slate-500 tabular-nums">
+                              {row.honorariosParcela || '—'}
                             </td>
                             <td className="border border-slate-200 px-2 py-1">
                               {podeEditar ? (
@@ -3078,10 +3070,10 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                     <tfoot>
                       <tr className="bg-slate-100 font-medium">
                         <td className="border border-slate-300 px-2 py-1" colSpan={2}>Total da página</td>
-                        <td className="border border-slate-300 px-2 py-1">
+                        <td className="border border-slate-300 px-2 py-1 tabular-nums">
                           {formatBRL(trunc2(parcelasPagina.reduce((acc, p) => acc + parseBRL(p.valorParcela), 0)))}
                         </td>
-                        <td className="border border-slate-300 px-2 py-1">
+                        <td className="border border-slate-300 px-2 py-1 text-slate-500 tabular-nums">
                           {formatBRL(trunc2(parcelasPagina.reduce((acc, p) => acc + parseBRL(p.honorariosParcela), 0)))}
                         </td>
                         <td className="border border-slate-300 px-2 py-1" />
@@ -3204,8 +3196,8 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                       </div>
                       <p className="flex justify-between gap-2"><span>Valor Total das Parcelas:</span><b>{resumoParcelamento.valorFinalParcelas}</b></p>
                       <p className="flex justify-between gap-2 text-xs text-slate-600 dark:text-slate-400">
-                        <span className="pl-2">↳ principal nas parcelas</span>
-                        <span>{resumoParcelamento.valorFinalParcelasPrincipal}</span>
+                        <span className="pl-2">↳ honorários (info., não somam)</span>
+                        <span>{resumoParcelamento.valorFinalHonorarios}</span>
                       </p>
                       <p className="flex justify-between gap-2"><span>Valor Total Pago (após parcelamento):</span><b>{resumoParcelamento.valorTotalPagar}</b></p>
                       <p className="flex justify-between gap-2"><span>Valor Final dos Honorários:</span><b>{resumoParcelamento.valorFinalHonorarios}</b></p>
@@ -3249,9 +3241,8 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
               <p className="text-xs text-slate-700 mb-2 rounded border border-slate-200 bg-slate-50 px-2 py-1.5 leading-snug">
                 A aba <strong>Pagamento</strong> mostra as mesmas parcelas da aba <strong>Parcelamento</strong> para a{' '}
                 <strong>dimensão {dimensaoNorm}</strong> (cliente {codigoClienteNorm}, proc. {procNorm}), sem os painéis de resumo
-                lateral. A coluna <strong>Valor</strong> é o total da parcela (já inclui honorários);{' '}
-                <strong>Honor. Parc.</strong> é apenas destaque informativo. Use <strong>Data de Pagamento</strong> para registrar quando
-                cada parcela foi quitada (sempre editável, mesmo com cálculo aceito). Valores numéricos são definidos na aba Parcelamento.
+                lateral. A coluna <strong>Valor</strong> é o total da parcela; <strong>Honor. Parc.</strong> é apenas informativo e{' '}
+                <strong>não entra na soma</strong>. Use <strong>Data de Pagamento</strong> para registrar quitação (sempre editável).
               </p>
               <div className="flex items-center justify-between mb-2">
                 <p className="text-sm text-slate-600">

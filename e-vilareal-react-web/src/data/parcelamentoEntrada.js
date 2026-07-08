@@ -11,9 +11,9 @@ export function trunc2(n) {
   return Math.trunc(Number(n) * 100) / 100;
 }
 
-/** Valor total da linha (principal + honorários) — o que o devedor paga na parcela. */
+/** Valor total da linha — coluna Valor já inclui honorários; honorariosParcela é só informativo. */
 export function valorTotalLinhaPlanoPagamento(row) {
-  return trunc2(parseBRL(row?.valorParcela) + parseBRL(row?.honorariosParcela));
+  return trunc2(parseBRL(row?.valorParcela));
 }
 
 export function normalizarEntradaModo(m) {
@@ -222,7 +222,7 @@ export function montarLinhasPlanoPagamento({
       tipo: 'entrada',
       dataVencimento: dataEnt,
       dataPagamento: dataEnt,
-      valorParcela: formatBRL(rateio.entradaPrincipalCentavos / 100),
+      valorParcela: formatBRL(entradaCentavos / 100),
       honorariosParcela: formatBRL(rateio.entradaHonorariosCentavos / 100),
       observacao: '',
     });
@@ -253,36 +253,36 @@ export function montarLinhasPlanoPagamento({
 
 /**
  * Soma valores do plano (entrada + N parcelas).
+ * Coluna valorParcela = total pago; honorariosParcela é apenas informativo (não somar).
  */
 export function calcularResumoPlanoPagamento(linhas, nParcelas, temEntrada) {
   const nParc = Math.max(0, Math.floor(Number(nParcelas) || 0));
   const start = temEntrada ? 1 : 0;
-  let valorParcelasPrincipal = 0;
+  let valorParcelasTotal = 0;
   let valorHonorariosParcelas = 0;
   let entradaTotal = 0;
   let honEntrada = 0;
   if (temEntrada && linhas[0]) {
+    entradaTotal = parseBRL(linhas[0].valorParcela);
     honEntrada = parseBRL(linhas[0].honorariosParcela);
-    entradaTotal = parseBRL(linhas[0].valorParcela) + honEntrada;
   }
   for (let i = 0; i < nParc; i++) {
     const row = linhas[start + i];
     if (!row) break;
-    valorParcelasPrincipal += parseBRL(row.valorParcela);
+    valorParcelasTotal += parseBRL(row.valorParcela);
     valorHonorariosParcelas += parseBRL(row.honorariosParcela);
   }
-  valorParcelasPrincipal = trunc2(valorParcelasPrincipal);
+  valorParcelasTotal = trunc2(valorParcelasTotal);
   valorHonorariosParcelas = trunc2(valorHonorariosParcelas);
   entradaTotal = trunc2(entradaTotal);
-  /** Soma das prestações (principal + honorários em cada parcela). */
-  const valorFinalParcelas = trunc2(valorParcelasPrincipal + valorHonorariosParcelas);
+  const valorFinalParcelas = valorParcelasTotal;
   const valorTotalPagar = trunc2(entradaTotal + valorFinalParcelas);
   return {
     parcelasComValor: nParc,
     temEntrada,
     entradaTotal: formatBRL(entradaTotal),
     valorFinalParcelas: formatBRL(valorFinalParcelas),
-    valorFinalParcelasPrincipal: formatBRL(valorParcelasPrincipal),
+    valorFinalParcelasPrincipal: formatBRL(valorFinalParcelas),
     valorTotalPagar: formatBRL(valorTotalPagar),
     valorFinalHonorarios: formatBRL(trunc2(honEntrada + valorHonorariosParcelas)),
     valorHonorariosParcela: nParc > 0 ? formatBRL(trunc2(valorHonorariosParcelas / nParc)) : formatBRL(0),

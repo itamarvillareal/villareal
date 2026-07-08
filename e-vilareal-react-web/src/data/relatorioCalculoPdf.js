@@ -162,7 +162,7 @@ export function construirRelatorioCalculoPdf({
     doc.text('Plano de pagamento', margemX, yPlano);
     autoTable(doc, {
       startY: yPlano + 4,
-      head: [['', 'Vencimento', 'Valor', 'Honor. Parc.', 'Total linha']],
+      head: [['', 'Vencimento', 'Valor total', 'Honor. (info.)', 'Total linha']],
       body: planoPagamento.linhas.map((l) => {
         const vp = String(l.valorParcela ?? '');
         const hp = String(l.honorariosParcela ?? '');

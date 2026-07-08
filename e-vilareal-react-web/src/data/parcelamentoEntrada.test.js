@@ -67,11 +67,11 @@ describe('parcelamentoEntrada', () => {
     expect(temPlanoPagamento({ quantidadeParcelasInformada: '00' })).toBe(false);
   });
 
-  it('valorTotalLinhaPlanoPagamento soma principal e honorários da linha', () => {
-    expect(valorTotalLinhaPlanoPagamento({ valorParcela: '7.568,99', honorariosParcela: '1.513,75' })).toBe(9082.74);
+  it('valorTotalLinhaPlanoPagamento usa só coluna Valor (honorários não somam)', () => {
+    expect(valorTotalLinhaPlanoPagamento({ valorParcela: '1.934,71', honorariosParcela: '386,93' })).toBe(1934.71);
   });
 
-  it('calcularResumoPlanoPagamento soma principal e honorários nas parcelas', () => {
+  it('calcularResumoPlanoPagamento soma só valorParcela; honorários são informativos', () => {
     const res = calcularResumoPlanoPagamento(
       [
         { valorParcela: '1.934,71', honorariosParcela: '386,93' },
@@ -83,8 +83,8 @@ describe('parcelamentoEntrada', () => {
       false
     );
     expect(res.valorFinalParcelasPrincipal).toBe('R$ 7.738,84');
-    expect(res.valorFinalParcelas).toBe('R$ 9.286,56');
-    expect(res.valorTotalPagar).toBe('R$ 9.286,56');
+    expect(res.valorFinalParcelas).toBe('R$ 7.738,84');
+    expect(res.valorTotalPagar).toBe('R$ 7.738,84');
     expect(res.valorFinalHonorarios).toBe('R$ 1.547,72');
   });
 });

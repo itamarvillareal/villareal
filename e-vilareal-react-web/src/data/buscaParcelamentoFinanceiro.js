@@ -64,8 +64,7 @@ export function extrairParcelasEsperadasDaRodada(rodada) {
     if (!p) continue;
     const data = normalizarDataBRLeve(p?.dataVencimento);
     const vcPrincipal = parseBRLToCentavos(p?.valorParcela) ?? 0;
-    const vcHon = parseBRLToCentavos(p?.honorariosParcela) ?? 0;
-    const vc = vcPrincipal + vcHon;
+    const vc = vcPrincipal;
     if (!data || vc <= 0) continue;
     out.push({
       indice: i + 1,
