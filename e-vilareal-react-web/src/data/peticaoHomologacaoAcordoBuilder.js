@@ -7,8 +7,9 @@ import { calcularResumoTitulosGrade } from './calculosRodadaTitulosPaginacao.js'
 import {
   indicesLinhasPlanoPagamento,
   temPlanoPagamento,
+  valorTotalLinhaPlanoPagamento,
 } from './parcelamentoEntrada.js';
-import { parseBRLToCentavos } from '../utils/moneyBr.js';
+import { formatBRL } from '../components/calculos/calculosTitulosGridUtils.js';
 import {
   montarTitulosRequestPeticao,
   normalizarPercentParaEnvio,
@@ -30,7 +31,7 @@ export const CLAUSULAS_HOMOLOGACAO_PADRAO = {
   incluirArt922: true,
 };
 
-/** Boletos do plano aceito: só valorParcela + vencimento (sem honorários). */
+/** Boletos do plano aceito: valor total da parcela (coluna Valor); honorários não somam. */
 export function extrairBoletosHomologacao(rodada) {
   const parcelas = Array.isArray(rodada?.parcelas) ? rodada.parcelas : [];
   const indices = indicesLinhasPlanoPagamento(rodada);
@@ -38,11 +39,11 @@ export function extrairBoletosHomologacao(rodada) {
   for (const idx of indices) {
     const p = parcelas[idx];
     if (!p) continue;
-    const valor = String(p?.valorParcela ?? '').trim();
+    const totalCent = Math.round(valorTotalLinhaPlanoPagamento(p) * 100);
+    if (totalCent <= 0) continue;
     const vencimento = String(p?.dataVencimento ?? p?.dataPagamento ?? '').trim();
-    if (parseBRLToCentavos(valor) > 0 && vencimento) {
-      boletos.push({ valorParcela: valor, vencimento });
-    }
+    if (!vencimento) continue;
+    boletos.push({ valorParcela: formatBRL(totalCent / 100), vencimento });
   }
   return boletos;
 }

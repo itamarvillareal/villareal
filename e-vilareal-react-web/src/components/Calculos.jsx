@@ -48,6 +48,7 @@ import {
 } from '../data/calculosPanelConfigSync.js';
 import {
   calcularResumoPlanoPagamento,
+  aplicarMigracaoValorParcelaTotal,
   entradaModoAtivo,
   montarLinhasPlanoPagamento,
   normalizarEntradaModo,
@@ -2388,12 +2389,11 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
 
   // Preenche entrada (opcional) + parcelas Price sobre o saldo.
   useEffect(() => {
-    if (calculoAceito) return;
-
     const tm = setTimeout(() => {
       const nParc = parseQuantidadeParcelasNumero(quantidadeParcelasInformada);
       const temEnt = entradaModoAtivo({ entradaParcelamentoModo });
       if (nParc <= 0 && !temEnt) {
+        if (calculoAceito) return;
         setRodadasState((prev) => {
           const cur = prev[rodadaKey];
           if (!cur) return prev;
@@ -2431,6 +2431,20 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
         dataBaseParcelas: dataBaseParc,
         gerarDataParcela: (base, i) => gerarDataParcelaMensalBR(base, i),
       });
+
+      if (calculoAceito) {
+        if (montado.erro || !montado.linhas.length) return;
+        setRodadasState((prev) => {
+          const cur = prev[rodadaKey];
+          if (!cur) return prev;
+          const lista = Array.isArray(cur.parcelas) ? cur.parcelas : [];
+          const migradas = aplicarMigracaoValorParcelaTotal(lista, montado.linhas);
+          if (migradas === lista) return prev;
+          isDirtyRodadaRef.current = true;
+          return { ...prev, [rodadaKey]: { ...cur, parcelas: migradas } };
+        });
+        return;
+      }
 
       setRodadasState((prev) => {
         const cur = prev[rodadaKey];
@@ -2476,6 +2490,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     entradaParcelamentoPercentual,
     entradaParcelamentoDataVenc,
     dataCalculo,
+    calculoAceito,
     calculoTravadoAceito,
     aceitarPagamento,
   ]);
@@ -2998,7 +3013,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                       <tr className="bg-slate-100">
                         <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-24">Parcela</th>
                         <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-28">Data Venc.</th>
-                        <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-40">Valor</th>
+                        <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-40">Valor total</th>
                         <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-40 text-slate-500">
                           Honor. Parc. <span className="font-normal">(info.)</span>
                         </th>
@@ -3069,12 +3084,12 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                     </tbody>
                     <tfoot>
                       <tr className="bg-slate-100 font-medium">
-                        <td className="border border-slate-300 px-2 py-1" colSpan={2}>Total da página</td>
+                        <td className="border border-slate-300 px-2 py-1" colSpan={2}>Total Geral</td>
                         <td className="border border-slate-300 px-2 py-1 tabular-nums">
-                          {formatBRL(trunc2(parcelasPagina.reduce((acc, p) => acc + parseBRL(p.valorParcela), 0)))}
+                          {resumoParcelamento.valorFinalParcelas}
                         </td>
                         <td className="border border-slate-300 px-2 py-1 text-slate-500 tabular-nums">
-                          {formatBRL(trunc2(parcelasPagina.reduce((acc, p) => acc + parseBRL(p.honorariosParcela), 0)))}
+                          {resumoParcelamento.valorFinalHonorarios}
                         </td>
                         <td className="border border-slate-300 px-2 py-1" />
                       </tr>
@@ -3359,15 +3374,13 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                   <tfoot>
                     <tr className="bg-slate-100 font-medium">
                       <td className="border border-slate-300 px-2 py-1" colSpan={2}>
-                        Total da página
+                        Total Geral
                       </td>
                       <td className="border border-slate-300 px-2 py-1 tabular-nums">
-                        {formatBRL(
-                          trunc2(parcelasPagina.reduce((acc, p) => acc + valorTotalLinhaPlanoPagamento(p), 0))
-                        )}
+                        {resumoParcelamento.valorFinalParcelas}
                       </td>
                       <td className="border border-slate-300 px-2 py-1 text-slate-500 tabular-nums">
-                        {formatBRL(trunc2(parcelasPagina.reduce((acc, p) => acc + parseBRL(p.honorariosParcela), 0)))}
+                        {resumoParcelamento.valorFinalHonorarios}
                       </td>
                       <td className="border border-slate-300 px-2 py-1" />
                       <td className="border border-slate-300 px-2 py-1" />

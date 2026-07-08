@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  aplicarMigracaoValorParcelaTotal,
   calcularEntradaCentavos,
   calcularParcelaPrecoMensalPrice,
   calcularResumoPlanoPagamento,
@@ -67,24 +68,63 @@ describe('parcelamentoEntrada', () => {
     expect(temPlanoPagamento({ quantidadeParcelasInformada: '00' })).toBe(false);
   });
 
-  it('valorTotalLinhaPlanoPagamento usa só coluna Valor (honorários não somam)', () => {
-    expect(valorTotalLinhaPlanoPagamento({ valorParcela: '1.934,71', honorariosParcela: '386,93' })).toBe(1934.71);
+  it('montarLinhasPlanoPagamento grava valor total da parcela em valorParcela', () => {
+    const res = montarLinhasPlanoPagamento({
+      resumoDebito: { total: '8.948,52', honorarios: '1.491,38' },
+      entradaModo: 'nenhuma',
+      entradaValor: '',
+      entradaPercentual: '',
+      dataEntrada: '',
+      nParcelas: 1,
+      taxaPercent: 1.5,
+      dataBaseParcelas: '01/08/2026',
+      gerarDataParcela: () => '01/08/2026',
+    });
+    expect(res.erro).toBeNull();
+    expect(res.linhas).toHaveLength(1);
+    expect(res.linhas[0].valorParcela).toBe('R$ 9.082,74');
+    expect(res.linhas[0].honorariosParcela).toBe('R$ 1.513,75');
+    expect(valorTotalLinhaPlanoPagamento(res.linhas[0])).toBe(9082.74);
   });
 
-  it('calcularResumoPlanoPagamento soma só valorParcela; honorários são informativos', () => {
+  it('valorTotalLinhaPlanoPagamento usa coluna Valor (total, honorários não somam)', () => {
+    expect(valorTotalLinhaPlanoPagamento({ valorParcela: '9.082,74', honorariosParcela: '1.513,75' })).toBe(9082.74);
+  });
+
+  it('calcularResumoPlanoPagamento soma valorParcela (total); honorários são informativos', () => {
     const res = calcularResumoPlanoPagamento(
       [
-        { valorParcela: '1.934,71', honorariosParcela: '386,93' },
-        { valorParcela: '1.934,71', honorariosParcela: '386,93' },
-        { valorParcela: '1.934,71', honorariosParcela: '386,93' },
-        { valorParcela: '1.934,71', honorariosParcela: '386,93' },
+        { valorParcela: '2.321,64', honorariosParcela: '386,93' },
+        { valorParcela: '2.321,64', honorariosParcela: '386,93' },
+        { valorParcela: '2.321,64', honorariosParcela: '386,93' },
+        { valorParcela: '2.321,64', honorariosParcela: '386,93' },
       ],
       4,
       false
     );
-    expect(res.valorFinalParcelasPrincipal).toBe('R$ 7.738,84');
-    expect(res.valorFinalParcelas).toBe('R$ 7.738,84');
-    expect(res.valorTotalPagar).toBe('R$ 7.738,84');
+    expect(res.valorFinalParcelas).toBe('R$ 9.286,56');
+    expect(res.valorTotalPagar).toBe('R$ 9.286,56');
     expect(res.valorFinalHonorarios).toBe('R$ 1.547,72');
+  });
+
+  it('aplicarMigracaoValorParcelaTotal corrige rodadas com valor só principal', () => {
+    const geradas = [
+      {
+        valorParcela: 'R$ 9.082,74',
+        honorariosParcela: 'R$ 1.513,75',
+        dataVencimento: '01/08/2026',
+      },
+    ];
+    const salvas = [
+      {
+        valorParcela: 'R$ 7.568,99',
+        honorariosParcela: 'R$ 1.513,75',
+        dataVencimento: '01/08/2026',
+        dataPagamento: '05/08/2026',
+      },
+    ];
+    const migradas = aplicarMigracaoValorParcelaTotal(salvas, geradas);
+    expect(migradas[0].valorParcela).toBe('R$ 9.082,74');
+    expect(migradas[0].dataPagamento).toBe('05/08/2026');
   });
 });

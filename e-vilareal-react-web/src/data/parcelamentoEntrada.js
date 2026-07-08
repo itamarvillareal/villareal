@@ -210,7 +210,9 @@ export function montarLinhasPlanoPagamento({
       ? calcularParcelaPrecoMensalPriceCentavos(rateio.saldoHonorariosCentavos, taxa, nParc)
       : 0;
 
-  const valorFmt = pmtPrinc > 0 ? formatBRL(pmtPrinc / 100) : '';
+  /** Coluna Valor = prestação total (principal + honorários com juros Price); Honor. Parc. é só informativo. */
+  const pmtTotal = pmtPrinc + pmtHon;
+  const valorFmt = pmtTotal > 0 ? formatBRL(pmtTotal / 100) : '';
   const honorFmt = pmtHon > 0 ? formatBRL(pmtHon / 100) : '';
 
   const linhas = [];
@@ -249,6 +251,32 @@ export function montarLinhasPlanoPagamento({
     rateio,
     erro: null,
   };
+}
+
+/**
+ * Rodadas salvas antes do fix guardavam valorParcela só com principal; honorários iam à parte.
+ * Se valor + honor = total Price gerado, atualiza a linha sem mexer em datas/pagamentos.
+ */
+export function aplicarMigracaoValorParcelaTotal(linhasSalvas, linhasGeradas) {
+  if (!Array.isArray(linhasSalvas) || !Array.isArray(linhasGeradas)) return linhasSalvas;
+  let changed = false;
+  const out = linhasSalvas.map((p, i) => {
+    const g = linhasGeradas[i];
+    if (!p || !g) return p;
+    const vp = parseBRL(p.valorParcela);
+    const hon = parseBRL(p.honorariosParcela);
+    const esperado = parseBRL(g.valorParcela);
+    if (hon > 0 && esperado > 0 && trunc2(vp + hon) === trunc2(esperado) && trunc2(vp) !== trunc2(esperado)) {
+      changed = true;
+      return {
+        ...p,
+        valorParcela: g.valorParcela,
+        honorariosParcela: g.honorariosParcela || p.honorariosParcela,
+      };
+    }
+    return p;
+  });
+  return changed ? out : linhasSalvas;
 }
 
 /**

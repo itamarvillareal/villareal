@@ -94,7 +94,7 @@ public class CalculoParcelamentosConsolidadoApplicationService {
             String situ = classificarSituacao(pag, venc, hoje);
             int diasAtraso = calcularDiasAtraso(venc, pag, hoje);
 
-            ExtratoMatch extrato = buscarExtrato(row, valorCent + honCent, lancPorProcesso);
+            ExtratoMatch extrato = buscarExtrato(row, valorCent, lancPorProcesso);
 
             String procKey = row.codigoCliente() + "|" + row.numeroProcesso();
             DimensaoMeta meta = dimMetaCache.computeIfAbsent(procKey, k -> carregarDimensaoMeta(row.codigoCliente(), row.numeroProcesso()));
