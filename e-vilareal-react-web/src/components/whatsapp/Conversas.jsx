@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from 'rea
 import { Link, useSearchParams } from 'react-router-dom';
 import { ExternalLink, Link2, Loader2, MessageCircle, MessageSquarePlus, Pencil, Plus, Search, Send, ChevronUp, ChevronDown, ChevronLeft, X, Trash2, Camera, ImageMinus, MoreVertical } from 'lucide-react';
 import { ConfirmDialog } from '../financeiro/shared/ConfirmDialog.jsx';
+import { WhatsAppDeleteMessageDialog } from './components/WhatsAppDeleteMessageDialog.jsx';
 import { ChatBubble } from './components/ChatBubble.jsx';
 import { DaySeparator } from './components/DaySeparator.jsx';
 import {
@@ -42,7 +43,7 @@ import { WhatsAppConversationGruposPanel } from './components/WhatsAppConversati
 import { ModalGrupoWhatsApp } from './components/ModalGrupoWhatsApp.jsx';
 import { WhatsAppConversationSelectionBar } from './components/WhatsAppConversationSelectionBar.jsx';
 import { WhatsAppConversationDeleteButton } from './components/WhatsAppConversationDeleteButton.jsx';
-import { WHATSAPP_DELETE_CONVERSATION_CONFIRM, WHATSAPP_DELETE_MESSAGE_CONFIRM } from './utils/whatsappDeleteCopy.js';
+import { WHATSAPP_DELETE_CONVERSATION_CONFIRM } from './utils/whatsappDeleteCopy.js';
 import { marcarConversaLidaAsync, applyInboundToConversationList, zeroUnreadAndReportHadUnread, zeroUnreadMultipleAndReport } from './utils/whatsappReadUtils.js';
 import { enrichMessagesWithReactions } from './utils/whatsappReactionAttach.js';
 import { sortConversationsByPinAndRecency, togglePinInConversationList, pinMultipleInConversationList } from './utils/whatsappPinUtils.js';
@@ -572,19 +573,26 @@ export function WhatsAppConversas() {
     setPendingDeleteMessage(message);
   }, []);
 
-  const confirmDeleteMessage = useCallback(async () => {
-    const message = pendingDeleteMessage;
-    if (!message?.id) return;
-    setPendingDeleteMessage(null);
-    setMessages((prev) => prev.filter((m) => m.id !== message.id));
-    setConversationSearchMatches((prev) => prev.filter((m) => m.id !== message.id));
-    try {
-      await apagarMensagem(message.id);
-    } catch (err) {
-      toast.error(err?.message || 'Falha ao apagar mensagem.');
-      if (activePhone) await fetchPage(activePhone, 0, false);
-    }
-  }, [pendingDeleteMessage, toast, activePhone, fetchPage]);
+  const confirmDeleteMessage = useCallback(
+    async (escopo = 'inbox') => {
+      const message = pendingDeleteMessage;
+      if (!message?.id) return;
+      setPendingDeleteMessage(null);
+      setMessages((prev) => prev.filter((m) => m.id !== message.id));
+      setConversationSearchMatches((prev) => prev.filter((m) => m.id !== message.id));
+      try {
+        await apagarMensagem(message.id, { escopo });
+      } catch (err) {
+        const fallback =
+          escopo === 'todos'
+            ? 'Falha ao apagar mensagem para todos.'
+            : 'Falha ao apagar mensagem.';
+        toast.error(err?.message || fallback);
+        if (activePhone) await fetchPage(activePhone, 0, false);
+      }
+    },
+    [pendingDeleteMessage, toast, activePhone, fetchPage],
+  );
 
   const requestDeleteConversation = useCallback((phone) => {
     const normalized = normalizePhoneForApi(phone);
@@ -958,11 +966,13 @@ export function WhatsAppConversas() {
 
     const text = draft.trim();
     if (!text) return;
+    setDraft('');
     setSending(true);
     try {
       const res = await sendText(activePhone, text);
       if (res?.success === false) {
         toast.error(res.error || FREE_TEXT_DELIVERY_ERROR);
+        setDraft((prev) => (prev.trim() ? prev : text));
         return;
       }
       const optimistic = {
@@ -974,12 +984,12 @@ export function WhatsAppConversas() {
         phoneNumber: activePhone,
       };
       setMessages((prev) => [...prev, optimistic]);
-      setDraft('');
       toast.success('Mensagem enviada.');
       window.setTimeout(scrollToBottom, 50);
       loadConversations({ silent: true });
     } catch (err) {
       toast.error(err?.message || FREE_TEXT_DELIVERY_ERROR);
+      setDraft((prev) => (prev.trim() ? prev : text));
     } finally {
       setSending(false);
     }
@@ -1004,9 +1014,8 @@ export function WhatsAppConversas() {
       criarOnPasteCompositor({
         conversaAtiva: Boolean(activePhone),
         onAttachFile: applyMediaAttach,
-        disabled: sending,
       }),
-    [activePhone, applyMediaAttach, sending],
+    [activePhone, applyMediaAttach],
   );
 
   const displayMessages = useMemo(() => enrichMessagesWithReactions(messages), [messages]);
@@ -1856,7 +1865,6 @@ export function WhatsAppConversas() {
                   onChange={(e) => setDraft(e.target.value)}
                   onPaste={onPasteCompositor}
                   placeholder={selectedFile ? 'Ou envie só o anexo…' : 'Digite uma mensagem…'}
-                  disabled={sending}
                 />
                 <button
                   type="submit"
@@ -1884,14 +1892,12 @@ export function WhatsAppConversas() {
         onClose={() => setIniciarModalOpen(false)}
         onSuccess={handleIniciarConversaSuccess}
       />
-      <ConfirmDialog
+      <WhatsAppDeleteMessageDialog
         open={Boolean(pendingDeleteMessage)}
-        title={WHATSAPP_DELETE_MESSAGE_CONFIRM.title}
-        message={WHATSAPP_DELETE_MESSAGE_CONFIRM.message}
-        confirmLabel={WHATSAPP_DELETE_MESSAGE_CONFIRM.confirmLabel}
-        onConfirm={() => void confirmDeleteMessage()}
+        message={pendingDeleteMessage}
+        onDeleteInbox={() => void confirmDeleteMessage('inbox')}
+        onDeleteForEveryone={() => void confirmDeleteMessage('todos')}
         onCancel={() => setPendingDeleteMessage(null)}
-        danger
       />
       <ConfirmDialog
         open={Boolean(pendingDeleteConversationPhone)}

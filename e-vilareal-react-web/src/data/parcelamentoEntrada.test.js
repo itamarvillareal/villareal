@@ -4,6 +4,8 @@ import {
   calcularEntradaCentavos,
   calcularParcelaPrecoMensalPrice,
   calcularResumoPlanoPagamento,
+  gerarDatasParcelasSubsequentes,
+  indiceGlobalPrimeiraParcela,
   montarLinhasPlanoPagamento,
   rateioEntradaESaldos,
   temPlanoPagamento,
@@ -126,5 +128,22 @@ describe('parcelamentoEntrada', () => {
     const migradas = aplicarMigracaoValorParcelaTotal(salvas, geradas);
     expect(migradas[0].valorParcela).toBe('R$ 9.082,74');
     expect(migradas[0].dataPagamento).toBe('05/08/2026');
+  });
+
+  it('indiceGlobalPrimeiraParcela considera entrada', () => {
+    expect(indiceGlobalPrimeiraParcela(false)).toBe(0);
+    expect(indiceGlobalPrimeiraParcela(true)).toBe(1);
+  });
+
+  it('gerarDatasParcelasSubsequentes propaga mesmo dia nos meses seguintes', () => {
+    const updates = gerarDatasParcelasSubsequentes('13/07/2026', 0, 5, false);
+    expect(updates).toHaveLength(4);
+    expect(updates[0]).toEqual({ globalIdx: 1, dataVencimento: '13/08/2026' });
+    expect(updates[1]).toEqual({ globalIdx: 2, dataVencimento: '13/09/2026' });
+    expect(updates[3]).toEqual({ globalIdx: 4, dataVencimento: '13/11/2026' });
+  });
+
+  it('gerarDatasParcelasSubsequentes ignora linha que não é Parcela 01', () => {
+    expect(gerarDatasParcelasSubsequentes('13/07/2026', 2, 5, false)).toEqual([]);
   });
 });

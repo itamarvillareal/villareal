@@ -20,6 +20,7 @@ import br.com.vilareal.whatsapp.dto.WhatsAppMediaMessageRequests.ImageMessageReq
 import br.com.vilareal.whatsapp.dto.WhatsAppMediaMessageRequests.VideoBody;
 import br.com.vilareal.whatsapp.dto.WhatsAppMediaMessageRequests.VideoMessageRequest;
 import br.com.vilareal.whatsapp.dto.WhatsAppNotificationDTO;
+import br.com.vilareal.whatsapp.dto.WhatsAppRevokeMessageRequest;
 import br.com.vilareal.whatsapp.dto.WhatsAppSendResponse;
 import br.com.vilareal.whatsapp.dto.WhatsAppTemplateMessageRequest;
 import br.com.vilareal.whatsapp.dto.WhatsAppTemplateMessageRequest.Component;
@@ -60,6 +61,8 @@ public class WhatsAppService {
 
     private static final Logger log = LoggerFactory.getLogger(WhatsAppService.class);
     private static final int JANELA_CONTEXTO_INBOUND_DIAS = 30;
+    /** Janela máxima para revogar mensagem outbound no WhatsApp (espelha o app). */
+    public static final int JANELA_REVOGACAO_OUTBOUND_HORAS = 48;
 
     private final WhatsAppConfig whatsAppConfig;
     private final RestClient restClient;
@@ -498,6 +501,51 @@ public class WhatsAppService {
         }
     }
 
+    /**
+     * Tenta revogar mensagem outbound no WhatsApp do contato (apagar para todos).
+     * A Meta pode rejeitar tipos não suportados — o erro é propagado ao chamador.
+     */
+    public void revokeOutboundMessage(String waMessageId, String phoneNumber) {
+        if (!StringUtils.hasText(waMessageId)) {
+            throw new IllegalArgumentException("ID do WhatsApp ausente para revogar a mensagem.");
+        }
+        if (!StringUtils.hasText(phoneNumber)) {
+            throw new IllegalArgumentException("Telefone ausente para revogar a mensagem.");
+        }
+
+        String formattedPhone = formatPhoneNumber(phoneNumber);
+        WhatsAppRevokeMessageRequest request = new WhatsAppRevokeMessageRequest(
+                "whatsapp",
+                "individual",
+                formattedPhone,
+                "revoke",
+                new WhatsAppRevokeMessageRequest.RevokeBody(waMessageId.trim()));
+
+        try {
+            WhatsAppSendResponse response = restClient
+                    .post()
+                    .uri("/{phoneNumberId}/messages", whatsAppConfig.getPhoneNumberId())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .body(WhatsAppSendResponse.class);
+
+            if (response == null) {
+                throw new WhatsAppApiException("Resposta vazia ao revogar mensagem WhatsApp.", 0, null, 0);
+            }
+            log.info("Revogação WhatsApp aceita para {} (wamid {})", formattedPhone, waMessageId);
+        } catch (RestClientResponseException e) {
+            throw traduzirErroRevogacao(e);
+        } catch (WhatsAppApiException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Falha de conexão ao revogar mensagem WhatsApp: {}", e.getMessage());
+            throw new WhatsAppApiException(
+                    "Falha de conexão ao revogar mensagem WhatsApp: " + e.getMessage(), 0, null, 0, e);
+        }
+    }
+
     private record SendContext(boolean isCopia, String tipo, String resumo) {
         static SendContext texto(String corpo) {
             return new SendContext(false, "texto", corpo != null ? corpo : "");
@@ -804,6 +852,16 @@ public class WhatsAppService {
 
         log.error("Erro ao enviar mensagem WhatsApp. HTTP {}, Meta error: {} - {}", status, metaErrorCode, message);
         return new WhatsAppApiException(message, status, errorType, metaErrorCode, e);
+    }
+
+    private WhatsAppApiException traduzirErroRevogacao(RestClientResponseException e) {
+        WhatsAppApiException base = traduzirErroHttp(e);
+        String message = base.getMessage();
+        if (!StringUtils.hasText(message) || message.contains("Erro ao enviar mensagem WhatsApp")) {
+            message =
+                    "Não foi possível apagar a mensagem no WhatsApp do contato. A API oficial da Meta pode não suportar revogação de mensagens enviadas pelo sistema.";
+        }
+        return new WhatsAppApiException(message, base.getHttpStatusCode(), base.getErrorType(), base.getMetaErrorCode(), e);
     }
 
     private static String extractMessageId(WhatsAppSendResponse response) {

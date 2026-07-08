@@ -552,13 +552,22 @@ public class WhatsAppController {
     }
 
     @DeleteMapping("/messages/{messageId}")
-    @Operation(summary = "Apaga mensagem da inbox do sistema (soft delete — não remove do WhatsApp do contato)")
-    public ResponseEntity<Void> apagarMensagem(@PathVariable Long messageId) {
+    @Operation(summary = "Apaga mensagem — inbox (soft delete) ou para todos (revoga outbound no WhatsApp)")
+    public ResponseEntity<?> apagarMensagem(
+            @PathVariable Long messageId,
+            @RequestParam(defaultValue = "inbox") String escopo) {
         try {
-            messageDeleteService.apagarMensagem(messageId);
+            if ("todos".equalsIgnoreCase(escopo)) {
+                messageDeleteService.apagarMensagemParaTodos(messageId);
+            } else {
+                messageDeleteService.apagarMensagem(messageId);
+            }
             return ResponseEntity.noContent().build();
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (WhatsAppApiException e) {
+            return ResponseEntity.status(mapWhatsAppHttpStatus(e))
+                    .body(Map.of("message", e.getMessage()));
         }
     }
 

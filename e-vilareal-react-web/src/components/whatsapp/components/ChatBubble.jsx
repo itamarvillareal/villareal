@@ -775,7 +775,7 @@ export function ChatBubble({
             type="button"
             onClick={() => onDeleteMessage(message)}
             className={`absolute -top-2 ${isOutbound ? '-left-2' : '-right-2'} z-10 inline-flex items-center gap-0.5 rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-red-600 shadow-sm opacity-0 transition-opacity group-hover/msg:opacity-100 focus:opacity-100 dark:border-slate-600 dark:bg-slate-800 dark:text-red-400`}
-            title="Apagar da sua inbox (não apaga no WhatsApp do contato)"
+            title="Apagar mensagem"
           >
             <Trash2 className="h-3 w-3" aria-hidden />
             Apagar

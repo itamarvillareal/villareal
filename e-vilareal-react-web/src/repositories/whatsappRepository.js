@@ -370,11 +370,24 @@ export async function arquivarConversasLote(phoneNumbers) {
   });
 }
 
-/** Apaga mensagem da inbox do sistema (soft delete — não remove do WhatsApp do contato). */
-export async function apagarMensagem(messageId) {
+/**
+ * Apaga mensagem.
+ * @param {number|string} messageId
+ * @param {{ escopo?: 'inbox' | 'todos' }} [options]
+ *   - `inbox` (padrão): soft delete só no sistema.
+ *   - `todos`: revoga no WhatsApp (outbound, até 48h) e remove do histórico.
+ */
+export async function apagarMensagem(messageId, { escopo = 'inbox' } = {}) {
   const id = messageId != null ? String(messageId).trim() : '';
   if (!id) throw new Error('ID da mensagem ausente.');
-  return request(`/api/whatsapp/messages/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  const scope = String(escopo ?? 'inbox').trim().toLowerCase();
+  if (scope !== 'inbox' && scope !== 'todos') {
+    throw new Error('Escopo de exclusão inválido.');
+  }
+  return request(`/api/whatsapp/messages/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    query: scope === 'todos' ? { escopo: 'todos' } : undefined,
+  });
 }
 
 /** Apaga conversa inteira da inbox do sistema (soft delete das mensagens). */

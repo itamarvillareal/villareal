@@ -50,6 +50,8 @@ import {
   calcularResumoPlanoPagamento,
   aplicarMigracaoValorParcelaTotal,
   entradaModoAtivo,
+  gerarDatasParcelasSubsequentes,
+  indiceGlobalPrimeiraParcela,
   montarLinhasPlanoPagamento,
   normalizarEntradaModo,
   rotuloLinhaPlanoPagamento,
@@ -603,6 +605,8 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   // Datas Especiais (por linha)
   const [modalCobrancaWhatsApp, setModalCobrancaWhatsApp] = useState(false);
   const [modalDatasEspeciais, setModalDatasEspeciais] = useState(false);
+  const [modalPropagarDatasParcelas, setModalPropagarDatasParcelas] = useState(null);
+  const parcelaVencimentoAoFocarRef = useRef({});
   const [linhaModalIdx, setLinhaModalIdx] = useState(null); // índice global dentro de rodadaAtual.titulos
   const [indicesRefreshToken, setIndicesRefreshToken] = useState(0); // força recarregar índices quando datas especiais mudarem
   const [formDatasEspeciais, setFormDatasEspeciais] = useState({
@@ -2270,6 +2274,43 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     });
   }
 
+  function aplicarDatasParcelasSubsequentes(updates) {
+    if (!Array.isArray(updates) || updates.length === 0) return;
+    isDirtyRodadaRef.current = true;
+    for (const k of paginasRodadaCacheRef.current.keys()) {
+      if (String(k).startsWith(`${rodadaKey}:`)) {
+        paginasRodadaCacheRef.current.delete(k);
+      }
+    }
+    setRodadasState((prev) => {
+      const cur = prev[rodadaKey];
+      if (!cur) return prev;
+      const listaAtual = Array.isArray(cur.parcelas) ? [...cur.parcelas] : gerarParcelasMock();
+      for (const { globalIdx, dataVencimento } of updates) {
+        while (globalIdx >= listaAtual.length) listaAtual.push(linhaVaziaParcela());
+        listaAtual[globalIdx] = { ...listaAtual[globalIdx], dataVencimento };
+      }
+      return { ...prev, [rodadaKey]: { ...cur, parcelas: listaAtual } };
+    });
+  }
+
+  function handleFocusDataVencimentoParcela(globalIdx, valorAtual) {
+    parcelaVencimentoAoFocarRef.current[globalIdx] = valorAtual || '';
+  }
+
+  function handleBlurDataVencimentoParcela(globalIdx, rawValue) {
+    const nova = normalizarTextoDataBRparaSalvar(rawValue);
+    atualizarParcelaNaRodada(globalIdx, { dataVencimento: nova });
+    if (!modoAlteracao || !nova || nParcelasAtivas <= 1) return;
+    const indicePrimeira = indiceGlobalPrimeiraParcela(temEntradaAtiva);
+    if (globalIdx !== indicePrimeira) return;
+    const anterior = normalizarTextoDataBRparaSalvar(parcelaVencimentoAoFocarRef.current[globalIdx] || '');
+    if (nova === anterior) return;
+    const updates = gerarDatasParcelasSubsequentes(nova, globalIdx, nParcelasAtivas, temEntradaAtiva);
+    if (!updates.length) return;
+    setModalPropagarDatasParcelas({ dataBase: nova, updates });
+  }
+
   function chaveHonorarioTitulo(i) {
     return `titulo:${i}`;
   }
@@ -3042,11 +3083,8 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                                     const r = resolverAliasHojeEmTexto(v, 'br');
                                     atualizarParcelaNaRodada(globalIdx, { dataVencimento: r ?? v });
                                   }}
-                                  onBlur={(e) =>
-                                    atualizarParcelaNaRodada(globalIdx, {
-                                      dataVencimento: normalizarTextoDataBRparaSalvar(e.target.value),
-                                    })
-                                  }
+                                  onFocus={() => handleFocusDataVencimentoParcela(globalIdx, row.dataVencimento)}
+                                  onBlur={(e) => handleBlurDataVencimentoParcela(globalIdx, e.target.value)}
                                   className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
                                 />
                               ) : row.dataVencimento}
@@ -3318,11 +3356,8 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                                   const r = resolverAliasHojeEmTexto(v, 'br');
                                   atualizarParcelaNaRodada(globalIdx, { dataVencimento: r ?? v });
                                 }}
-                                onBlur={(e) =>
-                                  atualizarParcelaNaRodada(globalIdx, {
-                                    dataVencimento: normalizarTextoDataBRparaSalvar(e.target.value),
-                                  })
-                                }
+                                onFocus={() => handleFocusDataVencimentoParcela(globalIdx, row.dataVencimento)}
+                                onBlur={(e) => handleBlurDataVencimentoParcela(globalIdx, e.target.value)}
                                 className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
                               />
                             ) : (
@@ -3903,6 +3938,52 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                 className="px-3 py-2 rounded border border-red-300 bg-red-50 text-red-700 text-sm hover:bg-red-100"
               >
                 Limpar página
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalPropagarDatasParcelas && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
+          <div className="bg-white rounded-lg shadow-xl border border-slate-200 w-full max-w-md">
+            <div className="px-4 py-3 border-b border-slate-200">
+              <h2 className="text-sm font-semibold text-slate-800">Atualizar vencimentos das parcelas?</h2>
+            </div>
+            <div className="px-4 py-3 text-sm text-slate-700 space-y-2">
+              <p>
+                A <strong>Parcela 01</strong> ficou em <strong>{modalPropagarDatasParcelas.dataBase}</strong>.
+              </p>
+              <p>
+                Deseja ajustar automaticamente as parcelas seguintes para o <strong>mesmo dia</strong> em cada mês
+                subsequente?
+              </p>
+              <ul className="text-xs text-slate-600 list-disc pl-4 max-h-32 overflow-y-auto">
+                {modalPropagarDatasParcelas.updates.map(({ globalIdx, dataVencimento }) => (
+                  <li key={`propagar-${globalIdx}`}>
+                    {rotuloLinhaPlanoPagamento(parcelas[globalIdx], globalIdx, temEntradaAtiva).replace(/:$/, '')}:{' '}
+                    {dataVencimento}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="px-4 py-3 border-t border-slate-200 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setModalPropagarDatasParcelas(null)}
+                className="px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-sm hover:bg-slate-50"
+              >
+                Não, manter como está
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  aplicarDatasParcelasSubsequentes(modalPropagarDatasParcelas.updates);
+                  setModalPropagarDatasParcelas(null);
+                }}
+                className="px-3 py-2 rounded border border-emerald-600 bg-emerald-600 text-white text-sm hover:bg-emerald-700"
+              >
+                Sim, aplicar datas
               </button>
             </div>
           </div>

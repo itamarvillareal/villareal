@@ -2,7 +2,7 @@
  * Entrada + parcelamento do saldo (Tabela Price) — lógica pura reutilizável na tela Cálculos.
  */
 
-import { formatBRL, parseBRL } from '../components/calculos/calculosTitulosGridUtils.js';
+import { formatBRL, parseBRL, normalizarTextoDataBRparaSalvar, sugerirProximaDataVencimento } from '../components/calculos/calculosTitulosGridUtils.js';
 import { parseBRLToCentavos } from '../utils/moneyBr.js';
 
 export const ENTRADA_MODOS = ['nenhuma', 'reais', 'percentual'];
@@ -156,6 +156,32 @@ export function rotuloLinhaPlanoPagamento(row, globalIdx, temEntrada) {
   if (row?.tipo === 'entrada' || (temEntrada && globalIdx === 0)) return 'Entrada';
   const num = temEntrada ? globalIdx : globalIdx + 1;
   return `Parcela ${String(num).padStart(2, '0')}:`;
+}
+
+/** Índice global da linha «Parcela 01» (não confundir com Entrada). */
+export function indiceGlobalPrimeiraParcela(temEntrada) {
+  return temEntrada ? 1 : 0;
+}
+
+/**
+ * Gera vencimentos das parcelas 02…N a partir da data da Parcela 01 (mesmo dia, meses subsequentes).
+ * @returns {Array<{ globalIdx: number, dataVencimento: string }>}
+ */
+export function gerarDatasParcelasSubsequentes(dataBaseBr, indicePrimeira, quantidadeParcelas, temEntrada) {
+  const primeira = indiceGlobalPrimeiraParcela(temEntrada);
+  if (indicePrimeira !== primeira) return [];
+  const n = Math.max(0, Math.floor(Number(quantidadeParcelas) || 0));
+  if (n <= 1) return [];
+  let prev = normalizarTextoDataBRparaSalvar(dataBaseBr);
+  if (!prev) return [];
+  const out = [];
+  for (let i = 1; i < n; i++) {
+    const next = sugerirProximaDataVencimento(prev, 'mensal');
+    if (!next) break;
+    out.push({ globalIdx: primeira + i, dataVencimento: next });
+    prev = next;
+  }
+  return out;
 }
 
 /**

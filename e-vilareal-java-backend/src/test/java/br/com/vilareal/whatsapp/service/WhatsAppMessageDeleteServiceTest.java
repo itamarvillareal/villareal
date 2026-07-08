@@ -43,6 +43,9 @@ class WhatsAppMessageDeleteServiceTest {
     @Mock
     private WhatsAppConversaClienteManualRepository manualRepository;
 
+    @Mock
+    private WhatsAppService whatsAppService;
+
     @InjectMocks
     private WhatsAppMessageDeleteService service;
 

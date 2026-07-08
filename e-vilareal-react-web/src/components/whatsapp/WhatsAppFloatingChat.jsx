@@ -305,11 +305,11 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
 
     const text = draft.trim();
     if (!text) return;
+    setDraft('');
     setSending(true);
     setError('');
     try {
       await sendWhatsAppText(phoneApi, text);
-      setDraft('');
       setMessages((prev) => [
         ...prev,
         {
@@ -325,6 +325,7 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
     } catch (err) {
       const msg = String(err?.message ?? '');
       setError(msg.includes('24') || msg.includes('janela') ? FREE_TEXT_DELIVERY_ERROR : msg || 'Falha ao enviar.');
+      setDraft((prev) => (prev.trim() ? prev : text));
     } finally {
       setSending(false);
     }
@@ -347,9 +348,8 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
       criarOnPasteCompositor({
         conversaAtiva: Boolean(phoneApi),
         onAttachFile: applyMediaAttach,
-        disabled: sending,
       }),
-    [phoneApi, applyMediaAttach, sending],
+    [phoneApi, applyMediaAttach],
   );
 
   const displayMessages = useMemo(() => enrichMessagesWithReactions(messages), [messages]);
@@ -453,7 +453,6 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
           }}
           placeholder={selectedFile ? 'Ou envie só o anexo…' : 'Digite uma mensagem...'}
           className="flex-1 min-w-0 rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-emerald-400"
-          disabled={sending}
         />
         <button
           type="button"
