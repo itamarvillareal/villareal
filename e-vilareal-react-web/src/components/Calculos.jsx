@@ -256,7 +256,7 @@ function SpinnerField({ value, onChange, min = 0, className = 'w-20', inputRef, 
       <button
         type="button"
         tabIndex={-1}
-        className="px-2 py-1.5 border-r border-slate-300 hover:bg-slate-100"
+        className="px-2 py-1.5 max-lg:py-2.5 border-r border-slate-300 hover:bg-slate-100"
         onClick={() => onChange(Math.max(min, (isNaN(num) ? 0 : num) - 1))}
         aria-label="Diminuir"
       >
@@ -271,12 +271,12 @@ function SpinnerField({ value, onChange, min = 0, className = 'w-20', inputRef, 
           onChange(isNaN(v) ? min : v);
         }}
         onKeyDown={onKeyDown}
-        className="w-full min-w-[3ch] px-1 py-1.5 text-sm text-center border-0 tabular-nums"
+        className="w-full min-w-[3ch] px-1 py-1.5 max-lg:py-2.5 max-lg:text-base text-sm text-center border-0 tabular-nums"
       />
       <button
         type="button"
         tabIndex={-1}
-        className="px-2 py-1.5 border-l border-slate-300 hover:bg-slate-100"
+        className="px-2 py-1.5 max-lg:py-2.5 border-l border-slate-300 hover:bg-slate-100"
         onClick={() => onChange((isNaN(num) ? 0 : num) + 1)}
         aria-label="Aumentar"
       >
@@ -306,7 +306,7 @@ function SpinnerFieldManual({
       <button
         type="button"
         tabIndex={-1}
-        className="px-2 py-1.5 border-r border-slate-300 hover:bg-slate-100"
+        className="px-2 py-1.5 max-lg:py-2.5 border-r border-slate-300 hover:bg-slate-100"
         onClick={() => {
           const next = formatDisplay(Math.max(min, safeNum - step));
           onChange(next);
@@ -324,12 +324,12 @@ function SpinnerFieldManual({
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
         onKeyDown={onKeyDown}
-        className="w-full min-w-[6ch] px-2 py-1.5 text-sm text-center border-0 tabular-nums"
+        className="w-full min-w-[6ch] px-2 py-1.5 max-lg:py-2.5 max-lg:text-base text-sm text-center border-0 tabular-nums"
       />
       <button
         type="button"
         tabIndex={-1}
-        className="px-2 py-1.5 border-l border-slate-300 hover:bg-slate-100"
+        className="px-2 py-1.5 max-lg:py-2.5 border-l border-slate-300 hover:bg-slate-100"
         onClick={() => {
           const next = formatDisplay(safeNum + step);
           onChange(next);
@@ -2538,7 +2538,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
 
   return (
     <div
-      className={`min-h-0 flex flex-col bg-slate-50 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] ${isEmbedded ? 'w-full min-w-0' : 'flex-1'}`}
+      className={`min-h-0 flex flex-col overflow-x-hidden max-w-full bg-slate-50 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] ${isEmbedded ? 'w-full min-w-0' : 'flex-1'}`}
     >
       <header className="flex items-center justify-between gap-2 px-3 py-2 bg-white border-b border-slate-200 shrink-0">
         <h1 className="text-base font-semibold text-slate-800 dark:text-slate-100 truncate min-w-0">
@@ -2597,17 +2597,17 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
             key={tab}
             type="button"
             onClick={() => setTabAtiva(tab)}
-            className={`shrink-0 px-2.5 py-1.5 text-xs font-medium rounded-t-md transition-colors ${tabAtiva === tab ? 'bg-white text-slate-900 border border-b-0 border-slate-200 -mb-px shadow-sm' : 'text-slate-600 hover:bg-white/70 border border-transparent'}`}
+            className={`shrink-0 px-3 py-2 max-lg:px-3.5 max-lg:py-2.5 text-xs max-lg:text-sm font-medium rounded-t-md transition-colors ${tabAtiva === tab ? 'bg-white text-slate-900 border border-b-0 border-slate-200 -mb-px shadow-sm' : 'text-slate-600 hover:bg-white/70 border border-transparent'}`}
           >
             {tab}
           </button>
         ))}
       </div>
 
-      <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
-        <aside className="order-last lg:order-last w-full shrink-0 lg:w-52 max-lg:max-h-[min(48dvh,420px)] border-t lg:border-t-0 lg:border-l border-slate-200 bg-slate-100/90 p-2 overflow-y-auto overflow-x-hidden space-y-2 [-webkit-overflow-scrolling:touch] [scrollbar-width:thin]">
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden max-w-full">
+        <aside className="order-last lg:order-last w-full max-w-full shrink-0 lg:w-52 border-t lg:border-t-0 lg:border-l border-slate-200 bg-slate-100/90 p-2 sm:p-3 pb-[max(5.5rem,calc(4.5rem+env(safe-area-inset-bottom,0px)))] lg:pb-2 overflow-y-auto overflow-x-hidden space-y-2 [-webkit-overflow-scrolling:touch] [scrollbar-width:thin]">
           <div className="p-1.5 rounded border border-slate-200 bg-white shadow-sm">
-            <div className="grid grid-cols-3 gap-2 lg:block lg:space-y-2">
+            <div className="grid grid-cols-1 min-[420px]:grid-cols-3 gap-2 lg:block lg:space-y-2">
               <div>
                 <label className="block text-[11px] font-medium text-slate-700 mb-0.5">Cod Cliente</label>
                 <SpinnerFieldManual
@@ -2660,14 +2660,14 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                 ref={btnIrRodadaRef}
                 type="button"
                 onClick={aplicarClienteProcManual}
-                className="col-span-3 lg:col-span-1 w-full px-2 py-2 lg:py-1.5 rounded bg-blue-600 text-white text-sm lg:text-xs font-medium hover:bg-blue-700"
+                className="col-span-1 min-[420px]:col-span-3 lg:col-span-1 w-full px-2 py-2 lg:py-1.5 rounded bg-blue-600 text-white text-sm lg:text-xs font-medium hover:bg-blue-700"
               >
                 Ir
               </button>
             </div>
           </div>
           {tabAtiva === 'Títulos' && (
-            <div className="grid grid-cols-2 gap-2 lg:block lg:space-y-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 lg:block lg:space-y-2">
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-0.5">Página</label>
                 <SpinnerField value={pagina} onChange={setPagina} min={1} className="w-full lg:w-24" />
@@ -2968,7 +2968,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
           </div>
         </aside>
 
-        <div className="order-first flex-1 min-w-0 min-h-0 overflow-auto p-2 [-webkit-overflow-scrolling:touch] flex flex-col">
+        <div className="order-first flex-1 min-w-0 min-h-0 max-w-full overflow-auto p-2 sm:p-3 pb-[max(5.5rem,calc(4.5rem+env(safe-area-inset-bottom,0px)))] lg:pb-2 [-webkit-overflow-scrolling:touch] flex flex-col">
           {tabAtiva === 'Títulos' && (
             <TitulosGrid
               titulosPaginaCompletos={titulosPaginaCompletos}

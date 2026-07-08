@@ -493,10 +493,18 @@ export function WhatsAppFloatingChat() {
     setIsOpen(true);
   }, [ctx]);
 
+  const pathNorm = (location.pathname || '/').replace(/\/+$/, '') || '/';
+  const isCalculosRoute =
+    pathNorm === '/calculos' ||
+    pathNorm.startsWith('/calculos/') ||
+    pathNorm === '/relatorio-calculos' ||
+    pathNorm.startsWith('/relatorio-calculos/');
+
   const { containerStyle, containerClassName, dragHandleProps, resetPosition } = useWhatsAppFloatingPosition({
     isOpen,
     isMobile,
     onTap: openPanel,
+    defaultCorner: isMobile && isCalculosRoute ? 'bottom-left' : 'bottom-right',
   });
   const { className: fabDragClassName = '', ...fabDragRest } = dragHandleProps;
 

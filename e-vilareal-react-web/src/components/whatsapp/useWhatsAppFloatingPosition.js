@@ -43,14 +43,16 @@ function getViewportBounds() {
   };
 }
 
-function defaultFabPosition() {
+function defaultFabPosition(corner = 'bottom-right') {
   const { w, h, top, left } = getViewportBounds();
   const margin = 24;
   const bottomInset = typeof window !== 'undefined' && window.innerWidth <= 640 ? 16 : 0;
-  return clampFabPosition(
-    left + w - WHATSAPP_FAB_SIZE - margin,
-    top + h - WHATSAPP_FAB_SIZE - margin - bottomInset,
-  );
+  const y = top + h - WHATSAPP_FAB_SIZE - margin - bottomInset;
+  const x =
+    corner === 'bottom-left'
+      ? left + margin
+      : left + w - WHATSAPP_FAB_SIZE - margin;
+  return clampFabPosition(x, y);
 }
 
 export function clampFabPosition(x, y) {
@@ -112,16 +114,17 @@ function persistFabPosition(fabPos) {
 
 /**
  * Posição arrastável do botão/painel flutuante do WhatsApp (persiste no localStorage).
- * @param {{ isOpen: boolean, isMobile: boolean, onTap: () => void }} opts
+ * @param {{ isOpen: boolean, isMobile: boolean, onTap: () => void, defaultCorner?: 'bottom-right' | 'bottom-left' }} opts
  */
-export function useWhatsAppFloatingPosition({ isOpen, isMobile, onTap }) {
+export function useWhatsAppFloatingPosition({ isOpen, isMobile, onTap, defaultCorner = 'bottom-right' }) {
   const [fabPos, setFabPos] = useState(() => readStoredFabPosition());
   const dragRef = useRef(null);
 
-  const resolvedFab = useMemo(
-    () => clampFabPosition((fabPos ?? defaultFabPosition()).x, (fabPos ?? defaultFabPosition()).y),
-    [fabPos],
-  );
+  const resolvedFab = useMemo(() => {
+    const fallback = defaultFabPosition(defaultCorner);
+    const base = fabPos ?? fallback;
+    return clampFabPosition(base.x, base.y);
+  }, [fabPos, defaultCorner]);
 
   const containerStyle = useMemo(() => {
     if (isMobile && isOpen) return undefined;
@@ -131,7 +134,11 @@ export function useWhatsAppFloatingPosition({ isOpen, isMobile, onTap }) {
 
   useEffect(() => {
     const onResize = () => {
-      setFabPos((prev) => clampFabPosition((prev ?? defaultFabPosition()).x, (prev ?? defaultFabPosition()).y));
+      setFabPos((prev) => {
+        const fallback = defaultFabPosition(defaultCorner);
+        const base = prev ?? fallback;
+        return clampFabPosition(base.x, base.y);
+      });
     };
     window.addEventListener('resize', onResize);
     const vv = window.visualViewport;
@@ -142,7 +149,7 @@ export function useWhatsAppFloatingPosition({ isOpen, isMobile, onTap }) {
       vv?.removeEventListener('resize', onResize);
       vv?.removeEventListener('scroll', onResize);
     };
-  }, []);
+  }, [defaultCorner]);
 
   const resetPosition = useCallback(() => {
     persistFabPosition(null);

@@ -47,6 +47,13 @@ const TitulosGrid = memo(function TitulosGrid({
   }
   const limiteEdicao = Math.max(rodadaTitulosLength, inicio + linhasComValorNoInicio);
 
+  const inputCellClass =
+    'w-full px-1 py-0.5 max-lg:py-2 max-lg:text-base border border-slate-300 rounded text-sm tabular-nums';
+  const stickyColNum =
+    'sticky left-0 z-20 bg-inherit shadow-[2px_0_4px_-2px_rgba(15,23,42,0.12)] max-lg:shadow-[3px_0_6px_-2px_rgba(15,23,42,0.18)]';
+  const stickyColData =
+    'sticky left-12 z-20 bg-inherit shadow-[2px_0_4px_-2px_rgba(15,23,42,0.12)] max-lg:shadow-[3px_0_6px_-2px_rgba(15,23,42,0.18)]';
+
   return (
     <>
       {showAvisoParcelasVazias && (
@@ -89,35 +96,46 @@ const TitulosGrid = memo(function TitulosGrid({
       </p>
 
       <div
-        className={`overflow-x-auto border border-slate-300 rounded bg-white [-webkit-overflow-scrolling:touch] ${isLoading ? 'opacity-60 pointer-events-none' : ''}`}
+        className={`max-w-full overflow-x-auto border border-slate-300 rounded bg-white isolate [-webkit-overflow-scrolling:touch] ${isLoading ? 'opacity-60 pointer-events-none' : ''}`}
         aria-busy={isLoading || undefined}
       >
-        <table className="w-full min-w-[880px] text-sm border-collapse">
+        <table className="w-full min-w-[720px] lg:min-w-[880px] text-sm border-collapse">
           <thead>
             <tr className="bg-slate-100">
-              <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 w-12">#</th>
-              <th className="border border-slate-300 px-1.5 py-1.5 text-left font-semibold text-slate-700 w-[7rem] min-w-0 max-w-[7rem] whitespace-normal text-[11px] leading-tight">
-                Data de Vencimento
+              <th
+                className={`border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 w-12 bg-slate-100 ${stickyColNum}`}
+              >
+                #
               </th>
-              <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[120px]">
-                Valor inicial do título
+              <th
+                className={`border border-slate-300 px-1.5 py-1.5 text-left font-semibold text-slate-700 w-[7rem] min-w-[7rem] max-w-[7rem] whitespace-normal text-[11px] leading-tight bg-slate-100 ${stickyColData}`}
+              >
+                <span className="lg:hidden">Vencimento</span>
+                <span className="hidden lg:inline">Data de Vencimento</span>
               </th>
-              <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[120px]">
-                Atualização Monetária
+              <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[108px] whitespace-nowrap">
+                <span className="lg:hidden">Valor inicial</span>
+                <span className="hidden lg:inline">Valor inicial do título</span>
+              </th>
+              <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[100px] whitespace-nowrap">
+                <span className="lg:hidden">Atualiz.</span>
+                <span className="hidden lg:inline">Atualização Monetária</span>
+              </th>
+              <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[72px] whitespace-nowrap">
+                <span className="lg:hidden">Dias</span>
+                <span className="hidden lg:inline">Dias de Atraso</span>
               </th>
               <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[80px]">
-                Dias de Atraso
-              </th>
-              <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[90px]">
                 Juros
               </th>
-              <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[80px]">
+              <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[72px]">
                 Multa
               </th>
               <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[80px]">
-                Honorários
+                <span className="lg:hidden">Hon.</span>
+                <span className="hidden lg:inline">Honorários</span>
               </th>
-              <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[100px]">
+              <th className="border border-slate-300 px-2 py-1.5 text-left font-semibold text-slate-700 min-w-[96px]">
                 Total
               </th>
             </tr>
@@ -130,7 +148,7 @@ const TitulosGrid = memo(function TitulosGrid({
               return (
                 <tr key={`titulo-${globalIdx}`} className={globalIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
                   <td
-                    className="border border-slate-200 px-2 py-1 text-slate-600 cursor-pointer hover:bg-slate-50"
+                    className={`border border-slate-200 px-2 py-1 text-slate-600 cursor-pointer hover:bg-slate-50 ${stickyColNum}`}
                     onDoubleClick={() => {
                       if (podeEditarLinha) onAbrirDatasEspeciais(globalIdx);
                     }}
@@ -138,7 +156,9 @@ const TitulosGrid = memo(function TitulosGrid({
                   >
                     {String(globalIdx + 1).padStart(3, '0')}
                   </td>
-                  <td className="border border-slate-200 px-1 py-1 w-[7rem] min-w-0 max-w-[7rem] align-top">
+                  <td
+                    className={`border border-slate-200 px-1 py-1 w-[7rem] min-w-[7rem] max-w-[7rem] align-top ${stickyColData}`}
+                  >
                     {podeEditarLinha ? (
                       <input
                         type="text"
@@ -157,7 +177,7 @@ const TitulosGrid = memo(function TitulosGrid({
                           })
                         }
                         onFocus={() => onFocusTituloCampo?.(globalIdx, 'dataVencimento')}
-                        className="w-full min-w-0 max-w-full box-border px-1 py-1 max-lg:py-2 max-lg:text-base border border-slate-300 rounded text-sm tabular-nums"
+                        className={`${inputCellClass} min-w-0 max-w-full box-border px-1`}
                       />
                     ) : (
                       <span className="block truncate text-sm tabular-nums" title={row.dataVencimento || undefined}>
@@ -188,7 +208,7 @@ const TitulosGrid = memo(function TitulosGrid({
                           });
                         }}
                         onFocus={() => onFocusTituloCampo?.(globalIdx, 'valorInicial')}
-                        className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
+                        className={inputCellClass}
                       />
                     ) : (
                       row.valorInicial
@@ -205,7 +225,7 @@ const TitulosGrid = memo(function TitulosGrid({
                             atualizacaoMonetaria: formatBRL(parseBRL(e.target.value)),
                           })
                         }
-                        className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
+                        className={inputCellClass}
                       />
                     ) : (
                       row.atualizacaoMonetaria
@@ -224,7 +244,7 @@ const TitulosGrid = memo(function TitulosGrid({
                             diasAtraso: n ? String(Math.max(0, Math.floor(n))) : '0',
                           });
                         }}
-                        className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
+                        className={inputCellClass}
                       />
                     ) : (
                       row.diasAtraso
@@ -239,7 +259,7 @@ const TitulosGrid = memo(function TitulosGrid({
                         onBlur={(e) =>
                           onTituloFieldChange(globalIdx, { juros: formatBRL(parseBRL(e.target.value)) })
                         }
-                        className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
+                        className={inputCellClass}
                       />
                     ) : (
                       row.juros
@@ -254,7 +274,7 @@ const TitulosGrid = memo(function TitulosGrid({
                         onBlur={(e) =>
                           onTituloFieldChange(globalIdx, { multa: formatBRL(parseBRL(e.target.value)) })
                         }
-                        className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
+                        className={inputCellClass}
                       />
                     ) : (
                       row.multa
@@ -269,7 +289,7 @@ const TitulosGrid = memo(function TitulosGrid({
                         onBlur={(e) =>
                           onTituloFieldChange(globalIdx, { honorarios: formatBRL(parseBRL(e.target.value)) })
                         }
-                        className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
+                        className={inputCellClass}
                       />
                     ) : (
                       row.honorarios
@@ -284,7 +304,10 @@ const TitulosGrid = memo(function TitulosGrid({
           </tbody>
           <tfoot>
             <tr className="bg-slate-100 font-medium">
-              <td className="border border-slate-300 px-2 py-1" colSpan={2}>
+              <td
+                className="border border-slate-300 px-2 py-1 bg-slate-100 sticky left-0 z-20 min-w-[10.5rem] shadow-[2px_0_4px_-2px_rgba(15,23,42,0.12)]"
+                colSpan={2}
+              >
                 {resumoPag.qtd}
               </td>
               <td className="border border-slate-300 px-2 py-1">{resumoPag.valorInicial}</td>
@@ -296,7 +319,10 @@ const TitulosGrid = memo(function TitulosGrid({
               <td className="border border-slate-300 px-2 py-1">{resumoPag.total}</td>
             </tr>
             <tr className="bg-slate-100 font-medium">
-              <td className="border border-slate-300 px-2 py-1" colSpan={2}>
+              <td
+                className="border border-slate-300 px-2 py-1 bg-slate-100 sticky left-0 z-20 min-w-[10.5rem] shadow-[2px_0_4px_-2px_rgba(15,23,42,0.12)]"
+                colSpan={2}
+              >
                 {resumoG.qtd}
               </td>
               <td className="border border-slate-300 px-2 py-1">{resumoG.valorInicial}</td>
