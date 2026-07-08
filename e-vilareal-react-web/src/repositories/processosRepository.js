@@ -568,7 +568,7 @@ function itemTemFilaProjudi(item, cnjsFilaSet) {
 
 /**
  * Diagnóstico «Aguardando Protocolo»: cadastro na API + histórico local só quando não contradiz a API.
- * Omite processos que já têm petição na fila PROJUDI (assinada/agendada, pendente ou protocolando).
+ * A API já omite processos com fila PROJUDI, exceto quando ainda há PDF na pasta «Assinar».
  */
 export async function listarProcessosFaseAguardandoProtocoloDiagnostico() {
   const locais = listarProcessosFaseAguardandoProtocolo();
@@ -581,22 +581,20 @@ export async function listarProcessosFaseAguardandoProtocoloDiagnostico() {
     const cnjsFilaSet = new Set(
       (Array.isArray(cnjsFila) ? cnjsFila : []).map((d) => String(d).replace(/\D/g, '')).filter(Boolean),
     );
-    const fromApi = (Array.isArray(arr) ? arr : [])
-      .map((row) => {
-        const codCliente = padCliente8(row.codigoCliente ?? row.codigo_cliente ?? '1');
-        const procNum = Number(row.numeroInterno ?? row.numero_interno);
-        const proc = String(Number.isFinite(procNum) && procNum >= 0 ? procNum : 0);
-        return {
-          codCliente,
-          proc,
-          cliente: String(row.cliente ?? ''),
-          parteCliente: String(row.parteCliente ?? row.cliente ?? ''),
-          parteOposta: String(row.parteOposta ?? ''),
-          numeroProcessoNovo: String(row.numeroProcessoNovo ?? row.numero_processo_novo ?? '').trim(),
-          faseSelecionada: 'Protocolo / Movimentação',
-        };
-      })
-      .filter((item) => !itemTemFilaProjudi(item, cnjsFilaSet));
+    const fromApi = (Array.isArray(arr) ? arr : []).map((row) => {
+      const codCliente = padCliente8(row.codigoCliente ?? row.codigo_cliente ?? '1');
+      const procNum = Number(row.numeroInterno ?? row.numero_interno);
+      const proc = String(Number.isFinite(procNum) && procNum >= 0 ? procNum : 0);
+      return {
+        codCliente,
+        proc,
+        cliente: String(row.cliente ?? ''),
+        parteCliente: String(row.parteCliente ?? row.cliente ?? ''),
+        parteOposta: String(row.parteOposta ?? ''),
+        numeroProcessoNovo: String(row.numeroProcessoNovo ?? row.numero_processo_novo ?? '').trim(),
+        faseSelecionada: 'Protocolo / Movimentação',
+      };
+    });
     const m = new Map();
     for (const x of fromApi) m.set(chaveClienteProcItemFase(x), x);
     const locaisExtras = locais.filter((x) => !m.has(chaveClienteProcItemFase(x)));

@@ -194,7 +194,9 @@ public class ProcessosController {
     @Operation(
             summary = "Diagnóstico: processos aguardando protocolo",
             description =
-                    "Lista processos cuja fase na API corresponde a «Protocolo / Movimentação» (ou sinónimos como «Aguardando Protocolo»).")
+                    "Lista processos cuja fase na API corresponde a «Protocolo / Movimentação» (ou sinónimos como "
+                            + "«Aguardando Protocolo»). Omite os que já têm petição na fila PROJUDI, exceto quando "
+                            + "ainda há PDF do usuário na pasta «Assinar» do Drive.")
     public List<ProcessoDiagnosticoPessoaItemResponse> buscarDiagnosticoAguardandoProtocolo() {
         return diagnosticoAguardandoProtocoloAssinarService.listarDiagnosticoAguardandoProtocolo();
     }
@@ -203,8 +205,9 @@ public class ProcessosController {
     @Operation(
             summary = "CNJs com petição ativa na fila PROJUDI",
             description =
-                    "Processos que já têm petição PENDENTE_ASSINATURA, ASSINADA (incl. agendada) ou PROTOCOLANDO — "
-                            + "devem ser omitidos do diagnóstico «Aguardando Protocolo».")
+                    "Processos que já têm petição PENDENTE_ASSINATURA, ASSINADA (incl. agendada) ou PROTOCOLANDO. "
+                            + "Usado pelo frontend para filtrar entradas só locais; o GET aguardando-protocolo já "
+                            + "reaplica exceção quando há PDF na pasta «Assinar».")
     public List<String> cnjsComFilaProjudiAtiva() {
         return new ArrayList<>(diagnosticoAguardandoProtocoloAssinarService.cnjDigitosComFilaProtocoloAtiva());
     }

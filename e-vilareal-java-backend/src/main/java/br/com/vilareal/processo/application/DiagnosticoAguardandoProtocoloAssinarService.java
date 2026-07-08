@@ -112,8 +112,28 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
     public List<ProcessoDiagnosticoPessoaItemResponse> listarDiagnosticoAguardandoProtocolo() {
         Set<String> comFila = cnjDigitosComFilaProtocoloAtiva();
         return processoApplicationService.buscarDiagnosticoAguardandoProtocolo().stream()
-                .filter(item -> !cnjTemFilaProtocoloAtiva(item.getNumeroProcessoNovo(), comFila))
+                .filter(item -> deveIncluirNoDiagnosticoAguardandoProtocolo(item, comFila))
                 .toList();
+    }
+
+    /**
+     * Mantém no relatório processos em fase aguardando protocolo. Omite os que já têm fila PROJUDI ativa,
+     * exceto quando ainda há PDF(s) do usuário na pasta «Assinar» (nova petição a preparar).
+     */
+    boolean deveIncluirNoDiagnosticoAguardandoProtocolo(
+            ProcessoDiagnosticoPessoaItemResponse item, Set<String> cnjsComFilaAtiva) {
+        if (item == null) {
+            return false;
+        }
+        if (!cnjTemFilaProtocoloAtiva(item.getNumeroProcessoNovo(), cnjsComFilaAtiva)) {
+            return true;
+        }
+        String cod = normalizarCodigo(item.getCodigoCliente());
+        Integer proc = item.getNumeroInterno();
+        if (!StringUtils.hasText(cod) || proc == null) {
+            return false;
+        }
+        return temPdfUtilNaPastaAssinar(cod, proc);
     }
 
     @Transactional
@@ -650,6 +670,46 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
         }
         String dig = ProjudiNumeroReduzidoUtil.somenteDigitos(cnj);
         return StringUtils.hasText(dig) && digitosComFila.contains(dig);
+    }
+
+    /** PDF original na pasta «Assinar» (ignora cópias canônicas geradas pelo backend). */
+    private boolean temPdfUtilNaPastaAssinar(String cod, Integer proc) {
+        if (!googleDriveService.isConfigurado()) {
+            return false;
+        }
+        try {
+            DrivePastaProcessoDto pastaDto =
+                    documentoDrivePastaService.resolverPastaRaizProcesso(googleDriveService, cod, proc);
+            if (pastaDto == null || !StringUtils.hasText(pastaDto.pastaId())) {
+                return false;
+            }
+            String pastaAssinarId = googleDriveService.encontrarPastaExistente(PASTA_ASSINAR, pastaDto.pastaId());
+            if (!StringUtils.hasText(pastaAssinarId)) {
+                return false;
+            }
+            List<DriveArquivoDto> filhos = googleDriveService.listarConteudo(pastaAssinarId);
+            for (DriveArquivoDto arq : filhos) {
+                if (arq == null || "pasta".equals(arq.tipo()) || !StringUtils.hasText(arq.id())) {
+                    continue;
+                }
+                String nome = arq.nome() != null ? arq.nome().trim() : "";
+                if (!nome.toLowerCase().endsWith(".pdf")) {
+                    continue;
+                }
+                if (isNomeCanonicoStorePdf(nome)) {
+                    continue;
+                }
+                return true;
+            }
+            return false;
+        } catch (Exception e) {
+            log.warn(
+                    "Diagnóstico Aguardando Protocolo: falha ao verificar pasta Assinar ({}/{}): {}",
+                    cod,
+                    proc,
+                    e.getMessage());
+            return false;
+        }
     }
 
     private String resolverCodigoClientePorCnj(String cnj) {

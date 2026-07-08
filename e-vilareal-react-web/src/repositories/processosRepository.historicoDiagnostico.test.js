@@ -249,20 +249,36 @@ describe('listarProcessosFaseAguardandoProtocoloDiagnostico', () => {
     expect(itens[0].cliente).toBe('API');
   });
 
-  it('omite processo com petição na fila PROJUDI (ex.: agendada)', async () => {
+  it('confia na lista da API quando processo tem fila PROJUDI (backend decide pela pasta Assinar)', async () => {
+    vi.mocked(request).mockImplementation(async (path) => {
+      if (path === '/api/processos/diagnostico/aguardando-protocolo/cnjs-fila-projudi') {
+        return ['53294385520268090007'];
+      }
+      if (path === '/api/processos/diagnostico/aguardando-protocolo') {
+        return [
+          {
+            codigoCliente: '119',
+            numeroInterno: 23,
+            cliente: 'Cliente 119',
+            numeroProcessoNovo: '5329438-55.2026.8.09.0007',
+          },
+        ];
+      }
+      throw new Error(`unexpected ${path}`);
+    });
+
+    const itens = await listarProcessosFaseAguardandoProtocoloDiagnostico();
+    expect(itens).toHaveLength(1);
+    expect(itens[0].proc).toBe('23');
+  });
+
+  it('não reintroduz processo omitido pela API por fila PROJUDI sem pasta Assinar', async () => {
     vi.mocked(request).mockImplementation(async (path) => {
       if (path === '/api/processos/diagnostico/aguardando-protocolo/cnjs-fila-projudi') {
         return ['57861278820258090007'];
       }
       if (path === '/api/processos/diagnostico/aguardando-protocolo') {
-        return [
-          {
-            codigoCliente: '703',
-            numeroInterno: 2,
-            cliente: 'Maria',
-            numeroProcessoNovo: '5786127-88.2025.8.09.0007',
-          },
-        ];
+        return [];
       }
       throw new Error(`unexpected ${path}`);
     });
