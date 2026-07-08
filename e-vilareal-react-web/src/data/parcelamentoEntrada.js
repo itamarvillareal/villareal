@@ -11,6 +11,11 @@ export function trunc2(n) {
   return Math.trunc(Number(n) * 100) / 100;
 }
 
+/** Valor total da linha (principal + honorários) — o que o devedor paga na parcela. */
+export function valorTotalLinhaPlanoPagamento(row) {
+  return trunc2(parseBRL(row?.valorParcela) + parseBRL(row?.honorariosParcela));
+}
+
 export function normalizarEntradaModo(m) {
   const s = String(m ?? 'nenhuma').toLowerCase();
   return ENTRADA_MODOS.includes(s) ? s : 'nenhuma';

@@ -6,6 +6,7 @@ import {
   montarLinhasPlanoPagamento,
   rateioEntradaESaldos,
   temPlanoPagamento,
+  valorTotalLinhaPlanoPagamento,
 } from './parcelamentoEntrada.js';
 
 describe('parcelamentoEntrada', () => {
@@ -64,6 +65,10 @@ describe('parcelamentoEntrada', () => {
       })
     ).toBe(true);
     expect(temPlanoPagamento({ quantidadeParcelasInformada: '00' })).toBe(false);
+  });
+
+  it('valorTotalLinhaPlanoPagamento soma principal e honorários da linha', () => {
+    expect(valorTotalLinhaPlanoPagamento({ valorParcela: '7.568,99', honorariosParcela: '1.513,75' })).toBe(9082.74);
   });
 
   it('calcularResumoPlanoPagamento soma principal e honorários nas parcelas', () => {

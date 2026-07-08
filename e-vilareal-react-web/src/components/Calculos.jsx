@@ -53,6 +53,7 @@ import {
   normalizarEntradaModo,
   rotuloLinhaPlanoPagamento,
   temPlanoPagamento,
+  valorTotalLinhaPlanoPagamento,
 } from '../data/parcelamentoEntrada.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
@@ -3248,8 +3249,9 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
               <p className="text-xs text-slate-700 mb-2 rounded border border-slate-200 bg-slate-50 px-2 py-1.5 leading-snug">
                 A aba <strong>Pagamento</strong> mostra as mesmas parcelas da aba <strong>Parcelamento</strong> para a{' '}
                 <strong>dimensão {dimensaoNorm}</strong> (cliente {codigoClienteNorm}, proc. {procNorm}), sem os painéis de resumo
-                lateral. Os valores acompanham o parcelamento; use a coluna <strong>Data de Pagamento</strong> para registrar quando
-                cada parcela foi quitada (sempre editável, mesmo com cálculo aceito).
+                lateral. A coluna <strong>Valor</strong> é o total da parcela (já inclui honorários);{' '}
+                <strong>Honor. Parc.</strong> é apenas destaque informativo. Use <strong>Data de Pagamento</strong> para registrar quando
+                cada parcela foi quitada (sempre editável, mesmo com cálculo aceito). Valores numéricos são definidos na aba Parcelamento.
               </p>
               <div className="flex items-center justify-between mb-2">
                 <p className="text-sm text-slate-600">
@@ -3279,8 +3281,10 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                     <tr className="bg-slate-100">
                       <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-24">Parcela</th>
                       <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-28">Data Venc.</th>
-                      <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-40">Valor</th>
-                      <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-40">Honor. Parc.</th>
+                      <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-40">Valor total</th>
+                      <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-40 text-slate-500">
+                        Honor. Parc. <span className="font-normal">(info.)</span>
+                      </th>
                       <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700">Obs.</th>
                       <th className="border border-slate-300 px-2 py-1 text-left font-semibold text-slate-700 w-36">Data de Pagamento</th>
                     </tr>
@@ -3289,6 +3293,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                     {parcelasPaginaCompletas.map((row, idx) => {
                       const globalIdx = inicioParcelas + idx;
                       const podeEditar = !aceitarPagamento || modoAlteracao;
+                      const valorTotalLinha = valorTotalLinhaPlanoPagamento(row);
                       return (
                         <tr key={`pagamento-parcela-${globalIdx}`} className={globalIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
                           <td className="border border-slate-200 px-2 py-1 text-slate-700">
@@ -3318,39 +3323,11 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                               row.dataVencimento
                             )}
                           </td>
-                          <td className="border border-slate-200 px-2 py-1">
-                            {podeEditar ? (
-                              <input
-                                type="text"
-                                value={row.valorParcela}
-                                onChange={(e) => atualizarParcelaNaRodada(globalIdx, { valorParcela: e.target.value })}
-                                onBlur={(e) => {
-                                  const raw = String(e.target.value ?? '').trim();
-                                  atualizarParcelaNaRodada(globalIdx, { valorParcela: raw === '' ? '' : formatBRL(parseBRL(raw)) });
-                                }}
-                                className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
-                              />
-                            ) : (
-                              row.valorParcela
-                            )}
+                          <td className="border border-slate-200 px-2 py-1 font-medium tabular-nums">
+                            {valorTotalLinha > 0 ? formatBRL(valorTotalLinha) : row.valorParcela || '—'}
                           </td>
-                          <td className="border border-slate-200 px-2 py-1">
-                            {podeEditar ? (
-                              <input
-                                type="text"
-                                value={row.honorariosParcela}
-                                onChange={(e) => atualizarParcelaNaRodada(globalIdx, { honorariosParcela: e.target.value })}
-                                onBlur={(e) => {
-                                  const raw = String(e.target.value ?? '').trim();
-                                  atualizarParcelaNaRodada(globalIdx, {
-                                    honorariosParcela: raw === '' ? '' : formatBRL(parseBRL(raw)),
-                                  });
-                                }}
-                                className="w-full px-1 py-0.5 border border-slate-300 rounded text-sm"
-                              />
-                            ) : (
-                              row.honorariosParcela
-                            )}
+                          <td className="border border-slate-200 px-2 py-1 text-slate-500 tabular-nums">
+                            {row.honorariosParcela || '—'}
                           </td>
                           <td className="border border-slate-200 px-2 py-1">
                             {podeEditar ? (
@@ -3393,10 +3370,12 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                       <td className="border border-slate-300 px-2 py-1" colSpan={2}>
                         Total da página
                       </td>
-                      <td className="border border-slate-300 px-2 py-1">
-                        {formatBRL(trunc2(parcelasPagina.reduce((acc, p) => acc + parseBRL(p.valorParcela), 0)))}
+                      <td className="border border-slate-300 px-2 py-1 tabular-nums">
+                        {formatBRL(
+                          trunc2(parcelasPagina.reduce((acc, p) => acc + valorTotalLinhaPlanoPagamento(p), 0))
+                        )}
                       </td>
-                      <td className="border border-slate-300 px-2 py-1">
+                      <td className="border border-slate-300 px-2 py-1 text-slate-500 tabular-nums">
                         {formatBRL(trunc2(parcelasPagina.reduce((acc, p) => acc + parseBRL(p.honorariosParcela), 0)))}
                       </td>
                       <td className="border border-slate-300 px-2 py-1" />
