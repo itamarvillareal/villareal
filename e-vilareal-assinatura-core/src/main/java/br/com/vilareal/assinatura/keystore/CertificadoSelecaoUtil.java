@@ -33,7 +33,10 @@ public final class CertificadoSelecaoUtil {
         if (thumbprintSha1 == null || thumbprintSha1.isBlank()) {
             return resolverUnicoAliasChave(keyStore);
         }
-        String alvo = thumbprintSha1.trim().toUpperCase(Locale.ROOT);
+        String alvo = AssinaturaTokenConstantes.normalizarThumbprintSha1(thumbprintSha1);
+        if (alvo.isEmpty()) {
+            return resolverUnicoAliasChave(keyStore);
+        }
         String encontrado = null;
         var aliases = keyStore.aliases();
         while (aliases.hasMoreElements()) {

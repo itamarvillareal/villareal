@@ -30,7 +30,9 @@ public final class Pkcs12KeyMaterialProvider implements AssinaturaKeyMaterialPro
         }
         this.keystorePath = keystorePath;
         this.keystorePassword = keystorePassword != null ? keystorePassword : new char[0];
-        this.signerCertThumbprintSha1 = signerCertThumbprintSha1;
+        this.signerCertThumbprintSha1 = signerCertThumbprintSha1 == null
+                ? AssinaturaTokenConstantes.resolverSignerThumbprintSha1()
+                : AssinaturaTokenConstantes.normalizarThumbprintSha1(signerCertThumbprintSha1);
     }
 
     @Override

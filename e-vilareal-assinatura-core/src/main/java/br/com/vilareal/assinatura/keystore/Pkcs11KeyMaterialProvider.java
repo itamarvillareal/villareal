@@ -6,7 +6,6 @@ import java.security.KeyStore;
 import java.security.Provider;
 import java.security.Security;
 import java.util.Arrays;
-import java.util.Objects;
 
 /**
  * Acesso PKCS#11 (token A3 SafeSign/Soluti) com <strong>sessão por lote</strong>:
@@ -26,7 +25,7 @@ public final class Pkcs11KeyMaterialProvider implements AssinaturaKeyMaterialPro
     private boolean closed;
 
     public Pkcs11KeyMaterialProvider(Path pkcs11ConfigPath, char[] tokenPin) {
-        this(pkcs11ConfigPath, tokenPin, AssinaturaTokenConstantes.SIGNER_THUMBPRINT_SHA1);
+        this(pkcs11ConfigPath, tokenPin, null);
     }
 
     public Pkcs11KeyMaterialProvider(
@@ -43,8 +42,9 @@ public final class Pkcs11KeyMaterialProvider implements AssinaturaKeyMaterialPro
         }
         this.pkcs11ConfigPath = pkcs11ConfigPath;
         this.tokenPin = tokenPin.clone();
-        this.signerCertThumbprintSha1 = Objects.requireNonNullElse(
-                signerCertThumbprintSha1, AssinaturaTokenConstantes.SIGNER_THUMBPRINT_SHA1);
+        this.signerCertThumbprintSha1 = signerCertThumbprintSha1 == null
+                ? AssinaturaTokenConstantes.resolverSignerThumbprintSha1()
+                : AssinaturaTokenConstantes.normalizarThumbprintSha1(signerCertThumbprintSha1);
     }
 
     /** Cria provider a partir do .cfg padrão no classpath (Windows) e PIN em variável de ambiente. */

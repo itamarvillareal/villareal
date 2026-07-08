@@ -9,7 +9,7 @@ Substitui o fluxo manual ZIP → sai.jar → upload para **Diagnósticos → Agu
 1. **Java 21** (`java -version`)
 2. **Token USB** Soluti/G&D plugado
 3. **Driver SafeSign** (`aetpkss1.dll` em `C:\Windows\System32`)
-4. Certificado com thumbprint `C695BA1EC72328487E8FCDC4C34357FEFDD3D100` no token
+4. Certificado com thumbprint conhecido no token (default G+D/SafeSign: `C695BA1EC72328487E8FCDC4C34357FEFDD3D100`; eToken SafeNet: defina `ASSINATURA_SIGNER_THUMBPRINT`)
 5. **Backend VPS** com `ASSINADOR_API_SECRET` configurado e HTTPS ativo
 6. JAR gerado: `e-vilareal-assinador-local/target/assinador-local-1.0.0-SNAPSHOT.jar`
 
@@ -21,6 +21,7 @@ Substitui o fluxo manual ZIP → sai.jar → upload para **Diagnósticos → Agu
 | `ASSINADOR_API_SECRET` | Sim | Mesmo valor de `ASSINADOR_API_SECRET` no servidor |
 | `ASSINADOR_ID` | Sim | Identificador desta máquina → header `X-Assinador-Id` / `locked_by` (ex.: `escritorio-win-01`) |
 | `ASSINATURA_TOKEN_PIN` | Sim | PIN do token A3 |
+| `ASSINATURA_SIGNER_THUMBPRINT` | Não | SHA-1 do certificado no token (hex, sem espaços). Default: `C695BA1E...` (G+D/SafeSign). eToken SafeNet: `012DD874D9F15473DA47B938B3D8300BBCEE70A1` |
 | `ASSINATURA_PKCS11_SLOT_INDEX` | Não | Default **3** (slot SafeSign nesta instalação) |
 | `ASSINATURA_PKCS11_CFG` | Não | Caminho customizado do `.cfg` PKCS#11 (senão usa o embutido no JAR) |
 
@@ -51,6 +52,8 @@ $env:ASSINADOR_API_URL = "https://SUA-VPS.example.com"
 $env:ASSINADOR_API_SECRET = "seu-segredo-compartilhado-com-a-vps"
 $env:ASSINADOR_ID = "escritorio-win-01"
 $env:ASSINATURA_TOKEN_PIN = "SEU_PIN"
+# eToken SafeNet (Itamar — segunda máquina):
+# $env:ASSINATURA_SIGNER_THUMBPRINT = "012DD874D9F15473DA47B938B3D8300BBCEE70A1"
 # Opcional:
 # $env:ASSINATURA_PKCS11_SLOT_INDEX = "3"
 
