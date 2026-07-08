@@ -16,7 +16,6 @@ import {
   obterConfigProjudiProtocoloEmail,
   salvarConfigProjudiProtocoloEmail,
 } from '../repositories/configuracaoRepository.js';
-import { useUsuarioPerfil } from '../hooks/useUsuarioPerfil.js';
 import { VisorCodigoPdpj } from './VisorCodigoPdpj.jsx';
 
 /**
@@ -24,7 +23,6 @@ import { VisorCodigoPdpj } from './VisorCodigoPdpj.jsx';
  */
 export function Configuracoes() {
   const { dark, setDark } = useTheme();
-  const { isAdmin } = useUsuarioPerfil();
   const [usuarioMaster, setUsuarioMasterState] = useState(() => isUsuarioMaster());
   const [operadorEstacao, setOperadorEstacaoState] = useState(() => getOperadorEstacaoId());
   const [emailProtocolo, setEmailProtocolo] = useState('jr.villareal@gmail.com');
@@ -178,7 +176,7 @@ export function Configuracoes() {
           </div>
         </div>
 
-        {isAdmin ? <VisorCodigoPdpj /> : null}
+        <VisorCodigoPdpj />
 
         {mostrarEstacaoMock ? (
           <div className="border-t border-slate-200 pt-6">

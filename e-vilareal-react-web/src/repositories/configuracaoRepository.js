@@ -18,7 +18,7 @@ export async function salvarConfigProjudiProtocoloEmail(destinatarios) {
   });
 }
 
-/** Código TOTP atual do autenticador PDPJ/PJe TRT18 (admin). */
+/** Código TOTP atual do autenticador PDPJ/PJe TRT18. */
 export async function obterCodigoPdpj() {
   return request('/api/configuracoes/pdpj-codigo');
 }
