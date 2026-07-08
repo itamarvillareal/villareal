@@ -1,5 +1,7 @@
 package br.com.vilareal.projudi.api;
 
+import br.com.vilareal.processo.api.dto.AssinarAutomaticoResponse;
+import br.com.vilareal.processo.application.DiagnosticoAssinaturaAutomaticaService;
 import br.com.vilareal.projudi.api.dto.AgendarProtocoloLoteRequest;
 import br.com.vilareal.projudi.api.dto.AgendarProtocoloRequest;
 import br.com.vilareal.projudi.api.dto.AtualizarCredencialPeticaoRequest;
@@ -61,18 +63,21 @@ public class ProjudiPeticaoController {
     private final ProjudiPeticaoProtocoloLoteService protocoloLoteService;
     private final ProjudiPeticaoAgendamentoService agendamentoService;
     private final ProjudiCredencialService credencialService;
+    private final DiagnosticoAssinaturaAutomaticaService assinaturaAutomaticaService;
 
     public ProjudiPeticaoController(
             ProjudiPeticaoRegistroService registroService,
             ProjudiPeticaoAssinaturaService assinaturaService,
             ProjudiPeticaoProtocoloLoteService protocoloLoteService,
             ProjudiPeticaoAgendamentoService agendamentoService,
-            ProjudiCredencialService credencialService) {
+            ProjudiCredencialService credencialService,
+            DiagnosticoAssinaturaAutomaticaService assinaturaAutomaticaService) {
         this.registroService = registroService;
         this.assinaturaService = assinaturaService;
         this.protocoloLoteService = protocoloLoteService;
         this.agendamentoService = agendamentoService;
         this.credencialService = credencialService;
+        this.assinaturaAutomaticaService = assinaturaAutomaticaService;
     }
 
     @GetMapping("/credenciais")
@@ -302,6 +307,15 @@ public class ProjudiPeticaoController {
     public ResponseEntity<Void> reabrirProtocolo(@PathVariable Long peticaoId) {
         protocoloLoteService.reabrirParaRetentativa(peticaoId);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{peticaoId}/reenfileirar-assinatura-automatica")
+    @Operation(
+            summary = "Reenfileira petição PENDENTE_ASSINATURA para o assinador Windows",
+            description = "Não re-baixa PDFs do Drive. Use quando o lote automático foi cancelado ou falhou "
+                    + "e os PDFs já estão no servidor.")
+    public AssinarAutomaticoResponse reenfileirarAssinaturaAutomatica(@PathVariable Long peticaoId) {
+        return assinaturaAutomaticaService.reenfileirarPeticaoExistente(peticaoId);
     }
 
     @PostMapping(value = "/{peticaoId}/credencial", consumes = MediaType.APPLICATION_JSON_VALUE)

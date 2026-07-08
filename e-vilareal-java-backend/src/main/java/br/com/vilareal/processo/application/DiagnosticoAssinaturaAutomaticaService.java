@@ -5,6 +5,10 @@ import br.com.vilareal.assinador.domain.AssinaturaLoteStatus;
 import br.com.vilareal.assinador.infrastructure.persistence.entity.AssinaturaLoteEntity;
 import br.com.vilareal.assinador.infrastructure.persistence.repository.AssinaturaLoteRepository;
 import br.com.vilareal.common.exception.BusinessRuleException;
+import br.com.vilareal.projudi.infrastructure.persistence.entity.ProjudiPeticaoArquivoEntity;
+import br.com.vilareal.projudi.infrastructure.persistence.entity.ProjudiPeticaoEntity;
+import br.com.vilareal.projudi.infrastructure.persistence.repository.ProjudiPeticaoArquivoRepository;
+import br.com.vilareal.projudi.infrastructure.persistence.repository.ProjudiPeticaoRepository;
 import br.com.vilareal.processo.api.dto.AssinarAutomaticoResponse;
 import br.com.vilareal.processo.api.dto.DiagnosticoAguardandoProtocoloItemRequest;
 import br.com.vilareal.processo.api.dto.LoteAssinaturaStatusResponse;
@@ -16,12 +20,15 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -39,6 +46,8 @@ import java.util.concurrent.Executors;
 public class DiagnosticoAssinaturaAutomaticaService {
 
     private static final Logger log = LoggerFactory.getLogger(DiagnosticoAssinaturaAutomaticaService.class);
+    private static final String STATUS_PETICAO_PENDENTE = "PENDENTE_ASSINATURA";
+    private static final String STATUS_ARQUIVO_PENDENTE = "PENDENTE_ASSINATURA";
 
     static final String MSG_TOKEN_OCUPADO =
             "Token em uso por outro programa. Feche o sai.jar e use «Tentar novamente».";
@@ -46,7 +55,10 @@ public class DiagnosticoAssinaturaAutomaticaService {
     private final DiagnosticoAguardandoProtocoloAssinarService diagnosticoAssinarService;
     private final AssinaturaLoteService assinaturaLoteService;
     private final AssinaturaLoteRepository assinaturaLoteRepository;
+    private final ProjudiPeticaoRepository peticaoRepository;
+    private final ProjudiPeticaoArquivoRepository arquivoRepository;
     private final ObjectMapper objectMapper;
+    private final Path storeDir;
     private final ExecutorService preparoExecutor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "assinatura-lote-preparo");
         t.setDaemon(true);
@@ -57,11 +69,17 @@ public class DiagnosticoAssinaturaAutomaticaService {
             DiagnosticoAguardandoProtocoloAssinarService diagnosticoAssinarService,
             AssinaturaLoteService assinaturaLoteService,
             AssinaturaLoteRepository assinaturaLoteRepository,
-            ObjectMapper objectMapper) {
+            ProjudiPeticaoRepository peticaoRepository,
+            ProjudiPeticaoArquivoRepository arquivoRepository,
+            ObjectMapper objectMapper,
+            @Value("${projudi.peticao.store-dir:/Users/itamar/projudi-peticoes}") String storeDirConfig) {
         this.diagnosticoAssinarService = diagnosticoAssinarService;
         this.assinaturaLoteService = assinaturaLoteService;
         this.assinaturaLoteRepository = assinaturaLoteRepository;
+        this.peticaoRepository = peticaoRepository;
+        this.arquivoRepository = arquivoRepository;
         this.objectMapper = objectMapper;
+        this.storeDir = Path.of(storeDirConfig.trim());
     }
 
     @PreDestroy
@@ -139,6 +157,63 @@ public class DiagnosticoAssinaturaAutomaticaService {
     public LoteAssinaturaStatusResponse cancelar(Long loteId) {
         AssinaturaLoteEntity lote = assinaturaLoteService.cancelarPreparacao(loteId);
         return montarStatus(lote);
+    }
+
+    /**
+     * Reenfileira petição já registrada (PENDENTE_ASSINATURA) para o assinador Windows, sem re-baixar PDFs do Drive.
+     */
+    @Transactional
+    public AssinarAutomaticoResponse reenfileirarPeticaoExistente(Long peticaoId) {
+        if (peticaoId == null) {
+            throw new BusinessRuleException("peticaoId é obrigatório.");
+        }
+        ProjudiPeticaoEntity peticao = peticaoRepository
+                .findById(peticaoId)
+                .orElseThrow(() -> new BusinessRuleException("Petição não encontrada: #" + peticaoId));
+        if (!STATUS_PETICAO_PENDENTE.equals(peticao.getStatus())) {
+            throw new BusinessRuleException(
+                    "Só petições PENDENTE_ASSINATURA podem ser reenfileiradas (atual: "
+                            + peticao.getStatus()
+                            + ").");
+        }
+        List<Long> ids = List.of(peticaoId);
+        Optional<AssinaturaLoteEntity> loteAtivo = buscarLoteComIntersecao(
+                ids, List.of(AssinaturaLoteStatus.LIBERADO, AssinaturaLoteStatus.EM_ASSINATURA, AssinaturaLoteStatus.PREPARANDO));
+        if (loteAtivo.isPresent()) {
+            AssinaturaLoteEntity existente = loteAtivo.get();
+            int total = arquivoRepository
+                    .findByStatusAndPeticaoIdIn(STATUS_ARQUIVO_PENDENTE, ids)
+                    .size();
+            return new AssinarAutomaticoResponse(existente.getId(), ids, total, true);
+        }
+
+        List<ProjudiPeticaoArquivoEntity> pendentes =
+                arquivoRepository.findByStatusAndPeticaoIdIn(STATUS_ARQUIVO_PENDENTE, ids);
+        if (pendentes.isEmpty()) {
+            throw new BusinessRuleException(
+                    "Petição #" + peticaoId + " não possui PDFs pendentes de assinatura.");
+        }
+        for (ProjudiPeticaoArquivoEntity arquivo : pendentes) {
+            if (!StringUtils.hasText(arquivo.getPdfRef())) {
+                throw new BusinessRuleException(
+                        "PDF da petição #" + peticaoId + " não está no servidor. Use «Preparar e baixar ZIP» de novo.");
+            }
+            Path pdfPath = storeDir.resolve(arquivo.getPdfRef());
+            if (!Files.isRegularFile(pdfPath)) {
+                throw new BusinessRuleException(
+                        "PDF «"
+                                + arquivo.getPdfRef()
+                                + "» não encontrado no servidor. Use «Preparar e baixar ZIP» de novo.");
+            }
+        }
+
+        AssinaturaLoteEntity lote = assinaturaLoteService.criarLote(ids, peticao.getCredencialId());
+        log.info(
+                "Reenfileirada petição #{} para assinatura automática (lote #{}, {} PDF(s))",
+                peticaoId,
+                lote.getId(),
+                pendentes.size());
+        return new AssinarAutomaticoResponse(lote.getId(), ids, pendentes.size(), false);
     }
 
     /** Visível para testes (mesmo pacote). */

@@ -327,6 +327,13 @@ export async function reabrirProtocolo(peticaoId) {
   return request(`/api/projudi/peticoes/${peticaoId}/reabrir-protocolo`, { method: 'POST' });
 }
 
+/** Reenfileira petição PENDENTE_ASSINATURA para o assinador Windows (sem re-baixar PDFs). */
+export async function reenfileirarAssinaturaAutomatica(peticaoId) {
+  return request(`/api/projudi/peticoes/${peticaoId}/reenfileirar-assinatura-automatica`, {
+    method: 'POST',
+  });
+}
+
 /** @param {number} peticaoId @param {number} credencialId */
 export async function atualizarCredencialPeticao(peticaoId, credencialId) {
   return request(`/api/projudi/peticoes/${peticaoId}/credencial`, {

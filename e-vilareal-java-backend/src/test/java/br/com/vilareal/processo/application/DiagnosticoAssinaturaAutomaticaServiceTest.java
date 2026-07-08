@@ -43,12 +43,24 @@ class DiagnosticoAssinaturaAutomaticaServiceTest {
     @Mock
     private AssinaturaLoteRepository assinaturaLoteRepository;
 
+    @Mock
+    private br.com.vilareal.projudi.infrastructure.persistence.repository.ProjudiPeticaoRepository peticaoRepository;
+
+    @Mock
+    private br.com.vilareal.projudi.infrastructure.persistence.repository.ProjudiPeticaoArquivoRepository arquivoRepository;
+
     private DiagnosticoAssinaturaAutomaticaService service;
 
     @BeforeEach
     void setUp() {
         service = new DiagnosticoAssinaturaAutomaticaService(
-                diagnosticoAssinarService, assinaturaLoteService, assinaturaLoteRepository, new ObjectMapper());
+                diagnosticoAssinarService,
+                assinaturaLoteService,
+                assinaturaLoteRepository,
+                peticaoRepository,
+                arquivoRepository,
+                new ObjectMapper(),
+                "/tmp/projudi-peticoes-test");
     }
 
     @Test

@@ -18,6 +18,7 @@ import {
   previaProtocolo,
   protocolarProcesso,
   reabrirProtocolo,
+  reenfileirarAssinaturaAutomatica,
   registrarAssinados,
 } from '../../api/peticoesProjudiApi.js';
 import { isArquivoP7s } from '../../domain/peticaoArquivo.js';
@@ -223,6 +224,19 @@ export function ModalPeticionamentoProcesso({ open, onClose, numeroCnj, clienteN
       await recarregar();
     } catch (e) {
       setErro(e?.message || 'Falha ao reabrir.');
+    } finally {
+      setOperacao(null);
+    }
+  };
+
+  const onReenfileirarAssinatura = async (peticaoId) => {
+    setOperacao(`reenfileirar-${peticaoId}`);
+    setErro('');
+    try {
+      await reenfileirarAssinaturaAutomatica(peticaoId);
+      await recarregar();
+    } catch (e) {
+      setErro(e?.message || 'Falha ao reenfileirar assinatura.');
     } finally {
       setOperacao(null);
     }
@@ -445,9 +459,12 @@ export function ModalPeticionamentoProcesso({ open, onClose, numeroCnj, clienteN
                       <h3 className="text-xs font-semibold text-amber-900 uppercase tracking-wide">
                         Pendentes de assinatura ({pendentes.length})
                       </h3>
+                      <p className="text-[11px] text-amber-900/90">
+                        Ainda não aparecem em «Prontas para protocolar» — falta assinar os PDFs.
+                      </p>
                       <ul className="rounded-lg border border-amber-200 bg-white divide-y divide-amber-100 text-sm">
                         {pendentes.map((p) => (
-                          <li key={p.id} className="px-2 py-2">
+                          <li key={p.id} className="px-2 py-2 space-y-1">
                             <div className="font-medium">#{p.id}</div>
                             {(p.arquivos || []).slice(0, 2).map((a) => (
                               <div key={a.id ?? a.ordem} className="text-xs text-slate-600 truncate">
@@ -459,6 +476,14 @@ export function ModalPeticionamentoProcesso({ open, onClose, numeroCnj, clienteN
                                 + {(p.arquivos || []).length - 2} arquivo(s)
                               </div>
                             ) : null}
+                            <button
+                              type="button"
+                              className="text-xs font-medium text-sky-800 hover:underline disabled:opacity-50"
+                              disabled={operacao === `reenfileirar-${p.id}`}
+                              onClick={() => void onReenfileirarAssinatura(p.id)}
+                            >
+                              Enviar ao assinador automático
+                            </button>
                           </li>
                         ))}
                       </ul>

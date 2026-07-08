@@ -31,6 +31,7 @@ import {
   previaProtocoloLote,
   protocolarLote,
   reabrirProtocolo,
+  reenfileirarAssinaturaAutomatica,
   registrarAssinados,
 } from '../../api/peticoesProjudiApi.js';
 import { isArquivoP7s, separarArquivosP7s } from '../../domain/peticaoArquivo.js';
@@ -790,6 +791,25 @@ export function PeticionamentoProjudi() {
     }
   };
 
+  const onReenfileirarAssinatura = async (peticaoId) => {
+    setOperacao(`reenfileirar-${peticaoId}`);
+    setApiError('');
+    try {
+      const resp = await reenfileirarAssinaturaAutomatica(peticaoId);
+      const loteId = resp?.loteId;
+      setToast(
+        resp?.loteReutilizado
+          ? `Petição #${peticaoId} já estava na fila do assinador (lote #${loteId}).`
+          : `Petição #${peticaoId} enviada ao assinador automático (lote #${loteId}).`,
+      );
+      await recarregar();
+    } catch (err) {
+      setApiError(err?.message || 'Falha ao reenfileirar assinatura.');
+    } finally {
+      setOperacao(null);
+    }
+  };
+
   const onExcluirPeticao = async (peticaoId) => {
     if (
       !window.confirm(
@@ -891,6 +911,11 @@ export function PeticionamentoProjudi() {
             onClick={() => setAba('protocolar')}
           >
             Protocolar
+            {pendentesAssinatura.length > 0 ? (
+              <span className="ml-1.5 rounded-full bg-amber-400/90 px-1.5 text-xs text-amber-950">
+                {pendentesAssinatura.length} assinar
+              </span>
+            ) : null}
             {assinadas.length > 0 ? (
               <span className="ml-1.5 rounded-full bg-white/20 px-1.5 text-xs">{assinadas.length}</span>
             ) : null}
@@ -1147,11 +1172,12 @@ export function PeticionamentoProjudi() {
                         Pendentes de assinatura ({pendentesFiltradas.length})
                       </h3>
                       <p className="text-xs text-amber-800/90">
-                        PDFs registrados aguardando .p7s. Baixe o ZIP, assine e registre os arquivos assinados acima.
+                        Estas petições ainda <strong>não entram em «Prontas para protocolar»</strong> — falta
+                        assinar os PDFs (.p7s). Depois da assinatura, elas aparecem abaixo para protocolo.
                       </p>
                       <ul className="rounded-lg border border-amber-200 bg-white divide-y divide-amber-100">
                         {pendentesFiltradas.map((p) => (
-                          <li key={p.id} className="px-3 py-2 text-sm">
+                          <li key={p.id} className="px-3 py-2 text-sm space-y-1">
                             <div className="font-medium text-slate-900">
                               #{p.id} · <span className="font-mono text-xs">{p.numeroProcesso}</span>
                             </div>
@@ -1165,6 +1191,17 @@ export function PeticionamentoProjudi() {
                                 + {(p.arquivos || []).length - 3} arquivo(s)
                               </div>
                             ) : null}
+                            <button
+                              type="button"
+                              className="text-xs font-medium text-sky-800 hover:underline disabled:opacity-50"
+                              disabled={operacao === `reenfileirar-${p.id}`}
+                              onClick={() => void onReenfileirarAssinatura(p.id)}
+                            >
+                              {operacao === `reenfileirar-${p.id}` ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin inline mr-1" aria-hidden />
+                              ) : null}
+                              Enviar ao assinador automático
+                            </button>
                           </li>
                         ))}
                       </ul>
@@ -1418,6 +1455,10 @@ export function PeticionamentoProjudi() {
                   ) : assinadasAgendadas.length > 0 ? (
                     <p className="text-xs text-slate-600">
                       Nenhuma petição pronta para protocolo imediato — apenas agendamentos ativos acima.
+                    </p>
+                  ) : pendentesFiltradas.length > 0 ? (
+                    <p className="text-xs text-slate-600">
+                      Assine os PDFs pendentes acima; depois eles aparecem aqui em «Prontas para protocolar».
                     </p>
                   ) : null}
                 </>
