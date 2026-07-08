@@ -118,7 +118,7 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
 
     /**
      * Mantém no relatório processos em fase aguardando protocolo. Omite os que já têm fila PROJUDI ativa,
-     * exceto quando ainda há PDF(s) do usuário na pasta «Assinar» (nova petição a preparar).
+     * exceto quando a pasta «Assinar» ainda contém arquivos (PDF, .p7s assinado, etc.).
      */
     boolean deveIncluirNoDiagnosticoAguardandoProtocolo(
             ProcessoDiagnosticoPessoaItemResponse item, Set<String> cnjsComFilaAtiva) {
@@ -133,7 +133,7 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
         if (!StringUtils.hasText(cod) || proc == null) {
             return false;
         }
-        return temPdfUtilNaPastaAssinar(cod, proc);
+        return temArquivosNaPastaAssinar(cod, proc);
     }
 
     @Transactional
@@ -672,8 +672,8 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
         return StringUtils.hasText(dig) && digitosComFila.contains(dig);
     }
 
-    /** PDF original na pasta «Assinar» (ignora cópias canônicas geradas pelo backend). */
-    private boolean temPdfUtilNaPastaAssinar(String cod, Integer proc) {
+    /** Há documento(s) na pasta «Assinar» (PDF, .p7s assinado, etc.) — não só subpastas vazias. */
+    private boolean temArquivosNaPastaAssinar(String cod, Integer proc) {
         if (!googleDriveService.isConfigurado()) {
             return false;
         }
@@ -690,13 +690,6 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
             List<DriveArquivoDto> filhos = googleDriveService.listarConteudo(pastaAssinarId);
             for (DriveArquivoDto arq : filhos) {
                 if (arq == null || "pasta".equals(arq.tipo()) || !StringUtils.hasText(arq.id())) {
-                    continue;
-                }
-                String nome = arq.nome() != null ? arq.nome().trim() : "";
-                if (!nome.toLowerCase().endsWith(".pdf")) {
-                    continue;
-                }
-                if (isNomeCanonicoStorePdf(nome)) {
                     continue;
                 }
                 return true;

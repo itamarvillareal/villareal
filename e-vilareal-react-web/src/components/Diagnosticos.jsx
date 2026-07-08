@@ -2182,7 +2182,7 @@ export function Diagnosticos() {
             </div>
             <div className="px-4 py-3">
               <p className="text-sm text-slate-700 mb-3">
-                {resultadoAguardandoProtocolo.length} processo(s). Duplo clique na linha para abrir em Processos. A lista usa o cadastro na API; o histórico local deste navegador só entra se o processo ainda não estiver na API ou se a fase na API for a mesma. Processos com petição já na fila PROJUDI (assinada, agendada ou pendente) não aparecem aqui.
+                {resultadoAguardandoProtocolo.length} processo(s). Duplo clique na linha para abrir em Processos. A lista usa o cadastro na API; o histórico local deste navegador só entra se o processo ainda não estiver na API ou se a fase na API for a mesma. Processos com petição na fila PROJUDI só ficam de fora quando a pasta «Assinar» no Drive já está vazia.
               </p>
               {aguardandoProtocoloBaixarErro ? (
                 <p className="text-sm text-red-600 mb-2" role="alert">

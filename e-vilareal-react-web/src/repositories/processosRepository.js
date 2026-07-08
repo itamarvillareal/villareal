@@ -568,7 +568,7 @@ function itemTemFilaProjudi(item, cnjsFilaSet) {
 
 /**
  * Diagnóstico «Aguardando Protocolo»: cadastro na API + histórico local só quando não contradiz a API.
- * A API já omite processos com fila PROJUDI, exceto quando ainda há PDF na pasta «Assinar».
+ * A API já omite processos com fila PROJUDI, exceto quando a pasta «Assinar» ainda tem arquivos.
  */
 export async function listarProcessosFaseAguardandoProtocoloDiagnostico() {
   const locais = listarProcessosFaseAguardandoProtocolo();

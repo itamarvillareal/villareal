@@ -196,7 +196,7 @@ public class ProcessosController {
             description =
                     "Lista processos cuja fase na API corresponde a «Protocolo / Movimentação» (ou sinónimos como "
                             + "«Aguardando Protocolo»). Omite os que já têm petição na fila PROJUDI, exceto quando "
-                            + "ainda há PDF do usuário na pasta «Assinar» do Drive.")
+                            + "a pasta «Assinar» do Drive ainda contém arquivos (PDF, .p7s, etc.).")
     public List<ProcessoDiagnosticoPessoaItemResponse> buscarDiagnosticoAguardandoProtocolo() {
         return diagnosticoAguardandoProtocoloAssinarService.listarDiagnosticoAguardandoProtocolo();
     }
@@ -207,7 +207,7 @@ public class ProcessosController {
             description =
                     "Processos que já têm petição PENDENTE_ASSINATURA, ASSINADA (incl. agendada) ou PROTOCOLANDO. "
                             + "Usado pelo frontend para filtrar entradas só locais; o GET aguardando-protocolo já "
-                            + "reaplica exceção quando há PDF na pasta «Assinar».")
+                            + "reaplica exceção quando a pasta «Assinar» ainda tem arquivos.")
     public List<String> cnjsComFilaProjudiAtiva() {
         return new ArrayList<>(diagnosticoAguardandoProtocoloAssinarService.cnjDigitosComFilaProtocoloAtiva());
     }
