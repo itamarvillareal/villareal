@@ -20,10 +20,12 @@ import {
   Wallet,
   ClipboardList,
   FileSpreadsheet,
+  FileSignature,
 } from 'lucide-react';
 import { ModalConfiguracoesCalculoCliente } from './ModalConfiguracoesCalculoCliente.jsx';
 import { ModalWhatsAppCliente } from './ModalWhatsAppCliente.jsx';
 import { ModalCobrancaAutomaticaCliente } from './cobranca/ModalCobrancaAutomaticaCliente.jsx';
+import { ModalImportarContratoHonorarios } from './contratos/ModalImportarContratoHonorarios.jsx';
 import { estadoPediuFocoCobranca } from './cobranca/cobrancaClienteNav.js';
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 import { importarWhatsAppDaPessoa } from '../repositories/clienteWhatsAppRepository.js';
@@ -516,6 +518,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   const [modalQualificacaoAberto, setModalQualificacaoAberto] = useState(false);
   const [modalConfigCalculoAberto, setModalConfigCalculoAberto] = useState(false);
   const [modalCobrancaAutomaticaAberto, setModalCobrancaAutomaticaAberto] = useState(false);
+  const [modalImportarContratoAberto, setModalImportarContratoAberto] = useState(false);
   const [modalWhatsAppAberto, setModalWhatsAppAberto] = useState(false);
   const [contaCorrenteEmbed, setContaCorrenteEmbed] = useState(null);
   const [mensalista, setMensalista] = useState(MENSALISTA_ESTADO_VAZIO);
@@ -2335,6 +2338,19 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                   Cobrança automática
                 </button>
               ) : null}
+              <button
+                type="button"
+                onClick={() => setModalImportarContratoAberto(true)}
+                className={classesBotaoSecao('indigo', { ativo: modalImportarContratoAberto })}
+                aria-pressed={modalImportarContratoAberto}
+                title="Importar contratos de honorários já celebrados (censo da carteira)"
+              >
+                <FileSignature
+                  className={classesIconeSecao('indigo', modalImportarContratoAberto)}
+                  aria-hidden
+                />
+                Importar contratos
+              </button>
             </div>
           </div>
 
@@ -2819,6 +2835,13 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
         codigoCliente={codigo}
         nomeCliente={nomeRazao}
         onClose={() => setModalCobrancaAutomaticaAberto(false)}
+      />
+
+      <ModalImportarContratoHonorarios
+        open={modalImportarContratoAberto}
+        codigoCliente={codigo}
+        nomeCliente={nomeRazao}
+        onClose={() => setModalImportarContratoAberto(false)}
       />
 
       {modalEscolherPessoa && (

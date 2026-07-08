@@ -64,6 +64,10 @@ public class ProcessoEntity {
     @Column(name = "importacao_id", length = 36)
     private String importacaoId;
 
+    /** FK para item de importação de contrato de honorários (reversão per-item). */
+    @Column(name = "importacao_item_id")
+    private Long importacaoItemId;
+
     @Column(name = "numero_cnj", length = 100)
     private String numeroCnj;
 

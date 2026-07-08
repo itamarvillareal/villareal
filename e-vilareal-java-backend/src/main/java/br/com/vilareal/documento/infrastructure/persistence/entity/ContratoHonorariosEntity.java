@@ -76,6 +76,18 @@ public class ContratoHonorariosEntity {
     @Column(name = "whatsapp_cobranca_telefones_extras", columnDefinition = "TEXT")
     private String whatsappCobrancaTelefonesExtras;
 
+    @Column(name = "expectativa_valor_estimado", precision = 19, scale = 2)
+    private java.math.BigDecimal expectativaValorEstimado;
+
+    @Column(name = "expectativa_base_tipo", length = 20)
+    private String expectativaBaseTipo;
+
+    @Column(name = "expectativa_valor_causa_ref", precision = 19, scale = 2)
+    private java.math.BigDecimal expectativaValorCausaRef;
+
+    @Column(name = "expectativa_observacao", columnDefinition = "TEXT")
+    private String expectativaObservacao;
+
     @Column(name = "criado_em", nullable = false)
     private Instant criadoEm;
 

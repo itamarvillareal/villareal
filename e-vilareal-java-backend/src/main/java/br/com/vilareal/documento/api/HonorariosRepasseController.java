@@ -2,10 +2,14 @@ package br.com.vilareal.documento.api;
 
 import br.com.vilareal.documento.api.dto.*;
 import br.com.vilareal.documento.application.HonorarioRepasseService;
+import br.com.vilareal.documento.importacao.api.dto.ExpectativaContingenteItemResponse;
+import br.com.vilareal.documento.importacao.application.ContratoHonorariosExpectativaService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/honorarios")
@@ -13,9 +17,13 @@ import org.springframework.web.bind.annotation.*;
 public class HonorariosRepasseController {
 
     private final HonorarioRepasseService honorarioRepasseService;
+    private final ContratoHonorariosExpectativaService expectativaService;
 
-    public HonorariosRepasseController(HonorarioRepasseService honorarioRepasseService) {
+    public HonorariosRepasseController(
+            HonorarioRepasseService honorarioRepasseService,
+            ContratoHonorariosExpectativaService expectativaService) {
         this.honorarioRepasseService = honorarioRepasseService;
+        this.expectativaService = expectativaService;
     }
 
     @GetMapping("/repasses-pendentes")
@@ -25,6 +33,12 @@ public class HonorariosRepasseController {
                     "Alvarás classificados com repasse PENDENTE ou DIVERGENTE (contrato PERCENTUAL_PROVEITO). Valores derivados dos vínculos.")
     public RepassePendenteHonorarioCarteiraResponse repassesPendentes() {
         return honorarioRepasseService.repassesPendentesHonorario();
+    }
+
+    @GetMapping("/expectativas-contingentes")
+    @Operation(summary = "Carteira de expectativa estimada (não confirmada em caixa)")
+    public List<ExpectativaContingenteItemResponse> expectativasContingentes() {
+        return expectativaService.listarContingentes();
     }
 
     @PostMapping("/classificar-alvara")

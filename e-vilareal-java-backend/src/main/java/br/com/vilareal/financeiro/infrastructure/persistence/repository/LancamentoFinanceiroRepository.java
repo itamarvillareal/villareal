@@ -1007,4 +1007,16 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             @Param("numeroBanco") Integer numeroBanco,
             @Param("inicio") LocalDate inicio,
             @Param("fim") LocalDate fim);
+
+    @Query("""
+            SELECT COUNT(l) FROM LancamentoFinanceiroEntity l
+            WHERE l.numeroBanco IN :numerosBanco
+              AND l.status = 'ATIVO'
+              AND l.natureza = br.com.vilareal.financeiro.domain.NaturezaLancamento.CREDITO
+              AND l.dataLancamento BETWEEN :inicio AND :fim
+            """)
+    long countCreditosAtivosPorBancosEPeriodo(
+            @Param("numerosBanco") Collection<Integer> numerosBanco,
+            @Param("inicio") LocalDate inicio,
+            @Param("fim") LocalDate fim);
 }

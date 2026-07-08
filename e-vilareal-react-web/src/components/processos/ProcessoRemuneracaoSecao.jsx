@@ -5,6 +5,7 @@ import {
   salvarContratoHonorariosProcesso,
 } from '../../repositories/documentosRepository.js';
 import { ContratoHonorariosClausula3Modal } from '../../pages/documentos/components/ContratoHonorariosClausula3Modal.jsx';
+import { ModalImportarContratoHonorarios } from '../contratos/ModalImportarContratoHonorarios.jsx';
 import {
   ANTECEDENCIAS_WHATSAPP_HONORARIOS,
   TIPOS_REMUNERACAO,
@@ -55,6 +56,7 @@ export function ProcessoRemuneracaoSecao({
   const [contrato, setContrato] = useState(null);
   const [whatsappForm, setWhatsappForm] = useState(whatsappCobrancaInicial());
   const [modalAberto, setModalAberto] = useState(false);
+  const [modalImportarAberto, setModalImportarAberto] = useState(false);
 
   const resumo = contrato?.resumo ?? null;
   const clausula3Form = useMemo(
@@ -198,6 +200,14 @@ export function ProcessoRemuneracaoSecao({
           >
             <Pencil className="h-3.5 w-3.5" aria-hidden />
             {resumo ? 'Editar remuneração' : 'Configurar remuneração'}
+          </button>
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-800 hover:bg-indigo-50"
+            onClick={() => setModalImportarAberto(true)}
+          >
+            <FileSignature className="h-3.5 w-3.5" aria-hidden />
+            Importar contrato celebrado
           </button>
           {resumo && onAbrirGerarContrato ? (
             <button
@@ -389,6 +399,16 @@ export function ProcessoRemuneracaoSecao({
         processoApiId={processoApiId}
         pessoaId={resumo?.pessoaId ?? pessoaIdContratante}
         onApply={handleSalvarRemuneracao}
+      />
+
+      <ModalImportarContratoHonorarios
+        open={modalImportarAberto}
+        codigoCliente={codigoCliente}
+        processoId={processoApiId}
+        onClose={() => {
+          setModalImportarAberto(false);
+          void carregar();
+        }}
       />
     </div>
   );
