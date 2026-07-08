@@ -193,10 +193,10 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
                 ResultadoUmProcesso resultado =
                         prepararUmProcesso(credencialId, cod, proc, cnj, sincronizarDriveNoRegistro, refsLocaisEscritos);
                 resumos.add(resultado.resumo());
-                if (resultado.peticaoId() != null) {
-                    peticaoIds.add(resultado.peticaoId());
-                    totalArquivos += resultado.arquivosRegistrados();
+                for (Long peticaoId : resultado.peticaoIds()) {
+                    peticaoIds.add(peticaoId);
                 }
+                totalArquivos += resultado.arquivosRegistrados();
             } catch (PreparoCanceladoException e) {
                 throw e;
             } catch (Exception e) {
@@ -260,7 +260,7 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
     }
 
     private record ResultadoUmProcesso(
-            ResumoProcessoPrepararAssinar resumo, Long peticaoId, int arquivosRegistrados) {}
+            ResumoProcessoPrepararAssinar resumo, List<Long> peticaoIds, int arquivosRegistrados) {}
 
     private ResultadoUmProcesso prepararUmProcesso(
             Long credencialId,
@@ -273,6 +273,7 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
         int reutilizadas = 0;
         int ignoradasJaAssinadas = 0;
         boolean semArquivos = false;
+        Set<Long> peticoesReutilizadas = new LinkedHashSet<>();
 
         List<PdfDriveItem> pdfs;
         try {
@@ -280,13 +281,13 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
                     documentoDrivePastaService.resolverPastaRaizProcesso(googleDriveService, cod, proc);
             if (pastaDto == null || !StringUtils.hasText(pastaDto.pastaId())) {
                 log.info("Preparar Assinar: pasta do processo não resolvida ({}/{})", cod, proc);
-                return new ResultadoUmProcesso(resumoSemArquivos(cnj, cod), null, 0);
+                return new ResultadoUmProcesso(resumoSemArquivos(cnj, cod), List.of(), 0);
             }
 
             String pastaAssinarId = googleDriveService.encontrarPastaExistente(PASTA_ASSINAR, pastaDto.pastaId());
             if (!StringUtils.hasText(pastaAssinarId)) {
                 log.info("Preparar Assinar: subpasta Assinar ausente ({}/{})", cod, proc);
-                return new ResultadoUmProcesso(resumoSemArquivos(cnj, cod), null, 0);
+                return new ResultadoUmProcesso(resumoSemArquivos(cnj, cod), List.of(), 0);
             }
 
             List<DriveArquivoDto> filhos = googleDriveService.listarConteudo(pastaAssinarId);
@@ -325,11 +326,11 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
             }
         } catch (Exception e) {
             log.warn("Preparar Assinar: falha no Drive ({}/{}): {}", cod, proc, e.getMessage());
-            return new ResultadoUmProcesso(resumoSemArquivos(cnj, cod), null, 0);
+            return new ResultadoUmProcesso(resumoSemArquivos(cnj, cod), List.of(), 0);
         }
 
         if (pdfs.isEmpty()) {
-            return new ResultadoUmProcesso(resumoSemArquivos(cnj, cod), null, 0);
+            return new ResultadoUmProcesso(resumoSemArquivos(cnj, cod), List.of(), 0);
         }
 
         String cnjDigitos = ProjudiNumeroReduzidoUtil.somenteDigitos(cnj);
@@ -347,12 +348,33 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
                 continue;
             }
             DedupResultado dedup = classificarDedup(sha256, cnjDigitos);
+            if (dedup.reutilizarPeticaoId() != null) {
+                peticoesReutilizadas.add(dedup.reutilizarPeticaoId());
+                reutilizadas++;
+                continue;
+            }
             if (dedup.shouldIgnore()) {
                 ignoradasJaAssinadas++;
                 continue;
             }
             paraRegistrar.add(new ArquivoParaAssinar(
                     pdf.bytes(), inferirIdArquivoTipo(pdf.nomeOriginal()), pdf.nomeOriginal()));
+        }
+
+        if (paraRegistrar.isEmpty() && !peticoesReutilizadas.isEmpty()) {
+            List<Long> idsReutilizar = new ArrayList<>(peticoesReutilizadas);
+            int arquivosPendentes = contarArquivosPendentesAssinatura(idsReutilizar);
+            if (arquivosPendentes > 0) {
+                log.info(
+                        "Preparar Assinar: reutilizando petição(ões) PENDENTE_ASSINATURA {} ({}/{})",
+                        idsReutilizar,
+                        cod,
+                        proc);
+                return new ResultadoUmProcesso(
+                        resumoOk(cnj, cod, registradas, reutilizadas, ignoradasJaAssinadas, semArquivos),
+                        idsReutilizar,
+                        arquivosPendentes);
+            }
         }
 
         if (paraRegistrar.isEmpty()) {
@@ -365,7 +387,7 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
             }
             return new ResultadoUmProcesso(
                     resumoOk(cnj, cod, registradas, reutilizadas, ignoradasJaAssinadas, semArquivos),
-                    null,
+                    List.of(),
                     0);
         }
 
@@ -379,7 +401,7 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
         registradas = paraRegistrar.size();
         return new ResultadoUmProcesso(
                 resumoOk(cnj, cod, registradas, reutilizadas, ignoradasJaAssinadas, semArquivos),
-                peticao.getId(),
+                List.of(peticao.getId()),
                 registradas);
     }
 
@@ -647,14 +669,34 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
                 continue;
             }
             String petStatus = peticao.getStatus();
+            if (STATUS_PETICAO_PENDENTE.equals(petStatus) && arquivoPendenteComPdfNoServidor(arq)) {
+                return DedupResultado.reutilizar(peticao.getId());
+            }
             if (STATUS_PETICAO_PROTOCOLANDO.equals(petStatus)
                     || STATUS_PETICAO_PROTOCOLADA.equals(petStatus)
                     || STATUS_PETICAO_ASSINADA.equals(petStatus)
                     || STATUS_PETICAO_PENDENTE.equals(petStatus)) {
-                return DedupResultado.ignorar();
+                return DedupResultado.bloqueado();
             }
         }
         return DedupResultado.novo();
+    }
+
+    private boolean arquivoPendenteComPdfNoServidor(ProjudiPeticaoArquivoEntity arquivo) {
+        if (arquivo == null || !STATUS_ARQUIVO_PENDENTE.equals(arquivo.getStatus())) {
+            return false;
+        }
+        if (!StringUtils.hasText(arquivo.getPdfRef())) {
+            return false;
+        }
+        return Files.isRegularFile(storeDir.resolve(arquivo.getPdfRef()));
+    }
+
+    private int contarArquivosPendentesAssinatura(List<Long> peticaoIds) {
+        if (peticaoIds == null || peticaoIds.isEmpty()) {
+            return 0;
+        }
+        return arquivoRepository.findByStatusAndPeticaoIdIn(STATUS_ARQUIVO_PENDENTE, peticaoIds).size();
     }
 
     private static boolean cnjCoincide(String numeroProcesso, String cnjDigitos) {
@@ -761,13 +803,17 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
 
     private record PdfDriveItem(String nomeOriginal, byte[] bytes) {}
 
-    private record DedupResultado(boolean shouldIgnore) {
-        static DedupResultado ignorar() {
-            return new DedupResultado(true);
+    private record DedupResultado(boolean shouldIgnore, Long reutilizarPeticaoId) {
+        static DedupResultado bloqueado() {
+            return new DedupResultado(true, null);
         }
 
         static DedupResultado novo() {
-            return new DedupResultado(false);
+            return new DedupResultado(false, null);
+        }
+
+        static DedupResultado reutilizar(Long peticaoId) {
+            return new DedupResultado(false, peticaoId);
         }
     }
 }
