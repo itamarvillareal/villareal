@@ -138,6 +138,7 @@ class AssinadorApiServiceTest {
 
         service.registrarFalha(10L, ASSINADOR_ID, "TOKEN_OCUPADO", "Token em uso");
 
+        verify(peticaoAssinaturaService).reverterAssinaturaIncompletaDoLote(List.of(100L));
         verify(assinaturaLoteService).falharLote(10L, "TOKEN_OCUPADO", "Token em uso");
     }
 

@@ -32,6 +32,7 @@ public class ProjudiPeticaoAssinaturaService {
 
     static final String STATUS_ARQUIVO_PENDENTE = "PENDENTE_ASSINATURA";
     static final String STATUS_ARQUIVO_ASSINADO = "ASSINADO";
+    static final String STATUS_PETICAO_PENDENTE = "PENDENTE_ASSINATURA";
     static final String STATUS_PETICAO_ASSINADA = "ASSINADA";
 
     /** Nome canônico no ZIP: {@code {peticaoId}_{ordem}_{sha8}.pdf} → {@code …pdf.p7s} após assinar. */
@@ -365,5 +366,62 @@ public class ProjudiPeticaoAssinaturaService {
             peticao.setStatus(STATUS_PETICAO_ASSINADA);
             peticaoRepository.save(peticao);
         }
+    }
+
+    /**
+     * Após falha do assinador Windows, garante que petições do lote não fiquem ASSINADA sem assinatura
+     * completa e persistida (.p7s no servidor).
+     */
+    @Transactional
+    public void reverterAssinaturaIncompletaDoLote(List<Long> peticaoIds) {
+        if (peticaoIds == null || peticaoIds.isEmpty()) {
+            return;
+        }
+        for (Long peticaoId : peticaoIds) {
+            if (peticaoId == null) {
+                continue;
+            }
+            peticaoRepository.findByIdWithArquivos(peticaoId).ifPresent(this::reverterAssinaturaIncompletaSeNecessario);
+        }
+    }
+
+    private void reverterAssinaturaIncompletaSeNecessario(ProjudiPeticaoEntity peticao) {
+        boolean alterouArquivo = false;
+        for (ProjudiPeticaoArquivoEntity arquivo : peticao.getArquivos()) {
+            if (!STATUS_ARQUIVO_ASSINADO.equals(arquivo.getStatus())) {
+                continue;
+            }
+            if (arquivoAssinadoPersistidoNoServidor(arquivo)) {
+                continue;
+            }
+            reverterArquivoParaPendente(arquivo);
+            alterouArquivo = true;
+        }
+        boolean todosAssinados = peticao.getArquivos().stream()
+                .allMatch(a -> STATUS_ARQUIVO_ASSINADO.equals(a.getStatus())
+                        && arquivoAssinadoPersistidoNoServidor(a));
+        if (!todosAssinados && STATUS_PETICAO_ASSINADA.equals(peticao.getStatus())) {
+            peticao.setStatus(STATUS_PETICAO_PENDENTE);
+            peticaoRepository.save(peticao);
+            return;
+        }
+        if (alterouArquivo) {
+            peticaoRepository.save(peticao);
+        }
+    }
+
+    private boolean arquivoAssinadoPersistidoNoServidor(ProjudiPeticaoArquivoEntity arquivo) {
+        if (!StringUtils.hasText(arquivo.getP7sRef())) {
+            return false;
+        }
+        return Files.isRegularFile(storeDir.resolve(arquivo.getP7sRef()));
+    }
+
+    private void reverterArquivoParaPendente(ProjudiPeticaoArquivoEntity arquivo) {
+        arquivo.setStatus(STATUS_ARQUIVO_PENDENTE);
+        arquivo.setP7sRef(null);
+        arquivo.setP7sSha256(null);
+        arquivo.setConteudoAssinadoSha256(null);
+        arquivoRepository.save(arquivo);
     }
 }

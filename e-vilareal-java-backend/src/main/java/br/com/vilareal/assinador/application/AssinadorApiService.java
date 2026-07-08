@@ -136,7 +136,8 @@ public class AssinadorApiService {
 
     @Transactional
     public void registrarFalha(Long loteId, String assinadorId, String codigo, String mensagem) {
-        assinaturaLoteService.exigirLoteEmAssinaturaDoAssinador(loteId, assinadorId);
+        AssinaturaLoteEntity lote = assinaturaLoteService.exigirLoteEmAssinaturaDoAssinador(loteId, assinadorId);
+        peticaoAssinaturaService.reverterAssinaturaIncompletaDoLote(lote.getPeticaoIds());
         assinaturaLoteService.falharLote(loteId, codigo, mensagem);
     }
 
