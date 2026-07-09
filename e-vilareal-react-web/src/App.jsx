@@ -104,6 +104,7 @@ import { installCrossTabLocalStorageSync } from './services/crossTabLocalStorage
 import { executarSincronizacaoAudienciasAgendaEProcessosCompleta, SYNC_AUDIENCIAS_AGENDA_AUTOMATICA } from './services/sincronizacaoAudienciasAgendaProcessosService.js';
 import { hydrateRodadasCalculosResumoFromApi } from './data/calculosRodadasStorage.js';
 import { ProcessoEmbedErrorBoundary } from './components/ProcessoEmbedErrorBoundary.jsx';
+import { ModalConferenciaContratosHonorarios } from './components/contratos/ModalConferenciaContratosHonorarios.jsx';
 import { WhatsAppNotificationProvider } from './components/whatsapp/WhatsAppNotificationProvider.jsx';
 import { WhatsAppNotificationToast } from './components/whatsapp/WhatsAppNotificationToast.jsx';
 import { WhatsAppFloatingChat } from './components/whatsapp/WhatsAppFloatingChat.jsx';
@@ -133,6 +134,7 @@ function Layout() {
   const [accessTick, setAccessTick] = useState(0);
   /** Drawer de navegação só abaixo do breakpoint lg: menu hamburger no topo (consulta rápida; bottom nav roubaría área de conteúdo). */
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [conferenciaContratosAberta, setConferenciaContratosAberta] = useState(false);
 
   /** Metadados das rodadas (`GET /rodadas/resumo`): leve; payloads completos vêm sob demanda em Cálculos. */
   useEffect(() => {
@@ -253,7 +255,13 @@ function Layout() {
         </div>
       </header>
       <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden">
-        <Sidebar mobileDrawerOpen={mobileNavOpen} onMobileDrawerChange={setMobileNavOpen} />
+        <Sidebar
+          mobileDrawerOpen={mobileNavOpen}
+          onMobileDrawerChange={setMobileNavOpen}
+          onMenuAction={(action) => {
+            if (action === 'conferencia-contratos-honorarios') setConferenciaContratosAberta(true);
+          }}
+        />
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden bg-[var(--vl-bg-page)] pb-[env(safe-area-inset-bottom,0px)]">
         <Suspense
           fallback={
@@ -287,6 +295,12 @@ function Layout() {
           <WhatsAppNotificationToast />
           <WhatsAppFloatingChat />
         </>
+      ) : null}
+      {usuarioPodeAcessarModulo(getPerfilAtivoParaPermissoes(), 'conferencia-contratos-honorarios') ? (
+        <ModalConferenciaContratosHonorarios
+          open={conferenciaContratosAberta}
+          onClose={() => setConferenciaContratosAberta(false)}
+        />
       ) : null}
     </div>
     </WhatsAppNotificationProvider>

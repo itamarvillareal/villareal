@@ -62,7 +62,7 @@ function rotaPadraoGrupo(grupoId, subs) {
  * @param {boolean} [props.mobileDrawerOpen] — controlado pelo Layout (App) abaixo do breakpoint `lg`.
  * @param {(open: boolean) => void} [props.onMobileDrawerChange] — fecha o drawer após navegar ou backdrop.
  */
-export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {}) {
+export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange, onMenuAction } = {}) {
   const [, setMenuTick] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
@@ -356,6 +356,22 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange } = {})
                   )
                 )}
               </div>
+            );
+          }
+          if (item.menuAction) {
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  onMenuAction?.(item.menuAction);
+                  closeMobileDrawer();
+                }}
+                className="flex w-full items-center gap-2 rounded-md border-l-2 border-transparent px-2 py-1.5 text-left text-xs font-medium text-gray-700 transition-all duration-200 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-white/[0.05] mb-0"
+              >
+                <SidebarMenuIcon id={item.id} className="h-4 w-4 shrink-0" />
+                <span className="min-w-0 flex-1 leading-snug">{item.label}</span>
+              </button>
             );
           }
           return (

@@ -84,6 +84,7 @@ export const navItems = [
     ],
   },
   { id: 'relatorio-tarefas', label: 'Relatório de Tarefas', icon: 'Server' },
+  { id: 'conferencia-contratos-honorarios', label: 'Conferir contratos', icon: 'ClipboardCheck', menuAction: 'conferencia-contratos-honorarios' },
   { id: 'diagnosticos', label: 'Relatórios e Consultas', icon: 'Activity' },
   {
     id: 'whatsapp-grupo',
