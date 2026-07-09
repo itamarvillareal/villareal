@@ -1,5 +1,6 @@
 package br.com.vilareal.documento;
 
+import br.com.vilareal.documento.tema.TemaDocumento;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -89,6 +90,38 @@ class DocumentoReformatarCorpoUnicoHtmlTest {
                 """;
         assertThat(DocumentoReformatarCorpoUnicoHtml.extrairLocalData(html))
                 .containsIgnoringCase("anápolis");
+    }
+
+    @Test
+    void montar_usaLogoEAssinaturaDoTemaQuandoInformado() {
+        TemaDocumento karla = TemaDocumento.personalizado(
+                "modelo.2",
+                null,
+                "data:image/png;base64,QUJD",
+                null,
+                null,
+                "Karla Caroline Pedroza Silva",
+                "OAB/GO 41.662");
+        DocumentoReformatarConteudoRequest req = new DocumentoReformatarConteudoRequest(
+                "MERITÍSSIMO JUÍZO",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+
+        String html = DocumentoReformatarCorpoUnicoHtml.montar(req, karla);
+
+        assertThat(html).contains("data:image/png;base64,QUJD");
+        assertThat(html).contains("Karla Caroline Pedroza Silva");
+        assertThat(html).contains("OAB/GO 41.662");
+        assertThat(html).doesNotContain("Itamar Alexandre");
     }
 
     @Test

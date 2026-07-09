@@ -1,5 +1,7 @@
 package br.com.vilareal.documento;
 
+import br.com.vilareal.documento.tema.DocumentoTemaResolver;
+import br.com.vilareal.documento.tema.TemaDocumento;
 import br.com.vilareal.documento.parse.DocumentoDocxParser;
 import br.com.vilareal.documento.parse.DocumentoLocalDataResolver;
 import br.com.vilareal.documento.parse.DocumentoParseado;
@@ -29,14 +31,17 @@ public class DocumentoReformatarService {
     private final DocumentoDocxParser docxParser;
     private final DocumentoReformatarPdfParser pdfParser;
     private final DocumentoPdfService pdfService;
+    private final DocumentoTemaResolver temaResolver;
 
     public DocumentoReformatarService(
             DocumentoDocxParser docxParser,
             DocumentoReformatarPdfParser pdfParser,
-            DocumentoPdfService pdfService) {
+            DocumentoPdfService pdfService,
+            DocumentoTemaResolver temaResolver) {
         this.docxParser = docxParser;
         this.pdfParser = pdfParser;
         this.pdfService = pdfService;
+        this.temaResolver = temaResolver;
     }
 
     public byte[] reformatar(MultipartFile arquivo) throws IOException {
@@ -121,7 +126,8 @@ public class DocumentoReformatarService {
         if (StringUtils.hasText(request.corpoUnico())) {
             return request;
         }
-        String corpoUnico = DocumentoReformatarCorpoUnicoHtml.montar(request);
+        TemaDocumento tema = temaResolver.resolverPorProcessoId(request.processoId());
+        String corpoUnico = DocumentoReformatarCorpoUnicoHtml.montar(request, tema);
         return new DocumentoReformatarConteudoRequest(
                 request.enderecamento(),
                 request.numeroProcesso(),

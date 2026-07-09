@@ -162,14 +162,15 @@ public class PeticaoHomologacaoAcordoService {
                 corpoHtml,
                 fechoHtml,
                 advogadoNome,
-                advogadoOab);
+                advogadoOab,
+                tema);
     }
 
     static String montarCorpoUnico(VariaveisHomologacao vars) {
         StringBuilder sb = new StringBuilder();
         sb.append("<div class=\"doc-edicao-preview doc-homologacao-preview\">");
         sb.append(DocumentoReformatarCorpoUnicoHtml.montarCabecalhoEdicaoPreview(
-                vars.advogadoNome(), vars.advogadoOab()));
+                vars.advogadoNome(), vars.advogadoOab(), vars.tema()));
         sb.append("<div class=\"corpo-documento\">");
         sb.append("<p class=\"enderecamento\">").append(vars.enderecamentoHtml()).append("</p>");
         if (StringUtils.hasText(vars.autosHtml())) {
@@ -191,7 +192,8 @@ public class PeticaoHomologacaoAcordoService {
             String corpoHtml,
             String fechoHtml,
             String advogadoNome,
-            String advogadoOab) {}
+            String advogadoOab,
+            TemaDocumento tema) {}
 
     static String montarQualificacaoInterlocutoriaHtml(
             List<ProcessoParteEntity> autores, List<ProcessoParteEntity> reus) {

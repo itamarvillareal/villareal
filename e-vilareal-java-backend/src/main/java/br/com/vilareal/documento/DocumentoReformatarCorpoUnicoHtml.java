@@ -1,5 +1,6 @@
 package br.com.vilareal.documento;
 
+import br.com.vilareal.documento.tema.TemaDocumento;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -32,10 +33,15 @@ public final class DocumentoReformatarCorpoUnicoHtml {
 
     /** Cabeçalho timbrado da prévia editável (removido na geração do PDF final). */
     public static String montarCabecalhoEdicaoPreview(String advogadoNome, String advogadoOab) {
+        return montarCabecalhoEdicaoPreview(advogadoNome, advogadoOab, TemaDocumento.padrao());
+    }
+
+    public static String montarCabecalhoEdicaoPreview(String advogadoNome, String advogadoOab, TemaDocumento tema) {
+        TemaDocumento t = tema != null ? tema : TemaDocumento.padrao();
         return montarCabecalhoEdicaoPreview(
-                valorOuPadrao(advogadoNome, ADVOGADO_NOME_PADRAO),
-                valorOuPadrao(advogadoOab, ADVOGADO_OAB_PADRAO),
-                carregarLogoDataUri());
+                valorOuPadrao(advogadoNome, t.advogadoNomeEfetivo()),
+                valorOuPadrao(advogadoOab, t.advogadoOabEfetivo()),
+                logoDataUriFromTema(t));
     }
 
     static String montarCabecalhoEdicaoPreview(String advogadoNome, String advogadoOab, String logoDataUri) {
@@ -60,9 +66,14 @@ public final class DocumentoReformatarCorpoUnicoHtml {
     }
 
     public static String montar(DocumentoReformatarConteudoRequest req) {
-        String advogadoNome = valorOuPadrao(req.advogadoNome(), ADVOGADO_NOME_PADRAO);
-        String advogadoOab = valorOuPadrao(req.advogadoOab(), ADVOGADO_OAB_PADRAO);
-        String logo = carregarLogoDataUri();
+        return montar(req, TemaDocumento.padrao());
+    }
+
+    public static String montar(DocumentoReformatarConteudoRequest req, TemaDocumento tema) {
+        TemaDocumento t = tema != null ? tema : TemaDocumento.padrao();
+        String advogadoNome = valorOuPadrao(req.advogadoNome(), t.advogadoNomeEfetivo());
+        String advogadoOab = valorOuPadrao(req.advogadoOab(), t.advogadoOabEfetivo());
+        String logo = logoDataUriFromTema(t);
 
         StringBuilder sb = new StringBuilder();
         sb.append("<div class=\"doc-edicao-preview\" style=\"font-family:Arial,sans-serif;font-size:12pt;line-height:1.35;color:#000;\">");
@@ -135,8 +146,8 @@ public final class DocumentoReformatarCorpoUnicoHtml {
                 .append("</p>");
 
         sb.append("<div data-doc-part=\"assinatura\" style=\"text-align:center;margin-top:36pt;\">");
-        sb.append("<p style=\"margin:0;font-weight:bold;\">Dr. ITAMAR ALEXANDRE FÉLIX VILLA REAL JÚNIOR</p>");
-        sb.append("<p style=\"margin:0;\">OAB/GO n° 33.329</p>");
+        sb.append("<p style=\"margin:0;font-weight:bold;\">").append(escapeTexto(advogadoNome)).append("</p>");
+        sb.append("<p style=\"margin:0;\">").append(escapeTexto(advogadoOab)).append("</p>");
         sb.append("</div>");
 
         sb.append("</div>");
@@ -344,9 +355,23 @@ public final class DocumentoReformatarCorpoUnicoHtml {
         return escapeTexto(texto).replace("\"", "&quot;");
     }
 
-    private static String carregarLogoDataUri() {
+    /** Logo do timbrado para prévia WYSIWYG (modelo do responsável ou padrão do escritório). */
+    public static String logoDataUriFromTema(TemaDocumento tema) {
+        TemaDocumento t = tema != null ? tema : TemaDocumento.padrao();
+        String embutido = t.logoCabecalhoBase64Efetivo();
+        if (StringUtils.hasText(embutido)) {
+            String trimmed = embutido.trim();
+            return trimmed.startsWith("data:") ? trimmed : "data:image/jpeg;base64," + trimmed;
+        }
+        return carregarLogoDataUriFromPath(t.logoCabecalhoPathEfetivo());
+    }
+
+    private static String carregarLogoDataUriFromPath(String classpathPath) {
+        if (!StringUtils.hasText(classpathPath)) {
+            return "";
+        }
         try {
-            ClassPathResource resource = new ClassPathResource("static/documentos/logo_cabecalho.jpeg");
+            ClassPathResource resource = new ClassPathResource(classpathPath.trim());
             if (!resource.exists()) {
                 return "";
             }
@@ -357,7 +382,8 @@ public final class DocumentoReformatarCorpoUnicoHtml {
             if (bytes.length == 0) {
                 return "";
             }
-            return "data:image/jpeg;base64," + Base64.getEncoder().encodeToString(bytes);
+            String mime = classpathPath.toLowerCase(Locale.ROOT).endsWith(".png") ? "image/png" : "image/jpeg";
+            return "data:" + mime + ";base64," + Base64.getEncoder().encodeToString(bytes);
         } catch (IOException e) {
             return "";
         }
