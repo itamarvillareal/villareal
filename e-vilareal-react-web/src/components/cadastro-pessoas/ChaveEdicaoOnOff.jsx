@@ -11,7 +11,7 @@ export function ChaveEdicaoOnOff({ edicaoHabilitada, onChange, disabled = false,
       aria-label={edicaoHabilitada ? 'Edição habilitada' : 'Edição desabilitada'}
       disabled={disabled}
       onClick={() => onChange(!edicaoHabilitada)}
-      className={`group relative inline-flex h-10 w-[5.75rem] shrink-0 items-center rounded-full border-2 p-0.5 transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${
+      className={`group relative inline-flex h-10 w-[5.75rem] shrink-0 touch-manipulation items-center rounded-full border-2 p-0.5 transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${
         edicaoHabilitada
           ? 'border-emerald-300/90 bg-gradient-to-r from-emerald-700 via-emerald-500 to-lime-400 shadow-[0_0_14px_rgba(34,197,94,0.45),inset_0_1px_0_rgba(255,255,255,0.25)] focus-visible:ring-emerald-500'
           : 'border-red-300/90 bg-gradient-to-r from-red-700 via-red-500 to-rose-400 shadow-[0_0_14px_rgba(239,68,68,0.45),inset_0_1px_0_rgba(255,255,255,0.2)] focus-visible:ring-red-500'

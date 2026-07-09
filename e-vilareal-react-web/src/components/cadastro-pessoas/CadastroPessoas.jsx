@@ -1792,7 +1792,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
         isEmbedded ? 'min-h-0 w-full min-w-0' : 'min-h-full'
       }`}
     >
-      <div className={`max-w-6xl mx-auto px-4 py-6 ${isEmbedded ? 'min-w-0 py-4' : ''}`}>
+      <div className={`max-w-6xl mx-auto ${isEmbedded ? 'min-w-0 px-2 py-3 sm:px-4 sm:py-4' : 'px-4 py-6'}`}>
         {!isEmbedded ? (
         <header className="mb-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1929,78 +1929,114 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
 
         {/* Painel principal */}
         <section className="bg-white rounded-xl shadow-sm border border-slate-200/80 overflow-hidden">
-          <div className="p-6">
+          <div className={`${isEmbedded ? 'p-3 sm:p-6' : 'p-6'}`}>
             {mostrarFormularioEdicao ? (
               <>
-                <div className="flex items-center justify-between mb-6">
-                  <div>
-                    <h2 className="text-lg font-semibold text-slate-800">
-                      {modo === 'criar' ? 'Nova pessoa' : 'Editar pessoa'}
-                    </h2>
-                    {salvando && !form.edicaoDesabilitada ? (
-                      <p className="text-xs text-blue-700 mt-0.5 font-medium">Gravando alterações…</p>
-                    ) : !form.edicaoDesabilitada ? (
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Alterações gravadas automaticamente enquanto você digita.
-                      </p>
-                    ) : null}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2">
-                      {modo === 'editar' ? (
-                        <button
-                          type="button"
-                          onClick={() => void iniciarNovaPessoaDesdeFormulario()}
-                          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-blue-300 bg-blue-50 text-blue-800 text-sm font-medium hover:bg-blue-100"
-                          title="Incluir nova pessoa mantendo o texto colado e os dados já extraídos no formulário"
-                        >
-                          <Plus className="w-4 h-4" />
-                          Incluir nova pessoa
-                        </button>
+                <div className="mb-4 sm:mb-6 flex flex-col gap-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <h2 className="text-base sm:text-lg font-semibold text-slate-800">
+                        {modo === 'criar' ? 'Nova pessoa' : 'Editar pessoa'}
+                      </h2>
+                      {salvando && !form.edicaoDesabilitada ? (
+                        <p className="text-xs text-blue-700 mt-0.5 font-medium">Gravando alterações…</p>
+                      ) : !form.edicaoDesabilitada ? (
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Alterações gravadas automaticamente enquanto você digita.
+                        </p>
                       ) : null}
+                    </div>
+                    <div className="flex shrink-0 flex-col items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 px-2 py-1.5 shadow-sm">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                        Edição
+                      </span>
+                      <ChaveEdicaoOnOff
+                        edicaoHabilitada={!form.edicaoDesabilitada}
+                        onChange={(habilitada) => {
+                          setForm((f) => ({ ...f, edicaoDesabilitada: !habilitada }));
+                          if (habilitada && modoRef.current === 'editar') {
+                            autosaveAtivoRef.current = true;
+                            setFichaProntaAutosave(true);
+                          }
+                        }}
+                        className="scale-[0.92] sm:scale-100"
+                      />
+                      <span className="text-[10px] text-slate-400 text-center leading-tight max-w-[5.5rem]">
+                        {form.edicaoDesabilitada ? 'Somente leitura' : 'Campos liberados'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="-mx-1 flex flex-wrap items-center gap-2 overflow-x-auto pb-0.5 sm:mx-0 sm:justify-end sm:overflow-visible">
+                    {modo === 'editar' ? (
                       <button
                         type="button"
-                        onClick={handleClickUploadDocumento}
-                        className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-60"
-                        disabled={docProcessando || form.edicaoDesabilitada}
+                        onClick={() => void iniciarNovaPessoaDesdeFormulario()}
+                        className="inline-flex shrink-0 items-center gap-1.5 px-2.5 py-2 rounded-lg border border-blue-300 bg-blue-50 text-blue-800 text-xs sm:text-sm font-medium hover:bg-blue-100 sm:px-3"
+                        title="Incluir nova pessoa mantendo o texto colado e os dados já extraídos no formulário"
                       >
-                        <FileUp className="w-4 h-4" />
-                        Anexar documento pessoal
+                        <Plus className="w-4 h-4 shrink-0" />
+                        <span className="whitespace-nowrap">Incluir nova pessoa</span>
                       </button>
-                      {(modo === 'editar' && editId != null) || String(form.nome ?? '').trim() ? (
-                        <button
-                          type="button"
-                          onClick={() => void abrirModalQualificacaoCompleta()}
-                          disabled={carregandoModalQualificacao}
-                          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 text-sm font-medium hover:bg-amber-100 disabled:opacity-60"
-                          title="Abrir qualificação jurídica completa"
-                          aria-pressed={modalQualificacaoAberto}
-                        >
-                          {carregandoModalQualificacao ? (
-                            <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
-                          ) : (
-                            <ClipboardList className="w-4 h-4" aria-hidden />
-                          )}
-                          Qualificação
-                        </button>
-                      ) : null}
-                      {modo === 'editar' && editId != null ? (
-                        <button
-                          type="button"
-                          onClick={() => setDriveExplorerAberto(true)}
-                          disabled={!driveConfigurado}
-                          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-rose-300 bg-rose-50 text-rose-900 text-sm font-medium hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
-                          title={
-                            !driveConfigurado
-                              ? 'Google Drive não configurado no servidor'
-                              : `Documentos da pessoa ${String(editId).padStart(8, '0')} no Google Drive`
-                          }
-                        >
-                          <FolderOpen className="w-4 h-4" aria-hidden />
-                          Arquivos
-                        </button>
-                      ) : null}
-                      <input
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={handleClickUploadDocumento}
+                      className="inline-flex shrink-0 items-center gap-1.5 px-2.5 py-2 rounded-lg bg-emerald-600 text-white text-xs sm:text-sm font-medium hover:bg-emerald-700 disabled:opacity-60 sm:px-3"
+                      disabled={docProcessando || form.edicaoDesabilitada}
+                    >
+                      <FileUp className="w-4 h-4 shrink-0" />
+                      <span className="whitespace-nowrap">Anexar documento</span>
+                    </button>
+                    {(modo === 'editar' && editId != null) || String(form.nome ?? '').trim() ? (
+                      <button
+                        type="button"
+                        onClick={() => void abrirModalQualificacaoCompleta()}
+                        disabled={carregandoModalQualificacao}
+                        className="inline-flex shrink-0 items-center gap-1.5 px-2.5 py-2 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 text-xs sm:text-sm font-medium hover:bg-amber-100 disabled:opacity-60 sm:px-3"
+                        title="Abrir qualificação jurídica completa"
+                        aria-pressed={modalQualificacaoAberto}
+                      >
+                        {carregandoModalQualificacao ? (
+                          <Loader2 className="w-4 h-4 animate-spin shrink-0" aria-hidden />
+                        ) : (
+                          <ClipboardList className="w-4 h-4 shrink-0" aria-hidden />
+                        )}
+                        <span className="whitespace-nowrap">Qualificação</span>
+                      </button>
+                    ) : null}
+                    {modo === 'editar' && editId != null ? (
+                      <button
+                        type="button"
+                        onClick={() => setDriveExplorerAberto(true)}
+                        disabled={!driveConfigurado}
+                        className="inline-flex shrink-0 items-center gap-1.5 px-2.5 py-2 rounded-lg border border-rose-300 bg-rose-50 text-rose-900 text-xs sm:text-sm font-medium hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50 sm:px-3"
+                        title={
+                          !driveConfigurado
+                            ? 'Google Drive não configurado no servidor'
+                            : `Documentos da pessoa ${String(editId).padStart(8, '0')} no Google Drive`
+                        }
+                      >
+                        <FolderOpen className="w-4 h-4 shrink-0" aria-hidden />
+                        <span className="whitespace-nowrap">Arquivos</span>
+                      </button>
+                    ) : null}
+                    {modo === 'editar' && editId != null ? (
+                      <button
+                        type="button"
+                        onClick={() => void excluirPessoaAtual()}
+                        disabled={excluindo || salvando}
+                        className="inline-flex shrink-0 items-center justify-center rounded-lg border border-red-200 bg-red-50 p-2 text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        title="Excluir pessoa e todos os dados vinculados do banco"
+                        aria-label="Excluir pessoa"
+                      >
+                        {excluindo ? (
+                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                        ) : (
+                          <Trash2 className="h-4 w-4" aria-hidden />
+                        )}
+                      </button>
+                    ) : null}
+                    <input
                         ref={inputDocRef}
                         id="upload-doc-pessoal"
                         type="file"
@@ -2067,39 +2103,6 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                           }
                         }}
                       />
-                    </div>
-                    <div className="flex flex-col items-end gap-1.5">
-                      {modo === 'editar' && editId != null ? (
-                        <button
-                          type="button"
-                          onClick={() => void excluirPessoaAtual()}
-                          disabled={excluindo || salvando}
-                          className="inline-flex items-center justify-center rounded-lg border border-red-200 bg-red-50 p-2 text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
-                          title="Excluir pessoa e todos os dados vinculados do banco"
-                          aria-label="Excluir pessoa"
-                        >
-                          {excluindo ? (
-                            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                          ) : (
-                            <Trash2 className="h-4 w-4" aria-hidden />
-                          )}
-                        </button>
-                      ) : null}
-                      <span className="text-xs font-medium text-slate-500">Edição</span>
-                      <ChaveEdicaoOnOff
-                        edicaoHabilitada={!form.edicaoDesabilitada}
-                        onChange={(habilitada) => {
-                          setForm((f) => ({ ...f, edicaoDesabilitada: !habilitada }));
-                          if (habilitada && modoRef.current === 'editar') {
-                            autosaveAtivoRef.current = true;
-                            setFichaProntaAutosave(true);
-                          }
-                        }}
-                      />
-                      <span className="text-[11px] text-slate-400">
-                        {form.edicaoDesabilitada ? 'Somente leitura' : 'Campos liberados'}
-                      </span>
-                    </div>
                   </div>
                 </div>
                 <div
