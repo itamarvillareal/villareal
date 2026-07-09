@@ -2538,7 +2538,11 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
 
   return (
     <div
-      className={`min-h-0 flex flex-col overflow-x-hidden max-w-full bg-slate-50 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] ${isEmbedded ? 'w-full min-w-0' : 'flex-1'}`}
+      className={`flex flex-col overflow-x-hidden max-w-full bg-slate-50 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] ${
+        isEmbedded
+          ? 'h-full min-h-0 w-full min-w-0'
+          : 'min-h-0 flex-1 max-lg:flex-none max-lg:h-auto'
+      }`}
     >
       <header className="flex items-center justify-between gap-2 px-3 py-2 bg-white border-b border-slate-200 shrink-0">
         <h1 className="text-base font-semibold text-slate-800 dark:text-slate-100 truncate min-w-0">
@@ -2604,8 +2608,14 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
         ))}
       </div>
 
-      <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden max-w-full">
-        <aside className="order-last lg:order-last w-full max-w-full shrink-0 lg:w-52 border-t lg:border-t-0 lg:border-l border-slate-200 bg-slate-100/90 p-2 sm:p-3 pb-[max(5.5rem,calc(4.5rem+env(safe-area-inset-bottom,0px)))] lg:pb-2 overflow-y-auto overflow-x-hidden space-y-2 [-webkit-overflow-scrolling:touch] [scrollbar-width:thin]">
+      <div
+        className={`flex flex-col lg:flex-row max-w-full min-h-0 ${
+          isEmbedded
+            ? 'flex-1 overflow-y-auto overflow-x-hidden overscroll-contain [-webkit-overflow-scrolling:touch]'
+            : 'flex-1 max-lg:flex-none max-lg:overflow-visible lg:overflow-hidden'
+        }`}
+      >
+        <aside className="order-first lg:order-last w-full max-w-full shrink-0 max-lg:flex-none lg:w-52 border-b lg:border-b-0 lg:border-t-0 lg:border-l border-slate-200 bg-slate-100/90 p-2 sm:p-3 pb-[max(5.5rem,calc(4.5rem+env(safe-area-inset-bottom,0px)))] lg:pb-2 max-lg:overflow-visible lg:overflow-y-auto overflow-x-hidden space-y-2 [-webkit-overflow-scrolling:touch] [scrollbar-width:thin]">
           <div className="p-1.5 rounded border border-slate-200 bg-white shadow-sm">
             <div className="grid grid-cols-1 min-[420px]:grid-cols-3 gap-2 lg:block lg:space-y-2">
               <div>
@@ -2968,7 +2978,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
           </div>
         </aside>
 
-        <div className="order-first flex-1 min-w-0 min-h-0 max-w-full overflow-auto p-2 sm:p-3 pb-[max(5.5rem,calc(4.5rem+env(safe-area-inset-bottom,0px)))] lg:pb-2 [-webkit-overflow-scrolling:touch] flex flex-col">
+        <div className="order-last lg:order-first flex-1 min-w-0 min-h-0 max-w-full max-lg:flex-none max-lg:overflow-visible lg:overflow-auto p-2 sm:p-3 pb-[max(5.5rem,calc(4.5rem+env(safe-area-inset-bottom,0px)))] lg:pb-2 [-webkit-overflow-scrolling:touch] flex flex-col">
           {tabAtiva === 'Títulos' && (
             <TitulosGrid
               titulosPaginaCompletos={titulosPaginaCompletos}

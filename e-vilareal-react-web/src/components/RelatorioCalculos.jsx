@@ -665,7 +665,7 @@ export function RelatorioCalculos() {
 
       {calculosEmbed ? (
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4 bg-black/55"
+          className="fixed inset-0 z-[60] flex max-lg:items-stretch items-center justify-center max-lg:p-0 p-2 sm:p-4 bg-black/55"
           role="dialog"
           aria-modal="true"
           aria-labelledby="relatorio-calculos-embed-title"
@@ -674,7 +674,7 @@ export function RelatorioCalculos() {
           }}
         >
           <div
-            className="flex flex-col w-[min(100vw-0.5rem,1280px)] h-[min(100dvh-0.5rem,920px)] max-h-[min(100dvh-0.5rem,920px)] min-h-0 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0f141c] shadow-2xl overflow-hidden"
+            className="flex flex-col w-full max-lg:h-[100dvh] max-lg:max-h-[100dvh] lg:w-[min(100vw-0.5rem,1280px)] lg:h-[min(100dvh-0.5rem,920px)] lg:max-h-[min(100dvh-0.5rem,920px)] min-h-0 max-lg:rounded-none lg:rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0f141c] shadow-2xl overflow-hidden"
             onMouseDown={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#141c2c] shrink-0">
@@ -690,7 +690,7 @@ export function RelatorioCalculos() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden overscroll-contain [-webkit-overflow-scrolling:touch]">
+            <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
               <Suspense
                 fallback={
                   <div className="flex min-h-[12rem] items-center justify-center p-8 text-sm text-slate-600 dark:text-slate-400">
