@@ -59,7 +59,7 @@ function ExtratoTableInner({
 
   return (
     <div className="overflow-x-auto min-w-0">
-      <table className="w-full min-w-[720px] table-fixed border-collapse text-sm">
+      <table className="w-full min-w-[520px] lg:min-w-[720px] table-fixed border-collapse text-sm">
         <colgroup>
           <col style={{ width: 36 }} />
           <col style={{ width: 48 }} />
@@ -89,7 +89,7 @@ function ExtratoTableInner({
                 className="rounded border-slate-300"
               />
             </th>
-            <th className="px-2 py-2 text-left whitespace-nowrap">Conta</th>
+            <th className="hidden lg:table-cell px-2 py-2 text-left whitespace-nowrap">Conta</th>
             {modoTotal ? (
               <th className="px-2 py-2 text-left whitespace-nowrap">Origem</th>
             ) : null}
@@ -118,7 +118,7 @@ function ExtratoTableInner({
             ) : null}
             <th className="px-2 py-2 text-left min-w-0">Descrição</th>
             <th className="px-2 py-2 text-right whitespace-nowrap">Valor</th>
-            <th className="px-2 py-2 text-left min-w-0">Obs</th>
+            <th className="hidden md:table-cell px-2 py-2 text-left min-w-0">Obs</th>
             <th className="px-1 py-2 text-center whitespace-nowrap">Etapa</th>
           </tr>
         </thead>
@@ -187,7 +187,7 @@ function ExtratoTableInner({
                       className="rounded border-slate-300"
                     />
                   </td>
-                  <td className="px-2 py-2 align-middle overflow-hidden">
+                  <td className="hidden lg:table-cell px-2 py-2 align-middle overflow-hidden">
                     <ContaBadge codigo={contaCodigoExtratoExibicao(item)} />
                   </td>
                   {modoTotal ? (
@@ -219,7 +219,7 @@ function ExtratoTableInner({
                   <td className="px-2 py-2 align-middle text-right whitespace-nowrap overflow-hidden">
                     <ValorText valor={item.valor} natureza={item.natureza} />
                   </td>
-                  <td className="px-2 py-2 align-middle overflow-hidden">
+                  <td className="hidden md:table-cell px-2 py-2 align-middle overflow-hidden">
                     <div
                       className="truncate text-xs text-slate-600 dark:text-slate-400"
                       title={textoObsExtrato(item)}

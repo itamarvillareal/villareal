@@ -599,7 +599,7 @@ export function ExtratoDetailPanel({
 
   return (
     <aside
-      className="absolute right-0 top-0 bottom-0 z-30 w-[360px] flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.05)] animate-in pointer-events-auto"
+      className="absolute inset-0 z-30 flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.05)] animate-in pointer-events-auto lg:inset-y-0 lg:left-auto lg:right-0 lg:w-[360px]"
       style={{ animation: 'extratoPanelIn 200ms ease' }}
       role="dialog"
       aria-label="Detalhes do lançamento"
