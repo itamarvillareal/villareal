@@ -7,6 +7,7 @@
  *   node scripts/enfileirar-contratos-honorarios-carteira.mjs --dry-run
  *   node scripts/enfileirar-contratos-honorarios-carteira.mjs --vps
  */
+import './lib/load-vilareal-import-env.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
@@ -31,8 +32,10 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--manifest') out.manifesto = argv[++i];
+    else if (a.startsWith('--manifest=')) out.manifesto = a.slice('--manifest='.length);
     else if (a.startsWith('--base-url=')) out.baseUrl = a.slice('--base-url='.length).replace(/\/$/, '');
     else if (a === '--login') out.login = argv[++i];
+    else if (a.startsWith('--login=')) out.login = a.slice('--login='.length);
     else if (a === '--senha') out.senha = argv[++i];
     else if (a === '--dry-run') out.dryRun = true;
     else if (a === '--vps') out.vps = true;
@@ -134,6 +137,45 @@ async function enfileirarComRetry(baseUrl, token, itens, batchSize) {
   return { resultados, pendentes, totalEnfileirados, totalDuplicados };
 }
 
+function chaveItem(codigoCliente, nomeArquivo) {
+  return `${String(codigoCliente || '').trim()}::${String(nomeArquivo || '')
+    .normalize('NFC')
+    .toLowerCase()
+    .trim()}`;
+}
+
+async function listarChavesFilaExistentes(baseUrl, token) {
+  const headers = { Authorization: `Bearer ${token}` };
+  const chaves = new Set();
+  let page = 0;
+  while (true) {
+    const r = await fetch(`${baseUrl}/api/documentos/contratos-honorarios/importar/fila?page=${page}&size=200`, {
+      headers,
+    });
+    if (!r.ok) throw new Error(`Listar fila falhou ${r.status}`);
+    const b = await r.json();
+    for (const it of b.content ?? []) {
+      chaves.add(chaveItem(it.codigoCliente, it.pdfNomeArquivo));
+    }
+    if (b.last || (b.content ?? []).length < 200) break;
+    page += 1;
+  }
+  return chaves;
+}
+
+function filtrarNovos(itens, chavesExistentes) {
+  const novos = [];
+  let pulados = 0;
+  for (const it of itens) {
+    if (chavesExistentes.has(chaveItem(it.codigoCliente, it.nomeArquivo))) {
+      pulados += 1;
+      continue;
+    }
+    novos.push(it);
+  }
+  return { novos, pulados };
+}
+
 function chunk(arr, size) {
   const out = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
@@ -192,10 +234,18 @@ async function main() {
   const token = await loginImportApi(opts.baseUrl, opts.login, opts.senha);
   console.error(`API: ${opts.baseUrl}`);
 
+  const chavesExistentes = await listarChavesFilaExistentes(opts.baseUrl, token);
+  const { novos, pulados } = filtrarNovos(itens, chavesExistentes);
+  console.error(`Já na fila: ${pulados} · pendentes de upload: ${novos.length}`);
+  if (novos.length === 0) {
+    console.error('Nada novo para enfileirar.');
+    return;
+  }
+
   const { resultados, pendentes, totalEnfileirados, totalDuplicados } = await enfileirarComRetry(
     opts.baseUrl,
     token,
-    itens,
+    novos,
     opts.batchSize,
   );
 
@@ -204,6 +254,8 @@ async function main() {
     geradoEm: new Date().toISOString(),
     api: opts.baseUrl,
     totalSolicitado: itens.length,
+    totalPuladosExistentes: pulados,
+    totalNovos: novos.length,
     totalEnfileirados,
     totalDuplicados,
     totalPendentes: pendentes.length,

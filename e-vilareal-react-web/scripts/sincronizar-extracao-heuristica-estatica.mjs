@@ -6,6 +6,7 @@
  *   node scripts/sincronizar-extracao-heuristica-estatica.mjs --apenas-arquivo
  *   VILAREAL_IMPORT_SENHA='…' node scripts/sincronizar-extracao-heuristica-estatica.mjs --base-url=http://localhost:8080
  */
+import './lib/load-vilareal-import-env.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
@@ -29,6 +30,8 @@ function parseArgs(argv) {
     else if (a === '--dry-run') out.dryRun = true;
     else if (a.startsWith('--base-url=')) out.baseUrl = a.slice('--base-url='.length).replace(/\/$/, '');
     else if (a === '--senha') out.senha = argv[++i];
+    else if (a === '--login') out.login = argv[++i];
+    else if (a.startsWith('--login=')) out.login = a.slice('--login='.length);
     else if (a.startsWith('--min-score=')) out.minScore = Number(a.slice('--min-score='.length));
   }
   return out;
