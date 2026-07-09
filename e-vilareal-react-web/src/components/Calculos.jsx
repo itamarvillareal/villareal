@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { useLocation } from 'react-router-dom';
 import { X, ChevronUp, ChevronDown, BarChart2, ExternalLink, RefreshCw, Check, FolderOpen, MessageCircle } from 'lucide-react';
+import {
+  CalculosMobileBottomSheet,
+  CalculosMobileResumoParametros,
+  CalculosMobileStatusBar,
+  CalculosMobileTabBar,
+  CalculosMobileToolbar,
+} from './calculos/CalculosMobileShell.jsx';
+import { CalculosPainelLateral } from './calculos/CalculosPainelLateral.jsx';
 import { useNavigate } from 'react-router-dom';
 import { getLancamentosContaCorrente } from '../data/financeiroData';
 import {
@@ -581,6 +589,23 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
 
   const [confirmarLimpeza, setConfirmarLimpeza] = useState(false);
   const [processoEmbed, setProcessoEmbed] = useState(null);
+  /** @type {['rodada' | 'parametros' | 'acoes' | null, import('react').Dispatch<import('react').SetStateAction<'rodada' | 'parametros' | 'acoes' | null>>]} */
+  const [painelMobile, setPainelMobile] = useState(null);
+  const [layoutDesktop, setLayoutDesktop] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches,
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const atualizar = () => setLayoutDesktop(mq.matches);
+    atualizar();
+    mq.addEventListener('change', atualizar);
+    return () => mq.removeEventListener('change', atualizar);
+  }, []);
+
+  useEffect(() => {
+    if (layoutDesktop) setPainelMobile(null);
+  }, [layoutDesktop]);
 
   function confirmarAlternarAceitarPagamento(next) {
     const isLock = Boolean(next);
@@ -600,6 +625,10 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       numeroInterno: procNorm,
       valorTotalAtualizado,
     });
+  }
+
+  function alternarPainelMobile(id) {
+    setPainelMobile((atual) => (atual === id ? null : id));
   }
 
   // Datas Especiais (por linha)
@@ -2536,19 +2565,116 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     aceitarPagamento,
   ]);
 
+  function alternarAceitarPagamento(next) {
+    const ok = confirmarAlternarAceitarPagamento(next);
+    if (!ok) return;
+    setAceitarPagamento(next);
+    if (next) {
+      aplicarValorCausaProcessoAoAceitarPagamento(resumoGeral.total);
+    } else {
+      setIndicesRefreshToken((t) => t + 1);
+      setPaginaParcelamento(1);
+    }
+    setRodadasState((prev) => {
+      const cur = prev[rodadaKey];
+      if (!cur) return prev;
+      const patch = next
+        ? patchRodadaAoAceitarPagamento(cur, dataCalculo)
+        : patchRodadaAoDesfazerAceitarPagamento(cur, titulos);
+      isDirtyRodadaRef.current = true;
+      paginasRodadaCacheRef.current = new Map();
+      return { ...prev, [rodadaKey]: { ...cur, ...patch } };
+    });
+  }
+
+  const painelLateralProps = {
+    tabAtiva,
+    codClienteManual,
+    procManual,
+    dimensao,
+    pagina,
+    totalPaginas,
+    dataCalculo,
+    juros,
+    multa,
+    honorariosTipo,
+    honorariosValor,
+    honorariosVariaveisTexto,
+    indice,
+    periodicidade,
+    indiceMenuAberto,
+    calculoAceito,
+    modoAlteracao,
+    aceitarPagamento,
+    limpezaAtiva,
+    sincronizandoRodadasApi,
+    inputCodClienteRodadaRef,
+    inputProcRodadaRef,
+    inputDimensaoRodadaRef,
+    btnIrRodadaRef,
+    indicePickerRef,
+    debitosPlanilhaInputRef,
+    SpinnerField,
+    SpinnerFieldManual,
+    onCodClienteChange: setCodClienteManual,
+    onProcChange: setProcManual,
+    onDimensaoChange: setDimensao,
+    onDimensaoCommitEnter: () => {
+      setDimensao((v) => Math.max(0, Math.floor(Number(v) || 0)));
+      commitClienteProcManual();
+    },
+    onPaginaChange: setPagina,
+    onAplicarClienteProc: aplicarClienteProcManual,
+    onAplicarClienteProcComValores: aplicarClienteProcComValores,
+    onCommitClienteProc: commitClienteProcManual,
+    onEnterCampoRodada: handleEnterCampoRodada,
+    onUpdatePainelCampo: updatePainelCampo,
+    onDataCalculoChange: (e) => {
+      const v = e.target.value;
+      const next = resolverAliasHojeEmTexto(v, 'br') ?? v;
+      setDataCalculo(next);
+      if (!calculoAceito || modoAlteracao) persistirDataCalculoRodada(next);
+    },
+    onDataCalculoBlur: (e) => {
+      const next = normalizarTextoDataBRparaSalvar(e.target.value);
+      setDataCalculo(next);
+      if (!calculoAceito || modoAlteracao) persistirDataCalculoRodada(next);
+    },
+    onToggleIndiceMenu: () => setIndiceMenuAberto((v) => !v),
+    onAbrirConferenciaIndices: () => {
+      setIndiceMenuAberto(false);
+      setModalIndicesConferencia(true);
+    },
+    onSelecionarIndice: (nome) => {
+      updatePainelCampo({ indice: nome });
+      setIndiceMenuAberto(false);
+    },
+    onAlternarLimpeza: () => {
+      if (limpezaAtiva) reverterLimpeza();
+      else setConfirmarLimpeza(true);
+    },
+    onAlternarAceitarPagamento: alternarAceitarPagamento,
+    onModoAlteracaoChange: setModoAlteracao,
+    onImportarDebitos: handleImportarDebitosPlanilhaClick,
+    onDebitosFileChange: handleDebitosPlanilhaFileChange,
+    onSincronizarBanco: () => void handleSincronizarRodadasComBanco(),
+    onGerarPdf: () => void gerarPdfCalculo(),
+    onGerarWord: () => void gerarWordListaDebitos(),
+    onCobrancaWhatsApp: () => setModalCobrancaWhatsApp(true),
+  };
+
   return (
     <div
-      className={`flex flex-col overflow-x-hidden max-w-full bg-slate-50 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] ${
-        isEmbedded
-          ? 'h-full min-h-0 w-full min-w-0'
-          : 'min-h-0 flex-1 max-lg:flex-none max-lg:h-auto'
+      className={`flex flex-col flex-1 min-h-0 overflow-hidden overflow-x-hidden max-w-full bg-slate-50 dark:bg-gradient-to-b dark:from-[#0a0d12] dark:via-[#0c1017] dark:to-[#0e141d] ${
+        isEmbedded ? 'h-full w-full min-w-0' : ''
       }`}
     >
-      <header className="flex items-center justify-between gap-2 px-3 py-2 bg-white border-b border-slate-200 shrink-0">
-        <h1 className="text-base font-semibold text-slate-800 dark:text-slate-100 truncate min-w-0">
-          Cálculos Atualizados dos Títulos
+      <header className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-2">
+        <h1 className="min-w-0 truncate text-base font-semibold text-slate-800 dark:text-slate-100 max-lg:text-sm">
+          <span className="hidden lg:inline">Cálculos Atualizados dos Títulos</span>
+          <span className="lg:hidden">Cálculos</span>
         </h1>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
             onClick={() =>
@@ -2557,11 +2683,11 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                 routerState: buildRouterStateChaveClienteProcesso(codigoClienteNorm, procNorm),
               })
             }
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-indigo-300 bg-indigo-50 text-indigo-900 text-xs font-medium hover:bg-indigo-100 dark:border-indigo-500/50 dark:bg-indigo-950/50 dark:text-indigo-100 dark:hover:bg-indigo-900/40"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-300 bg-indigo-50 px-2.5 py-1.5 text-xs font-medium text-indigo-900 hover:bg-indigo-100 dark:border-indigo-500/50 dark:bg-indigo-950/50 dark:text-indigo-100 dark:hover:bg-indigo-900/40"
             title={`Abrir cadastro do processo (cliente ${codigoClienteNorm}, proc. ${procNorm}) numa janela suspensa`}
           >
-            <FolderOpen className="w-4 h-4 shrink-0" aria-hidden />
-            Processo
+            <FolderOpen className="h-4 w-4 shrink-0" aria-hidden />
+            <span className="hidden sm:inline">Processo</span>
           </button>
           <button
             type="button"
@@ -2569,10 +2695,10 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
               if (isEmbedded && typeof onFecharEmbed === 'function') onFecharEmbed();
               else window.history.back();
             }}
-            className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+            className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-600 hover:bg-slate-50"
             aria-label="Fechar"
           >
-            <X className="w-4 h-4" />
+            <X className="h-4 w-4" />
           </button>
         </div>
       </header>
@@ -2595,390 +2721,45 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
         </span>
       </div>
 
-      <div className="flex overflow-x-auto flex-nowrap border-b border-slate-200 bg-slate-100 shrink-0 gap-0.5 px-1 pt-1 [-webkit-overflow-scrolling:touch] [scrollbar-width:thin]">
+      <CalculosMobileTabBar tabs={TABS} tabAtiva={tabAtiva} onTabChange={setTabAtiva} />
+
+      <div className="hidden shrink-0 flex-nowrap gap-0.5 overflow-x-auto border-b border-slate-200 bg-slate-100 px-1 pt-1 lg:flex [-webkit-overflow-scrolling:touch] [scrollbar-width:thin]">
         {TABS.map((tab) => (
           <button
             key={tab}
             type="button"
             onClick={() => setTabAtiva(tab)}
-            className={`shrink-0 px-3 py-2 max-lg:px-3.5 max-lg:py-2.5 text-xs max-lg:text-sm font-medium rounded-t-md transition-colors ${tabAtiva === tab ? 'bg-white text-slate-900 border border-b-0 border-slate-200 -mb-px shadow-sm' : 'text-slate-600 hover:bg-white/70 border border-transparent'}`}
+            className={`shrink-0 rounded-t-md px-3 py-2 text-xs font-medium transition-colors ${tabAtiva === tab ? '-mb-px border border-b-0 border-slate-200 bg-white text-slate-900 shadow-sm' : 'border border-transparent text-slate-600 hover:bg-white/70'}`}
           >
             {tab}
           </button>
         ))}
       </div>
 
-      <div
-        className={`flex flex-col lg:flex-row max-w-full min-h-0 ${
-          isEmbedded
-            ? 'flex-1 overflow-y-auto overflow-x-hidden overscroll-contain [-webkit-overflow-scrolling:touch]'
-            : 'flex-1 max-lg:flex-none max-lg:overflow-visible lg:overflow-hidden'
-        }`}
-      >
-        <aside className="order-first lg:order-last w-full max-w-full shrink-0 max-lg:flex-none lg:w-52 border-b lg:border-b-0 lg:border-t-0 lg:border-l border-slate-200 bg-slate-100/90 p-2 sm:p-3 pb-[max(5.5rem,calc(4.5rem+env(safe-area-inset-bottom,0px)))] lg:pb-2 max-lg:overflow-visible lg:overflow-y-auto overflow-x-hidden space-y-2 [-webkit-overflow-scrolling:touch] [scrollbar-width:thin]">
-          <div className="p-1.5 rounded border border-slate-200 bg-white shadow-sm">
-            <div className="grid grid-cols-1 min-[420px]:grid-cols-3 gap-2 lg:block lg:space-y-2">
-              <div>
-                <label className="block text-[11px] font-medium text-slate-700 mb-0.5">Cod Cliente</label>
-                <SpinnerFieldManual
-                  inputRef={inputCodClienteRodadaRef}
-                  value={codClienteManual}
-                  onChange={(v) => setCodClienteManual(v)}
-                  min={1}
-                  step={1}
-                  className="w-full"
-                  formatDisplay={(n) => String(Math.max(1, Math.floor(Number(n) || 1))).padStart(8, '0')}
-                  parseInput={(s) => Number(String(s).replace(/\D/g, ''))}
-                  onStep={(nextCod) => aplicarClienteProcComValores(nextCod, procManual)}
-                  onBlur={commitClienteProcManual}
-                  onKeyDown={(e) => handleEnterCampoRodada(e, inputProcRodadaRef)}
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-slate-700 mb-0.5">Proc.</label>
-                <SpinnerFieldManual
-                  inputRef={inputProcRodadaRef}
-                  value={procManual}
-                  onChange={(v) => setProcManual(v)}
-                  min={1}
-                  step={1}
-                  className="w-full"
-                  formatDisplay={(n) => String(Math.max(1, Math.floor(Number(n) || 1)))}
-                  parseInput={(s) => Number(String(s).replace(/\D/g, ''))}
-                  onStep={(nextProc) => aplicarClienteProcComValores(codClienteManual, nextProc)}
-                  onBlur={commitClienteProcManual}
-                  onKeyDown={(e) => handleEnterCampoRodada(e, inputDimensaoRodadaRef)}
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-slate-700 mb-0.5">Dimensão</label>
-                <SpinnerField
-                  inputRef={inputDimensaoRodadaRef}
-                  value={dimensao}
-                  onChange={setDimensao}
-                  min={0}
-                  className="w-full"
-                  onKeyDown={(e) =>
-                    handleEnterCampoRodada(e, btnIrRodadaRef, () => {
-                      setDimensao((v) => Math.max(0, Math.floor(Number(v) || 0)));
-                      commitClienteProcManual();
-                    })
-                  }
-                />
-              </div>
-              <button
-                ref={btnIrRodadaRef}
-                type="button"
-                onClick={aplicarClienteProcManual}
-                className="col-span-1 min-[420px]:col-span-3 lg:col-span-1 w-full px-2 py-2 lg:py-1.5 rounded bg-blue-600 text-white text-sm lg:text-xs font-medium hover:bg-blue-700"
-              >
-                Ir
-              </button>
-            </div>
-          </div>
-          {tabAtiva === 'Títulos' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 lg:block lg:space-y-2">
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-0.5">Página</label>
-                <SpinnerField value={pagina} onChange={setPagina} min={1} className="w-full lg:w-24" />
-                <p className="mt-1 text-[11px] text-slate-500">de {String(totalPaginas).padStart(2, '0')}</p>
-              </div>
-              <div className="flex items-end">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (limpezaAtiva) reverterLimpeza();
-                    else setConfirmarLimpeza(true);
-                  }}
-                  className="w-full px-2 py-2 lg:py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50"
-                >
-                  {limpezaAtiva ? 'Reverter limpeza' : 'Limpa Página Toda'}
-                </button>
-              </div>
-              <div className="col-span-2 lg:col-span-1">
-                <label className="block text-xs font-medium text-slate-700 mb-0.5">Data do Cálculo:</label>
-                <input
-                  type="text"
-                  value={dataCalculo}
-                  disabled={calculoAceito && !modoAlteracao}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    const next = resolverAliasHojeEmTexto(v, 'br') ?? v;
-                    setDataCalculo(next);
-                    if (!calculoAceito || modoAlteracao) persistirDataCalculoRodada(next);
-                  }}
-                  onBlur={(e) => {
-                    const next = normalizarTextoDataBRparaSalvar(e.target.value);
-                    setDataCalculo(next);
-                    if (!calculoAceito || modoAlteracao) persistirDataCalculoRodada(next);
-                  }}
-                  placeholder="dd/mm/aaaa ou hj"
-                  className={`${inputClass} disabled:bg-slate-100 disabled:text-slate-500`}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-0.5">Juros:</label>
-                <input
-                  type="text"
-                  value={juros}
-                  onChange={(e) => updatePainelCampo({ juros: e.target.value })}
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-0.5">Multa:</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={percentualFixoParaCampo(multa)}
-                    onChange={(e) =>
-                      updatePainelCampo({ multa: editarPercentualFixoCampo(e.target.value) })
-                    }
-                    onBlur={(e) =>
-                      updatePainelCampo({
-                        multa: normalizarHonorariosValorFixo(e.target.value),
-                      })
-                    }
-                    placeholder="2"
-                    className={`${inputClass} pr-7`}
-                  />
-                  <span
-                    className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-500"
-                    aria-hidden
-                  >
-                    %
-                  </span>
-                </div>
-              </div>
-              <div className="col-span-2 lg:col-span-1 border border-slate-200 rounded p-1.5 bg-white shadow-sm">
-                <p className="text-[11px] font-medium text-slate-700 mb-1">Honorários</p>
-                <div className="flex gap-2 mb-0.5">
-                  <label className="flex items-center gap-1 text-xs cursor-pointer">
-                    <input
-                      type="radio"
-                      name="honorarios"
-                      checked={honorariosTipo === 'fixos'}
-                      onChange={() => updatePainelCampo({ honorariosTipo: 'fixos' })}
-                      className="text-slate-600"
-                    />
-                    Fixos
-                  </label>
-                  <label className="flex items-center gap-1 text-xs cursor-pointer">
-                    <input
-                      type="radio"
-                      name="honorarios"
-                      checked={honorariosTipo === 'variaveis'}
-                      onChange={() => updatePainelCampo({ honorariosTipo: 'variaveis' })}
-                      className="text-slate-600"
-                    />
-                    Variáveis
-                  </label>
-                </div>
-                {honorariosTipo === 'variaveis' && (
-                  <>
-                    <p className="text-xs text-slate-500 mb-1">
-                      Padrão sugerido: ≤ 30 dias = 0% &nbsp;|&nbsp; 31–60 dias = 10% &nbsp;|&nbsp; &gt; 60 dias = 20%
-                    </p>
-                    <textarea
-                      value={honorariosVariaveisTexto}
-                      onChange={(e) => updatePainelCampo({ honorariosVariaveisTexto: e.target.value })}
-                      rows={3}
-                      placeholder="Regras personalizadas (texto livre; padrão do cliente em Cadastro de Clientes)"
-                      className="w-full text-sm border border-slate-300 rounded px-2 py-1 mb-1 font-mono"
-                    />
-                  </>
-                )}
-                <div className="relative">
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={percentualFixoParaCampo(honorariosValor)}
-                    onChange={(e) =>
-                      updatePainelCampo({ honorariosValor: editarPercentualFixoCampo(e.target.value) })
-                    }
-                    onBlur={(e) =>
-                      updatePainelCampo({
-                        honorariosValor: normalizarHonorariosValorFixo(e.target.value),
-                      })
-                    }
-                    placeholder="20"
-                    disabled={honorariosTipo !== 'fixos'}
-                    className={`${inputClass} pr-7 ${honorariosTipo !== 'fixos' ? 'bg-slate-50 text-slate-400' : ''}`}
-                  />
-                  <span
-                    className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-500"
-                    aria-hidden
-                  >
-                    %
-                  </span>
-                </div>
-              </div>
-              <div className="col-span-2 lg:col-span-1 border border-slate-200 rounded p-1.5 bg-white shadow-sm relative" ref={indicePickerRef}>
-                <p className="text-[11px] font-medium text-slate-700 mb-1">Índice</p>
-                <button
-                  type="button"
-                  onClick={() => setIndiceMenuAberto((v) => !v)}
-                  onDoubleClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setIndiceMenuAberto(false);
-                    setModalIndicesConferencia(true);
-                  }}
-                  title="Clique para escolher; duplo clique para conferir índices mês a mês"
-                  className="w-full flex items-center justify-between gap-1.5 px-2 py-2 lg:py-1.5 rounded border border-slate-200 bg-white text-left text-[11px] font-medium text-slate-800 hover:bg-slate-50"
-                  aria-expanded={indiceMenuAberto}
-                  aria-haspopup="listbox"
-                  aria-label={`Índice: ${indice}. Abrir lista; duplo clique confere valores mensais`}
-                >
-                  <span className="flex items-center gap-1 min-w-0 truncate">
-                    {indice}
-                    {indice === 'INPC' && <BarChart2 className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden />}
-                  </span>
-                  {indiceMenuAberto ? (
-                    <ChevronUp className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden />
-                  ) : (
-                    <ChevronDown className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden />
-                  )}
-                </button>
-                {indiceMenuAberto ? (
-                  <ul
-                    className="absolute left-1.5 right-1.5 top-full z-30 mt-0.5 max-h-44 overflow-y-auto rounded border border-slate-200 bg-white py-0.5 shadow-lg"
-                    role="listbox"
-                    aria-label="Escolher índice"
-                  >
-                    {INDICES.map((nome) => (
-                      <li key={nome} role="presentation">
-                        <button
-                          type="button"
-                          role="option"
-                          aria-selected={indice === nome}
-                          onClick={() => {
-                            updatePainelCampo({ indice: nome });
-                            setIndiceMenuAberto(false);
-                          }}
-                          className={`w-full text-left px-2 py-1.5 text-[11px] flex items-center gap-1.5 hover:bg-slate-50 ${
-                            indice === nome ? 'bg-blue-50 text-blue-900 font-medium' : 'text-slate-800'
-                          }`}
-                        >
-                          <span className="w-3.5 h-3.5 shrink-0 flex items-center justify-center">
-                            {indice === nome ? <Check className="w-3 h-3 text-blue-600" strokeWidth={3} aria-hidden /> : null}
-                          </span>
-                          <span className="truncate">{nome}</span>
-                          {nome === 'INPC' && <BarChart2 className="w-3.5 h-3.5 text-slate-500 shrink-0 ml-auto" aria-hidden />}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-              <div className="col-span-2 lg:col-span-1 border border-slate-200 rounded p-1.5 bg-white shadow-sm">
-                <p className="text-[11px] font-medium text-slate-700 mb-0.5">Periodicidade (sugestão)</p>
-                <select
-                  value={periodicidade}
-                  onChange={(e) => updatePainelCampo({ periodicidade: e.target.value })}
-                  className={inputClass}
-                >
-                  {PERIODICIDADE_OPCOES.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          )}
-          <div className="space-y-1 pt-1.5 border-t border-slate-200">
-            <button type="button" className="w-full px-2 py-2 lg:py-1.5 rounded border border-slate-200 bg-blue-600 text-white text-xs font-medium hover:bg-blue-700">Configurações</button>
-            <label className="flex items-center gap-2 text-xs cursor-pointer py-0.5">
-              <input
-                type="checkbox"
-                checked={aceitarPagamento}
-                onChange={(e) => {
-                  const next = e.target.checked;
-                  const ok = confirmarAlternarAceitarPagamento(next);
-                  if (!ok) return;
-                  setAceitarPagamento(next);
-                  if (next) {
-                    aplicarValorCausaProcessoAoAceitarPagamento(resumoGeral.total);
-                  } else {
-                    setIndicesRefreshToken((t) => t + 1);
-                    setPaginaParcelamento(1);
-                  }
-                  setRodadasState((prev) => {
-                    const cur = prev[rodadaKey];
-                    if (!cur) return prev;
-                    const patch = next
-                      ? patchRodadaAoAceitarPagamento(cur, dataCalculo)
-                      : patchRodadaAoDesfazerAceitarPagamento(cur, titulos);
-                    isDirtyRodadaRef.current = true;
-                    paginasRodadaCacheRef.current = new Map();
-                    return { ...prev, [rodadaKey]: { ...cur, ...patch } };
-                  });
-                }}
-                className="rounded border-slate-300"
-              />
-              Aceitar Pagamento
-            </label>
-            <label className="flex items-center gap-2 text-xs cursor-pointer py-0.5">
-              <input type="checkbox" checked={modoAlteracao} onChange={(e) => setModoAlteracao(e.target.checked)} className="rounded border-slate-300" />
-              Modo de Alteração
-            </label>
-            <input
-              ref={debitosPlanilhaInputRef}
-              type="file"
-              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              className="hidden"
-              aria-hidden="true"
-              onChange={handleDebitosPlanilhaFileChange}
-            />
-            <button
-              type="button"
-              onClick={handleImportarDebitosPlanilhaClick}
-              className="w-full px-2 py-2 lg:py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50 text-left"
-            >
-              Importar débitos (Excel)
-            </button>
-            {featureFlags.useApiCalculos && (
-              <button
-                type="button"
-                disabled={sincronizandoRodadasApi}
-                onClick={() => void handleSincronizarRodadasComBanco()}
-                className="w-full px-2 py-2 lg:py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50 text-left flex items-center gap-1.5 disabled:opacity-60"
-              >
-                <RefreshCw className={`w-4 h-4 shrink-0 ${sincronizandoRodadasApi ? 'animate-spin' : ''}`} aria-hidden />
-                Sincronizar com banco
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => void gerarPdfCalculo()}
-              className="w-full px-2 py-2 lg:py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50 text-left"
-            >
-              Salvar Formulário em PDF
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                void gerarWordListaDebitos();
-              }}
-              className="w-full px-2 py-2 lg:py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50"
-            >
-              Gerar no Word
-            </button>
-            <button
-              type="button"
-              onClick={() => setModalCobrancaWhatsApp(true)}
-              className="w-full px-2 py-2 lg:py-1.5 rounded border border-emerald-300 bg-emerald-50 text-emerald-900 text-xs font-medium hover:bg-emerald-100 flex items-center justify-center gap-1.5"
-            >
-              <MessageCircle className="w-4 h-4 shrink-0" aria-hidden />
-              Cobrança WhatsApp
-            </button>
-            <button type="button" className="w-full px-2 py-2 lg:py-1.5 rounded border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50">Email Automático</button>
-          </div>
-        </aside>
+      <CalculosMobileStatusBar
+        aceitarPagamento={aceitarPagamento}
+        modoAlteracao={modoAlteracao}
+        onToggleAceitar={alternarAceitarPagamento}
+        onToggleModoAlteracao={setModoAlteracao}
+      />
 
-        <div className="order-last lg:order-first flex-1 min-w-0 min-h-0 max-w-full max-lg:flex-none max-lg:overflow-visible lg:overflow-auto p-2 sm:p-3 pb-[max(5.5rem,calc(4.5rem+env(safe-area-inset-bottom,0px)))] lg:pb-2 [-webkit-overflow-scrolling:touch] flex flex-col">
+      <CalculosMobileResumoParametros
+        visivel={tabAtiva === 'Títulos'}
+        dataCalculo={dataCalculo}
+        juros={juros}
+        multa={percentualFixoParaCampo(multa)}
+        indice={indice}
+        onAbrirParametros={() => alternarPainelMobile('parametros')}
+      />
+
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
+        {layoutDesktop ? (
+          <aside className="w-52 shrink-0 space-y-2 overflow-x-hidden overflow-y-auto border-l border-slate-200 bg-slate-100/90 p-2 sm:p-3 lg:order-last [-webkit-overflow-scrolling:touch] [scrollbar-width:thin]">
+            <CalculosPainelLateral secao="completo" {...painelLateralProps} />
+          </aside>
+        ) : null}
+
+        <div className="order-first flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto p-2 sm:p-3 lg:pb-2 [-webkit-overflow-scrolling:touch]">
           {tabAtiva === 'Títulos' && (
             <TitulosGrid
               titulosPaginaCompletos={titulosPaginaCompletos}
@@ -3740,6 +3521,39 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
           )}
         </div>
       </div>
+
+      {!layoutDesktop ? (
+        <>
+          <CalculosMobileToolbar
+            painelAberto={painelMobile}
+            onRodada={() => alternarPainelMobile('rodada')}
+            onParametros={() => alternarPainelMobile('parametros')}
+            onAcoes={() => alternarPainelMobile('acoes')}
+            parametrosDisponivel
+          />
+          <CalculosMobileBottomSheet
+            open={painelMobile === 'rodada'}
+            title="Rodada (cliente / processo)"
+            onClose={() => setPainelMobile(null)}
+          >
+            <CalculosPainelLateral secao="rodada" layoutMobile {...painelLateralProps} />
+          </CalculosMobileBottomSheet>
+          <CalculosMobileBottomSheet
+            open={painelMobile === 'parametros'}
+            title="Parâmetros do cálculo"
+            onClose={() => setPainelMobile(null)}
+          >
+            <CalculosPainelLateral secao="parametros" layoutMobile {...painelLateralProps} />
+          </CalculosMobileBottomSheet>
+          <CalculosMobileBottomSheet
+            open={painelMobile === 'acoes'}
+            title="Ações e exportação"
+            onClose={() => setPainelMobile(null)}
+          >
+            <CalculosPainelLateral secao="acoes" layoutMobile {...painelLateralProps} />
+          </CalculosMobileBottomSheet>
+        </>
+      ) : null}
 
       {modalDatasEspeciais && linhaModalIdx != null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
