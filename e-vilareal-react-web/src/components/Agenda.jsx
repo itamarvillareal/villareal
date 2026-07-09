@@ -1,5 +1,5 @@
 import { Fragment, useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { CalendarDays, CalendarX2, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
+import { CalendarDays, CalendarX2, ChevronLeft, ChevronRight, Layers, Plus, X } from 'lucide-react';
 import {
   buscarProcessoPorTextoCompromissoAgenda,
   mensagemResultadoLocalizarProcesso,
@@ -46,6 +46,7 @@ import {
   tipoCompromissoAgenda,
 } from './agendaUiShared.jsx';
 import { ProcessoEmbedModal } from './ProcessoEmbedModal.jsx';
+import { ModalAgendamentoLoteAgenda } from './ModalAgendamentoLoteAgenda.jsx';
 
 /** Retorna string DD/MM/YYYY para dia/mês/ano */
 function dataStr(dia, mes, ano) {
@@ -564,6 +565,8 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
   const [diaDireita, setDiaDireita] = useState(__calInicialAgenda.diaD);
   const [eventoModal, setEventoModal] = useState(null);
   const [modalAgendaMensal, setModalAgendaMensal] = useState(false);
+  const [modalAgendamentoLoteAberto, setModalAgendamentoLoteAberto] = useState(false);
+  const [agendamentoLoteIniciais, setAgendamentoLoteIniciais] = useState(null);
   const [agendaStatusNonce, setAgendaStatusNonce] = useState(0);
   const [usuariosAtivos, setUsuariosAtivosState] = useState(() => getColaboradoresHumanosAtivos());
   const [eventosApiEsquerda, setEventosApiEsquerda] = useState([]);
@@ -587,6 +590,11 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
     const t = window.setTimeout(() => setToastAgenda(''), 2600);
     return () => window.clearTimeout(t);
   }, [toastAgenda]);
+
+  function abrirModalAgendamentoLote({ iniciais = null } = {}) {
+    setAgendamentoLoteIniciais(iniciais);
+    setModalAgendamentoLoteAberto(true);
+  }
 
   const aoStatusAlteradoAgenda = useCallback((rotulo) => {
     setToastAgenda(rotulo === 'OK' ? 'Compromisso marcado como concluído (✓ OK)' : 'Status alterado para pendente');
@@ -986,17 +994,31 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
               <p className="truncate text-xs text-slate-500">Compromissos por dia — duplo clique abre o processo na base</p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setModalAgendaMensal(true)}
-            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-emerald-400/60 bg-gradient-to-r from-emerald-500 to-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-md hover:from-emerald-600 hover:to-teal-700 sm:w-auto sm:shrink-0"
-            title="Relatório de todos os compromissos do mês (usuário do calendário esquerdo)"
-          >
-            <CalendarDays className="h-4 w-4 opacity-95" aria-hidden />
-            Agenda mensal
-          </button>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                abrirModalAgendamentoLote({ iniciais: { dataBr: dataEsquerdaStr } });
+              }}
+              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-sky-400/60 bg-gradient-to-r from-sky-500 to-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-md hover:from-sky-600 hover:to-indigo-700 sm:w-auto"
+              title="Replicar compromisso para todos os colaboradores com recorrência opcional"
+            >
+              <Layers className="h-4 w-4 opacity-95" aria-hidden />
+              Agendamento em lote
+            </button>
+            <button
+              type="button"
+              onClick={() => setModalAgendaMensal(true)}
+              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-emerald-400/60 bg-gradient-to-r from-emerald-500 to-teal-600 px-3 py-2 text-sm font-semibold text-white shadow-md hover:from-emerald-600 hover:to-teal-700 sm:w-auto sm:shrink-0"
+              title="Relatório de todos os compromissos do mês (usuário do calendário esquerdo)"
+            >
+              <CalendarDays className="h-4 w-4 opacity-95" aria-hidden />
+              Agenda mensal
+            </button>
+          </div>
         </div>
-        <div className="flex w-full flex-col gap-4 bg-slate-100/80 p-2 max-lg:shrink-0 lg:min-h-0 lg:flex-1 lg:flex-row lg:gap-2 lg:overflow-hidden">
+        <div className="flex w-full flex-col gap-2 bg-slate-100/80 p-2 max-lg:shrink-0 lg:min-h-0 lg:flex-1 lg:overflow-hidden">
+          <div className="flex w-full min-w-0 flex-col gap-4 max-lg:shrink-0 lg:min-h-0 lg:flex-1 lg:flex-row lg:gap-2 lg:overflow-hidden">
           <ColunaDia
             variantColuna="esquerda"
             dataLabel={`${dataEsquerdaStr} — Compromissos do dia`}
@@ -1073,6 +1095,7 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
           </div>
         </div>
         </div>
+      </div>
       </div>
 
       {/* Calendário esquerdo: abaixo dos compromissos no mobile; à esquerda no desktop. */}
@@ -1364,6 +1387,19 @@ export function Agenda({ focoDataBr = null, focoRevision = 0, modoFlutuante = fa
       ) : null}
 
       <ProcessoEmbedModal embed={processoEmbed} onFechar={() => setProcessoEmbed(null)} />
+
+      <ModalAgendamentoLoteAgenda
+        aberto={modalAgendamentoLoteAberto}
+        onFechar={() => {
+          setModalAgendamentoLoteAberto(false);
+        }}
+        valoresIniciais={agendamentoLoteIniciais}
+        origemApi="agenda-em-lote"
+        zIndexClass={modoFlutuante ? 'z-[70]' : 'z-50'}
+        onSalvo={() => {
+          setAgendaStatusNonce((n) => n + 1);
+        }}
+      />
     </div>
   );
 }

@@ -129,7 +129,10 @@ public class ProcessoProjudiMovimentacoesDriveService {
             if (resultado.totalComDocumento() <= 0) {
                 base = "Nenhuma movimentação com documento encontrada no PROJUDI.";
             } else if (!resultado.temMais()) {
-                base = "Todas as movimentações com documento já estão no Drive.";
+                base = "Todas as movimentações com documento já estão no Drive ("
+                        + resultado.totalComDocumento()
+                        + " com arquivo no PROJUDI). "
+                        + "Intimações/publicações só no portal, sem PDF anexo, não entram na pasta.";
             } else {
                 base = "Nenhum arquivo novo enviado neste passo. Clique novamente para continuar o arquivamento.";
             }

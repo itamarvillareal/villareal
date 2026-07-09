@@ -551,22 +551,27 @@ public class GoogleDriveService {
         }
         try {
             String query = "'" + pastaId + "' in parents and trashed = false";
-            FileList result = prepararListagem(
-                            driveService.files()
-                                    .list()
-                                    .setQ(query)
-                                    .setSpaces("drive")
-                                    .setFields(
-                                            "files(id, name, mimeType, size, modifiedTime, webViewLink, webContentLink, iconLink)")
-                                    .setOrderBy("folder,name")
-                                    .setPageSize(100),
-                            pastaId)
-                    .execute();
-
-            if (result.getFiles() == null || result.getFiles().isEmpty()) {
-                return List.of();
-            }
-            return result.getFiles().stream().map(this::toDriveArquivoDto).toList();
+            List<DriveArquivoDto> todos = new ArrayList<>();
+            String pageToken = null;
+            do {
+                FileList result = prepararListagem(
+                                driveService.files()
+                                        .list()
+                                        .setQ(query)
+                                        .setSpaces("drive")
+                                        .setFields(
+                                                "nextPageToken, files(id, name, mimeType, size, modifiedTime, webViewLink, webContentLink, iconLink)")
+                                        .setOrderBy("folder,name")
+                                        .setPageSize(1000)
+                                        .setPageToken(pageToken),
+                                pastaId)
+                        .execute();
+                if (result.getFiles() != null) {
+                    result.getFiles().stream().map(this::toDriveArquivoDto).forEach(todos::add);
+                }
+                pageToken = result.getNextPageToken();
+            } while (pageToken != null);
+            return todos;
         } catch (Exception e) {
             log.warn("Erro ao listar conteúdo no Drive: {}", e.getMessage());
             return List.of();

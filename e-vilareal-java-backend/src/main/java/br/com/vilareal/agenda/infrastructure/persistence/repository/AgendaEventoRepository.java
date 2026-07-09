@@ -49,4 +49,35 @@ public interface AgendaEventoRepository extends JpaRepository<AgendaEventoEntity
             WHERE e.processoRef = :processoRef AND e.origem = :origem
             """)
     int deleteByProcessoRefAndOrigem(@Param("processoRef") String processoRef, @Param("origem") String origem);
+
+    @Query("""
+            SELECT e FROM AgendaEventoEntity e
+            JOIN FETCH e.usuario u
+            WHERE e.origem = :origem
+            ORDER BY e.dataEvento, u.id
+            """)
+    List<AgendaEventoEntity> findByOrigem(@Param("origem") String origem);
+
+    @Query("""
+            SELECT DISTINCT e.origem FROM AgendaEventoEntity e
+            WHERE e.origem LIKE CONCAT(:prefix, '%')
+            ORDER BY e.origem DESC
+            """)
+    List<String> findDistinctOrigensStartingWith(@Param("prefix") String prefix);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            DELETE FROM AgendaEventoEntity e
+            WHERE e.origem = :origem
+            """)
+    int deleteByOrigem(@Param("origem") String origem);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            DELETE FROM AgendaEventoEntity e
+            WHERE e.origem = :origem AND e.dataEvento >= :aPartirDe
+            """)
+    int deleteByOrigemAndDataEventoGreaterThanEqual(
+            @Param("origem") String origem,
+            @Param("aPartirDe") LocalDate aPartirDe);
 }

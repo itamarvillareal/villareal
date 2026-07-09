@@ -67,15 +67,12 @@ import { parteApiEhLadoCliente } from '../data/partesLadoEscritorio.js';
 import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import {
   agendarAudienciaParaTodosUsuarios,
-  agendarEmLoteParaUsuarios,
-  calcularPrimeiraOcorrenciaAgendaLote,
   getUsuariosAtivos,
   getColaboradoresHumanosAtivos,
   removerAudienciaProcessoDaAgenda,
 } from '../data/agendaPersistenciaData';
 import {
   replicarAudienciaProcessoTodosColaboradoresApi,
-  replicarCompromissoLoteTodosColaboradoresApi,
   removerAudienciaProcessoAgendaApi,
 } from '../repositories/agendaRepository.js';
 import { getApiUsuarioSessao, getPerfilAtivoParaPermissoes } from '../data/usuarioPermissoesStorage.js';
@@ -153,6 +150,7 @@ import {
 import { ModalRelatorioPublicacoesProcesso, PublicacoesRelatorioConteudo } from './ModalRelatorioPublicacoesProcesso.jsx';
 import { listarPublicacoesRelatorioPorProcesso, listarMovimentacoesEmailPorProcesso } from '../repositories/publicacoesRepository.js';
 import { ModalCriarTarefaContextual } from './ModalCriarTarefaContextual.jsx';
+import { ModalAgendamentoLoteAgenda } from './ModalAgendamentoLoteAgenda.jsx';
 import { ModalConsultaPeriodicaProcesso } from './consultas-periodicas/ModalConsultaPeriodicaProcesso.jsx';
 import { ProcessoWhatsAppContatosSecao } from './whatsapp/ProcessoWhatsAppContatosSecao.jsx';
 import { ProcessoRemuneracaoSecao } from './processos/ProcessoRemuneracaoSecao.jsx';
@@ -282,18 +280,6 @@ function storageKeyAcaoRedacaoProcesso(codigoCliente, processo) {
   const pSafe = Number.isFinite(p) ? p : 0;
   return `e-vilareal-acao-redacao:${c}:${pSafe}`;
 }
-
-const PERIODICIDADES_AGENDA_LOTE = [
-  'Agendamento único',
-  'Diariamente',
-  'Semanalmente',
-  'Quinzenalmente',
-  'Mensalmente',
-  'Bimestralmente',
-  'Trimestralmente',
-  'Semestralmente',
-  'Todo dia X do mês',
-];
 
 /** Vínculo mock cliente×processo → imóvel (mesma regra do useMemo `vinculoImovelMock`). */
 function buscarVinculoImovelMock() {
@@ -699,13 +685,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [dataProximaInformacao, setDataProximaInformacao] = useState('');
   const [paginaHistorico, setPaginaHistorico] = useState(1);
   const [informacaoModal, setInformacaoModal] = useState(null);
-  const [modalAgendaLoteAberto, setModalAgendaLoteAberto] = useState(false);
-  const [agendaLoteTexto, setAgendaLoteTexto] = useState('');
-  const [agendaLoteData, setAgendaLoteData] = useState('');
-  const [agendaLoteHora, setAgendaLoteHora] = useState('');
-  const [agendaLotePeriodicidade, setAgendaLotePeriodicidade] = useState('Agendamento único');
-  const [agendaLoteDiaDoMes, setAgendaLoteDiaDoMes] = useState('');
-  const [agendaLoteInfo, setAgendaLoteInfo] = useState('');
+  const [modalAgendaLote, setModalAgendaLote] = useState({ aberto: false, iniciais: null, processo: null });
   /** Duplo clique em «Audiência»: agenda em modal na data informada. */
   const [modalAgendaAudiencia, setModalAgendaAudiencia] = useState({
     aberto: false,
@@ -769,7 +749,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   useCloseOnEscape(modalContaCorrente, fecharModalContaCorrente);
   useCloseOnEscape(modalTramitacaoAberto, fecharModalTramitacao);
   useCloseOnEscape(modalAcoesRedacaoAberto, () => setModalAcoesRedacaoAberto(false));
-  useCloseOnEscape(modalAgendaLoteAberto, () => setModalAgendaLoteAberto(false));
   useCloseOnEscape(
     isEmbedded &&
       !driveExplorerAberto &&
@@ -784,7 +763,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       !modalTarefaContextual &&
       !modalTramitacaoAberto &&
       !modalAcoesRedacaoAberto &&
-      !modalAgendaLoteAberto,
+      !modalAgendaLote.aberto,
     onFecharEmbed,
   );
 
@@ -1626,14 +1605,20 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   function abrirAgendaEmLote() {
     const hoje = hojeBr();
     const dataInicial = normalizarDataBr(audienciaData) || hoje;
-    const diaInicial = Number(String(dataInicial).slice(0, 2));
-    setAgendaLoteTexto(montarTituloAgendaDoProcesso());
-    setAgendaLoteData(dataInicial);
-    setAgendaLoteHora(normalizarHoraAudiencia(audienciaHora) || '');
-    setAgendaLotePeriodicidade('Agendamento único');
-    setAgendaLoteDiaDoMes(Number.isFinite(diaInicial) ? String(diaInicial) : '');
-    setAgendaLoteInfo('');
-    setModalAgendaLoteAberto(true);
+    setModalAgendaLote({
+      aberto: true,
+      iniciais: {
+        texto: montarTituloAgendaDoProcesso(),
+        dataBr: dataInicial,
+        hora: normalizarHoraAudiencia(audienciaHora) || '',
+      },
+      processo: {
+        codigoCliente,
+        numeroInterno: processo,
+        processoId: processo,
+        numeroProcessoNovo,
+      },
+    });
   }
 
   function abrirAgendaFlutuanteNaDataAudiencia() {
@@ -1645,103 +1630,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       revision: prev.revision + 1,
     }));
   }
-
-  async function salvarAgendaEmLote() {
-    const dataNorm = normalizarDataBr(agendaLoteData);
-    if (!dataNorm) {
-      setAgendaLoteInfo('Informe uma data válida no formato dd/mm/aaaa.');
-      return;
-    }
-
-    const horaNorm = normalizarHoraAudiencia(agendaLoteHora);
-    const periodicidadeTodoDiaMes = agendaLotePeriodicidade === 'Todo dia X do mês';
-    const diaDoMesNum = Number(agendaLoteDiaDoMes);
-    if (
-      periodicidadeTodoDiaMes &&
-      (!Number.isInteger(diaDoMesNum) || !Number.isFinite(diaDoMesNum) || diaDoMesNum < 1 || diaDoMesNum > 31)
-    ) {
-      setAgendaLoteInfo('Informe um dia do mês válido entre 1 e 31.');
-      return;
-    }
-
-    if (featureFlags.useApiAgenda) {
-      try {
-        const resultado = await replicarCompromissoLoteTodosColaboradoresApi({
-          textoCompromisso: agendaLoteTexto,
-          dataBaseBr: dataNorm,
-          hora: horaNorm,
-          periodicidade: agendaLotePeriodicidade,
-          diaDoMes: periodicidadeTodoDiaMes ? diaDoMesNum : null,
-          ajustarParaDiaUtil: true,
-          codigoCliente,
-          numeroInterno: processo,
-        });
-        if (!resultado?.ok) {
-          setAgendaLoteInfo('Não foi possível salvar o agendamento na API.');
-          return;
-        }
-        setAgendaLoteInfo(
-          `Agendamento replicado na API: ${resultado.criados} compromisso(s), ${resultado.ocorrencias} dia(s), ${resultado.usuarios} colaborador(es) na lista.`
-        );
-      } catch {
-        setAgendaLoteInfo('Erro ao salvar agendamento na API.');
-        return;
-      }
-      setTimeout(() => setModalAgendaLoteAberto(false), 700);
-      return;
-    }
-
-    const usuariosAlvo = (getColaboradoresHumanosAtivos() || []).map((u) => ({
-      id: u.id,
-      nome: String(getNomeExibicaoUsuario(u) || u.id || '').trim() || String(u.id),
-    }));
-    if (usuariosAlvo.length === 0) {
-      setAgendaLoteInfo('Cadastre usuários ativos em Usuários para replicar na agenda de todos.');
-      return;
-    }
-
-    const resultado = agendarEmLoteParaUsuarios({
-      textoCompromisso: agendaLoteTexto,
-      dataBaseBr: dataNorm,
-      hora: horaNorm,
-      periodicidade: agendaLotePeriodicidade,
-      diaDoMes: periodicidadeTodoDiaMes ? diaDoMesNum : null,
-      ajustarParaDiaUtil: true,
-      usuarios: usuariosAlvo,
-      processoId: String(processo ?? ''),
-      clienteId: String(codigoCliente ?? ''),
-      numeroProcessoNovo: String(numeroProcessoNovo ?? ''),
-    });
-
-    if (!resultado?.ok) {
-      setAgendaLoteInfo('Não foi possível salvar o agendamento em lote.');
-      return;
-    }
-
-    setAgendaLoteInfo(
-      `Agendamento criado: ${resultado.inseridos} item(ns), ${resultado.ocorrencias} ocorrência(s), ${resultado.usuarios} usuário(s).`
-    );
-    setTimeout(() => setModalAgendaLoteAberto(false), 700);
-  }
-
-  const primeiraOcorrenciaAjustadaAgendaLote = useMemo(() => {
-    const dataNorm = normalizarDataBr(agendaLoteData);
-    if (!dataNorm) return '';
-    const periodicidadeTodoDiaMes = agendaLotePeriodicidade === 'Todo dia X do mês';
-    const diaDoMesNum = Number(agendaLoteDiaDoMes);
-    if (
-      periodicidadeTodoDiaMes &&
-      (!Number.isInteger(diaDoMesNum) || !Number.isFinite(diaDoMesNum) || diaDoMesNum < 1 || diaDoMesNum > 31)
-    ) {
-      return '';
-    }
-    return calcularPrimeiraOcorrenciaAgendaLote({
-      dataBaseBr: dataNorm,
-      periodicidade: agendaLotePeriodicidade,
-      diaDoMes: periodicidadeTodoDiaMes ? diaDoMesNum : null,
-      ajustarParaDiaUtil: true,
-    });
-  }, [agendaLoteData, agendaLotePeriodicidade, agendaLoteDiaDoMes]);
 
   /** Disponível mesmo com edição desabilitada: abre http(s) ou mostra o caminho. */
   function abrirLinkPastaArquivo() {
@@ -5502,157 +5390,14 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         </div>
       ) : null}
 
-      {modalAgendaLoteAberto && (
-        <div
-          className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/50 p-0 md:items-center md:p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="modal-agenda-lote-titulo"
-          onMouseDown={onModalOverlayMouseDown}
-          onClick={criarModalOverlayClickFechar(() => setModalAgendaLoteAberto(false))}
-        >
-          <div
-            className="flex h-full w-full max-w-none flex-col overflow-hidden rounded-none border border-slate-200 bg-white shadow-xl md:h-auto md:max-h-[90vh] md:max-w-2xl md:rounded-lg"
-            onMouseDown={onModalPanelMouseDown}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 md:px-4">
-              <button
-                type="button"
-                className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 md:hidden"
-                aria-label="Voltar"
-                onClick={() => setModalAgendaLoteAberto(false)}
-              >
-                <ChevronLeft className="h-6 w-6" aria-hidden />
-              </button>
-              <h2 id="modal-agenda-lote-titulo" className="min-w-0 flex-1 text-base font-semibold text-slate-800">
-                Agendamento em lote
-              </h2>
-              <button
-                type="button"
-                className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
-                aria-label="Fechar"
-                onClick={() => setModalAgendaLoteAberto(false)}
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
-              <div className="text-sm text-slate-600">
-                Este compromisso será lançado para <strong>Dr. Itamar</strong>, <strong>Karla</strong> e <strong>Ana Luisa</strong>.
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Texto do compromisso</label>
-                <textarea
-                  value={agendaLoteTexto}
-                  onChange={(e) => setAgendaLoteTexto(e.target.value)}
-                  rows={2}
-                  className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-base md:text-sm"
-                />
-              </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Data</label>
-                  <input
-                    type="text"
-                    value={agendaLoteData}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setAgendaLoteData(resolverAliasHojeEmTexto(v, 'br') ?? v);
-                    }}
-                    onBlur={() => setAgendaLoteData(normalizarDataBr(agendaLoteData) || agendaLoteData)}
-                    placeholder="dd/mm/aaaa ou hj"
-                    className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-base md:text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Hora</label>
-                  <input
-                    type="text"
-                    value={agendaLoteHora}
-                    onChange={(e) => setAgendaLoteHora(formatarHoraAudienciaInput(e.target.value))}
-                    onBlur={() => setAgendaLoteHora(normalizarHoraAudiencia(agendaLoteHora) || '')}
-                    placeholder="hh:mm"
-                    className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-base md:text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Periodicidade</label>
-                  <select
-                    value={agendaLotePeriodicidade}
-                    onChange={(e) => {
-                      const novaPeriodicidade = e.target.value;
-                      setAgendaLotePeriodicidade(novaPeriodicidade);
-                      if (novaPeriodicidade === 'Todo dia X do mês' && !String(agendaLoteDiaDoMes || '').trim()) {
-                        const base = normalizarDataBr(agendaLoteData);
-                        const diaBase = Number(String(base || '').slice(0, 2));
-                        if (Number.isFinite(diaBase) && diaBase >= 1 && diaBase <= 31) {
-                          setAgendaLoteDiaDoMes(String(diaBase));
-                        }
-                      }
-                    }}
-                    className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-base md:text-sm"
-                  >
-                    {PERIODICIDADES_AGENDA_LOTE.map((p) => (
-                      <option key={p} value={p}>{p}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              {agendaLotePeriodicidade === 'Todo dia X do mês' ? (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Dia do mês</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={31}
-                      value={agendaLoteDiaDoMes}
-                      onChange={(e) => setAgendaLoteDiaDoMes(String(e.target.value ?? ''))}
-                      onBlur={() => {
-                        const n = Number(agendaLoteDiaDoMes);
-                        if (!Number.isFinite(n)) return;
-                        const limitado = Math.max(1, Math.min(31, Math.trunc(n)));
-                        setAgendaLoteDiaDoMes(String(limitado));
-                      }}
-                      placeholder="1 a 31"
-                      className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-base md:text-sm"
-                    />
-                  </div>
-                </div>
-              ) : null}
-              <div className="text-xs text-slate-500">
-                Primeira ocorrência: <strong>{primeiraOcorrenciaAjustadaAgendaLote || '—'}</strong> | Periodicidade:{' '}
-                <strong>{agendaLotePeriodicidade}</strong>
-                {agendaLotePeriodicidade === 'Todo dia X do mês' && primeiraOcorrenciaAjustadaAgendaLote
-                  ? ' (ajustado automaticamente para próximo dia útil quando necessário)'
-                  : ''}
-              </div>
-              {agendaLoteInfo ? (
-                <div className="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded px-3 py-2">
-                  {agendaLoteInfo}
-                </div>
-              ) : null}
-            </div>
-            <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-slate-200 px-4 py-3 md:flex-row md:justify-end md:gap-2">
-              <button
-                type="button"
-                onClick={() => setModalAgendaLoteAberto(false)}
-                className="min-h-11 w-full rounded border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 md:w-auto"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={salvarAgendaEmLote}
-                className="min-h-11 w-full rounded border border-blue-600 bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 md:w-auto"
-              >
-                Salvar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ModalAgendamentoLoteAgenda
+        aberto={modalAgendaLote.aberto}
+        onFechar={() => setModalAgendaLote({ aberto: false, iniciais: null, processo: null })}
+        valoresIniciais={modalAgendaLote.iniciais}
+        processo={modalAgendaLote.processo}
+        origemApi="processos-agenda-lote"
+        zIndexClass="z-[70]"
+      />
 
       {modalVinculoPartes && (
         <div

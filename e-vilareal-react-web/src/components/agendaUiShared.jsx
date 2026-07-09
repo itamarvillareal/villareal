@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { CircleAlert, Gavel, Pin, Scale, X } from 'lucide-react';
 import { normalizarStatusCurtoAgenda } from '../data/agendaPersistenciaData.js';
+import { loteRefDoEvento } from '../domain/agendaLoteRef.js';
 import {
   atualizarHoraComMascara,
   normalizarHora,
@@ -458,6 +459,7 @@ export function CompromissoCard({
   const concluido = normalizarStatusCurtoAgenda(ev?.statusCurto) === 'OK';
   const Icon = estilo.Icon;
   const podeExcluir = !somenteLeitura && onExcluirEvento && eventoAgendaPodeExcluir(ev, usarApiAgenda);
+  const loteRef = loteRefDoEvento(ev);
 
   useEffect(() => {
     if (!focarDescricao) return;
@@ -498,9 +500,21 @@ export function CompromissoCard({
                 <Icon className={`h-3.5 w-3.5 ${estilo.iconClass}`} aria-hidden />
                 {estilo.rotulo}
               </span>
+              {loteRef ? (
+                <span className="inline-flex rounded-full border border-violet-300 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-800">
+                  Lote
+                </span>
+              ) : null}
             </div>
           ) : (
-            <Icon className={`mb-1 h-4 w-4 ${estilo.iconClass}`} aria-hidden />
+            <div className="mb-1 flex items-center gap-2">
+              <Icon className={`h-4 w-4 ${estilo.iconClass}`} aria-hidden />
+              {loteRef ? (
+                <span className="inline-flex rounded-full border border-violet-300 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-800">
+                  Lote
+                </span>
+              ) : null}
+            </div>
           )}
 
           <div className="min-w-0">

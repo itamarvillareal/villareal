@@ -9,9 +9,21 @@ import {
   ordenarListaEventosAgenda,
   descricaoAudienciaParaAgendaCampos,
   listarDatasOcorrenciasAgendamentoLote,
+  agendarLinhasLoteParaUsuarios,
+  removerEventosAgendaPorLoteRef,
 } from '../data/agendaPersistenciaData.js';
 import { montarProcessoRefAgenda } from '../domain/agendaProcessoRef.js';
+import { montarOrigemAgendaLote, criarLoteRefAgenda, extrairLoteRefDaOrigem } from '../domain/agendaLoteRef.js';
+import {
+  listarLotesAgendaRegistry,
+  obterLoteAgendaRegistry,
+  upsertLoteAgendaRegistry,
+  removerLoteAgendaRegistry,
+  novoRegistroLoteAgenda,
+  textoBaseFromLinhas,
+} from '../data/agendaLotesRegistry.js';
 import { normalizarProcesso, padCliente } from '../data/processosDadosRelatorio.js';
+import { filtrarLinhasAgendaFuturas } from '../utils/agendaLoteSequencia.js';
 import { listarColaboradoresHumanos, isColaboradorHumanoAtivo } from './usuariosRepository.js';
 
 function parseBrDate(dateBr) {
@@ -23,6 +35,8 @@ function mapApiEventoToFront(e) {
   const data = String(e.dataEvento || '');
   const [yyyy, mm, dd] = data.split('-');
   const processoRef = e.processoRef != null ? String(e.processoRef).trim() : '';
+  const origem = e.origem ?? '';
+  const loteRef = extrairLoteRefDaOrigem(origem);
   return {
     id: String(e.id),
     usuarioId: String(e.usuarioId),
@@ -30,7 +44,8 @@ function mapApiEventoToFront(e) {
     hora: e.horaEvento ? String(e.horaEvento).slice(0, 5) : '',
     descricao: e.descricao ?? '',
     statusCurto: e.statusCurto ?? '',
-    origem: e.origem ?? '',
+    origem,
+    loteRef,
     processoRef,
     dataBr: `${dd}/${mm}/${yyyy}`,
   };
@@ -257,8 +272,9 @@ export async function replicarCompromissoLoteTodosColaboradoresApi({
   periodicidade,
   diaDoMes = null,
   ajustarParaDiaUtil = true,
-  codigoCliente,
-  numeroInterno,
+  codigoCliente = null,
+  numeroInterno = null,
+  origem = 'processos-agenda-lote',
 }) {
   if (!featureFlags.useApiAgenda) return { ok: false, reason: 'api-off' };
   const descricao = String(textoCompromisso ?? '').trim();
@@ -272,9 +288,17 @@ export async function replicarCompromissoLoteTodosColaboradoresApi({
   });
   if (datas.length === 0) return { ok: false, reason: 'sem-ocorrencias' };
 
-  const codPad = padCliente(codigoCliente ?? '1');
-  const procNorm = Math.max(1, Math.floor(Number(normalizarProcesso(numeroInterno ?? 1))));
-  const processoRef = montarProcessoRefAgenda(codPad, procNorm) || null;
+  const temProcesso =
+    codigoCliente != null &&
+    numeroInterno != null &&
+    String(codigoCliente).trim() !== '' &&
+    String(numeroInterno).trim() !== '';
+  let processoRef = null;
+  if (temProcesso) {
+    const codPad = padCliente(codigoCliente);
+    const procNorm = Math.max(1, Math.floor(Number(normalizarProcesso(numeroInterno))));
+    processoRef = montarProcessoRefAgenda(codPad, procNorm) || null;
+  }
   const horaEv = String(hora ?? '')
     .trim()
     .slice(0, 5);
@@ -307,7 +331,7 @@ export async function replicarCompromissoLoteTodosColaboradoresApi({
             descricao,
             statusCurto: null,
             processoRef,
-            origem: 'processos-agenda-lote',
+            origem,
           },
         });
         criados += 1;
@@ -318,4 +342,236 @@ export async function replicarCompromissoLoteTodosColaboradoresApi({
   }
   dispararAgendaAtualizada();
   return { ok: true, criados, ocorrencias: datas.length, usuarios: ativos.length };
+}
+
+/**
+ * Salva linhas explícitas do modal «Agendar em Lote» para colaboradores selecionados.
+ */
+export async function salvarAgendamentoLoteLinhas({
+  linhas = [],
+  usuarioIds = [],
+  codigoCliente = null,
+  numeroInterno = null,
+  loteRef = null,
+  textoBase = '',
+  horaPadrao = '',
+  substituirLoteExistente = false,
+}) {
+  const linhasValidas = (Array.isArray(linhas) ? linhas : [])
+    .map((l) => ({
+      dataBr: String(l?.dataBr ?? '').trim(),
+      hora: String(l?.hora ?? '').trim().slice(0, 5),
+      informacao: String(l?.informacao ?? '').trim(),
+    }))
+    .filter((l) => l.dataBr && l.informacao);
+
+  if (linhasValidas.length === 0) return { ok: false, reason: 'sem-linhas' };
+
+  const ids = (Array.isArray(usuarioIds) ? usuarioIds : [])
+    .map((id) => Number(id))
+    .filter((n) => Number.isFinite(n) && n >= 1);
+  if (ids.length === 0) return { ok: false, reason: 'usuarios-vazios' };
+
+  const loteId = String(loteRef ?? '').trim() || criarLoteRefAgenda();
+  let linhasParaGravar = linhasValidas;
+  if (substituirLoteExistente && loteRef) {
+    await cancelarLoteAgenda(loteId, { manterRegistro: true });
+    linhasParaGravar = filtrarLinhasAgendaFuturas(linhasValidas);
+    if (linhasParaGravar.length === 0) return { ok: false, reason: 'sem-linhas-futuras' };
+  }
+
+  const temProcesso =
+    codigoCliente != null &&
+    numeroInterno != null &&
+    String(codigoCliente).trim() !== '' &&
+    String(numeroInterno).trim() !== '';
+  let processoRef = null;
+  if (temProcesso) {
+    const codPad = padCliente(codigoCliente);
+    const procNorm = Math.max(1, Math.floor(Number(normalizarProcesso(numeroInterno))));
+    processoRef = montarProcessoRefAgenda(codPad, procNorm) || null;
+  }
+  const origem = montarOrigemAgendaLote(loteId);
+
+  if (!featureFlags.useApiAgenda) {
+    return { ok: false, reason: 'api-off' };
+  }
+
+  const eventosCriados = [];
+  let criados = 0;
+  for (const linha of linhasParaGravar) {
+    const parts = String(linha.dataBr).split('/');
+    if (parts.length !== 3) continue;
+    const [dd, mm, yyyy] = parts;
+    if (!dd || !mm || !yyyy) continue;
+    const dataEvento = `${yyyy}-${mm}-${dd}`;
+    for (const idNum of ids) {
+      try {
+        const resp = await request('/api/agenda/eventos', {
+          method: 'POST',
+          body: {
+            usuarioId: idNum,
+            dataEvento,
+            horaEvento: linha.hora || null,
+            descricao: linha.informacao,
+            statusCurto: null,
+            processoRef,
+            origem,
+          },
+        });
+        criados += 1;
+        if (resp?.id) {
+          eventosCriados.push({
+            id: String(resp.id),
+            usuarioId: String(idNum),
+            dataBr: linha.dataBr,
+          });
+        }
+      } catch {
+        /* próximo */
+      }
+    }
+  }
+
+  upsertLoteAgendaRegistry(
+    novoRegistroLoteAgenda({
+      loteRef: loteId,
+      textoBase: String(textoBase ?? '').trim() || textoBaseFromLinhas(linhasParaGravar),
+      horaPadrao: String(horaPadrao ?? '').trim(),
+      processo: temProcesso ? { codigoCliente, numeroInterno } : null,
+      usuarioIds: ids.map(String),
+      linhas: linhasParaGravar,
+      eventos: eventosCriados,
+    })
+  );
+
+  dispararAgendaAtualizada();
+  return { ok: true, loteRef: loteId, criados, ocorrencias: linhasParaGravar.length, usuarios: ids.length, eventos: eventosCriados };
+}
+
+export async function listarLotesAgendaApi() {
+  if (!featureFlags.useApiAgenda) return [];
+  try {
+    const data = await request('/api/agenda/lotes');
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function obterLoteAgendaApi(loteRef) {
+  const id = String(loteRef ?? '').trim();
+  if (!id) return null;
+  if (!featureFlags.useApiAgenda) return null;
+  try {
+    return await request(`/api/agenda/lotes/${encodeURIComponent(id)}`);
+  } catch {
+    return null;
+  }
+}
+
+export async function listarLotesAgenda() {
+  if (featureFlags.useApiAgenda) {
+    const api = await listarLotesAgendaApi();
+    if (api.length > 0) return api;
+  }
+  return listarLotesAgendaRegistry().map((l) => ({
+    loteRef: l.loteRef,
+    textoBase: l.textoBase || textoBaseFromLinhas(l.linhas),
+    primeiraData: l.linhas?.[0]?.dataBr?.split('/')?.reverse()?.join('-') ?? null,
+    ultimaData: l.linhas?.[l.linhas.length - 1]?.dataBr?.split('/')?.reverse()?.join('-') ?? null,
+    qtdLinhas: (l.linhas || []).filter((x) => x?.dataBr).length,
+    qtdEventos: (l.eventos || []).length,
+    usuarioIds: (l.usuarioIds || []).map(Number).filter((n) => Number.isFinite(n)),
+  }));
+}
+
+export async function obterLoteAgenda(loteRef) {
+  const id = String(loteRef ?? '').trim();
+  if (!id) return null;
+  if (featureFlags.useApiAgenda) {
+    const api = await obterLoteAgendaApi(id);
+    if (api) return api;
+  }
+  const reg = obterLoteAgendaRegistry(id);
+  if (!reg) return null;
+  return {
+    loteRef: reg.loteRef,
+    textoBase: reg.textoBase,
+    horaPadrao: reg.horaPadrao,
+    processoRef: null,
+    usuarioIds: (reg.usuarioIds || []).map(Number).filter((n) => Number.isFinite(n)),
+    linhas: reg.linhas || [],
+    eventos: reg.eventos || [],
+    processo: reg.processo || null,
+  };
+}
+
+export async function cancelarLoteAgenda(loteRef, { manterRegistro = false } = {}) {
+  const id = String(loteRef ?? '').trim();
+  if (!id) return { ok: false, reason: 'lote-ref-vazio' };
+
+  if (featureFlags.useApiAgenda) {
+    try {
+      const resp = await request(`/api/agenda/lotes/${encodeURIComponent(id)}/contagem`, { method: 'DELETE' });
+      if (!manterRegistro) {
+        const aindaExiste = await obterLoteAgendaApi(id);
+        if (!aindaExiste) removerLoteAgendaRegistry(id);
+      }
+      dispararAgendaAtualizada();
+      return { ok: true, removidos: Number(resp?.removidos ?? 0) };
+    } catch {
+      return { ok: false, reason: 'api-falha' };
+    }
+  }
+
+  const r = removerEventosAgendaPorLoteRef(id, { apenasFuturos: true });
+  if (!manterRegistro && (r.restantes ?? 0) === 0) removerLoteAgendaRegistry(id);
+  dispararAgendaAtualizada();
+  return { ok: r.ok, removidos: r.removidos ?? 0, restantes: r.restantes ?? 0 };
+}
+
+export async function salvarAgendamentoLoteLinhasLocal({
+  linhas = [],
+  usuarios = [],
+  processoId = '',
+  clienteId = '',
+  numeroProcessoNovo = '',
+  loteRef = null,
+  textoBase = '',
+  horaPadrao = '',
+  substituirLoteExistente = false,
+}) {
+  const loteId = String(loteRef ?? '').trim() || criarLoteRefAgenda();
+  let linhasParaGravar = Array.isArray(linhas) ? linhas : [];
+  if (substituirLoteExistente && loteRef) {
+    await cancelarLoteAgenda(loteId, { manterRegistro: true });
+    linhasParaGravar = filtrarLinhasAgendaFuturas(linhasParaGravar);
+    if (linhasParaGravar.length === 0) return { ok: false, reason: 'sem-linhas-futuras' };
+  }
+  const resultado = agendarLinhasLoteParaUsuarios({
+    linhas: linhasParaGravar,
+    usuarios,
+    processoId,
+    clienteId,
+    numeroProcessoNovo,
+    loteRef: loteId,
+  });
+  if (!resultado?.ok) return resultado;
+  upsertLoteAgendaRegistry(
+    novoRegistroLoteAgenda({
+      loteRef: loteId,
+      textoBase: String(textoBase ?? '').trim() || textoBaseFromLinhas(linhasParaGravar),
+      horaPadrao: String(horaPadrao ?? '').trim(),
+      processo:
+        String(clienteId ?? '').trim() && String(processoId ?? '').trim()
+          ? { codigoCliente: clienteId, numeroInterno: processoId }
+          : null,
+      usuarioIds: (usuarios || []).map((u) => String(u.id)),
+      linhas: linhasParaGravar,
+      eventos: resultado.eventos || [],
+    })
+  );
+  dispararAgendaAtualizada();
+  return { ...resultado, loteRef: loteId };
 }

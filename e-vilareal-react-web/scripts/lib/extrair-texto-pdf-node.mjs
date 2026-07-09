@@ -11,7 +11,11 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
  */
 export async function extrairTextoPdfDeBuffer(input, opts = {}) {
   const ordenar = opts.ordenarItensPorPosicao !== false;
-  const data = input instanceof Uint8Array ? input : new Uint8Array(fs.readFileSync(input));
+  // pdf.js transfere o ArrayBuffer interno — clonar evita esvaziar o buffer do caller.
+  const data =
+    input instanceof Uint8Array
+      ? Uint8Array.from(input)
+      : new Uint8Array(fs.readFileSync(input));
   const pdf = await pdfjsLib.getDocument({
     data,
     password: opts.password || undefined,

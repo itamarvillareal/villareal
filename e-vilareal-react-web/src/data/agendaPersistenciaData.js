@@ -5,6 +5,7 @@ import { montarProcessoRefAgenda } from '../domain/agendaProcessoRef.js';
 import { montarDescricaoAgendaAudienciaProcesso } from '../domain/descricaoAgendaAudiencia.js';
 import { normalizarProcesso, padCliente } from './processosDadosRelatorio.js';
 import { getNomeExibicaoUsuario } from './usuarioDisplayHelpers.js';
+import { dataAgendaEhHojeOuFutura } from '../utils/agendaLoteSequencia.js';
 
 const STORAGE_KEY_EVENTOS_LEGACY = 'vilareal:agenda-eventos:v1';
 const STORAGE_KEY = 'vilareal:agenda-eventos:v2';
@@ -1069,6 +1070,130 @@ export function agendarEmLoteParaUsuarios({
 
   saveStore(store);
   return { ok: true, inseridos, atualizados, ocorrencias: ocorrencias.length, usuarios: usuariosValidos.length };
+}
+
+/**
+ * Materializa linhas explícitas do modal «Agendar em Lote» (sem recorrência automática).
+ * @param {{ linhas: Array<{ dataBr: string, hora?: string, informacao?: string }>, usuarios?: Array, processoId?: string, clienteId?: string, numeroProcessoNovo?: string }} opts
+ */
+export function agendarLinhasLoteParaUsuarios({
+  linhas = [],
+  usuarios = [],
+  processoId = '',
+  clienteId = '',
+  numeroProcessoNovo = '',
+  loteRef = '',
+}) {
+  const loteId = String(loteRef ?? '').trim();
+  if (!loteId) return { ok: false, reason: 'lote-ref-vazio' };
+  const usuariosValidos = (Array.isArray(usuarios) ? usuarios : [])
+    .map((u) => ({ id: String(u?.id ?? '').trim(), u }))
+    .filter((x) => x.id && x.u);
+  if (usuariosValidos.length === 0) return { ok: false, reason: 'usuarios-vazios' };
+
+  const linhasValidas = (Array.isArray(linhas) ? linhas : [])
+    .map((l) => ({
+      dataBr: String(l?.dataBr ?? '').trim(),
+      hora: normalizarHora(l?.hora),
+      informacao: String(l?.informacao ?? '').trim(),
+    }))
+    .filter((l) => l.dataBr && l.informacao && parseDataBrCompleta(l.dataBr));
+
+  if (linhasValidas.length === 0) return { ok: false, reason: 'sem-linhas' };
+
+  const codPadLote = padCliente(clienteId || '1');
+  const procLoteNum = Number(String(processoId ?? '').replace(/\D/g, ''));
+  const procLote = Number.isFinite(procLoteNum) && procLoteNum >= 1 ? Math.floor(procLoteNum) : 0;
+  const processoRefLote = procLote >= 1 ? montarProcessoRefAgenda(codPadLote, procLote) : '';
+
+  const store = loadStore();
+  let inseridos = 0;
+  let atualizados = 0;
+  const eventosCriados = [];
+
+  for (const linha of linhasValidas) {
+    const parsed = parseDataBrCompleta(linha.dataBr);
+    if (!parsed) continue;
+    const data = dataStr(parsed);
+    const lista = Array.isArray(store[data]) ? store[data] : [];
+    const byId = new Map(lista.map((ev) => [String(ev?.id ?? ''), ev]));
+
+    for (const { id: uid, u } of usuariosValidos) {
+      const id = `lote-${loteId}-${data}-${linha.hora || ''}-${uid}-${linha.informacao}`
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 240);
+      const evento = {
+        id,
+        usuarioId: uid,
+        usuarioNome: getNomeExibicaoUsuario(u),
+        hora: linha.hora,
+        descricao: linha.informacao,
+        titulo: linha.informacao,
+        statusCurto: '',
+        status: 'Agendado',
+        origem: 'agenda-em-lote',
+        loteRef: loteId,
+        periodicidade: 'Agendamento único',
+        recorrente: false,
+        processoId: procLote >= 1 ? String(processoId ?? '') : '',
+        clienteId: procLote >= 1 ? String(clienteId ?? '') : '',
+        codCliente: procLote >= 1 ? codPadLote : undefined,
+        proc: procLote >= 1 ? procLote : undefined,
+        processoRef: processoRefLote,
+        numeroProcessoNovo: procLote >= 1 ? String(numeroProcessoNovo ?? '') : '',
+        criadoEm: new Date().toISOString(),
+      };
+      const prev = byId.get(id);
+      if (prev) {
+        byId.set(id, { ...prev, ...evento, criadoEm: prev.criadoEm || evento.criadoEm });
+        atualizados += 1;
+      } else {
+        byId.set(id, evento);
+        inseridos += 1;
+      }
+      eventosCriados.push({ id, usuarioId: uid, dataBr: linha.dataBr });
+    }
+    store[data] = ordenarListaEventosAgenda(Array.from(byId.values()));
+  }
+
+  saveStore(store);
+  return {
+    ok: true,
+    loteRef: loteId,
+    inseridos,
+    atualizados,
+    ocorrencias: linhasValidas.length,
+    usuarios: usuariosValidos.length,
+    eventos: eventosCriados,
+  };
+}
+
+/** Remove compromissos locais vinculados a um lote (por padrão só hoje em diante). */
+export function removerEventosAgendaPorLoteRef(loteRef, { apenasFuturos = true } = {}) {
+  const id = String(loteRef ?? '').trim();
+  if (!id) return { ok: false, removidos: 0, restantes: 0 };
+  const store = loadStore();
+  let removidos = 0;
+  let restantes = 0;
+  for (const data of Object.keys(store)) {
+    const lista = Array.isArray(store[data]) ? store[data] : [];
+    const afetarData = !apenasFuturos || dataAgendaEhHojeOuFutura(data);
+    const next = lista.filter((ev) => {
+      const ref = String(ev?.loteRef ?? '').trim();
+      if (ref !== id) return true;
+      if (!afetarData) {
+        restantes += 1;
+        return true;
+      }
+      removidos += 1;
+      return false;
+    });
+    if (next.length === 0) delete store[data];
+    else store[data] = next;
+  }
+  if (removidos > 0) saveStore(store);
+  return { ok: true, removidos, restantes };
 }
 
 function semearUsuariosAgendaAlinhadoMock() {
