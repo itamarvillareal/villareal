@@ -58,14 +58,14 @@ function ExtratoTableInner({
   }
 
   return (
-    <div className="overflow-x-auto min-w-0">
-      <table className="w-full min-w-[520px] lg:min-w-[720px] table-fixed border-collapse text-sm">
-        <colgroup>
+    <div className="overflow-x-auto min-w-0 max-lg:overflow-x-visible">
+      <table className="w-full border-collapse text-sm max-lg:table-auto max-lg:min-w-0 lg:table-fixed lg:min-w-[720px]">
+        <colgroup className="max-lg:hidden">
           <col style={{ width: 36 }} />
           <col style={{ width: 48 }} />
           {modoTotal ? <col style={{ width: 96 }} /> : null}
-          <col style={{ width: 108 }} />
           {modoFechamentoFatura ? <col style={{ width: 100 }} /> : null}
+          <col style={{ width: 108 }} />
           {mostrarVencFatura ? <col style={{ width: 72 }} /> : null}
           <col style={{ width: modoCartao ? 240 : 300 }} />
           <col style={{ width: 112 }} />
@@ -77,7 +77,7 @@ function ExtratoTableInner({
             className="text-xs font-medium text-slate-500 dark:text-slate-400"
             style={{ background: 'var(--fin-header-bg)' }}
           >
-            <th className="px-1 py-2 text-center">
+            <th className="max-lg:w-8 px-0.5 lg:px-1 py-2 text-center">
               <input
                 type="checkbox"
                 checked={allSelected}
@@ -97,7 +97,7 @@ function ExtratoTableInner({
               <th className="px-2 py-2 text-left whitespace-nowrap">Cartão</th>
             ) : null}
             <th
-              className="px-2 py-2 text-left whitespace-nowrap cursor-pointer select-none hover:text-slate-700 dark:hover:text-slate-200"
+              className="max-lg:w-[4.75rem] px-1.5 lg:px-2 py-2 text-left whitespace-nowrap cursor-pointer select-none hover:text-slate-700 dark:hover:text-slate-200 text-[11px] lg:text-xs"
               onDoubleClick={(e) => {
                 e.preventDefault();
                 onSortDataDoubleClick?.();
@@ -116,10 +116,12 @@ function ExtratoTableInner({
             {mostrarVencFatura ? (
               <th className="px-2 py-2 text-left whitespace-nowrap">Venc. fatura</th>
             ) : null}
-            <th className="px-2 py-2 text-left min-w-0">Descrição</th>
-            <th className="px-2 py-2 text-right whitespace-nowrap">Valor</th>
+            <th className="px-1.5 lg:px-2 py-2 text-left min-w-0">Descrição</th>
+            <th className="max-lg:w-[5.5rem] px-1.5 lg:px-2 py-2 text-right whitespace-nowrap text-[11px] lg:text-xs">
+              Valor
+            </th>
             <th className="hidden md:table-cell px-2 py-2 text-left min-w-0">Obs</th>
-            <th className="px-1 py-2 text-center whitespace-nowrap">Etapa</th>
+            <th className="max-lg:w-9 px-0.5 lg:px-1 py-2 text-center whitespace-nowrap">Etapa</th>
           </tr>
         </thead>
         <tbody>
@@ -178,7 +180,7 @@ function ExtratoTableInner({
                   }}
                   onClick={() => onRowClick(item)}
                 >
-                  <td className="px-1 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                  <td className="max-lg:w-8 px-0.5 lg:px-1 py-2 text-center" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
                       checked={selected}
@@ -203,7 +205,7 @@ function ExtratoTableInner({
                       {item.cartaoNome || '—'}
                     </td>
                   ) : null}
-                  <td className="px-2 py-2 align-middle text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap overflow-hidden text-ellipsis">
+                  <td className="max-lg:w-[4.75rem] px-1.5 lg:px-2 py-2 align-middle text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap text-[11px] lg:text-sm">
                     {item.dataExibicao}
                   </td>
                   {mostrarVencFatura ? (
@@ -211,12 +213,15 @@ function ExtratoTableInner({
                       {item.vencimentoFaturaExibicao || '—'}
                     </td>
                   ) : null}
-                  <td className="px-2 py-2 align-middle overflow-hidden">
-                    <div className="truncate text-slate-900 dark:text-slate-100" title={item.descricao}>
+                  <td className="px-1.5 lg:px-2 py-2 align-middle min-w-0">
+                    <div
+                      className="line-clamp-2 lg:truncate text-xs lg:text-sm leading-snug text-slate-900 dark:text-slate-100"
+                      title={item.descricao}
+                    >
                       {item.descricao}
                     </div>
                   </td>
-                  <td className="px-2 py-2 align-middle text-right whitespace-nowrap overflow-hidden">
+                  <td className="max-lg:w-[5.5rem] shrink-0 px-1.5 lg:px-2 py-2 align-middle text-right whitespace-nowrap text-[11px] lg:text-sm">
                     <ValorText valor={item.valor} natureza={item.natureza} />
                   </td>
                   <td className="hidden md:table-cell px-2 py-2 align-middle overflow-hidden">
@@ -227,7 +232,7 @@ function ExtratoTableInner({
                       {textoObsExtrato(item)}
                     </div>
                   </td>
-                  <td className="px-1 py-2 align-middle text-center overflow-hidden">
+                  <td className="max-lg:w-9 px-0.5 lg:px-1 py-2 align-middle text-center">
                     <EtapaDot
                       etapa={item.etapa}
                       cadastroEscritorio={
