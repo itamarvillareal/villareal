@@ -362,6 +362,12 @@ public class ProcessoApplicationService {
         if (req.getInativo() != null) {
             c.setInativo(req.getInativo());
         }
+        Long respPadraoId = req.getUsuarioResponsavelPadraoId();
+        if (respPadraoId != null && respPadraoId > 0) {
+            c.setUsuarioResponsavelPadrao(usuarioDestinatarioGuard.carregarHumanoDestinatario(respPadraoId));
+        } else {
+            c.setUsuarioResponsavelPadrao(null);
+        }
     }
 
     private ClienteListItemResponse clienteEntityParaResumo(ClienteEntity c) {
@@ -373,7 +379,7 @@ public class ProcessoApplicationService {
                 StringUtils.hasText(c.getDocumentoReferencia())
                         ? somenteDigitosDocumento(c.getDocumentoReferencia())
                         : somenteDigitosDocumento(p.getCpf());
-        return new ClienteListItemResponse(
+        ClienteListItemResponse resumo = new ClienteListItemResponse(
                 c.getId(),
                 p.getId(),
                 codigoExibicao,
@@ -381,6 +387,24 @@ public class ProcessoApplicationService {
                 doc,
                 c.getObservacao() != null ? Utf8MojibakeUtil.corrigir(c.getObservacao()) : null,
                 Boolean.TRUE.equals(c.getInativo()));
+        resumo.setUsuarioResponsavelPadraoId(responsavelPadraoId(c));
+        resumo.setUsuarioResponsavelPadraoNome(responsavelPadraoNome(c));
+        return resumo;
+    }
+
+    private static Long responsavelPadraoId(ClienteEntity c) {
+        return c.getUsuarioResponsavelPadrao() != null ? c.getUsuarioResponsavelPadrao().getId() : null;
+    }
+
+    private static String responsavelPadraoNome(ClienteEntity c) {
+        if (c.getUsuarioResponsavelPadrao() == null) {
+            return null;
+        }
+        String apelido = c.getUsuarioResponsavelPadrao().getApelido();
+        if (StringUtils.hasText(apelido)) {
+            return Utf8MojibakeUtil.corrigir(apelido.trim());
+        }
+        return Utf8MojibakeUtil.corrigir(c.getUsuarioResponsavelPadrao().getNome());
     }
 
     /** Alinha CHAR(8) / espaços do MySQL ao mesmo formato que o front usa na busca (8 dígitos). */
@@ -1000,7 +1024,7 @@ public class ProcessoApplicationService {
                 });
         ProcessoEntity e = new ProcessoEntity();
         aplicarClienteTitularDoRequest(e, cliente, req);
-        aplicarCabecalho(e, req);
+        aplicarCabecalho(e, req, true);
         e = processoRepository.save(e);
         return toResponse(requireProcesso(e.getId()));
     }
@@ -1023,7 +1047,7 @@ public class ProcessoApplicationService {
         }
         aplicarClienteTitularDoRequest(e, cliente, req);
         e.setNumeroInterno(req.getNumeroInterno());
-        aplicarCabecalho(e, req);
+        aplicarCabecalho(e, req, false);
         if (req.getPrazoFatal() == null) {
             cancelarPrazosFataisNaTabela(e.getId());
         }
@@ -1332,7 +1356,7 @@ public class ProcessoApplicationService {
         return null;
     }
 
-    private void aplicarCabecalho(ProcessoEntity e, ProcessoWriteRequest req) {
+    private void aplicarCabecalho(ProcessoEntity e, ProcessoWriteRequest req, boolean criacao) {
         e.setNumeroInterno(req.getNumeroInterno());
         e.setNumeroCnj(trimToNull(req.getNumeroCnj()));
         e.setNumeroProcessoAntigo(trimToNull(req.getNumeroProcessoAntigo()));
@@ -1367,12 +1391,45 @@ public class ProcessoApplicationService {
         if (req.getUsuarioResponsavelId() != null) {
             UsuarioEntity u = usuarioDestinatarioGuard.carregarHumanoDestinatario(req.getUsuarioResponsavelId());
             e.setUsuarioResponsavel(u);
+        } else if (criacao) {
+            UsuarioEntity padrao = resolverUsuarioResponsavelPadraoDoCliente(e.getCliente());
+            if (padrao != null) {
+                e.setUsuarioResponsavel(padrao);
+                if (!StringUtils.hasText(e.getConsultor())) {
+                    e.setConsultor(consultorLegadoDeUsuario(padrao));
+                }
+            } else {
+                e.setUsuarioResponsavel(null);
+            }
         } else {
             e.setUsuarioResponsavel(null);
         }
         if (StringUtils.hasText(req.getImportacaoId())) {
             e.setImportacaoId(req.getImportacaoId().trim());
         }
+    }
+
+    private UsuarioEntity resolverUsuarioResponsavelPadraoDoCliente(ClienteEntity clienteRef) {
+        if (clienteRef == null || clienteRef.getId() == null) {
+            return null;
+        }
+        return clienteRepository
+                .findByIdFetchResponsavelPadrao(clienteRef.getId())
+                .map(ClienteEntity::getUsuarioResponsavelPadrao)
+                .orElse(null);
+    }
+
+    private static String consultorLegadoDeUsuario(UsuarioEntity u) {
+        if (u == null) {
+            return null;
+        }
+        if (StringUtils.hasText(u.getLogin())) {
+            return u.getLogin().trim();
+        }
+        if (StringUtils.hasText(u.getApelido())) {
+            return u.getApelido().trim();
+        }
+        return StringUtils.hasText(u.getNome()) ? u.getNome().trim() : null;
     }
 
     private void aplicarOrgaoJulgadorProcesso(ProcessoEntity e, ProcessoWriteRequest req) {

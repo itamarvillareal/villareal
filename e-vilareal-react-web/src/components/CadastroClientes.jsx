@@ -71,7 +71,8 @@ import {
   buscarMensalistaPorCliente,
   salvarMensalista,
 } from '../repositories/mensalistasRepository.js';
-import { formatValorMoedaCampo } from '../utils/moneyBr.js';
+import { listarColaboradoresHumanos } from '../repositories/usuariosRepository.js';
+import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
 import { parseValorMonetarioBr as parseValorMonetarioBrUtil } from '../utils/parseValorMonetarioBr.js';
 import {
   buscarClientePorCodigo,
@@ -134,6 +135,7 @@ const DEFAULT_CLIENTE_VAZIO = {
   edicaoDesabilitada: true,
   clienteInativo: false,
   observacao: '',
+  usuarioResponsavelPadraoId: '',
 };
 
 /** Estado inicial da tela sem cliente escolhido (só busca visível). */
@@ -145,6 +147,7 @@ const ESTADO_TELA_SEM_CLIENTE = {
   edicaoDesabilitada: true,
   clienteInativo: false,
   observacao: '',
+  usuarioResponsavelPadraoId: '',
   processos: [],
 };
 
@@ -509,6 +512,10 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   const [edicaoDesabilitada, setEdicaoDesabilitada] = useState(ini.edicaoDesabilitada);
   const [clienteInativo, setClienteInativo] = useState(ini.clienteInativo);
   const [observacao, setObservacao] = useState(ini.observacao);
+  const [usuarioResponsavelPadraoId, setUsuarioResponsavelPadraoId] = useState(
+    ini.usuarioResponsavelPadraoId != null ? String(ini.usuarioResponsavelPadraoId) : ''
+  );
+  const [colaboradoresResponsavel, setColaboradoresResponsavel] = useState([]);
   const [toastDocCliente, setToastDocCliente] = useState(null);
   const [pesquisaProcesso, setPesquisaProcesso] = useState('');
   const [buscaClienteNome, setBuscaClienteNome] = useState('');
@@ -589,7 +596,22 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   const aplicarDadosClienteRef = useRef(() => {});
 
   useEffect(() => {
-    if (!toastDocCliente?.mensagem) return undefined;
+    let ativo = true;
+    void listarColaboradoresHumanos()
+      .then((lista) => {
+        if (!ativo) return;
+        setColaboradoresResponsavel(Array.isArray(lista) ? lista : []);
+      })
+      .catch(() => {
+        if (!ativo) return;
+        setColaboradoresResponsavel([]);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, []);
+
+  useEffect(() => {
     const t = window.setTimeout(() => setToastDocCliente(null), 4200);
     return () => window.clearTimeout(t);
   }, [toastDocCliente]);
@@ -657,6 +679,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     nomeRazao,
     cnpjCpf,
     observacao,
+    usuarioResponsavelPadraoId,
     clienteInativo,
     edicaoDesabilitada,
     processos,
@@ -686,6 +709,8 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
         nomeRazao: override.nomeRazao ?? s.nomeRazao,
         cnpjCpf: override.cnpjCpf ?? s.cnpjCpf,
         observacao: override.observacao ?? s.observacao,
+        usuarioResponsavelPadraoId:
+          override.usuarioResponsavelPadraoId ?? s.usuarioResponsavelPadraoId,
         clienteInativo: override.clienteInativo ?? s.clienteInativo,
       };
       if (!String(payload.pessoa ?? '').trim()) {
@@ -802,6 +827,11 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
       setNomeRazao(corrigirNomePessoaExibicao(api.nomeRazao ?? ''));
       setCnpjCpf(api.cnpjCpf ?? '');
       setObservacao(api.observacao ?? '');
+      setUsuarioResponsavelPadraoId(
+        api.usuarioResponsavelPadraoId != null && Number(api.usuarioResponsavelPadraoId) > 0
+          ? String(api.usuarioResponsavelPadraoId)
+          : ''
+      );
       setClienteInativo(api.clienteInativo ?? false);
       setEdicaoDesabilitada(true);
       if (api.clienteId != null && Number.isFinite(Number(api.clienteId))) {
@@ -1113,6 +1143,11 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
         setCnpjCpf(fromList.cnpjCpf ?? '');
         setPessoa(fromList.pessoa ?? '');
         setObservacao(fromList.observacao ?? '');
+        setUsuarioResponsavelPadraoId(
+          fromList.usuarioResponsavelPadraoId != null && Number(fromList.usuarioResponsavelPadraoId) > 0
+            ? String(fromList.usuarioResponsavelPadraoId)
+            : ''
+        );
         setClienteInativo(fromList.clienteInativo ?? false);
         if (fromList.clienteId != null && Number.isFinite(Number(fromList.clienteId))) {
           setClientePkResolvido(Number(fromList.clienteId));
@@ -1199,6 +1234,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
     nomeRazao,
     cnpjCpf,
     observacao,
+    usuarioResponsavelPadraoId,
     clienteInativo,
     edicaoDesabilitada,
     formularioClienteAberto,
@@ -2352,6 +2388,33 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                 Importar contratos
               </button>
             </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200/80 bg-white/70 p-3 shadow-sm ring-1 ring-slate-100/80">
+            <label className="block text-sm font-semibold text-slate-800 mb-1">
+              Responsável padrão dos processos
+            </label>
+            <p className="text-xs text-slate-500 mb-2">
+              Processos novos deste cliente abrem com este advogado e o timbrado dele, se não for alterado
+              manualmente.
+            </p>
+            <select
+              value={usuarioResponsavelPadraoId}
+              disabled={edicaoDesabilitada}
+              onChange={(e) => setUsuarioResponsavelPadraoId(e.target.value)}
+              className={`${inputClass} ${edicaoDesabilitada ? 'bg-slate-50' : ''}`}
+            >
+              <option value="">(nenhum)</option>
+              {colaboradoresResponsavel.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {getNomeExibicaoUsuario(u)}
+                </option>
+              ))}
+              {usuarioResponsavelPadraoId &&
+              !colaboradoresResponsavel.some((u) => String(u.id) === String(usuarioResponsavelPadraoId)) ? (
+                <option value={usuarioResponsavelPadraoId}>{usuarioResponsavelPadraoId}</option>
+              ) : null}
+            </select>
           </div>
 
           <div className="rounded-xl border border-slate-200/80 bg-white/70 p-3 shadow-sm ring-1 ring-slate-100/80">

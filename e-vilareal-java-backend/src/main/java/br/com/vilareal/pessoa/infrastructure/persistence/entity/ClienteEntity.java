@@ -1,5 +1,6 @@
 package br.com.vilareal.pessoa.infrastructure.persistence.entity;
 
+import br.com.vilareal.usuario.infrastructure.persistence.entity.UsuarioEntity;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -39,6 +40,11 @@ public class ClienteEntity {
     /** "Imóvel próprio" (VRV/Itamar): repasse gerado internamente, não há repasse bancário real. Fonte da verdade (V114). */
     @Column(nullable = false)
     private Boolean proprio = false;
+
+    /** Advogado padrão para processos novos deste cliente (timbrado via {@code usuario_responsavel_id} do processo). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "usuario_responsavel_padrao_id")
+    private UsuarioEntity usuarioResponsavelPadrao;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;

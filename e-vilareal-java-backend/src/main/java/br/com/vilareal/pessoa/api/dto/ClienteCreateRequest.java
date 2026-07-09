@@ -21,6 +21,9 @@ public class ClienteCreateRequest {
 
     private Boolean inativo;
 
+    /** {@code null} ou ausente limpa o padrão; id válido define o responsável dos processos novos. */
+    private Long usuarioResponsavelPadraoId;
+
     public String getCodigoCliente() {
         return codigoCliente;
     }
@@ -67,5 +70,13 @@ public class ClienteCreateRequest {
 
     public void setInativo(Boolean inativo) {
         this.inativo = inativo;
+    }
+
+    public Long getUsuarioResponsavelPadraoId() {
+        return usuarioResponsavelPadraoId;
+    }
+
+    public void setUsuarioResponsavelPadraoId(Long usuarioResponsavelPadraoId) {
+        this.usuarioResponsavelPadraoId = usuarioResponsavelPadraoId;
     }
 }

@@ -22,6 +22,10 @@ public class ClienteListItemResponse {
 
     private Boolean inativo;
 
+    private Long usuarioResponsavelPadraoId;
+
+    private String usuarioResponsavelPadraoNome;
+
     public ClienteListItemResponse() {}
 
     /** Item canónico (tabela {@code cliente} + pessoa). */
@@ -110,6 +114,22 @@ public class ClienteListItemResponse {
 
     public void setInativo(Boolean inativo) {
         this.inativo = inativo;
+    }
+
+    public Long getUsuarioResponsavelPadraoId() {
+        return usuarioResponsavelPadraoId;
+    }
+
+    public void setUsuarioResponsavelPadraoId(Long usuarioResponsavelPadraoId) {
+        this.usuarioResponsavelPadraoId = usuarioResponsavelPadraoId;
+    }
+
+    public String getUsuarioResponsavelPadraoNome() {
+        return usuarioResponsavelPadraoNome;
+    }
+
+    public void setUsuarioResponsavelPadraoNome(String usuarioResponsavelPadraoNome) {
+        this.usuarioResponsavelPadraoNome = usuarioResponsavelPadraoNome;
     }
 
     /** Alias JSON para o front. */

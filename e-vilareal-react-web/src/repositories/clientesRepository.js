@@ -49,6 +49,13 @@ function mapApiToFront(c) {
     cnpjCpf: c.documentoReferencia ?? '',
     observacao: c.observacao ?? '',
     clienteInativo: c.inativo === true,
+    usuarioResponsavelPadraoId:
+      c.usuarioResponsavelPadraoId != null &&
+      Number.isFinite(Number(c.usuarioResponsavelPadraoId)) &&
+      Number(c.usuarioResponsavelPadraoId) > 0
+        ? Number(c.usuarioResponsavelPadraoId)
+        : null,
+    usuarioResponsavelPadraoNome: c.usuarioResponsavelPadraoNome ?? '',
   };
 }
 
@@ -61,6 +68,13 @@ function mapFrontToApi(d) {
     documentoReferencia: doc || null,
     observacao: String(d.observacao ?? ''),
     inativo: d.clienteInativo === true,
+    usuarioResponsavelPadraoId:
+      d.usuarioResponsavelPadraoId != null &&
+      String(d.usuarioResponsavelPadraoId).trim() !== '' &&
+      Number.isFinite(Number(d.usuarioResponsavelPadraoId)) &&
+      Number(d.usuarioResponsavelPadraoId) > 0
+        ? Number(d.usuarioResponsavelPadraoId)
+        : null,
   };
 }
 

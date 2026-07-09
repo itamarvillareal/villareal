@@ -3192,6 +3192,35 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   }, []);
 
   useEffect(() => {
+    if (processoApiId) return;
+    if (usuarioResponsavelId) return;
+    let ativo = true;
+    void (async () => {
+      try {
+        const cod = padCliente(String(codigoCliente ?? '').trim() || '00000001');
+        const cliente =
+          (featureFlags.useApiClientes ? await obterClienteCadastroPorCodigo(cod) : null) ??
+          (featureFlags.useApiProcessos ? await buscarClientePorCodigo(cod) : null);
+        if (!ativo || !cliente) return;
+        const id = cliente.usuarioResponsavelPadraoId;
+        if (id == null || !Number.isFinite(Number(id)) || Number(id) < 1) return;
+        alterarResponsavelProcesso(String(id));
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      ativo = false;
+    };
+  }, [codigoCliente, processo, processoApiId, usuarioResponsavelId]);
+
+  useEffect(() => {
+    if (!usuarioResponsavelId || String(responsavel ?? '').trim()) return;
+    const u = colaboradoresResponsavel.find((x) => String(x.id) === String(usuarioResponsavelId));
+    if (u) setResponsavel(consultorLegadoDeUsuario(u));
+  }, [usuarioResponsavelId, responsavel, colaboradoresResponsavel]);
+
+  useEffect(() => {
     if (usuarioResponsavelId || !String(responsavel ?? '').trim()) return;
     const inferido = resolverUsuarioIdPorConsultorLegado(responsavel, colaboradoresResponsavel);
     if (inferido) setUsuarioResponsavelId(inferido);
