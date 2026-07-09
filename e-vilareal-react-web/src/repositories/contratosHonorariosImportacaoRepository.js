@@ -1,7 +1,7 @@
 import { API_BASE_URL } from '../api/config.js';
 import { getAccessToken } from '../api/authTokenStorage.js';
 import { emitApiUnauthorized } from '../api/apiAuthHeaders.js';
-import { request } from '../api/httpClient.js';
+import { request, requestBlob } from '../api/httpClient.js';
 
 const BASE = '/api/documentos/contratos-honorarios/importar';
 
@@ -54,6 +54,27 @@ export async function listarFilaImportacao({ status, codigoCliente, importacaoLo
 
 export async function obterImportacao(id, { signal } = {}) {
   return request(`${BASE}/${id}`, { signal });
+}
+
+export async function obterPdfImportacao(id, { signal } = {}) {
+  return requestBlob(`${BASE}/${id}/pdf`, {
+    signal,
+    fallbackFilename: `importacao-${id}.pdf`,
+  });
+}
+
+export async function listarFilaImportacaoTodas({ status, codigoCliente, signal } = {}) {
+  const all = [];
+  let page = 0;
+  let last = false;
+  while (!last) {
+    const res = await listarFilaImportacao({ status, codigoCliente, page, size: 200, signal });
+    const chunk = res?.content ?? [];
+    all.push(...chunk);
+    last = res?.last === true || chunk.length < 200;
+    page += 1;
+  }
+  return all;
 }
 
 export async function salvarRevisaoImportacao(id, body, { signal } = {}) {

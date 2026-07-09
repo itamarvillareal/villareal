@@ -9,6 +9,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -77,6 +78,16 @@ public class ContratoHonorariosImportacaoController {
     @GetMapping("/{importacaoId}")
     public ContratoHonorariosImportacaoItemResponse obter(@PathVariable Long importacaoId) {
         return importacaoService.obter(importacaoId);
+    }
+
+    @GetMapping("/{importacaoId}/pdf")
+    @Operation(description = "PDF temporário da importação (preview na conferência).")
+    public ResponseEntity<byte[]> obterPdf(@PathVariable Long importacaoId) {
+        var pdf = importacaoService.obterPdfTemporario(importacaoId);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + pdf.nomeArquivo() + "\"")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(pdf.bytes());
     }
 
     @PatchMapping("/{importacaoId}/revisao")

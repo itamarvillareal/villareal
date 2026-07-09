@@ -214,6 +214,21 @@ public class ContratoHonorariosImportacaoApplicationService {
                 .orElseThrow(() -> new IllegalArgumentException("Importação não encontrada: " + id)));
     }
 
+    @Transactional(readOnly = true)
+    public PdfImportacaoTemp obterPdfTemporario(Long id) {
+        ContratoHonorariosImportacaoEntity item = importacaoRepository
+                .findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Importação não encontrada: " + id));
+        byte[] pdf = lerPdfTemporario(id);
+        if (pdf == null || pdf.length == 0) {
+            throw new BusinessRuleException("PDF temporário não encontrado para importação " + id);
+        }
+        String nome = item.getPdfNomeArquivo() != null ? item.getPdfNomeArquivo() : "contrato.pdf";
+        return new PdfImportacaoTemp(nome, pdf);
+    }
+
+    public record PdfImportacaoTemp(String nomeArquivo, byte[] bytes) {}
+
     @Transactional
     public ContratoHonorariosImportacaoItemResponse salvarRevisao(
             Long id, ContratoHonorariosExtracaoDados dados, String roteamento, Long processoId) {

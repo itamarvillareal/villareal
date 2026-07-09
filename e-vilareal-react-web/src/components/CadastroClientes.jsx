@@ -21,11 +21,13 @@ import {
   ClipboardList,
   FileSpreadsheet,
   FileSignature,
+  ClipboardCheck,
 } from 'lucide-react';
 import { ModalConfiguracoesCalculoCliente } from './ModalConfiguracoesCalculoCliente.jsx';
 import { ModalWhatsAppCliente } from './ModalWhatsAppCliente.jsx';
 import { ModalCobrancaAutomaticaCliente } from './cobranca/ModalCobrancaAutomaticaCliente.jsx';
 import { ModalImportarContratoHonorarios } from './contratos/ModalImportarContratoHonorarios.jsx';
+import { ModalConferenciaContratosHonorarios } from './contratos/ModalConferenciaContratosHonorarios.jsx';
 import { estadoPediuFocoCobranca } from './cobranca/cobrancaClienteNav.js';
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 import { importarWhatsAppDaPessoa } from '../repositories/clienteWhatsAppRepository.js';
@@ -519,6 +521,7 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
   const [modalConfigCalculoAberto, setModalConfigCalculoAberto] = useState(false);
   const [modalCobrancaAutomaticaAberto, setModalCobrancaAutomaticaAberto] = useState(false);
   const [modalImportarContratoAberto, setModalImportarContratoAberto] = useState(false);
+  const [modalConferenciaContratoAberto, setModalConferenciaContratoAberto] = useState(false);
   const [modalWhatsAppAberto, setModalWhatsAppAberto] = useState(false);
   const [contaCorrenteEmbed, setContaCorrenteEmbed] = useState(null);
   const [mensalista, setMensalista] = useState(MENSALISTA_ESTADO_VAZIO);
@@ -2351,6 +2354,19 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                 />
                 Importar contratos
               </button>
+              <button
+                type="button"
+                onClick={() => setModalConferenciaContratoAberto(true)}
+                className={classesBotaoSecao('emerald', { ativo: modalConferenciaContratoAberto })}
+                aria-pressed={modalConferenciaContratoAberto}
+                title="Conferir e aprovar contratos na fila de importação"
+              >
+                <ClipboardCheck
+                  className={classesIconeSecao('emerald', modalConferenciaContratoAberto)}
+                  aria-hidden
+                />
+                Conferir importações
+              </button>
             </div>
           </div>
 
@@ -2842,6 +2858,12 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
         codigoCliente={codigo}
         nomeCliente={nomeRazao}
         onClose={() => setModalImportarContratoAberto(false)}
+      />
+
+      <ModalConferenciaContratosHonorarios
+        open={modalConferenciaContratoAberto}
+        codigoCliente={codigo}
+        onClose={() => setModalConferenciaContratoAberto(false)}
       />
 
       {modalEscolherPessoa && (

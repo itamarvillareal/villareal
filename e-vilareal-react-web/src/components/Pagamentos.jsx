@@ -164,6 +164,77 @@ function valorNum(v) {
   return Number.isFinite(n) ? n : null;
 }
 
+function montarQueryListaFromFiltros(filtros) {
+  const q = {};
+  const trim = (s) => String(s ?? '').trim();
+  if (trim(filtros.tipo)) q.tipo = trim(filtros.tipo);
+  if (trim(filtros.descricao)) q.descricao = trim(filtros.descricao);
+  if (trim(filtros.codigoBarras)) q.codigoBarras = trim(filtros.codigoBarras);
+  const vv = valorNum(filtros.valor);
+  if (vv != null && vv > 0) q.valor = vv;
+  if (trim(filtros.status)) q.status = trim(filtros.status);
+  if (trim(filtros.categoria)) q.categoria = trim(filtros.categoria);
+  const ru = trim(filtros.responsavelUsuarioId);
+  if (ru && Number(ru) >= 1) q.responsavelUsuarioId = Number(ru);
+  if (trim(filtros.formaPagamento)) q.formaPagamento = trim(filtros.formaPagamento);
+  if (trim(filtros.prioridade)) q.prioridade = trim(filtros.prioridade);
+  if (trim(filtros.origem)) q.origem = trim(filtros.origem);
+  if (trim(filtros.vencimentoDe)) q.vencimentoDe = trim(filtros.vencimentoDe);
+  if (trim(filtros.vencimentoAte)) q.vencimentoAte = trim(filtros.vencimentoAte);
+  if (trim(filtros.agendamentoDe)) q.agendamentoDe = trim(filtros.agendamentoDe);
+  if (trim(filtros.agendamentoAte)) q.agendamentoAte = trim(filtros.agendamentoAte);
+  const cid = trim(filtros.clienteId);
+  if (cid && Number(cid) >= 1) q.clienteId = Number(cid);
+  const pid = trim(filtros.processoId);
+  if (pid && Number(pid) >= 1) q.processoId = Number(pid);
+  const iid = trim(filtros.imovelId);
+  if (iid && Number(iid) >= 1) q.imovelId = Number(iid);
+  if (trim(filtros.condominio)) q.condominio = trim(filtros.condominio);
+  if (filtros.somenteVencidos) q.somenteVencidos = true;
+  if (filtros.somenteConferenciaPendente) q.somenteConferenciaPendente = true;
+  if (filtros.proximos7Dias) q.proximos7Dias = true;
+  if (filtros.mesAtual) q.mesAtual = true;
+  if (filtros.somenteSemComprovante) q.somenteSemComprovante = true;
+  if (filtros.altoValor) q.altoValor = true;
+  if (trim(filtros.mesReferencia)) q.mesReferencia = trim(filtros.mesReferencia);
+  if (filtros.naoConciliado) {
+    q.conciliado = false;
+    q.somenteNaoConciliado = true;
+  }
+  return q;
+}
+
+function defaultFiltrosLista() {
+  return {
+    tipo: 'PAGAR',
+    descricao: '',
+    codigoBarras: '',
+    valor: '',
+    status: '',
+    categoria: '',
+    responsavelUsuarioId: '',
+    formaPagamento: '',
+    prioridade: '',
+    origem: '',
+    vencimentoDe: '',
+    vencimentoAte: '',
+    agendamentoDe: '',
+    agendamentoAte: '',
+    clienteId: '',
+    processoId: '',
+    imovelId: '',
+    condominio: '',
+    somenteVencidos: false,
+    somenteConferenciaPendente: false,
+    proximos7Dias: false,
+    mesAtual: false,
+    somenteSemComprovante: false,
+    altoValor: false,
+    mesReferencia: '',
+    naoConciliado: false,
+  };
+}
+
 function defaultForm() {
   return {
     dataCadastro: hojeIsoLocal(),
@@ -293,34 +364,7 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
   const [usuarios, setUsuarios] = useState([]);
   const [mensagemOk, setMensagemOk] = useState('');
 
-  const [filtros, setFiltros] = useState(() => ({
-    tipo: 'PAGAR',
-    descricao: '',
-    codigoBarras: '',
-    valor: '',
-    status: '',
-    categoria: '',
-    responsavelUsuarioId: '',
-    formaPagamento: '',
-    prioridade: '',
-    origem: '',
-    vencimentoDe: '',
-    vencimentoAte: '',
-    agendamentoDe: '',
-    agendamentoAte: '',
-    clienteId: '',
-    processoId: '',
-    imovelId: '',
-    condominio: '',
-    somenteVencidos: false,
-    somenteConferenciaPendente: false,
-    proximos7Dias: false,
-    mesAtual: false,
-    somenteSemComprovante: false,
-    altoValor: false,
-    mesReferencia: '',
-    naoConciliado: false,
-  }));
+  const [filtros, setFiltros] = useState(() => defaultFiltrosLista());
 
   const [modalAberto, setModalAberto] = useState(false);
   const [editandoId, setEditandoId] = useState(null);
@@ -342,6 +386,7 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
   const [reabrirObs, setReabrirObs] = useState('');
 
   const fileRef = useRef(null);
+  const listaRef = useRef(null);
   const [uploadCtx, setUploadCtx] = useState(null);
 
   const apiUsuario = getApiUsuarioSessao();
@@ -386,96 +431,106 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
     return () => clearTimeout(t);
   }, [mensagemOk]);
 
+  const scrollParaLista = useCallback(() => {
+    requestAnimationFrame(() => {
+      listaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, []);
+
+  const recarregarTudo = useCallback(
+    async (filtrosSnapshot = null, { rolarParaLista = false } = {}) => {
+      setErro('');
+      setCarregando(true);
+      const q = montarQueryListaFromFiltros(filtrosSnapshot ?? filtros);
+      let listaOk = false;
+      try {
+        const rows = await listarPagamentos(q);
+        setLista(Array.isArray(rows) ? rows : []);
+        listaOk = true;
+      } catch (e) {
+        setErro(e?.message || 'Falha ao carregar a lista de pagamentos.');
+      }
+
+      const [dashRes, alRes, usRes] = await Promise.allSettled([
+        carregarDashboardPagamentos(mesRefDashboard.ano, mesRefDashboard.mes),
+        carregarAlertasPagamentos(),
+        listarColaboradoresHumanos(),
+      ]);
+
+      if (dashRes.status === 'fulfilled') setDashboard(dashRes.value || null);
+      if (alRes.status === 'fulfilled') {
+        setAlertasPayload(alRes.value && typeof alRes.value === 'object' ? alRes.value : null);
+      }
+      if (usRes.status === 'fulfilled') setUsuarios(Array.isArray(usRes.value) ? usRes.value : []);
+
+      setCarregando(false);
+      if (rolarParaLista && listaOk) scrollParaLista();
+    },
+    [filtros, mesRefDashboard.ano, mesRefDashboard.mes, scrollParaLista],
+  );
+
+  const aplicarFiltrosLista = useCallback(
+    (patch = null) => {
+      const next = patch ? { ...filtros, ...patch } : filtros;
+      if (patch) setFiltros(next);
+      void recarregarTudo(next, { rolarParaLista: true });
+    },
+    [filtros, recarregarTudo],
+  );
+
+  const limparFiltrosLista = useCallback(() => {
+    const next = defaultFiltrosLista();
+    setFiltros(next);
+    void recarregarTudo(next, { rolarParaLista: true });
+  }, [recarregarTudo]);
+
+  const filtrosRestritivosAtivos = useMemo(() => {
+    let n = 0;
+    if (filtros.somenteVencidos) n++;
+    if (filtros.somenteConferenciaPendente) n++;
+    if (filtros.proximos7Dias) n++;
+    if (filtros.mesAtual) n++;
+    if (filtros.somenteSemComprovante) n++;
+    if (filtros.altoValor) n++;
+    if (filtros.naoConciliado) n++;
+    if (filtros.status) n++;
+    if (filtros.categoria) n++;
+    if (filtros.responsavelUsuarioId) n++;
+    if (filtros.formaPagamento) n++;
+    if (filtros.prioridade) n++;
+    if (filtros.descricao.trim()) n++;
+    if (filtros.codigoBarras.trim()) n++;
+    if (filtros.valor) n++;
+    if (filtros.origem.trim()) n++;
+    if (filtros.mesReferencia.trim()) n++;
+    if (filtros.vencimentoDe || filtros.vencimentoAte) n++;
+    if (filtros.agendamentoDe || filtros.agendamentoAte) n++;
+    if (filtros.clienteId || filtros.processoId || filtros.imovelId) n++;
+    if (filtros.condominio.trim()) n++;
+    return n;
+  }, [filtros]);
+
+  useEffect(() => {
+    void recarregarTudo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     const iid = searchParams.get('imovelId');
     const st = searchParams.get('status');
     const pid = searchParams.get('processoId');
     const tipo = searchParams.get('tipo');
     if (!iid && !st && !pid && !tipo) return;
-    setFiltros((f) => {
-      const next = { ...f };
-      if (iid) next.imovelId = iid;
-      if (st) next.status = st;
-      if (pid) next.processoId = pid;
-      if (tipo) next.tipo = tipo;
-      if (
-        f.imovelId === next.imovelId &&
-        f.status === next.status &&
-        f.processoId === next.processoId &&
-        f.tipo === next.tipo
-      ) {
-        return f;
-      }
-      return next;
-    });
+
+    const patch = {};
+    if (iid) patch.imovelId = iid;
+    if (st) patch.status = st;
+    if (pid) patch.processoId = pid;
+    if (tipo) patch.tipo = tipo;
+
+    aplicarFiltrosLista(patch);
     if (pid || tipo) setSecaoAtiva('lista');
-  }, [searchParams]);
-
-  const montarQueryLista = useCallback(() => {
-    const q = {};
-    const trim = (s) => String(s ?? '').trim();
-    if (trim(filtros.tipo)) q.tipo = trim(filtros.tipo);
-    if (trim(filtros.descricao)) q.descricao = trim(filtros.descricao);
-    if (trim(filtros.codigoBarras)) q.codigoBarras = trim(filtros.codigoBarras);
-    const vv = valorNum(filtros.valor);
-    if (vv != null && vv > 0) q.valor = vv;
-    if (trim(filtros.status)) q.status = trim(filtros.status);
-    if (trim(filtros.categoria)) q.categoria = trim(filtros.categoria);
-    const ru = trim(filtros.responsavelUsuarioId);
-    if (ru && Number(ru) >= 1) q.responsavelUsuarioId = Number(ru);
-    if (trim(filtros.formaPagamento)) q.formaPagamento = trim(filtros.formaPagamento);
-    if (trim(filtros.prioridade)) q.prioridade = trim(filtros.prioridade);
-    if (trim(filtros.origem)) q.origem = trim(filtros.origem);
-    if (trim(filtros.vencimentoDe)) q.vencimentoDe = trim(filtros.vencimentoDe);
-    if (trim(filtros.vencimentoAte)) q.vencimentoAte = trim(filtros.vencimentoAte);
-    if (trim(filtros.agendamentoDe)) q.agendamentoDe = trim(filtros.agendamentoDe);
-    if (trim(filtros.agendamentoAte)) q.agendamentoAte = trim(filtros.agendamentoAte);
-    const cid = trim(filtros.clienteId);
-    if (cid && Number(cid) >= 1) q.clienteId = Number(cid);
-    const pid = trim(filtros.processoId);
-    if (pid && Number(pid) >= 1) q.processoId = Number(pid);
-    const iid = trim(filtros.imovelId);
-    if (iid && Number(iid) >= 1) q.imovelId = Number(iid);
-    if (trim(filtros.condominio)) q.condominio = trim(filtros.condominio);
-    if (filtros.somenteVencidos) q.somenteVencidos = true;
-    if (filtros.somenteConferenciaPendente) q.somenteConferenciaPendente = true;
-    if (filtros.proximos7Dias) q.proximos7Dias = true;
-    if (filtros.mesAtual) q.mesAtual = true;
-    if (filtros.somenteSemComprovante) q.somenteSemComprovante = true;
-    if (filtros.altoValor) q.altoValor = true;
-    if (trim(filtros.mesReferencia)) q.mesReferencia = trim(filtros.mesReferencia);
-    if (filtros.naoConciliado) {
-      q.conciliado = false;
-      q.somenteNaoConciliado = true;
-    }
-    return q;
-  }, [filtros]);
-
-  const recarregarTudo = useCallback(async () => {
-    setErro('');
-    setCarregando(true);
-    try {
-      const q = montarQueryLista();
-      const [rows, dash, al, us] = await Promise.all([
-        listarPagamentos(q),
-        carregarDashboardPagamentos(mesRefDashboard.ano, mesRefDashboard.mes),
-        carregarAlertasPagamentos(),
-        listarColaboradoresHumanos(),
-      ]);
-      setLista(Array.isArray(rows) ? rows : []);
-      setDashboard(dash || null);
-      setAlertasPayload(al && typeof al === 'object' ? al : null);
-      setUsuarios(Array.isArray(us) ? us : []);
-    } catch (e) {
-      setErro(e?.message || 'Falha ao carregar pagamentos.');
-    } finally {
-      setCarregando(false);
-    }
-  }, [montarQueryLista, mesRefDashboard.ano, mesRefDashboard.mes]);
-
-  useEffect(() => {
-    void recarregarTudo();
-  }, [recarregarTudo]);
+  }, [searchParams, aplicarFiltrosLista]);
 
   function abrirNovo() {
     setEditandoId(null);
@@ -582,29 +637,26 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
   }
 
   function aplicarFiltroConciliacaoPendente() {
-    setFiltros((f) => ({
-      ...f,
+    aplicarFiltrosLista({
       status: 'PAGO_CONFIRMADO',
       naoConciliado: true,
       somenteSemComprovante: false,
-    }));
+    });
   }
 
   function aplicarFiltroPagosNaoConciliados() {
-    setFiltros((f) => ({
-      ...f,
+    aplicarFiltrosLista({
       status: '',
       naoConciliado: true,
       somenteSemComprovante: false,
-    }));
+    });
   }
 
   function aplicarFiltroConferido() {
-    setFiltros((f) => ({
-      ...f,
+    aplicarFiltrosLista({
       status: 'CONFERIDO',
       naoConciliado: false,
-    }));
+    });
   }
 
   async function acaoAcertarConfirmar() {
@@ -1430,7 +1482,12 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
             />
           </label>
         </div>
-        <div className="flex flex-wrap gap-3 mt-3 text-xs">
+        <div className="flex flex-wrap items-center gap-3 mt-3 text-xs">
+          <p className="w-full text-slate-500 dark:text-slate-400">
+            Cada opção marcada <strong className="font-semibold text-slate-600 dark:text-slate-300">restringe</strong> a
+            lista — o pagamento precisa atender a todas ao mesmo tempo. Para ver tudo, deixe os checkboxes desmarcados e
+            Status em &quot;Todos&quot;.
+          </p>
           <label className="inline-flex items-center gap-1.5 cursor-pointer">
             <input
               type="checkbox"
@@ -1489,17 +1546,36 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
           </label>
           <button
             type="button"
-            onClick={() => void recarregarTudo()}
-            className="inline-flex items-center gap-1 rounded-md bg-slate-800 text-white px-2 py-1 hover:bg-slate-900 dark:bg-slate-200 dark:text-slate-900"
+            disabled={carregando}
+            onClick={() => aplicarFiltrosLista()}
+            className="inline-flex items-center gap-1 rounded-md bg-slate-800 text-white px-2 py-1 hover:bg-slate-900 disabled:opacity-60 disabled:cursor-wait dark:bg-slate-200 dark:text-slate-900"
           >
-            <Search className="w-3.5 h-3.5" />
+            {carregando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
             Aplicar
+          </button>
+          <button
+            type="button"
+            disabled={carregando || filtrosRestritivosAtivos === 0}
+            onClick={limparFiltrosLista}
+            className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 hover:bg-slate-100 disabled:opacity-50 dark:border-slate-600 dark:hover:bg-slate-800"
+          >
+            <X className="w-3.5 h-3.5" />
+            Limpar filtros
           </button>
         </div>
       </section>
 
-      <div className="flex-1 min-h-0 rounded-xl border border-slate-200/80 bg-white/95 dark:border-slate-700 dark:bg-slate-900/85 overflow-hidden flex flex-col">
-        <div className="overflow-x-auto flex-1 min-h-0">
+      <div
+        ref={listaRef}
+        className="flex-1 min-h-[min(42vh,420px)] rounded-xl border border-slate-200/80 bg-white/95 dark:border-slate-700 dark:bg-slate-900/85 overflow-hidden flex flex-col scroll-mt-4"
+      >
+        <div className="flex items-center justify-between gap-2 border-b border-slate-200/80 px-3 py-2 text-xs dark:border-slate-700">
+          <span className="font-semibold text-slate-700 dark:text-slate-200">Lista de pagamentos</span>
+          <span className="text-slate-500 dark:text-slate-400">
+            {carregando ? 'Carregando…' : `${lista.length} registro${lista.length === 1 ? '' : 's'}`}
+          </span>
+        </div>
+        <div className="overflow-auto flex-1 min-h-0">
           <table className="min-w-[1100px] w-full text-xs">
             <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 text-left">
               <tr>
@@ -1728,7 +1804,16 @@ export function Pagamentos({ ocultarCabecalho = false } = {}) {
             </tbody>
           </table>
           {!carregando && lista.length === 0 ? (
-            <p className="p-6 text-sm text-slate-500 text-center">Nenhum pagamento encontrado.</p>
+            <div className="p-6 text-sm text-slate-500 text-center space-y-2">
+              <p>Nenhum pagamento encontrado.</p>
+              {filtrosRestritivosAtivos > 1 ? (
+                <p className="text-xs text-slate-400">
+                  Há {filtrosRestritivosAtivos} filtros ativos ao mesmo tempo. Marcar várias opções não amplia o
+                  resultado — use <strong className="font-medium text-slate-500">Limpar filtros</strong> para ver a lista
+                  completa.
+                </p>
+              ) : null}
+            </div>
           ) : null}
         </div>
       </div>

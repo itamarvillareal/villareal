@@ -1,5 +1,8 @@
+import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
+import { ClipboardCheck } from 'lucide-react';
 import { useUsuarioPerfil } from '../../../hooks/useUsuarioPerfil.js';
+import { ModalConferenciaContratosHonorarios } from '../../../components/contratos/ModalConferenciaContratosHonorarios.jsx';
 
 export function subNavClassDocumentos(isActive) {
   const base =
@@ -18,17 +21,32 @@ export function subNavClassDocumentos(isActive) {
 
 export function DocumentosSubmenu() {
   const { isAdmin } = useUsuarioPerfil();
+  const [conferenciaAberta, setConferenciaAberta] = useState(false);
 
   return (
-    <nav aria-label="Submenu Documentos" className="mb-4 flex flex-wrap gap-2">
-      <NavLink to="/documentos/gerar" end className={({ isActive }) => subNavClassDocumentos(isActive)}>
-        Gerar documento
-      </NavLink>
-      {isAdmin ? (
-        <NavLink to="/documentos/modelos" className={({ isActive }) => subNavClassDocumentos(isActive)}>
-          Modelos de petição
+    <>
+      <nav aria-label="Submenu Documentos" className="mb-4 flex flex-wrap gap-2">
+        <NavLink to="/documentos/gerar" end className={({ isActive }) => subNavClassDocumentos(isActive)}>
+          Gerar documento
         </NavLink>
-      ) : null}
-    </nav>
+        {isAdmin ? (
+          <NavLink to="/documentos/modelos" className={({ isActive }) => subNavClassDocumentos(isActive)}>
+            Modelos de petição
+          </NavLink>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => setConferenciaAberta(true)}
+          className={subNavClassDocumentos(false) + ' cursor-pointer'}
+        >
+          <ClipboardCheck className="mr-1.5 inline h-4 w-4" aria-hidden />
+          Conferir importações
+        </button>
+      </nav>
+      <ModalConferenciaContratosHonorarios
+        open={conferenciaAberta}
+        onClose={() => setConferenciaAberta(false)}
+      />
+    </>
   );
 }
