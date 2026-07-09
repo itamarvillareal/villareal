@@ -11,6 +11,8 @@ import {
   saldoLedgerDesalinhadoComOfx,
   calcularDeltasAlinhamentoSaldo,
   alinhamentoSaldoCoerenteComOfx,
+  calcularSaldoAposReparo,
+  detectarFaltantesOcultosPorDedupe,
   podeContinuarImportacaoExtratoComOfx,
   prepararExclusaoReparoExtrato,
   prepararImportacaoReparoExtrato,
@@ -326,5 +328,44 @@ describe('extratoRepararDiagnostico', () => {
       saldoApi: { saldo: -20, saldoInicial: 0 },
     });
     expect(diag.totais.somaSistemaNoPeriodo).toBeCloseTo(-10, 2);
+  });
+
+  it('detectarFaltantesOcultosPorDedupe acha FITID ausente não listado como faltante', () => {
+    const ofx = [
+      { numero: '20260706001', data: '06/07/2026', valor: -5000, descricao: 'PIX TRANSF VRV SOL04 07' },
+      { numero: '20260706007', data: '06/07/2026', valor: -5000, descricao: 'PIX TRANSF VRV SOL06 07' },
+    ];
+    const existente = [
+      { numero: '20260706001', data: '06/07/2026', valor: -5000, descricao: 'PIX TRANSF VRV SOL04 07' },
+    ];
+    const analise = analisarLancamentosNovosDedupe(existente, ofx, { respeitarExtratoComoMestre: true });
+    expect(
+      detectarFaltantesOcultosPorDedupe(ofx, existente, analise.novos, analise),
+    ).toHaveLength(0);
+    expect(analise.novos).toHaveLength(1);
+    expect(analise.novos[0].numero).toBe('20260706007');
+  });
+
+  it('vários PIX VRV -5000 no mesmo dia: terceiro PIX aparece como faltante', () => {
+    const existente = [
+      { numero: '20260706001', data: '06/07/2026', valor: -5000, descricao: 'PIX TRANSF VRV SOL04 07' },
+      { numero: '20260706004', data: '06/07/2026', valor: -5000, descricao: 'PIX TRANSF VRV SOL05 07' },
+    ];
+    const ofxRows = [
+      ...existente,
+      { numero: '20260706007', data: '06/07/2026', valor: -5000, descricao: 'PIX TRANSF VRV SOL06 07' },
+    ];
+    const meta = { dataInicio: '2026-07-06', dataFim: '2026-07-06', saldoLedger: -15000 };
+    const diag = diagnosticarExtratoComArquivoCore({
+      arquivoRows: ofxRows,
+      meta,
+      existenteAll: existente,
+      saldoApi: { saldo: -10000, saldoInicial: 0 },
+    });
+    expect(diag.faltamNoSistema).toHaveLength(1);
+    expect(diag.faltamNoSistema[0].numero).toBe('20260706007');
+    expect(diag.faltamOcultosPorDedupe).toHaveLength(0);
+    expect(alinhamentoSaldoCoerenteComOfx(diag)).toBe(true);
+    expect(calcularSaldoAposReparo(-10000, diag.totais.somaFaltam, 0)).toBe(-15000);
   });
 });

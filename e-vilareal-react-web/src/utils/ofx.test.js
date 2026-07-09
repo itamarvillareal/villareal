@@ -10,6 +10,7 @@ import {
   analisarLancamentosNovosDedupe,
   diasIgnorarPorContagemIgual,
   chaveSemanticaLancamento,
+  listarChavesSemanticasLancamento,
   valorCentavosAssinadoDedupe,
   normalizarDescricaoParaDedupe,
 } from './ofx.js';
@@ -323,6 +324,20 @@ describe('mergeExtratoBancario (mesclar OFX/PDF com extrato)', () => {
     expect(chaveSemanticaLancamento({ data: '25/01/2021', valor: 680.01, natureza: 'CREDITO', descricao: 'a' })).not.toBe(
       chaveSemanticaLancamento({ data: '25/01/2021', valor: 680.01, natureza: 'DEBITO', descricao: 'b' })
     );
+  });
+
+  it('não colapsa vários PIX VRV -5000 no mesmo dia (Itaú SOL04/05/06)', () => {
+    const existente = [
+      { numero: '20260706001', data: '06/07/2026', valor: -5000, descricao: 'PIX TRANSF VRV SOL04 07', origemImportacao: 'OFX' },
+      { numero: '20260706004', data: '06/07/2026', valor: -5000, descricao: 'PIX TRANSF VRV SOL05 07', origemImportacao: 'OFX' },
+    ];
+    const novo = [
+      { numero: '20260706007', data: '06/07/2026', valor: -5000, descricao: 'PIX TRANSF VRV SOL06 07', origemImportacao: 'OFX' },
+    ];
+    expect(listarLancamentosNovosDedupe(existente, novo, { respeitarExtratoComoMestre: true })).toHaveLength(1);
+    expect(
+      listarChavesSemanticasLancamento(novo[0]).includes('2026-07-06|-500000|pix transf|vrv sol'),
+    ).toBe(false);
   });
 });
 

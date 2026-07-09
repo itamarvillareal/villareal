@@ -497,6 +497,25 @@ export function ExtratoRepararPanel({
                 destaque={Number(totais.saldoSistema) < 0 ? 'neg' : 'pos'}
               />
             ) : null}
+            {totais.saldoAposReparo != null ? (
+              <LinhaResumo
+                label="Saldo após reparo (projetado)"
+                value={formatMoeda(totais.saldoAposReparo)}
+                destaque={
+                  meta?.saldoLedger != null &&
+                  Math.abs(totais.saldoAposReparo - meta.saldoLedger) < 0.01
+                    ? 'pos'
+                    : undefined
+                }
+              />
+            ) : null}
+            {totais.faltamOcultosPorDedupe > 0 ? (
+              <LinhaResumo
+                label="Ocultos pelo dedupe semântico"
+                value={`${totais.faltamOcultosPorDedupe} (${formatMoeda(totais.somaFaltamOcultos)})`}
+                destaque="neg"
+              />
+            ) : null}
             {totais.deltaSaldoEsperado != null && totais.deltaSaldoReparo != null ? (
               <>
                 <LinhaResumo

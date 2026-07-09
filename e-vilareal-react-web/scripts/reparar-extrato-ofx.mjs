@@ -5,7 +5,8 @@
  * Uso (a partir de e-vilareal-react-web/):
  *   node scripts/reparar-extrato-ofx.mjs --ofx=/path/arquivo.ofx --numero-banco=26 --banco=CORA
  *   node scripts/reparar-extrato-ofx.mjs --ofx=... --numero-banco=26 --banco=CORA --executar
- *   node scripts/reparar-extrato-ofx.mjs --ofx=... --executar --forcar   # ignora trava LEDGERBAL
+ *   node scripts/reparar-extrato-ofx.mjs --ofx=... --listar-faltantes
+ *   node scripts/reparar-extrato-ofx.mjs --ofx=... --executar --forcar   # só se incoerente
  *
  * Envs: VILAREAL_API_BASE, VILAREAL_IMPORT_SENHA (ver load-vilareal-import-env.mjs)
  */
@@ -32,10 +33,12 @@ function parseArgs(argv) {
     baseUrl: (process.env.VILAREAL_API_BASE || 'http://localhost:8080').replace(/\/$/, ''),
     executar: false,
     forcar: false,
+    listarFaltantes: false,
   };
   for (const a of argv) {
     if (a === '--executar') out.executar = true;
     else if (a === '--forcar') out.forcar = true;
+    else if (a === '--listar-faltantes') out.listarFaltantes = true;
     else if (a.startsWith('--ofx=')) out.ofx = a.slice(6).trim();
     else if (a.startsWith('--banco=')) out.banco = a.slice(8).trim();
     else if (a.startsWith('--numero-banco=')) out.numeroBanco = Number(a.slice(15));
@@ -170,6 +173,25 @@ function formatMoeda(n) {
   return (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+function imprimirFaltantes(faltam, ocultos) {
+  if (faltam?.length) {
+    console.log('\n--- Faltantes no sistema ---');
+    for (const f of faltam) {
+      console.log(
+        `${f.numero}\t${f.data}\t${formatMoeda(f.valor)}\t${String(f.descricao || '').slice(0, 55)}`,
+      );
+    }
+  }
+  if (ocultos?.length) {
+    console.log('\n--- Ocultos pelo dedupe (FITID ausente, não listados como faltantes) ---');
+    for (const f of ocultos) {
+      console.log(
+        `${f.numero}\t${f.data}\t${formatMoeda(f.valor)}\t${String(f.descricao || '').slice(0, 55)}`,
+      );
+    }
+  }
+}
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (!opts.ofx || !fs.existsSync(opts.ofx)) {
@@ -214,6 +236,22 @@ async function main() {
   console.log(`Sobram no sistema: ${diag.totais.sobramNoSistema} (${formatMoeda(diag.totais.somaSobram)})`);
   console.log(`Saldo OFX (LEDGERBAL): ${formatMoeda(diag.meta.saldoLedger)}`);
   console.log(`Saldo sistema: ${formatMoeda(diag.totais.saldoSistema)}`);
+  if (diag.totais.saldoAposReparo != null) {
+    console.log(`Saldo após reparo (projetado): ${formatMoeda(diag.totais.saldoAposReparo)}`);
+  }
+  if (diag.totais.deltaSaldoEsperado != null) {
+    console.log(`Δ saldo necessário: ${formatMoeda(diag.totais.deltaSaldoEsperado)}`);
+  }
+  if (diag.totais.deltaSaldoReparo != null) {
+    console.log(`Δ efeito do reparo: ${formatMoeda(diag.totais.deltaSaldoReparo)}`);
+  }
+  console.log(
+    `Alinhamento coerente: ${diag.totais.alinhamentoSaldoCoerente ? 'sim' : 'não'}${
+      diag.totais.faltamOcultosPorDedupe
+        ? ` (${diag.totais.faltamOcultosPorDedupe} oculto(s) pelo dedupe)`
+        : ''
+    }`,
+  );
   if (diag.totais.saldoInicialSistema) {
     console.log(`Saldo inicial cadastrado: ${formatMoeda(diag.totais.saldoInicialSistema)}`);
   }
@@ -222,14 +260,36 @@ async function main() {
     console.log(`• ${linha.replace(/\*\*(.*?)\*\*/g, '$1')}`);
   }
 
+  if (opts.listarFaltantes || (diag.faltamNoSistema.length > 0 && diag.faltamNoSistema.length <= 60)) {
+    imprimirFaltantes(diag.faltamNoSistema, diag.faltamOcultosPorDedupe);
+  } else if (diag.faltamNoSistema.length > 60) {
+    console.log(`\n(${diag.faltamNoSistema.length} faltantes — use --listar-faltantes para listar todos)`);
+  }
+
   if (!opts.executar) {
-    console.log('\nDry-run. Use --executar para excluir sobras e importar faltantes.');
+    if (diag.totais.alinhamentoSaldoCoerente && diag.totais.faltamNoSistema > 0) {
+      console.log('\nDry-run. Use --executar para importar faltantes e alinhar o saldo.');
+    } else if (diag.totais.faltamOcultosPorDedupe > 0) {
+      console.log('\nDry-run. Há ocultos pelo dedupe — atualize o código antes de --executar --forcar.');
+    } else if (!diag.totais.alinhamentoSaldoCoerente && diag.totais.faltamNoSistema > 0) {
+      console.log('\nDry-run. Reparo incoerente — revise o diagnóstico antes de --executar --forcar.');
+    } else {
+      console.log('\nDry-run. Use --executar para excluir sobras e importar faltantes.');
+    }
     return;
+  }
+
+  if (!diag.totais.alinhamentoSaldoCoerente && !opts.forcar) {
+    throw new Error(
+      'Alinhamento incoerente. Revise ocultos/faltantes ou use --forcar se tiver certeza.',
+    );
   }
 
   console.log('\n=== Executando alinhamento ===');
   if (opts.forcar && !diag.totais.alinhamentoSaldoCoerente) {
     console.log('• --forcar: ignorando incoerência LEDGERBAL × efeito do reparo.');
+  } else if (diag.totais.alinhamentoSaldoCoerente) {
+    console.log('• Reparo coerente: importação deve fechar com o LEDGERBAL.');
   }
 
   const removerLote = async (apiIds) => {
@@ -295,6 +355,14 @@ async function main() {
   console.log(`Sobram: ${f.totais.sobramNoSistema}`);
   console.log(`Saldo sistema: ${formatMoeda(f.totais.saldoSistema)}`);
   console.log(`Saldo OFX: ${formatMoeda(f.meta.saldoLedger)}`);
+  if (f.meta?.saldoLedger != null && f.totais?.saldoSistema != null) {
+    const residual = f.totais.saldoSistema - f.meta.saldoLedger;
+    if (Math.abs(residual) < 0.01) {
+      console.log('Saldo alinhado com o OFX.');
+    } else {
+      console.log(`Diferença residual: ${formatMoeda(residual)}`);
+    }
+  }
 }
 
 main().catch((e) => {

@@ -1,6 +1,7 @@
 import {
   analisarLancamentosNovosDedupe,
   dataLancamentoParaIso,
+  listarChavesSemanticasLancamento,
   parseOfxToExtrato,
   sanitizarLancamentoImportacaoExtrato,
 } from '../../../utils/ofx.js';
@@ -147,6 +148,65 @@ export function alinhamentoSaldoCoerenteComOfx(diag) {
   return calcularDeltasAlinhamentoSaldo(diag).coerente;
 }
 
+/** Saldo projetado após importar faltantes e excluir sobras (sem I/O). */
+export function calcularSaldoAposReparo(saldoSistema, somaFaltam, somaSobram) {
+  if (saldoSistema == null || !Number.isFinite(Number(saldoSistema))) return null;
+  const delta = (Number(somaFaltam) || 0) - (Number(somaSobram) || 0);
+  return Number(saldoSistema) + delta;
+}
+
+/**
+ * OFX com FITID ausente no sistema que o dedupe semântico tratou como já gravado
+ * (ex.: vários PIX VRV -5.000 no mesmo dia na mesma chave).
+ */
+export function detectarFaltantesOcultosPorDedupe(
+  ofxNoPeriodo,
+  existenteNoPeriodo,
+  faltamNoSistema,
+  analiseFaltam = null,
+) {
+  const sysNums = new Set(
+    (existenteNoPeriodo ?? [])
+      .map((t) => String(t?.numero ?? '').trim())
+      .filter(Boolean),
+  );
+  const faltamNums = new Set(
+    (faltamNoSistema ?? []).map((t) => String(t?.numero ?? '').trim()).filter(Boolean),
+  );
+
+  const candidatos = (analiseFaltam?.ignoradosDetalhe ?? [])
+    .filter((x) => x.motivo === 'chave_semantica')
+    .map((x) => x.row)
+    .filter((o) => {
+      const n = String(o?.numero ?? '').trim();
+      return n && !sysNums.has(n) && !faltamNums.has(n);
+    });
+
+  if (!candidatos.length) {
+    return [];
+  }
+
+  const seen = new Set();
+  const out = [];
+  for (const row of candidatos) {
+    const n = String(row?.numero ?? '').trim();
+    if (!n || seen.has(n)) continue;
+    const chaves = listarChavesSemanticasLancamento(row);
+    const colidiu = candidatos.some((outro) => {
+      if (outro === row) return false;
+      const on = String(outro?.numero ?? '').trim();
+      if (!on || on === n) return false;
+      const outras = listarChavesSemanticasLancamento(outro);
+      return chaves.some((k) => outras.includes(k));
+    });
+    if (colidiu) {
+      seen.add(n);
+      out.push(row);
+    }
+  }
+  return out;
+}
+
 function formatarMoeda(n) {
   return (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
@@ -181,7 +241,13 @@ function montarSobramNoSistema(ofxRows, existenteAll, meta) {
   return analiseSobra.novos;
 }
 
-function montarConclusao({ meta, totais, faltamNoSistema, sobramNoSistema }) {
+function montarConclusao({
+  meta,
+  totais,
+  faltamNoSistema,
+  sobramNoSistema,
+  faltamOcultosPorDedupe = [],
+}) {
   const linhas = [];
   const diffSaldo =
     meta.saldoLedger != null && totais.saldoSistema != null
@@ -223,9 +289,27 @@ function montarConclusao({ meta, totais, faltamNoSistema, sobramNoSistema }) {
     sobramNoSistema,
   });
 
+  if (faltamOcultosPorDedupe.length > 0) {
+    linhas.push(
+      `${faltamOcultosPorDedupe.length} lançamento(s) do OFX têm FITID ausente no sistema mas **não** aparecem como faltantes (pareamento semântico) — soma ${formatarMoeda(totais.somaFaltamOcultos)}.`,
+    );
+  }
+
   if (faltamNoSistema.length > 0) {
     linhas.push(
       `${faltamNoSistema.length} lançamento(s) do OFX **não constam** no sistema (soma ${formatarMoeda(totais.somaFaltam)}).`,
+    );
+  }
+
+  if (
+    coerente &&
+    faltamNoSistema.length > 0 &&
+    meta.saldoLedger != null &&
+    totais.saldoAposReparo != null &&
+    Math.abs(totais.saldoAposReparo - meta.saldoLedger) < 0.01
+  ) {
+    linhas.push(
+      `Importar os faltantes fecha o saldo com o LEDGERBAL (${formatarMoeda(meta.saldoLedger)}). Use **Alinhar saldo com OFX**.`,
     );
   }
 
@@ -236,7 +320,7 @@ function montarConclusao({ meta, totais, faltamNoSistema, sobramNoSistema }) {
   ) {
     linhas.push(
       `Efeito do reparo (${formatarMoeda(deltaReparo)}) **não bate** com a diferença de saldo (${formatarMoeda(deltaEsperado)}). ` +
-        'Provável histórico anterior ao período do OFX — use arquivo histórico completo ou ajuste o saldo de abertura; **não** use «Alinhar» cegamente.',
+        'Revise lançamentos ocultos pelo pareamento semântico, histórico anterior ao período ou saldo de abertura — **não** use «Alinhar» cegamente.',
     );
   }
 
@@ -378,14 +462,26 @@ export function diagnosticarExtratoComArquivoCore({
   );
 
   const sobramNoSistema = montarSobramNoSistema(ofxNoPeriodo, existenteAll, meta);
+  const somaFaltam = somaValores(faltamNoSistema);
+  const somaSobram = somaValores(sobramNoSistema);
+  const saldoSistema = saldoApi?.saldo ?? null;
   const deltasAlinhamento = calcularDeltasAlinhamentoSaldo({
     meta,
     totais: {
-      saldoSistema: saldoApi?.saldo ?? null,
-      somaFaltam: somaValores(faltamNoSistema),
-      somaSobram: somaValores(sobramNoSistema),
+      saldoSistema,
+      somaFaltam,
+      somaSobram,
     },
   });
+  let faltamOcultosPorDedupe = detectarFaltantesOcultosPorDedupe(
+    ofxNoPeriodo,
+    existenteNoPeriodo,
+    faltamNoSistema,
+    analiseFaltam,
+  );
+  if (deltasAlinhamento.coerente) {
+    faltamOcultosPorDedupe = [];
+  }
 
   const totais = {
     ofxArquivo: ofxRows.length,
@@ -404,10 +500,13 @@ export function diagnosticarExtratoComArquivoCore({
     somaOfxNoPeriodo: somaValores(ofxNoPeriodo),
     somaSistemaNoPeriodo: somaValores(existenteNoPeriodo),
     somaSistemaTotal: somaValores(existenteAll),
-    somaFaltam: somaValores(faltamNoSistema),
-    somaSobram: somaValores(sobramNoSistema),
+    somaFaltam,
+    somaSobram,
+    faltamOcultosPorDedupe: faltamOcultosPorDedupe.length,
+    somaFaltamOcultos: somaValores(faltamOcultosPorDedupe),
+    saldoAposReparo: calcularSaldoAposReparo(saldoSistema, somaFaltam, somaSobram),
     saldoLedgerOfx: meta.saldoLedger,
-    saldoSistema: saldoApi?.saldo ?? null,
+    saldoSistema,
     saldoInicialSistema: saldoApi?.saldoInicial ?? null,
     dataCorte: protecao.dataCorte,
     dataCorteBr: formatarDataCorteBr(protecao.dataCorte),
@@ -421,9 +520,16 @@ export function diagnosticarExtratoComArquivoCore({
     totais,
     faltamNoSistema,
     sobramNoSistema,
+    faltamOcultosPorDedupe,
     porDiaImport: Object.fromEntries(analiseFaltam.porDia),
     diasIgnoradosPorContagem: analiseFaltam.diasIgnoradosPorContagem ?? [],
-    conclusao: montarConclusao({ meta, totais, faltamNoSistema, sobramNoSistema }),
+    conclusao: montarConclusao({
+      meta,
+      totais,
+      faltamNoSistema,
+      sobramNoSistema,
+      faltamOcultosPorDedupe,
+    }),
   };
 }
 

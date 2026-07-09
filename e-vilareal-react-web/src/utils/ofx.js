@@ -252,7 +252,9 @@ export function listarChavesSemanticasLancamento(t) {
   }
   const mPix = desc.match(/^(dev pix|pix transf)\s+(.+)$/);
   if (mPix) {
-    const sufixo = mPix[2].replace(/\d{4}$/, '').trim();
+    // Mantém sufixo completo (ex.: sol0407 vs sol0607). Remover dígitos finais
+    // fazia vários PIX VRV -5.000 no mesmo dia colapsarem numa chave só.
+    const sufixo = mPix[2].trim();
     if (sufixo.length >= 3) {
       chaves.add(`${data}|${cents}|${mPix[1]}|${sufixo.slice(0, 40)}`);
     }
