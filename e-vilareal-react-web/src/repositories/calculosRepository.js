@@ -17,6 +17,13 @@ export function fetchCalculoRodadasResumo(opts = {}) {
   return request('/api/calculos/rodadas/resumo', { signal: opts.signal });
 }
 
+/** Resumo das rodadas de um processo (sem carregar o mapa global). */
+export function fetchCalculoRodadasResumoProcesso(codigoCliente8, processo, opts = {}) {
+  const c = encodeURIComponent(String(codigoCliente8 ?? '').trim());
+  const p = encodeURIComponent(String(processo ?? '').trim());
+  return request(`/api/calculos/rodadas/resumo/${c}/${p}`, { signal: opts.signal });
+}
+
 /**
  * Uma rodada por chave. {@code null} se 404 (sem corpo).
  * @param {{ signal?: AbortSignal }} [opts]

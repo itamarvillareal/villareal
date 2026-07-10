@@ -2579,7 +2579,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       const cur = prev[rodadaKey];
       if (!cur) return prev;
       const patch = next
-        ? patchRodadaAoAceitarPagamento(cur, dataCalculo)
+        ? patchRodadaAoAceitarPagamento(cur, dataCalculo, parcelas)
         : patchRodadaAoDesfazerAceitarPagamento(cur, titulos);
       isDirtyRodadaRef.current = true;
       paginasRodadaCacheRef.current = new Map();

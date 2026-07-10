@@ -4,6 +4,7 @@
  */
 
 import { calcularResumoTitulosGrade } from './calculosRodadaTitulosPaginacao.js';
+import { rodadaPlanoPagamentoParaHomologacao } from './calculosDebitosTitulos.js';
 import {
   indicesLinhasPlanoPagamento,
   temPlanoPagamento,
@@ -33,8 +34,9 @@ export const CLAUSULAS_HOMOLOGACAO_PADRAO = {
 
 /** Boletos do plano aceito: valor total da parcela (coluna Valor); honorários não somam. */
 export function extrairBoletosHomologacao(rodada) {
-  const parcelas = Array.isArray(rodada?.parcelas) ? rodada.parcelas : [];
-  const indices = indicesLinhasPlanoPagamento(rodada);
+  const efetiva = rodadaPlanoPagamentoParaHomologacao(rodada);
+  const parcelas = Array.isArray(efetiva?.parcelas) ? efetiva.parcelas : [];
+  const indices = indicesLinhasPlanoPagamento(efetiva);
   const boletos = [];
   for (const idx of indices) {
     const p = parcelas[idx];
@@ -49,6 +51,7 @@ export function extrairBoletosHomologacao(rodada) {
 }
 
 export function validarElegibilidadeHomologacao(rodada) {
+  const efetiva = rodadaPlanoPagamentoParaHomologacao(rodada);
   if (!rodada || rodada.parcelamentoAceito !== true) {
     return {
       elegivel: false,
@@ -56,7 +59,7 @@ export function validarElegibilidadeHomologacao(rodada) {
         'Não há cálculo aceito para este processo. Aceite o parcelamento na tela de Cálculos antes de gerar a homologatória.',
     };
   }
-  if (!temPlanoPagamento(rodada)) {
+  if (!temPlanoPagamento(efetiva)) {
     return {
       elegivel: false,
       motivo:

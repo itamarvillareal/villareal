@@ -75,6 +75,20 @@ public class CalculoController {
                 .body(body);
     }
 
+    @GetMapping(value = "/rodadas/resumo/{codigoCliente}/{processo}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(
+            summary = "Resumo de rodadas de um processo",
+            description = "Metadados `parcelamentoAceito` apenas das dimensões do processo informado.")
+    public ResponseEntity<CalculoRodadasResumoResponse> listarResumoRodadasProcesso(
+            @PathVariable String codigoCliente, @PathVariable int processo) {
+        CalculoRodadasResumoResponse body =
+                calculoApplicationService.listarResumoRodadasProcesso(codigoCliente, processo);
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_JSON)
+                .cacheControl(CacheControl.noStore())
+                .body(body);
+    }
+
     @GetMapping(value = "/rodadas/{codigoCliente}/{processo}/{dimensao}", produces = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Obter uma rodada", description = "Payload JSON da rodada; 404 se não existir.")
     public ResponseEntity<JsonNode> obterRodada(

@@ -2,7 +2,7 @@
  * Resolução de rodadas de cálculo com parcelamento aceito por processo.
  */
 
-import { fetchCalculoRodadasResumo } from '../repositories/calculosRepository.js';
+import { fetchCalculoRodadasResumoProcesso } from '../repositories/calculosRepository.js';
 import { padCliente8Config } from '../data/clienteConfigCalculoStorage.js';
 
 export const MSG_SEM_CALCULO_ACEITO =
@@ -25,7 +25,7 @@ export async function listarDimensoesAceitasProcesso({ codigoCliente, numeroInte
   const cod8 = padCliente8Config(codigoCliente);
   const proc = String(normalizarProc(numeroInterno));
   const prefixo = `${cod8}:${proc}:`;
-  const resumo = await fetchCalculoRodadasResumo();
+  const resumo = await fetchCalculoRodadasResumoProcesso(cod8, proc);
   const rodadas = Array.isArray(resumo?.rodadas) ? resumo.rodadas : [];
   return rodadas
     .filter((r) => r?.parcelamentoAceito && String(r?.chave ?? '').startsWith(prefixo))

@@ -161,6 +161,22 @@ public class CalculoApplicationService {
         return new CalculoRodadasResumoResponse(items);
     }
 
+    @Transactional(readOnly = true)
+    public CalculoRodadasResumoResponse listarResumoRodadasProcesso(String codigoCliente, int numeroProcesso) {
+        String cod8 = CodigoClienteUtil.normalizarCodigoClienteOitoDigitos(codigoCliente);
+        if (numeroProcesso < 1) {
+            throw new BusinessRuleException("Número interno do processo inválido.");
+        }
+        List<CalculoRodadaResumoItem> items = new ArrayList<>();
+        for (CalculoRodadaResumoProjection row :
+                rodadaRepository.findResumoByCodigoClienteAndNumeroProcessoOrderByDimensaoAsc(cod8, numeroProcesso)) {
+            RodadaCalculoChave ch = new RodadaCalculoChave(
+                    row.codigoCliente(), row.numeroProcesso(), row.dimensao());
+            items.add(new CalculoRodadaResumoItem(ch.toMapKey(), row.parcelamentoAceito()));
+        }
+        return new CalculoRodadasResumoResponse(items);
+    }
+
     private static boolean chaveRodadaCompleta(CalculoRodadaEntity row) {
         return row.getCodigoCliente() != null
                 && row.getNumeroProcesso() != null

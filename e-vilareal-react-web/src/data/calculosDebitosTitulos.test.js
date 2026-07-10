@@ -100,6 +100,27 @@ describe('calculosDebitosTitulos', () => {
     expect(patch.dataCalculoRodada).toBe('23/06/2026');
   });
 
+  it('patchRodadaAoAceitarPagamento: congela plano de parcelamento exibido', () => {
+    const parcelas = [
+      { dataVencimento: '05/08/2026', valorParcela: 'R$ 100,00' },
+      { dataVencimento: '05/09/2026', valorParcela: 'R$ 100,00' },
+      { dataVencimento: '05/10/2026', valorParcela: 'R$ 100,00' },
+      { dataVencimento: '05/11/2026', valorParcela: 'R$ 100,00' },
+    ];
+    const patch = patchRodadaAoAceitarPagamento(
+      {
+        titulos: [{ valorInicial: 'R$ 400,00', dataVencimento: '01/01/2020' }],
+        quantidadeParcelasInformada: '04',
+        entradaParcelamentoModo: 'nenhuma',
+        parcelas: [{ dataVencimento: '05/08/2026', valorParcela: 'R$ 50,00' }],
+      },
+      '23/06/2026',
+      parcelas,
+    );
+    expect(patch.parcelasGravadasAceito).toHaveLength(4);
+    expect(patch.parcelamentoPlanoAceito?.quantidadeParcelasInformada).toBe('04');
+  });
+
   it('patchRodadaAoDesfazerAceitarPagamento: preserva débitos e apaga só o plano de pagamento', () => {
     const patch = patchRodadaAoDesfazerAceitarPagamento({
       parcelamentoAceito: true,

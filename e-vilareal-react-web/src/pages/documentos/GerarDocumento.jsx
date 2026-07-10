@@ -555,12 +555,6 @@ export function GerarDocumento() {
       numeroCnj: dadosProcesso?.numeroProcesso || '',
       unidade: dadosProcesso?.unidade || homologCalc.dados?.cabecalho?.unidade || '',
       clausulas,
-      dadosPreCarregados: {
-        dados: homologCalc.dados,
-        elegivel: homologCalc.elegivel,
-        motivo: homologCalc.motivo,
-        boletos: homologCalc.boletos,
-      },
     }),
     [
       codigoClienteProcesso,
@@ -570,9 +564,6 @@ export function GerarDocumento() {
       dadosProcesso?.numeroProcesso,
       dadosProcesso?.unidade,
       homologCalc.dados,
-      homologCalc.elegivel,
-      homologCalc.motivo,
-      homologCalc.boletos,
     ],
   );
 

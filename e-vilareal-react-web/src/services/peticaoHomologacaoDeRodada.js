@@ -75,13 +75,11 @@ async function prepararHomologacao({
   numeroCnj,
   unidade,
   clausulas,
-  dadosPreCarregados = null,
 }) {
   const cod8 = padCliente8Config(codigoCliente);
   const proc = normalizarProc(numeroInterno);
 
-  const carregado =
-    dadosPreCarregados ?? (await carregarCalculoAceitoHomologacao({ codigoCliente: cod8, numeroInterno: proc }));
+  const carregado = await carregarCalculoAceitoHomologacao({ codigoCliente: cod8, numeroInterno: proc });
   if (!carregado?.dados) {
     throw new Error(carregado?.motivo || 'Não há cálculo salvo para este processo.');
   }
@@ -127,7 +125,6 @@ function paramsHomologacaoComuns(input) {
     numeroCnj: input.numeroCnj,
     unidade: input.unidade,
     clausulas: input.clausulas,
-    dadosPreCarregados: input.dadosPreCarregados ?? null,
   };
 }
 

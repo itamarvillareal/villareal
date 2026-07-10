@@ -4,6 +4,7 @@
 
 import { parseValorMonetarioBr } from '../utils/parseValorMonetarioBr.js';
 import { linhaTituloVaziaCalculos } from './calculosTitulosParcelasSync.js';
+import { entradaModoAtivo, parseQuantidadeParcelasNumero } from './parcelamentoEntrada.js';
 
 function trunc2(n) {
   const v = Number(n);
@@ -126,24 +127,81 @@ export function titulosGravadosSnapshotUtilizavel(gravados) {
 }
 
 /**
+ * Congela o plano de pagamento exibido (entrada + parcelas) para homologatória/execução.
+ * @param {Record<string, unknown>} rodada
+ * @param {unknown[]} [parcelasExibidas]
+ */
+export function snapshotPlanoPagamentoAceito(rodada, parcelasExibidas) {
+  const cur = rodada && typeof rodada === 'object' ? rodada : {};
+  const qtd = String(cur.quantidadeParcelasInformada ?? '00');
+  const plano = {
+    quantidadeParcelasInformada: qtd,
+    entradaParcelamentoModo: cur.entradaParcelamentoModo ?? 'nenhuma',
+    entradaParcelamentoValor: cur.entradaParcelamentoValor ?? '',
+    entradaParcelamentoPercentual: cur.entradaParcelamentoPercentual ?? '',
+    entradaParcelamentoDataVenc: cur.entradaParcelamentoDataVenc ?? '',
+    taxaJurosParcelamento: cur.taxaJurosParcelamento ?? '0,00',
+  };
+  const n = parseQuantidadeParcelasNumero(qtd);
+  const temEnt = entradaModoAtivo(plano);
+  const limite = Math.max(temEnt ? n + 1 : n, 0);
+  const fonte = Array.isArray(parcelasExibidas)
+    ? parcelasExibidas
+    : Array.isArray(cur.parcelas)
+      ? cur.parcelas
+      : [];
+  const parcelasGravadasAceito = fonte.slice(0, limite).map((p) => ({ ...(p && typeof p === 'object' ? p : {}) }));
+  return { parcelasGravadasAceito, parcelamentoPlanoAceito: plano };
+}
+
+/**
+ * Rodada efetiva para extrair boletos da homologatória (usa snapshot congelado ao aceitar).
+ * @param {Record<string, unknown>|null|undefined} rodada
+ */
+export function rodadaPlanoPagamentoParaHomologacao(rodada) {
+  if (!rodada || typeof rodada !== 'object') return rodada;
+  if (rodada.parcelamentoAceito !== true) return rodada;
+  const gravadas = Array.isArray(rodada.parcelasGravadasAceito) ? rodada.parcelasGravadasAceito : [];
+  if (!gravadas.length) return rodada;
+  const plano =
+    rodada.parcelamentoPlanoAceito && typeof rodada.parcelamentoPlanoAceito === 'object'
+      ? rodada.parcelamentoPlanoAceito
+      : {};
+  return {
+    ...rodada,
+    ...plano,
+    parcelas: gravadas.map((p) => ({ ...p })),
+  };
+}
+
+/**
  * Snapshot ao marcar Aceitar Pagamento: usa títulos atuais (recalculados), não o txt importado.
  * @param {Record<string, unknown>|null|undefined} rodada
  * @param {string} dataCalculoAtual
+ * @param {unknown[]} [parcelasExibidas] linhas do plano exibidas na aba Parcelamento
  */
-export function patchRodadaAoAceitarPagamento(rodada, dataCalculoAtual) {
+export function patchRodadaAoAceitarPagamento(rodada, dataCalculoAtual, parcelasExibidas) {
   const cur = rodada && typeof rodada === 'object' ? rodada : {};
   const titulosEstado = Array.isArray(cur.titulos) ? cur.titulos : [];
   const gravados = Array.isArray(cur.titulosGravadosAceito) ? cur.titulosGravadosAceito : [];
   const temValorEstado = titulosEstado.some((t) => String(t?.valorInicial ?? '').trim() !== '');
   const snap = temValorEstado ? titulosEstado : gravados;
-  if (!snap.length) return { parcelamentoAceito: true };
+  const planoSnap = snapshotPlanoPagamentoAceito(cur, parcelasExibidas);
+  const dc = String(dataCalculoAtual ?? '').trim();
+  if (!snap.length) {
+    return {
+      parcelamentoAceito: true,
+      ...planoSnap,
+      ...(dc ? { dataCalculoRodada: dc } : {}),
+    };
+  }
 
   const copia = snap.map((t) => ({ ...t }));
-  const dc = String(dataCalculoAtual ?? '').trim();
   return {
     parcelamentoAceito: true,
     titulosGravadosAceito: copia,
     titulos: copia.map((t) => ({ ...t })),
+    ...planoSnap,
     ...(dc ? { dataCalculoRodada: dc } : {}),
   };
 }
@@ -186,6 +244,8 @@ export function patchRodadaAoDesfazerAceitarPagamento(rodada, titulosExibidos) {
     parcelamentoAceito: false,
     titulos,
     titulosGravadosAceito: [],
+    parcelasGravadasAceito: [],
+    parcelamentoPlanoAceito: null,
     parcelas: [],
     quantidadeParcelasInformada: '00',
     taxaJurosParcelamento: '0,00',
