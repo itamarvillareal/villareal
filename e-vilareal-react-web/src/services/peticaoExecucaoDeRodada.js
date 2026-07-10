@@ -17,6 +17,7 @@ import {
   mergeConfigPainelCalculo,
   padCliente8Config,
 } from '../data/clienteConfigCalculoStorage.js';
+import { aguardarPersistenciaRodadasCalculos } from '../data/calculosRodadasStorage.js';
 import { calcularResumoTitulosGrade } from '../data/calculosRodadaTitulosPaginacao.js';
 import { montarBodyPeticaoExecucao } from '../data/peticaoExecucaoBuilder.js';
 import {
@@ -77,6 +78,7 @@ export async function carregarCalculoSalvo({ codigoCliente, numeroInterno, dimen
  * @returns {Promise<{ dados: object | null, dimensao: number | null, erro: string }>}
  */
 export async function carregarUltimoCalculoAceitoSalvo({ codigoCliente, numeroInterno }) {
+  await aguardarPersistenciaRodadasCalculos();
   const resolved = await resolverUltimaDimensaoAceita({ codigoCliente, numeroInterno });
   if (resolved.dimensao == null) {
     return { dados: null, dimensao: null, erro: resolved.motivo };

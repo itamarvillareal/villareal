@@ -158,6 +158,13 @@ export function snapshotPlanoPagamentoAceito(rodada, parcelasExibidas) {
  * Rodada efetiva para extrair boletos da homologatória (usa snapshot congelado ao aceitar).
  * @param {Record<string, unknown>|null|undefined} rodada
  */
+/** Atualiza snapshot do plano aceito a partir das parcelas atuais do payload (antes de PUT). */
+export function sincronizarSnapshotPlanoPagamentoAceitoNoPayload(rodada) {
+  if (!rodada || typeof rodada !== 'object' || rodada.parcelamentoAceito !== true) return rodada;
+  const snap = snapshotPlanoPagamentoAceito(rodada, rodada.parcelas);
+  return { ...rodada, ...snap };
+}
+
 export function rodadaPlanoPagamentoParaHomologacao(rodada) {
   if (!rodada || typeof rodada !== 'object') return rodada;
   if (rodada.parcelamentoAceito !== true) return rodada;

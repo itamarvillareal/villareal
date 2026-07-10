@@ -16,6 +16,7 @@ import {
   downloadPdfBlob,
 } from '../repositories/documentosRepository.js';
 import { padCliente8Config } from '../data/clienteConfigCalculoStorage.js';
+import { aguardarPersistenciaRodadasCalculos } from '../data/calculosRodadasStorage.js';
 import { carregarCalculoSalvo } from './peticaoExecucaoDeRodada.js';
 import {
   extrairBoletosHomologacao,
@@ -38,6 +39,7 @@ function normalizarProc(val) {
  * Sempre usa a última dimensão com parcelamento aceito.
  */
 export async function carregarCalculoAceitoHomologacao({ codigoCliente, numeroInterno }) {
+  await aguardarPersistenciaRodadasCalculos();
   const { dimensao, motivo } = await resolverUltimaDimensaoAceita({ codigoCliente, numeroInterno });
   if (dimensao == null) {
     return {

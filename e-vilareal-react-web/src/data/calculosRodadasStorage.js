@@ -21,6 +21,7 @@ import {
   enriquecerMapaRodadasTitulosDesdeParcelas,
   normalizarMapaChavesRodadasCalculos,
 } from './calculosTitulosParcelasSync.js';
+import { sincronizarSnapshotPlanoPagamentoAceitoNoPayload } from './calculosDebitosTitulos.js';
 import { RODADAS_VINCULACAO_TESTE_50 } from './vinculacaoAutomaticaTestMock.js';
 
 export const STORAGE_CALCULOS_RODADAS_KEY = 'vilareal.calculos.rodadas.v1';
@@ -153,7 +154,12 @@ export function mapaRodadasTemValorTituloOuParcela(map) {
 /** Chaves 8 dígitos + espelho parcelas→titulos (registos legados / SQL). */
 function pipelineRodadasMap(raw) {
   const m = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
-  return enriquecerMapaRodadasTitulosDesdeParcelas(normalizarMapaChavesRodadasCalculos(m));
+  const enriched = enriquecerMapaRodadasTitulosDesdeParcelas(normalizarMapaChavesRodadasCalculos(m));
+  const out = {};
+  for (const [k, v] of Object.entries(enriched)) {
+    out[k] = sincronizarSnapshotPlanoPagamentoAceitoNoPayload(v);
+  }
+  return out;
 }
 
 async function aplicarMigracaoRodadasLegadoSeNecessario(rodadasMap) {
@@ -274,6 +280,46 @@ export function loadRodadasCalculos() {
 /** @returns {boolean} true se persistiu (localStorage ou espelho em memória + eventual PUT na API) */
 let __rodadasApiSaveChain = Promise.resolve();
 
+/** Aguarda PUTs de rodadas pendentes (ex.: antes de gerar homologatória). */
+export function aguardarPersistenciaRodadasCalculos() {
+  return __rodadasApiSaveChain;
+}
+
+function putRodadaCalculosNaApi(prepared, chave) {
+  const payload = prepared[chave];
+  if (!payload || typeof payload !== 'object') return Promise.resolve();
+  const sp = splitRodadaCalculosKey(chave);
+  if (!sp) return Promise.resolve();
+  const slice = { [chave]: payload };
+  if (!mapaRodadasTemValorTituloOuParcela(slice)) return Promise.resolve();
+  return putCalculoRodada(sp.cod, sp.proc, sp.dim, payload).then((saved) => {
+    if (saved && typeof saved === 'object') {
+      lruSet(chave, saved);
+      __resumoParcelamentoAceito.set(chave, Boolean(saved.parcelamentoAceito));
+      invalidateRodadasResumoCache();
+    }
+  });
+}
+
+/**
+ * Grava uma rodada na API imediatamente (sem debounce de 450 ms).
+ * @returns {Promise<void>}
+ */
+export function persistirRodadaCalculosAgora(rodadas, rodadaKey) {
+  if (typeof window === 'undefined' || !featureFlags.useApiCalculos || !__hidratacaoCalculosConcluida) {
+    return Promise.resolve();
+  }
+  if (typeof rodadaKey !== 'string' || !rodadaKey) return Promise.resolve();
+  const src = rodadas && typeof rodadas === 'object' && !Array.isArray(rodadas) ? rodadas : {};
+  const prepared = pipelineRodadasMap(src);
+  const run = putRodadaCalculosNaApi(prepared, rodadaKey).catch((err) => {
+    console.error('[vilareal] Falha ao gravar rodada de cálculo na API (imediato):', err);
+  });
+  __rodadasApiSaveChain = __rodadasApiSaveChain.then(() => run);
+  emitRodadasAtualizadas();
+  return __rodadasApiSaveChain;
+}
+
 function emitRodadasAtualizadas(detail) {
   window.dispatchEvent(
     new CustomEvent('vilareal:calculos-rodadas-atualizadas', detail ? { detail } : undefined)
@@ -319,21 +365,7 @@ export function saveRodadasCalculos(rodadas, options = {}) {
           `${LOG_CALC_API} PUT bloqueado: hidratação da API ainda não concluída (aguardando GET /api/calculos/rodadas/resumo com sucesso).`
         );
       } else {
-        const chainPut = (chave) => {
-          const payload = prepared[chave];
-          if (!payload || typeof payload !== 'object') return Promise.resolve();
-          const sp = splitRodadaCalculosKey(chave);
-          if (!sp) return Promise.resolve();
-          const slice = { [chave]: payload };
-          if (!mapaRodadasTemValorTituloOuParcela(slice)) return Promise.resolve();
-          return putCalculoRodada(sp.cod, sp.proc, sp.dim, payload).then((saved) => {
-            if (saved && typeof saved === 'object') {
-              lruSet(chave, saved);
-              __resumoParcelamentoAceito.set(chave, Boolean(saved.parcelamentoAceito));
-              invalidateRodadasResumoCache();
-            }
-          });
-        };
+        const chainPut = (chave) => putRodadaCalculosNaApi(prepared, chave);
 
         if (typeof persistRodadaKey === 'string' && persistRodadaKey) {
           const slice = { [persistRodadaKey]: prepared[persistRodadaKey] };

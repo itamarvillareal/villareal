@@ -19,6 +19,7 @@ import {
   normalizarRodadaRecebidaApi,
   parcelamentoAceitoResumoParaChave,
   saveRodadasCalculos,
+  persistirRodadaCalculosAgora,
 } from '../data/calculosRodadasStorage';
 import {
   calcularResumoTitulosGrade,
@@ -79,6 +80,7 @@ import {
   mesclarTitulosGravadosComRecalculo,
   patchRodadaAoAceitarPagamento,
   patchRodadaAoDesfazerAceitarPagamento,
+  snapshotPlanoPagamentoAceito,
   titulosGradeTemValor,
 } from '../data/calculosDebitosTitulos.js';
 import TitulosGrid from './calculos/TitulosGrid.jsx';
@@ -1307,6 +1309,32 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   const entradaParcelamentoDataVenc = rodadaAtual.entradaParcelamentoDataVenc ?? '';
   const temEntradaAtiva = entradaModoAtivo(rodadaAtual);
   const limpezaAtiva = rodadaAtual.limpezaAtiva;
+
+  // Mantém snapshot do plano aceito alinhado ao que está exibido (evita petição com parcelas antigas da API).
+  useEffect(() => {
+    if (!calculoTravadoAceito || !featureFlags.useApiCalculos || !hidratacaoConcluida) return;
+    const cur = rodadasState[rodadaKey];
+    if (!cur?.parcelamentoAceito) return;
+    const snap = snapshotPlanoPagamentoAceito(cur, parcelas);
+    const atual = JSON.stringify(cur.parcelasGravadasAceito ?? []);
+    const esperado = JSON.stringify(snap.parcelasGravadasAceito ?? []);
+    if (atual === esperado) return;
+    isDirtyRodadaRef.current = true;
+    setRodadasState((prev) => {
+      const c = prev[rodadaKey];
+      if (!c) return prev;
+      return { ...prev, [rodadaKey]: { ...c, ...snap } };
+    });
+  }, [
+    rodadaKey,
+    calculoTravadoAceito,
+    hidratacaoConcluida,
+    rodadasState,
+    parcelas,
+    quantidadeParcelasInformada,
+    entradaParcelamentoModo,
+    taxaJurosParcelamento,
+  ]);
 
   /** Valor, vencimento e datas especiais por linha — muda na importação/edição; ignora colunas derivadas (juros, total…) para não re-disparar o recálculo sem necessidade. */
   const titulosChaveRecalculo = useMemo(() => {
@@ -2583,7 +2611,15 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
         : patchRodadaAoDesfazerAceitarPagamento(cur, titulos);
       isDirtyRodadaRef.current = true;
       paginasRodadaCacheRef.current = new Map();
-      return { ...prev, [rodadaKey]: { ...cur, ...patch } };
+      const merged = { ...prev, [rodadaKey]: { ...cur, ...patch } };
+      if (next && featureFlags.useApiCalculos && hidratacaoConcluida) {
+        if (saveRodadasTimerRef.current) {
+          window.clearTimeout(saveRodadasTimerRef.current);
+          saveRodadasTimerRef.current = null;
+        }
+        void persistirRodadaCalculosAgora(merged, rodadaKey);
+      }
+      return merged;
     });
   }
 
