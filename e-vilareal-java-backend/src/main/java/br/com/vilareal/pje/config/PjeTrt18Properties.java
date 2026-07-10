@@ -24,6 +24,9 @@ public class PjeTrt18Properties {
     /** Limite de erros consecutivos antes do auto-freio. */
     private int autoFreioLimiteErros = 3;
 
+    /** Tempo de pausa do auto-freio; passado ele, o robô volta sozinho (meia-abertura). */
+    private int autoFreioCooldownSegundos = 300;
+
     /**
      * Seletor do botão "Detalhes do Processo" no acervo-geral (abre aba/popup em {@code /pjekz/processo/.../detalhe}).
      * O download vem depois via Menu do processo e "Baixar processo completo".
@@ -64,6 +67,18 @@ public class PjeTrt18Properties {
 
     public void setAutoFreioLimiteErros(int autoFreioLimiteErros) {
         this.autoFreioLimiteErros = autoFreioLimiteErros;
+    }
+
+    public int getAutoFreioCooldownSegundos() {
+        return autoFreioCooldownSegundos;
+    }
+
+    public void setAutoFreioCooldownSegundos(int autoFreioCooldownSegundos) {
+        this.autoFreioCooldownSegundos = autoFreioCooldownSegundos;
+    }
+
+    public long getAutoFreioCooldownMs() {
+        return autoFreioCooldownSegundos * 1_000L;
     }
 
     public String urlParaGrau(br.com.vilareal.pje.domain.PjeGrau grau) {

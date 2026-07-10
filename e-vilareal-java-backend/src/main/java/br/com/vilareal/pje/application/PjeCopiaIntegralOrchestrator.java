@@ -60,10 +60,14 @@ public class PjeCopiaIntegralOrchestrator {
     public Optional<PjeCopiaIntegralResult> executar(
             PjeGrau grau, String login, String senha, String numeroCnj) {
         autoFreio.configurarLimite(properties.getAutoFreioLimiteErros());
+        autoFreio.configurarCooldownMs(properties.getAutoFreioCooldownMs());
 
         if (autoFreio.estaFreiado()) {
             return Optional.of(PjeCopiaIntegralResult.falha(
-                    grau, numeroCnj, "robô PJe TRT18 em auto-freio; aguarde reset."));
+                    grau,
+                    numeroCnj,
+                    "robô PJe TRT18 em auto-freio; libera sozinho em "
+                            + autoFreio.esperaRestanteTexto() + "."));
         }
         if (!loteContext.reservarLogin(login)) {
             return Optional.of(PjeCopiaIntegralResult.falha(

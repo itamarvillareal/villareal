@@ -57,6 +57,7 @@ public class PjeLoginOrchestrator {
      */
     public Optional<PjeLoginResult> executarLogin(PjeGrau grau, String login, String senha) {
         autoFreio.configurarLimite(properties.getAutoFreioLimiteErros());
+        autoFreio.configurarCooldownMs(properties.getAutoFreioCooldownMs());
 
         if (autoFreio.estaFreiado()) {
             return Optional.of(falha(
@@ -65,7 +66,8 @@ public class PjeLoginOrchestrator {
                     PjeBrowserSessionState.ERRO,
                     "robô PJe TRT18 em auto-freio após "
                             + autoFreio.errosConsecutivos()
-                            + " erros consecutivos; aguarde reset manual ou sucesso em outro contexto."));
+                            + " erros consecutivos; libera sozinho em "
+                            + autoFreio.esperaRestanteTexto() + "."));
         }
 
         if (!loteContext.reservarLogin(login)) {

@@ -114,12 +114,14 @@ public class PjeCopiaIntegralPorProcessoService {
                             + "Cadastre a credencial em Admin → TOTP.");
         }
         autoFreio.configurarLimite(pjeTrt18Properties.getAutoFreioLimiteErros());
+        autoFreio.configurarCooldownMs(pjeTrt18Properties.getAutoFreioCooldownMs());
         if (autoFreio.estaFreiado()) {
             return Optional.of(
                     "Robô PJe TRT18 pausado após "
                             + autoFreio.errosConsecutivos()
-                            + " falhas consecutivas. Aguarde alguns minutos e tente de novo, "
-                            + "ou peça reset do auto-freio.");
+                            + " falhas consecutivas. Ele volta sozinho em "
+                            + autoFreio.esperaRestanteTexto()
+                            + "; tente de novo depois disso.");
         }
         return Optional.empty();
     }
