@@ -1,5 +1,6 @@
 package br.com.vilareal.processo.application;
 
+import br.com.vilareal.agenda.application.ProcessoAudienciaAgendaSyncService;
 import br.com.vilareal.documento.DocumentoDrivePastaService;
 import br.com.vilareal.importacao.infrastructure.persistence.repository.PlanilhaPasta1ClienteRepository;
 import br.com.vilareal.pessoa.api.dto.ClienteCreateRequest;
@@ -79,6 +80,8 @@ class ClienteCadastroUpsertServiceTest {
     private OrgaoJulgadorApplicationService orgaoJulgadorApplicationService;
     @Mock
     private ProcessoExclusaoService processoExclusaoService;
+    @Mock
+    private ProcessoAudienciaAgendaSyncService processoAudienciaAgendaSyncService;
 
     private ProcessoApplicationService service;
 
@@ -105,7 +108,8 @@ class ClienteCadastroUpsertServiceTest {
                         orgaoJulgadorUsoService,
                         orgaoJulgadorDerivacaoService,
                         orgaoJulgadorApplicationService,
-                        processoExclusaoService);
+                        processoExclusaoService,
+                        processoAudienciaAgendaSyncService);
     }
 
     @Test

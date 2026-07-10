@@ -4,6 +4,7 @@ import br.com.vilareal.agenda.api.dto.AgendaEventoResponse;
 import br.com.vilareal.agenda.api.dto.AgendaEventoWriteRequest;
 import br.com.vilareal.agenda.api.dto.AgendaMensalResponse;
 import br.com.vilareal.agenda.application.AgendaApplicationService;
+import br.com.vilareal.agenda.application.ProcessoAudienciaAgendaSyncService;
 import br.com.vilareal.common.exception.BusinessRuleException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -26,9 +27,13 @@ import java.util.Map;
 public class AgendaController {
 
     private final AgendaApplicationService agendaService;
+    private final ProcessoAudienciaAgendaSyncService processoAudienciaAgendaSyncService;
 
-    public AgendaController(AgendaApplicationService agendaService) {
+    public AgendaController(
+            AgendaApplicationService agendaService,
+            ProcessoAudienciaAgendaSyncService processoAudienciaAgendaSyncService) {
         this.agendaService = agendaService;
+        this.processoAudienciaAgendaSyncService = processoAudienciaAgendaSyncService;
     }
 
     @GetMapping
@@ -100,6 +105,32 @@ public class AgendaController {
             @RequestParam String processoRef,
             @RequestParam(defaultValue = "processos-audiencia") String origem) {
         agendaService.excluirPorProcessoRefEOrigem(processoRef, origem);
+    }
+
+    @PostMapping("/sincronizar-audiencia-processo/{processoId}")
+    @Operation(description = "Espelha audiência do processo na agenda de todos os colaboradores (ou remove se sem data).")
+    public Map<String, Object> sincronizarAudienciaProcesso(@PathVariable Long processoId) {
+        var r = processoAudienciaAgendaSyncService.sincronizarProcesso(processoId);
+        return Map.of(
+                "colaboradoresSincronizados", r.colaboradoresSincronizados(),
+                "eventosRemovidos", r.eventosRemovidos(),
+                "audienciaRemovida", r.audienciaRemovida());
+    }
+
+    @PostMapping("/sincronizar-audiencias-processos")
+    @Operation(description = "Backfill: espelha audiências dos processos ativos na agenda. Opcional: dataInicio/dataFim.")
+    public Map<String, Object> sincronizarAudienciasProcessos(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataInicio,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataFim,
+            @RequestParam(defaultValue = "false") boolean todos) {
+        var r = todos
+                ? processoAudienciaAgendaSyncService.backfillTodosAtivosComAudiencia()
+                : processoAudienciaAgendaSyncService.backfillPeriodo(dataInicio, dataFim);
+        return Map.of(
+                "processosProcessados", r.processosProcessados(),
+                "colaboradoresSincronizados", r.colaboradoresSincronizados(),
+                "eventosRemovidos", r.eventosRemovidos(),
+                "falhas", r.falhas());
     }
 
     @DeleteMapping("/{id}")

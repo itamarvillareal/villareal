@@ -28,6 +28,7 @@ import {
   executarSincronizacaoAudienciasAgendaEProcessosCompleta,
   executarSincronizacaoAudienciasAgendaMesEProcessos,
 } from '../services/sincronizacaoAudienciasAgendaProcessosService.js';
+import { backfillAudienciasProcessosAgendaApi } from '../repositories/agendaRepository.js';
 import { hojeDdMmYyyy, resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import { listarImoveisResumoPorPessoaDiagnostico } from '../services/listarImoveisPorPessoaDiagnostico.js';
 import { listarCodigosClientePorIdPessoa } from '../data/clienteCodigoHelpers.js';
@@ -1148,6 +1149,22 @@ export function Diagnosticos() {
     }
   }
 
+  async function executarBackfillAudienciasProcessosAgenda() {
+    setSyncAgendaMsg('Espelhando audiências dos processos na agenda…');
+    try {
+      const r = await backfillAudienciasProcessosAgendaApi({ todos: true });
+      if (!r.ok) {
+        setSyncAgendaMsg('Falha ao espelhar audiências na agenda (API).');
+        return;
+      }
+      setSyncAgendaMsg(
+        `Processos: ${r.processosProcessados ?? 0}. Colaboradores atualizados: ${r.colaboradoresSincronizados ?? 0}. Removidos: ${r.eventosRemovidos ?? 0}. Falhas: ${r.falhas ?? 0}.`
+      );
+    } catch (e) {
+      setSyncAgendaMsg(mensagemErroAmigavel(e, 'espelhar audiências na agenda'));
+    }
+  }
+
   function abrirProcessoPorItem(item) {
     if (!item?.codCliente || item?.proc == null || item?.proc === '') return;
     setProcessoEmbed({
@@ -1271,6 +1288,26 @@ export function Diagnosticos() {
               <p className="text-[11px] text-slate-700 text-center leading-relaxed font-mono">{syncAgendaMsg}</p>
             ) : null}
           </div>
+          {featureFlags.useApiAgenda ? (
+            <div className="rounded-2xl border border-emerald-200/50 bg-gradient-to-br from-emerald-50/50 to-teal-50/30 p-4 space-y-2 shadow-sm">
+              <p className="text-xs font-medium text-slate-700 text-center">
+                Espelhar audiências dos processos na agenda
+              </p>
+              <p className="text-[11px] text-slate-600 text-center leading-relaxed">
+                Fonte canônica: data/hora/tipo gravados em cada processo. Cria ou atualiza compromissos na agenda de
+                todos os colaboradores. Use após importações ou se a agenda estiver desatualizada.
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={executarBackfillAudienciasProcessosAgenda}
+                  className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 text-xs font-semibold text-white shadow-md shadow-emerald-500/20 hover:from-emerald-500 hover:to-teal-500"
+                >
+                  Espelhar todas as audiências
+                </button>
+              </div>
+            </div>
+          ) : null}
           <p className="text-xs text-slate-600 text-center leading-relaxed">
             {featureFlags.useApiProcessos
               ? '«Consultas Realizadas» lista um processo por linha na data do movimento (API + histórico local); se houver várias notas no mesmo dia, mostra a mais recente. Exclui «JUNTAR PETIÇÃO…» e «PETIÇÃO DA INF. ANTERIOR…».'

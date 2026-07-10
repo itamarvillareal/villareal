@@ -273,7 +273,7 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
     List<BigInteger> findIdsByNumeroCnjDigitosIniciandoCom(@Param("norm") String norm);
 
     /**
-     * Audiências agendadas em {@code processo.audiencia_data} (fonte canônica; agenda espelha via front).
+     * Audiências agendadas em {@code processo.audiencia_data} (fonte canônica; agenda espelha via {@code ProcessoAudienciaAgendaSyncService}).
      * Inclusive nas datas {@code inicio} e {@code fim}.
      */
     @Query("""
@@ -288,6 +288,17 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
             ORDER BY p.audienciaData ASC, p.audienciaHora ASC, p.id ASC
             """)
     List<ProcessoEntity> findAudienciasEntre(@Param("inicio") LocalDate inicio, @Param("fim") LocalDate fim);
+
+    @Query("""
+            SELECT p FROM ProcessoEntity p
+            JOIN FETCH p.cliente c
+            JOIN FETCH c.pessoa
+            JOIN FETCH p.pessoa
+            WHERE p.ativo = true
+              AND p.audienciaData IS NOT NULL
+            ORDER BY p.audienciaData ASC, p.audienciaHora ASC, p.id ASC
+            """)
+    List<ProcessoEntity> findAtivosComAudienciaData();
 
     /** Processos elegíveis à consulta automática PROJUDI-GO (TJGO). */
     @Query("""

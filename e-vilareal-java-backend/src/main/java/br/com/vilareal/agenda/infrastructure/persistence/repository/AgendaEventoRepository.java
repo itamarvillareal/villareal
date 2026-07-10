@@ -59,6 +59,12 @@ public interface AgendaEventoRepository extends JpaRepository<AgendaEventoEntity
     List<AgendaEventoEntity> findByOrigem(@Param("origem") String origem);
 
     @Query("""
+            SELECT DISTINCT e.processoRef FROM AgendaEventoEntity e
+            WHERE e.origem = :origem AND e.processoRef IS NOT NULL
+            """)
+    List<String> findDistinctProcessoRefByOrigem(@Param("origem") String origem);
+
+    @Query("""
             SELECT DISTINCT e.origem FROM AgendaEventoEntity e
             WHERE e.origem LIKE CONCAT(:prefix, '%')
             ORDER BY e.origem DESC

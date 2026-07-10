@@ -262,6 +262,38 @@ export async function removerAudienciaProcessoAgendaApi({ codigoCliente, numeroI
   return { ok: true };
 }
 
+/** Espelha audiência do processo na agenda via API (fonte canônica: processo.audiencia_*). */
+export async function sincronizarAudienciaProcessoAgendaApi(processoId) {
+  if (!featureFlags.useApiAgenda) return { ok: false, reason: 'api-off' };
+  const id = Number(processoId);
+  if (!Number.isFinite(id) || id < 1) return { ok: false, reason: 'processo-id-invalido' };
+  try {
+    const data = await request(`/api/agenda/eventos/sincronizar-audiencia-processo/${id}`, { method: 'POST' });
+    dispararAgendaAtualizada();
+    return { ok: true, ...(data && typeof data === 'object' ? data : {}) };
+  } catch {
+    return { ok: false, reason: 'sync-falha' };
+  }
+}
+
+/** Backfill: espelha audiências dos processos na agenda (todos ou intervalo). */
+export async function backfillAudienciasProcessosAgendaApi({ dataInicio = null, dataFim = null, todos = false } = {}) {
+  if (!featureFlags.useApiAgenda) return { ok: false, reason: 'api-off' };
+  const q = { todos: todos ? 'true' : 'false' };
+  if (dataInicio) q.dataInicio = String(dataInicio).slice(0, 10);
+  if (dataFim) q.dataFim = String(dataFim).slice(0, 10);
+  try {
+    const data = await request('/api/agenda/eventos/sincronizar-audiencias-processos', {
+      method: 'POST',
+      query: q,
+    });
+    dispararAgendaAtualizada();
+    return { ok: true, ...(data && typeof data === 'object' ? data : {}) };
+  } catch {
+    return { ok: false, reason: 'backfill-falha' };
+  }
+}
+
 /**
  * Agenda em lote (texto + recorrência) replicada na API para todos os colaboradores com id numérico.
  */

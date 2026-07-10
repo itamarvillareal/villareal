@@ -918,14 +918,12 @@ public class JuliaTriagemService {
         String tipo = StringUtils.hasText(aud.tipo()) ? aud.tipo().trim() : "Audiência";
         processoApplicationService.aplicarAudienciaIdentificadaAssistente(
                 processo.getId(), data, hora, tipo);
-        int replicados = replicarAudienciaAgendaColaboradores(processo, data, hora, tipo, aud.meio());
         log.info(
-                "Julia enact: audiência aplicada processoId={} data={} hora={} agendaReplicada={}",
+                "Julia enact: audiência aplicada processoId={} data={} hora={} (agenda espelhada via processo)",
                 processo.getId(),
                 data,
-                hora,
-                replicados);
-        return new AudienciaEnactment(true, replicados > 0 ? replicados : null);
+                hora);
+        return new AudienciaEnactment(true, null);
     }
 
     static String normalizarHoraTriagem(String raw) {
@@ -946,50 +944,6 @@ public class JuliaTriagemService {
             return d.substring(0, 2) + ":" + d.substring(2);
         }
         return null;
-    }
-
-    int replicarAudienciaAgendaColaboradores(
-            ProcessoEntity processo, LocalDate data, String hora, String tipo, String meio) {
-        String processoRef = PrazoAgendaLembreteService.montarProcessoRef(processo);
-        if (!StringUtils.hasText(processoRef)) {
-            return 0;
-        }
-        String descricao = montarDescricaoAgendaAudiencia(processo, tipo, meio);
-        int ok = 0;
-        for (UsuarioEntity u : usuarioRepository.findColaboradoresHumanosAtivos()) {
-            if (u == null || u.getId() == null) {
-                continue;
-            }
-            try {
-                AgendaEventoWriteRequest req = new AgendaEventoWriteRequest();
-                req.setUsuarioId(u.getId());
-                req.setDataEvento(data);
-                req.setHoraEvento(hora);
-                req.setDescricao(descricao);
-                req.setProcessoRef(processoRef);
-                req.setOrigem(ORIGEM_AGENDA_AUDIENCIA_TRIAGEM);
-                agendaApplicationService.upsertAudiencia(req);
-                ok++;
-            } catch (Exception e) {
-                log.warn(
-                        "Julia enact: falha upsert audiência agenda usuarioId={}: {}",
-                        u.getId(),
-                        e.getMessage());
-            }
-        }
-        return ok;
-    }
-
-    private static String montarDescricaoAgendaAudiencia(ProcessoEntity processo, String tipo, String meio) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(StringUtils.hasText(tipo) ? tipo.trim() : "Audiência");
-        if (processo.getNumeroCnj() != null && StringUtils.hasText(processo.getNumeroCnj())) {
-            sb.append(" — ").append(processo.getNumeroCnj().trim());
-        }
-        if (StringUtils.hasText(meio)) {
-            sb.append(" (").append(meio.trim()).append(')');
-        }
-        return sb.toString();
     }
 
     private boolean atualizarPrazoFatalCabecalhoSeNecessario(ProcessoEntity processo, LocalDate novaData) {

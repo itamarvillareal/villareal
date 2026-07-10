@@ -74,6 +74,7 @@ import {
 import {
   replicarAudienciaProcessoTodosColaboradoresApi,
   removerAudienciaProcessoAgendaApi,
+  sincronizarAudienciaProcessoAgendaApi,
 } from '../repositories/agendaRepository.js';
 import { getApiUsuarioSessao, getPerfilAtivoParaPermissoes } from '../data/usuarioPermissoesStorage.js';
 import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
@@ -2893,6 +2894,10 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       setAudienciaTipo(normalizarTipoAudienciaCanonico(mapped.audienciaTipo ?? ''));
       setAvisoAudiencia(mapped.avisoAudiencia ?? 'nao_avisado');
 
+      if (featureFlags.useApiAgenda && procApi.id && String(mapped.audienciaData ?? '').trim()) {
+        void sincronizarAudienciaProcessoAgendaApi(procApi.id);
+      }
+
       const partes = await listarPartesProcesso(procApi.id);
       if (seq !== carregarProcessoApiSeqRef.current) return;
       setPartesProcessoApi(Array.isArray(partes) ? partes : []);
@@ -3079,6 +3084,9 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         const partesAtualizadas = await listarPartesProcesso(pid);
         setPartesProcessoApi(Array.isArray(partesAtualizadas) ? partesAtualizadas : []);
         aplicarListaPartesApiNaUi(partesAtualizadas);
+      }
+      if (pid && featureFlags.useApiAgenda) {
+        void sincronizarAudienciaProcessoAgendaApi(pid);
       }
       salvarHistoricoDoProcesso(snapshot);
     } catch (e) {

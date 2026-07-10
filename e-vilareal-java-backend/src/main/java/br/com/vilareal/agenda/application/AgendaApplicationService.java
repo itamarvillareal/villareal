@@ -195,25 +195,81 @@ public class AgendaApplicationService {
                 req.getUsuarioId(), processoRef, origem);
         if (existente.isPresent()) {
             AgendaEventoEntity e = existente.get();
-            aplicarCampos(e, req);
-            e = agendaEventoRepository.save(e);
-            return toResponse(e);
-        }
-
-        Optional<AgendaEventoEntity> porConteudoOuFuzzy = buscarExistentePorConteudoOuEquivalencia(req);
-        if (porConteudoOuFuzzy.isPresent()) {
-            AgendaEventoEntity e = porConteudoOuFuzzy.get();
-            aplicarCampos(e, req);
-            e = agendaEventoRepository.save(e);
+            e = salvarResolvendoConflitoConteudoKeyAudiencia(e, req);
             return toResponse(e);
         }
 
         UsuarioEntity usuario = usuarioDestinatarioGuard.carregarHumanoDestinatario(req.getUsuarioId());
         AgendaEventoEntity e = new AgendaEventoEntity();
         e.setUsuario(usuario);
-        aplicarCampos(e, req);
-        e = agendaEventoRepository.save(e);
+        e = salvarResolvendoConflitoConteudoKeyAudiencia(e, req);
         return toResponse(e);
+    }
+
+    /** Audiência: não reutiliza evento de outro processo (evita colisão de conteudo_key no mesmo horário). */
+    private AgendaEventoEntity salvarResolvendoConflitoConteudoKeyAudiencia(
+            AgendaEventoEntity e, AgendaEventoWriteRequest req) {
+        try {
+            return salvarResolvendoConflitoConteudoKey(e, req);
+        } catch (DataIntegrityViolationException ex) {
+            String ref = trimToNull(req.getProcessoRef());
+            if (!StringUtils.hasText(ref)) {
+                throw ex;
+            }
+            String desc = StringUtils.hasText(req.getDescricao()) ? req.getDescricao().trim() : "Audiência";
+            if (!desc.contains(ref)) {
+                req.setDescricao(desc + " · " + ref);
+                if (req.getUsuarioId() != null) {
+                    e.setUsuario(usuarioDestinatarioGuard.carregarHumanoDestinatario(req.getUsuarioId()));
+                }
+                return salvarResolvendoConflitoConteudoKey(e, req);
+            }
+            throw ex;
+        }
+    }
+
+    private AgendaEventoEntity salvarResolvendoConflitoConteudoKey(AgendaEventoEntity e, AgendaEventoWriteRequest req) {
+        if (req.getUsuarioId() != null) {
+            e.setUsuario(usuarioDestinatarioGuard.carregarHumanoDestinatario(req.getUsuarioId()));
+        }
+        aplicarCampos(e, req);
+        String novaChave = e.getConteudoKey();
+        Long idAtual = e.getId();
+        if (StringUtils.hasText(novaChave)) {
+            Optional<AgendaEventoEntity> conflito = agendaEventoRepository.findFirstByConteudoKey(novaChave);
+            if (conflito.isPresent() && (idAtual == null || !conflito.get().getId().equals(idAtual))) {
+                AgendaEventoEntity alvo = conflito.get();
+                if (req.getUsuarioId() != null) {
+                    alvo.setUsuario(usuarioDestinatarioGuard.carregarHumanoDestinatario(req.getUsuarioId()));
+                }
+                aplicarCampos(alvo, req);
+                alvo = agendaEventoRepository.save(alvo);
+                if (idAtual != null && !idAtual.equals(alvo.getId())) {
+                    agendaEventoRepository.deleteById(idAtual);
+                }
+                return alvo;
+            }
+        }
+        try {
+            return agendaEventoRepository.save(e);
+        } catch (DataIntegrityViolationException ex) {
+            if (StringUtils.hasText(novaChave)) {
+                Optional<AgendaEventoEntity> conflito = agendaEventoRepository.findFirstByConteudoKey(novaChave);
+                if (conflito.isPresent() && (idAtual == null || !conflito.get().getId().equals(idAtual))) {
+                    AgendaEventoEntity alvo = conflito.get();
+                    if (req.getUsuarioId() != null) {
+                        alvo.setUsuario(usuarioDestinatarioGuard.carregarHumanoDestinatario(req.getUsuarioId()));
+                    }
+                    aplicarCampos(alvo, req);
+                    alvo = agendaEventoRepository.save(alvo);
+                    if (idAtual != null && !idAtual.equals(alvo.getId())) {
+                        agendaEventoRepository.deleteById(idAtual);
+                    }
+                    return alvo;
+                }
+            }
+            throw ex;
+        }
     }
 
     private Optional<AgendaEventoEntity> buscarExistentePorConteudoOuEquivalencia(AgendaEventoWriteRequest req) {

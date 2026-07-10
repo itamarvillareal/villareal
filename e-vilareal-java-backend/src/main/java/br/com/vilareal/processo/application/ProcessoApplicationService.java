@@ -5,6 +5,7 @@ import br.com.vilareal.common.exception.ResourceNotFoundException;
 import br.com.vilareal.common.text.PortuguesTextoCorrecaoUtil;
 import br.com.vilareal.common.text.Utf8MojibakeUtil;
 import br.com.vilareal.documento.DocumentoDrivePastaService;
+import br.com.vilareal.agenda.application.ProcessoAudienciaAgendaSyncService;
 import br.com.vilareal.localidade.application.MunicipioApplicationService;
 import br.com.vilareal.localidade.application.MunicipioDerivacaoService;
 import br.com.vilareal.localidade.application.MunicipioUsoService;
@@ -87,6 +88,7 @@ public class ProcessoApplicationService {
     private final OrgaoJulgadorDerivacaoService orgaoJulgadorDerivacaoService;
     private final OrgaoJulgadorApplicationService orgaoJulgadorApplicationService;
     private final ProcessoExclusaoService processoExclusaoService;
+    private final ProcessoAudienciaAgendaSyncService processoAudienciaAgendaSyncService;
 
     public ProcessoApplicationService(
             ProcessoRepository processoRepository,
@@ -108,7 +110,8 @@ public class ProcessoApplicationService {
             OrgaoJulgadorUsoService orgaoJulgadorUsoService,
             OrgaoJulgadorDerivacaoService orgaoJulgadorDerivacaoService,
             OrgaoJulgadorApplicationService orgaoJulgadorApplicationService,
-            ProcessoExclusaoService processoExclusaoService) {
+            ProcessoExclusaoService processoExclusaoService,
+            ProcessoAudienciaAgendaSyncService processoAudienciaAgendaSyncService) {
         this.processoRepository = processoRepository;
         this.parteRepository = parteRepository;
         this.parteAdvogadoRepository = parteAdvogadoRepository;
@@ -129,6 +132,7 @@ public class ProcessoApplicationService {
         this.orgaoJulgadorDerivacaoService = orgaoJulgadorDerivacaoService;
         this.orgaoJulgadorApplicationService = orgaoJulgadorApplicationService;
         this.processoExclusaoService = processoExclusaoService;
+        this.processoAudienciaAgendaSyncService = processoAudienciaAgendaSyncService;
     }
 
     /**
@@ -1026,6 +1030,7 @@ public class ProcessoApplicationService {
         aplicarClienteTitularDoRequest(e, cliente, req);
         aplicarCabecalho(e, req, true);
         e = processoRepository.save(e);
+        processoAudienciaAgendaSyncService.sincronizarProcesso(e);
         return toResponse(requireProcesso(e.getId()));
     }
 
@@ -1052,6 +1057,7 @@ public class ProcessoApplicationService {
             cancelarPrazosFataisNaTabela(e.getId());
         }
         processoRepository.save(e);
+        processoAudienciaAgendaSyncService.sincronizarProcesso(e);
         return toResponse(requireProcesso(id));
     }
 
@@ -1084,6 +1090,7 @@ public class ProcessoApplicationService {
             e.setAudienciaTipo(trimToNull(tipo));
         }
         processoRepository.save(e);
+        processoAudienciaAgendaSyncService.sincronizarProcesso(e);
     }
 
     @Transactional(readOnly = true)
