@@ -52,7 +52,8 @@ export async function parseApiJsonResponse(response, options = {}) {
             + 'Envie menos arquivos .p7s por vez ou divida em lotes menores.',
       );
     }
-    let message = data?.message || data?.error || `Erro ${response.status}`;
+    let message =
+      data?.message || data?.error || data?.detail || `Erro ${response.status}`;
     if (data?.path && typeof data.path === 'string') {
       message += ` — ${data.path}`;
     }

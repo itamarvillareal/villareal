@@ -736,16 +736,18 @@ public class WhatsAppController {
 
     @PostMapping("/templates")
     @Operation(summary = "Criar template de mensagem (Meta)")
-    public ResponseEntity<WhatsAppTemplateDTO> createTemplate(@Valid @RequestBody CreateTemplateRequest request) {
+    public ResponseEntity<?> createTemplate(@Valid @RequestBody CreateTemplateRequest request) {
         try {
             WhatsAppTemplateDTO created = whatsAppTemplateService.criarTemplate(request);
             return ResponseEntity.status(HttpStatus.CREATED).body(created);
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.badRequest().body(new SendMessageResponse(false, null, e.getMessage()));
         } catch (IllegalStateException e) {
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(new SendMessageResponse(false, null, "Integração WhatsApp não configurada."));
         } catch (WhatsAppApiException e) {
-            return ResponseEntity.status(mapWhatsAppHttpStatus(e)).build();
+            return ResponseEntity.status(mapWhatsAppHttpStatus(e))
+                    .body(new SendMessageResponse(false, null, e.getMessage()));
         }
     }
 
