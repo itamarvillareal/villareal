@@ -429,7 +429,7 @@ export function GerarDocumento() {
     data: hojeBR(),
   }));
   // Cálculo salvo carregado para a petição de execução: { loading, dados, erro }.
-  const [execCalc, setExecCalc] = useState({ loading: false, dados: null, erro: '' });
+  const [execCalc, setExecCalc] = useState({ loading: false, dados: null, erro: '', dimensao: null });
   const [homologCalc, setHomologCalc] = useState({
     loading: false,
     dados: null,
@@ -547,10 +547,9 @@ export function GerarDocumento() {
   }, [revogarHomologPreviewPdfUrl]);
 
   const montarInputHomologacao = useCallback(
-    ({ clausulas, dimensao }) => ({
+    ({ clausulas }) => ({
       codigoCliente: codigoClienteProcesso,
       numeroInterno: numeroInternoProcesso,
-      dimensao: dimensao ?? dimensaoHomolog,
       enderecamento: formHomolog.enderecamento.trim(),
       dataIso: dataBRparaISO(formHomolog.data),
       numeroCnj: dadosProcesso?.numeroProcesso || '',
@@ -566,7 +565,6 @@ export function GerarDocumento() {
     [
       codigoClienteProcesso,
       numeroInternoProcesso,
-      dimensaoHomolog,
       formHomolog.enderecamento,
       formHomolog.data,
       dadosProcesso?.numeroProcesso,
@@ -707,37 +705,32 @@ export function GerarDocumento() {
     downloadPdfBlob(blob, nomeArquivoPeticaoPdf());
   };
 
-  // Carrega o último cálculo salvo do processo ao entrar no modo Execução.
+  // Carrega a última dimensão com cálculo aceito ao entrar no modo Execução.
   useEffect(() => {
     if (!modoExecucao || !temChaveProcesso) {
-      setExecCalc({ loading: false, dados: null, erro: '' });
+      setExecCalc({ loading: false, dados: null, erro: '', dimensao: null });
       return undefined;
     }
     let cancelado = false;
-    setExecCalc({ loading: true, dados: null, erro: '' });
+    setExecCalc({ loading: true, dados: null, erro: '', dimensao: null });
     import('../../services/peticaoExecucaoDeRodada.js')
-      .then(({ carregarCalculoSalvo }) =>
-        carregarCalculoSalvo({
+      .then(({ carregarUltimoCalculoAceitoSalvo }) =>
+        carregarUltimoCalculoAceitoSalvo({
           codigoCliente: codigoClienteProcesso,
           numeroInterno: numeroInternoProcesso,
         }),
       )
-      .then((dados) => {
+      .then(({ dados, erro, dimensao }) => {
         if (cancelado) return;
         if (!dados) {
           setExecCalc({
             loading: false,
             dados: null,
-            erro: 'Não há cálculo salvo para este processo. Faça o cálculo na tela de Cálculos primeiro.',
-          });
-        } else if (!dados.titulos.length) {
-          setExecCalc({
-            loading: false,
-            dados,
-            erro: 'O cálculo salvo não possui títulos com valor para gerar a petição.',
+            erro: erro || 'Não há cálculo aceito para este processo.',
+            dimensao: null,
           });
         } else {
-          setExecCalc({ loading: false, dados, erro: '' });
+          setExecCalc({ loading: false, dados, erro: '', dimensao });
         }
       })
       .catch((e) => {
@@ -745,7 +738,8 @@ export function GerarDocumento() {
         setExecCalc({
           loading: false,
           dados: null,
-          erro: e?.message || 'Falha ao carregar o cálculo salvo.',
+          erro: e?.message || 'Falha ao carregar o cálculo aceito.',
+          dimensao: null,
         });
       });
     return () => {
@@ -774,6 +768,7 @@ export function GerarDocumento() {
         if (cancelado) return;
         setDimensoesAceitas(dims);
         if (!dims.length) {
+          setDimensaoHomolog(0);
           setHomologCalc({
             loading: false,
             dados: null,
@@ -785,17 +780,11 @@ export function GerarDocumento() {
           });
           return;
         }
-        const dimEfetiva = dims.some((d) => d.dimensao === dimensaoHomolog)
-          ? dimensaoHomolog
-          : dims[0].dimensao;
-        if (dimEfetiva !== dimensaoHomolog) {
-          setDimensaoHomolog(dimEfetiva);
-          return;
-        }
+        const dimEfetiva = dims[0].dimensao;
+        setDimensaoHomolog(dimEfetiva);
         const carregado = await carregarCalculoAceitoHomologacao({
           codigoCliente: codigoClienteProcesso,
           numeroInterno: numeroInternoProcesso,
-          dimensao: dimEfetiva,
         });
         if (cancelado) return;
         setHomologCalc({
@@ -806,6 +795,9 @@ export function GerarDocumento() {
           motivo: carregado.motivo,
           boletos: carregado.boletos,
         });
+        if (carregado.dimensao != null) {
+          setDimensaoHomolog(carregado.dimensao);
+        }
       } catch (e) {
         if (cancelado) return;
         setHomologCalc({
@@ -821,13 +813,7 @@ export function GerarDocumento() {
     return () => {
       cancelado = true;
     };
-  }, [
-    modoHomologacao,
-    temChaveProcesso,
-    codigoClienteProcesso,
-    numeroInternoProcesso,
-    dimensaoHomolog,
-  ]);
+  }, [modoHomologacao, temChaveProcesso, codigoClienteProcesso, numeroInternoProcesso]);
 
   const handleGerarExecucao = async () => {
     setMensagemErro('');
@@ -860,10 +846,10 @@ export function GerarDocumento() {
     }
   };
 
-  const handlePreviewHomologacao = async ({ clausulas, dimensao }) => {
+  const handlePreviewHomologacao = async ({ clausulas }) => {
     setMensagemErro('');
     setLoadingHomologPreview(true);
-    const params = { clausulas, dimensao };
+    const params = { clausulas };
     setHomologPreviewParams(params);
     setHomologPreviewVisivel(true);
     setHomologPreviewConteudo(null);
@@ -1505,6 +1491,9 @@ export function GerarDocumento() {
                     <div className="flex flex-wrap gap-x-6 gap-y-1 text-slate-700 dark:text-slate-200">
                       <span>
                         Dimensão: <strong>{dimensaoHomolog}</strong>
+                        {dimensoesAceitas.length > 1 ? (
+                          <span className="text-slate-500 dark:text-slate-400"> (última aceita)</span>
+                        ) : null}
                       </span>
                       <span>
                         <strong>{homologCalc.dados.titulos.length}</strong> título(s)
@@ -1564,13 +1553,15 @@ export function GerarDocumento() {
             ) : (
               <div className="space-y-4">
                 <p className="text-sm text-slate-600 dark:text-slate-400">
-                  Usa o último cálculo salvo do processo (cliente {codigoClienteProcesso} / proc.{' '}
-                  {numeroInternoProcesso}). O PDF da memória de cálculo é baixado junto com a petição.
+                  Usa a <strong>última dimensão com cálculo aceito</strong> do processo (cliente{' '}
+                  {codigoClienteProcesso} / proc. {numeroInternoProcesso}
+                  {execCalc.dimensao != null ? `, dimensão ${execCalc.dimensao}` : ''}). O PDF da memória
+                  de cálculo é baixado junto com a petição.
                 </p>
 
                 {execCalc.loading ? (
                   <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Carregando cálculo salvo…
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Carregando cálculo aceito…
                   </div>
                 ) : execCalc.erro ? (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
@@ -1579,21 +1570,20 @@ export function GerarDocumento() {
                 ) : execCalc.dados ? (
                   <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm dark:border-slate-700 dark:bg-slate-800/60">
                     <div className="flex flex-wrap gap-x-6 gap-y-1 text-slate-700 dark:text-slate-200">
+                      {execCalc.dimensao != null ? (
+                        <span>
+                          Dimensão: <strong>{execCalc.dimensao}</strong>
+                        </span>
+                      ) : null}
                       <span>
                         <strong>{execCalc.dados.titulos.length}</strong> título(s)
                       </span>
                       <span>
                         Total geral: <strong>{execCalc.dados.resumo?.total}</strong>
                       </span>
-                      {execCalc.dados.aceito ? (
-                        <span className="text-emerald-700 dark:text-emerald-400">
-                          cálculo aceito (valores congelados)
-                        </span>
-                      ) : (
-                        <span className="text-slate-500 dark:text-slate-400">
-                          último cálculo salvo (não aceito)
-                        </span>
-                      )}
+                      <span className="text-emerald-700 dark:text-emerald-400">
+                        cálculo aceito (valores congelados)
+                      </span>
                     </div>
                   </div>
                 ) : null}
@@ -2091,7 +2081,7 @@ export function GerarDocumento() {
         loading={loadingHomologPreview}
         dimensoesAceitas={dimensoesAceitas}
         dimensaoSelecionada={dimensaoHomolog}
-        onDimensaoChange={setDimensaoHomolog}
+        onDimensaoChange={undefined}
         enderecamento={formHomolog.enderecamento}
         onEnderecamentoChange={(v) => setFormHomolog((f) => ({ ...f, enderecamento: v }))}
         data={formHomolog.data}

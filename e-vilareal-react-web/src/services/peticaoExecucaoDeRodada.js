@@ -1,13 +1,14 @@
 /**
- * Geração da Petição de Execução a partir do ÚLTIMO CÁLCULO SALVO do processo,
+ * Geração da Petição de Execução a partir do cálculo aceito do processo,
  * sem passar pela tela de Cálculos.
  *
- * Carrega a rodada persistida (`GET /api/calculos/rodadas/{cod}/{proc}/{dim}`),
- * monta o corpo da petição com os valores já calculados e dispara o PDF da
- * petição + o PDF da memória de cálculo.
+ * Por padrão usa a **última dimensão com parcelamento aceito** (maior dimensão aceita).
+ * Carrega a rodada (`GET /api/calculos/rodadas/{cod}/{proc}/{dim}`), monta a petição
+ * e dispara o PDF da petição + memória de cálculo.
  */
 
 import { fetchCalculoRodada } from '../repositories/calculosRepository.js';
+import { resolverUltimaDimensaoAceita } from './calculoRodadaAceito.js';
 import { resolverProcessoId } from '../repositories/processosRepository.js';
 import { resolverTextosPartesCabecalhoCalculo } from '../data/processosDadosRelatorio.js';
 import { gerarPeticaoExecucao, downloadPdfBlob } from '../repositories/documentosRepository.js';
@@ -72,13 +73,55 @@ export async function carregarCalculoSalvo({ codigoCliente, numeroInterno, dimen
 }
 
 /**
+ * Carrega a última dimensão com cálculo aceito (parcelamento aceito).
+ * @returns {Promise<{ dados: object | null, dimensao: number | null, erro: string }>}
+ */
+export async function carregarUltimoCalculoAceitoSalvo({ codigoCliente, numeroInterno }) {
+  const resolved = await resolverUltimaDimensaoAceita({ codigoCliente, numeroInterno });
+  if (resolved.dimensao == null) {
+    return { dados: null, dimensao: null, erro: resolved.motivo };
+  }
+  const dados = await carregarCalculoSalvo({
+    codigoCliente,
+    numeroInterno,
+    dimensao: resolved.dimensao,
+  });
+  if (!dados) {
+    return {
+      dados: null,
+      dimensao: resolved.dimensao,
+      erro: 'Não foi possível carregar o cálculo aceito deste processo.',
+    };
+  }
+  if (!dados.aceito) {
+    return {
+      dados: null,
+      dimensao: resolved.dimensao,
+      erro: 'A última dimensão aceita não está disponível para gerar a petição.',
+    };
+  }
+  if (!dados.titulos.length) {
+    return {
+      dados: null,
+      dimensao: resolved.dimensao,
+      erro: 'O cálculo aceito não possui títulos com valor para gerar a petição.',
+    };
+  }
+  return {
+    dados: { ...dados, dimensao: resolved.dimensao },
+    dimensao: resolved.dimensao,
+    erro: '',
+  };
+}
+
+/**
  * Gera a petição de execução (e a memória de cálculo) a partir do cálculo salvo.
  * Lança erro com mensagem amigável quando não há cálculo/títulos ou processo.
  *
  * @param {object} args
  * @param {string} args.codigoCliente
  * @param {string|number} args.numeroInterno
- * @param {string|number} [args.dimensao]
+ * @param {string|number} [args.dimensao] — se omitido, usa a última dimensão aceita
  * @param {string} args.enderecamento
  * @param {string} args.modo — 'Completo' | 'Resumido'
  * @param {string} args.dataIso — yyyy-mm-dd
@@ -87,7 +130,7 @@ export async function carregarCalculoSalvo({ codigoCliente, numeroInterno, dimen
 export async function gerarPeticaoExecucaoDeCalculoSalvo({
   codigoCliente,
   numeroInterno,
-  dimensao = 0,
+  dimensao,
   enderecamento,
   modo,
   dataIso,
@@ -96,10 +139,23 @@ export async function gerarPeticaoExecucaoDeCalculoSalvo({
   const cod8 = padCliente8Config(codigoCliente);
   const proc = normalizarProc(numeroInterno);
 
+  let dimEfetiva = dimensao;
+  if (dimEfetiva == null || dimEfetiva === '') {
+    const resolved = await resolverUltimaDimensaoAceita({ codigoCliente: cod8, numeroInterno: proc });
+    if (resolved.dimensao == null) {
+      throw new Error(resolved.motivo);
+    }
+    dimEfetiva = resolved.dimensao;
+  }
+
   const dados =
-    dadosPreCarregados ?? (await carregarCalculoSalvo({ codigoCliente, numeroInterno, dimensao }));
+    dadosPreCarregados ??
+    (await carregarCalculoSalvo({ codigoCliente, numeroInterno, dimensao: dimEfetiva }));
   if (!dados) {
-    throw new Error('Não há cálculo salvo para este processo. Faça o cálculo na tela de Cálculos primeiro.');
+    throw new Error('Não há cálculo aceito para este processo. Aceite o parcelamento na tela de Cálculos primeiro.');
+  }
+  if (!dados.aceito) {
+    throw new Error('Use um cálculo com parcelamento aceito para gerar a petição de execução.');
   }
   if (!dados.titulos.length) {
     throw new Error('O cálculo salvo não possui títulos com valor para gerar a petição.');

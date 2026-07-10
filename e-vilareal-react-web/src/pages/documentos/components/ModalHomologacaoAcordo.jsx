@@ -37,8 +37,6 @@ export function ModalHomologacaoAcordo({
 
   if (!open) return null;
 
-  const multiplasDimensoes = dimensoesAceitas.length > 1;
-
   const handleConfirm = () => {
     setErro('');
     if (!String(enderecamento ?? '').trim()) {
@@ -49,7 +47,7 @@ export function ModalHomologacaoAcordo({
       setErro('Informe a forma de pagamento.');
       return;
     }
-    onConfirm({ clausulas, dimensao: dimensaoSelecionada });
+    onConfirm({ clausulas });
   };
 
   return (
@@ -96,22 +94,13 @@ export function ModalHomologacaoAcordo({
           </div>
         ) : null}
 
-        {multiplasDimensoes ? (
-          <label className="mb-4 block">
-            <span className={labelClass}>Dimensão do acordo aceito</span>
-            <select
-              className={inputClass}
-              value={dimensaoSelecionada}
-              onChange={(e) => onDimensaoChange?.(Number(e.target.value))}
-              disabled={loading}
-            >
-              {dimensoesAceitas.map((d) => (
-                <option key={d.chave} value={d.dimensao}>
-                  Dimensão {d.dimensao}
-                </option>
-              ))}
-            </select>
-          </label>
+        {dimensaoSelecionada != null && Number.isFinite(Number(dimensaoSelecionada)) ? (
+          <p className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200">
+            Dimensão do acordo: <strong>{dimensaoSelecionada}</strong>
+            {dimensoesAceitas.length > 1 ? (
+              <span className="text-slate-500 dark:text-slate-400"> — última com cálculo aceito</span>
+            ) : null}
+          </p>
         ) : null}
 
         <label className="mb-4 block">

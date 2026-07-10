@@ -2,7 +2,12 @@
  * Geração da Petição de Homologação de Acordo a partir do cálculo aceito do processo.
  */
 
-import { fetchCalculoRodada, fetchCalculoRodadasResumo } from '../repositories/calculosRepository.js';
+import { fetchCalculoRodada } from '../repositories/calculosRepository.js';
+import {
+  listarDimensoesAceitasProcesso,
+  resolverUltimaDimensaoAceita,
+  MSG_SEM_CALCULO_ACEITO,
+} from './calculoRodadaAceito.js';
 import { resolverProcessoId } from '../repositories/processosRepository.js';
 import {
   gerarPeticaoHomologacaoAcordo,
@@ -18,6 +23,8 @@ import {
   validarElegibilidadeHomologacao,
 } from '../data/peticaoHomologacaoAcordoBuilder.js';
 
+export { listarDimensoesAceitasProcesso, resolverUltimaDimensaoAceita, MSG_SEM_CALCULO_ACEITO } from './calculoRodadaAceito.js';
+
 const NOME_ARQUIVO_HOMOLOGACAO = '01.Homologatoria de Acordo.pdf';
 
 function normalizarProc(val) {
@@ -26,37 +33,21 @@ function normalizarProc(val) {
   return Math.floor(n);
 }
 
-function parseDimensaoDaChave(chave) {
-  const parts = String(chave ?? '').split(':');
-  if (parts.length < 3) return NaN;
-  return parseInt(parts[2], 10);
-}
-
-/** Lista dimensões com parcelamento aceito, da maior para a menor. */
-export async function listarDimensoesAceitasProcesso({ codigoCliente, numeroInterno }) {
-  const cod8 = padCliente8Config(codigoCliente);
-  const proc = String(normalizarProc(numeroInterno));
-  const prefixo = `${cod8}:${proc}:`;
-  const resumo = await fetchCalculoRodadasResumo();
-  const rodadas = Array.isArray(resumo?.rodadas) ? resumo.rodadas : [];
-  return rodadas
-    .filter((r) => r?.parcelamentoAceito && String(r?.chave ?? '').startsWith(prefixo))
-    .map((r) => ({
-      dimensao: parseDimensaoDaChave(r.chave),
-      chave: r.chave,
-    }))
-    .filter((r) => Number.isFinite(r.dimensao))
-    .sort((a, b) => b.dimensao - a.dimensao);
-}
-
 /**
  * Carrega cálculo aceito e valida elegibilidade para homologatória.
+ * Sempre usa a última dimensão com parcelamento aceito.
  */
-export async function carregarCalculoAceitoHomologacao({
-  codigoCliente,
-  numeroInterno,
-  dimensao = 0,
-}) {
+export async function carregarCalculoAceitoHomologacao({ codigoCliente, numeroInterno }) {
+  const { dimensao, motivo } = await resolverUltimaDimensaoAceita({ codigoCliente, numeroInterno });
+  if (dimensao == null) {
+    return {
+      dados: null,
+      elegivel: false,
+      motivo,
+      boletos: [],
+      dimensao: null,
+    };
+  }
   const dados = await carregarCalculoSalvo({ codigoCliente, numeroInterno, dimensao });
   if (!dados) {
     return {
@@ -68,17 +59,17 @@ export async function carregarCalculoAceitoHomologacao({
   }
   const validacao = validarElegibilidadeHomologacao(dados.rodada);
   return {
-    dados,
+    dados: { ...dados, dimensao },
     elegivel: validacao.elegivel,
     motivo: validacao.motivo || '',
     boletos: validacao.boletos || extrairBoletosHomologacao(dados.rodada),
+    dimensao,
   };
 }
 
 async function prepararHomologacao({
   codigoCliente,
   numeroInterno,
-  dimensao = 0,
   enderecamento,
   dataIso,
   numeroCnj,
@@ -90,8 +81,7 @@ async function prepararHomologacao({
   const proc = normalizarProc(numeroInterno);
 
   const carregado =
-    dadosPreCarregados ??
-    (await carregarCalculoAceitoHomologacao({ codigoCliente: cod8, numeroInterno: proc, dimensao }));
+    dadosPreCarregados ?? (await carregarCalculoAceitoHomologacao({ codigoCliente: cod8, numeroInterno: proc }));
   if (!carregado?.dados) {
     throw new Error(carregado?.motivo || 'Não há cálculo salvo para este processo.');
   }
@@ -132,7 +122,6 @@ function paramsHomologacaoComuns(input) {
   return {
     codigoCliente: input.codigoCliente,
     numeroInterno: input.numeroInterno,
-    dimensao: input.dimensao ?? 0,
     enderecamento: input.enderecamento,
     dataIso: input.dataIso,
     numeroCnj: input.numeroCnj,
