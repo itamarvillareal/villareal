@@ -28,7 +28,7 @@ import {
   executarSincronizacaoAudienciasAgendaEProcessosCompleta,
   executarSincronizacaoAudienciasAgendaMesEProcessos,
 } from '../services/sincronizacaoAudienciasAgendaProcessosService.js';
-import { backfillAudienciasProcessosAgendaApi } from '../repositories/agendaRepository.js';
+import { ModalEspelharAudienciasAgenda } from './diagnosticos/ModalEspelharAudienciasAgenda.jsx';
 import { hojeDdMmYyyy, resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import { listarImoveisResumoPorPessoaDiagnostico } from '../services/listarImoveisPorPessoaDiagnostico.js';
 import { listarCodigosClientePorIdPessoa } from '../data/clienteCodigoHelpers.js';
@@ -446,6 +446,7 @@ export function Diagnosticos() {
   const [syncAgendaMes, setSyncAgendaMes] = useState(4);
   const [syncAgendaAno, setSyncAgendaAno] = useState(() => new Date().getFullYear());
   const [syncAgendaMsg, setSyncAgendaMsg] = useState('');
+  const [modalEspelharAudienciasAberto, setModalEspelharAudienciasAberto] = useState(false);
   const [modalReusClienteExcelAberto, setModalReusClienteExcelAberto] = useState(false);
   const [codigoClienteReusExcel, setCodigoClienteReusExcel] = useState('');
   const [reusExcelCarregando, setReusExcelCarregando] = useState(false);
@@ -1149,22 +1150,6 @@ export function Diagnosticos() {
     }
   }
 
-  async function executarBackfillAudienciasProcessosAgenda() {
-    setSyncAgendaMsg('Espelhando audiências dos processos na agenda…');
-    try {
-      const r = await backfillAudienciasProcessosAgendaApi({ todos: true });
-      if (!r.ok) {
-        setSyncAgendaMsg('Falha ao espelhar audiências na agenda (API).');
-        return;
-      }
-      setSyncAgendaMsg(
-        `Processos: ${r.processosProcessados ?? 0}. Colaboradores atualizados: ${r.colaboradoresSincronizados ?? 0}. Removidos: ${r.eventosRemovidos ?? 0}. Falhas: ${r.falhas ?? 0}.`
-      );
-    } catch (e) {
-      setSyncAgendaMsg(mensagemErroAmigavel(e, 'espelhar audiências na agenda'));
-    }
-  }
-
   function abrirProcessoPorItem(item) {
     if (!item?.codCliente || item?.proc == null || item?.proc === '') return;
     setProcessoEmbed({
@@ -1300,7 +1285,7 @@ export function Diagnosticos() {
               <div className="flex flex-wrap items-center justify-center gap-2">
                 <button
                   type="button"
-                  onClick={executarBackfillAudienciasProcessosAgenda}
+                  onClick={() => setModalEspelharAudienciasAberto(true)}
                   className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 text-xs font-semibold text-white shadow-md shadow-emerald-500/20 hover:from-emerald-500 hover:to-teal-500"
                 >
                   Espelhar todas as audiências
@@ -2924,6 +2909,11 @@ export function Diagnosticos() {
         dataPrazoFatal={dataPrazoFatal}
         itens={resultadoPrazoFatal}
         onOpenProcesso={abrirProcessoPorItem}
+      />
+
+      <ModalEspelharAudienciasAgenda
+        open={modalEspelharAudienciasAberto}
+        onClose={() => setModalEspelharAudienciasAberto(false)}
       />
 
       {processoEmbed ? (
