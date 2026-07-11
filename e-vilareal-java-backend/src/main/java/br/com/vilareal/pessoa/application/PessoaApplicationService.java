@@ -154,6 +154,41 @@ public class PessoaApplicationService {
         return toResponseCompleto(p);
     }
 
+    /**
+     * Bloco OPT-IN: registra ({@code aceita=true}) ou revoga ({@code aceita=false}) o
+     * consentimento EXPLÍCITO para aviso de processo novo. As colunas guardam o último evento:
+     * na revogação, {@code aviso_consentimento_em} passa a ser o momento da revogação e a
+     * origem ganha o prefixo "revogacao:" — auditoria do estado vigente; histórico completo
+     * seria tabela própria. Consentimento próprio: NÃO deriva do opt-in do lembrete de audiência.
+     */
+    @Transactional
+    public PessoaCadastroResponse registrarConsentimentoAvisoProcesso(Long id, boolean aceita, String origem) {
+        PessoaEntity p = pessoaRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Pessoa não encontrada: " + id));
+        String origemLimpa = StringUtils.hasText(origem) ? origem.trim() : "nao informada";
+        String registro = aceita ? origemLimpa : "revogacao: " + origemLimpa;
+        p.setAceitaAvisoProcessoNovo(aceita);
+        p.setAvisoConsentimentoEm(java.time.LocalDateTime.now());
+        p.setAvisoConsentimentoOrigem(registro.length() > 60 ? registro.substring(0, 60) : registro);
+        pessoaRepository.save(p);
+        return toResponseBasico(p);
+    }
+
+    /** Polo vigiado na varredura PROJUDI. Endpoint próprio (como o /ativo) — não passa pelo PUT. */
+    @Transactional
+    public PessoaCadastroResponse atualizarPoloMonitorado(Long id, String polo) {
+        String valor = polo == null ? "" : polo.trim().toUpperCase();
+        if (!valor.equals("ATIVO") && !valor.equals("PASSIVO") && !valor.equals("AMBOS")) {
+            throw new BusinessRuleException("Polo monitorado inválido: " + polo
+                    + " (esperado ATIVO, PASSIVO ou AMBOS).");
+        }
+        PessoaEntity p = pessoaRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Pessoa não encontrada: " + id));
+        p.setPoloMonitorado(valor);
+        pessoaRepository.save(p);
+        return toResponseBasico(p);
+    }
+
     @Transactional
     public PessoaCadastroResponse criar(PessoaCadastroRequest req) {
         String cpf = normalizarCpf(req.getCpf());
@@ -525,6 +560,10 @@ public class PessoaApplicationService {
         r.setDataNascimento(p.getDataNascimento());
         r.setAtivo(p.getAtivo());
         r.setMarcadoMonitoramento(p.getMarcadoMonitoramento());
+        r.setAceitaAvisoProcessoNovo(p.getAceitaAvisoProcessoNovo());
+        r.setAvisoConsentimentoEm(p.getAvisoConsentimentoEm());
+        r.setAvisoConsentimentoOrigem(p.getAvisoConsentimentoOrigem());
+        r.setPoloMonitorado(p.getPoloMonitorado());
         if (p.getResponsavel() != null) {
             r.setResponsavelId(p.getResponsavel().getId());
         } else {

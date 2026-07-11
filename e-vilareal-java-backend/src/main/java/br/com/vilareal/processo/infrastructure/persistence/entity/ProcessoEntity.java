@@ -71,6 +71,14 @@ public class ProcessoEntity {
     @Column(name = "numero_cnj", length = 100)
     private String numeroCnj;
 
+    /**
+     * CNJ só-dígitos (20), derivado de {@link #numeroCnj} em @PrePersist/@PreUpdate.
+     * Usado no dedupe da varredura de monitoramento (reduzido+ano). Numerações fora do
+     * padrão CNJ (≠ 20 dígitos) ficam NULL — mesma regra do backfill da V200.
+     */
+    @Column(name = "numero_cnj_digitos", length = 20)
+    private String numeroCnjDigitos;
+
     @Column(name = "numero_processo_antigo", length = 100)
     private String numeroProcessoAntigo;
 
@@ -164,5 +172,15 @@ public class ProcessoEntity {
         if (fase == null || fase.trim().isEmpty()) {
             fase = FASE_PADRAO_EM_ANDAMENTO;
         }
+        numeroCnjDigitos = extrairCnjDigitos(numeroCnj);
+    }
+
+    /** 20 dígitos do CNJ padrão, ou null (numeração antiga/livre não participa do dedupe). */
+    static String extrairCnjDigitos(String numeroCnj) {
+        if (numeroCnj == null) {
+            return null;
+        }
+        String digitos = numeroCnj.replaceAll("\\D", "");
+        return digitos.length() == 20 ? digitos : null;
     }
 }

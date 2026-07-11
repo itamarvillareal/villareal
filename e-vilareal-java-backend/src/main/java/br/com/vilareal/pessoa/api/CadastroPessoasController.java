@@ -86,6 +86,26 @@ public class CadastroPessoasController {
         return ResponseEntity.noContent().build();
     }
 
+    @PatchMapping("/{id}/polo-monitorado")
+    @Operation(summary = "Define o polo vigiado na varredura PROJUDI", description = "Query ?value=ATIVO|PASSIVO|AMBOS")
+    public PessoaCadastroResponse patchPoloMonitorado(@PathVariable Long id, @RequestParam String value) {
+        return pessoaService.atualizarPoloMonitorado(id, value);
+    }
+
+    /** Corpo do consentimento de aviso de processo novo (Bloco OPT-IN). */
+    public record ConsentimentoAvisoProcessoRequest(Boolean aceita, String origem) {}
+
+    @PatchMapping("/{id}/consentimento-aviso-processo")
+    @Operation(summary = "Registra (aceita=true) ou revoga (aceita=false) o consentimento explícito "
+            + "para aviso de processo novo via WhatsApp, gravando data e origem do evento")
+    public PessoaCadastroResponse consentimentoAvisoProcesso(
+            @PathVariable Long id, @RequestBody ConsentimentoAvisoProcessoRequest body) {
+        if (body == null || body.aceita() == null) {
+            throw new IllegalArgumentException("Campo 'aceita' é obrigatório (true/false).");
+        }
+        return pessoaService.registrarConsentimentoAvisoProcesso(id, body.aceita(), body.origem());
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> excluir(@PathVariable Long id) {
         pessoaService.excluir(id);

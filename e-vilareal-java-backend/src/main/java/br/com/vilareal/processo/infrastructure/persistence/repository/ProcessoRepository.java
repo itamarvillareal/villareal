@@ -16,6 +16,21 @@ import java.util.Optional;
 
 public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> {
 
+    /**
+     * Dedupe da varredura de monitoramento: casa o número REDUZIDO da lista do PROJUDI
+     * (sequencial+dv, 9 dígitos) + ano contra o CNJ só-dígitos do acervo. O CNJ em dígitos é
+     * NNNNNNN DD AAAA J TR OOOO — os 13 primeiros caracteres são exatamente seq+dv+ano.
+     */
+    @Query("SELECT p FROM ProcessoEntity p WHERE p.numeroCnjDigitos LIKE CONCAT(:seqDvAno, '%')")
+    List<ProcessoEntity> findByCnjSequencialDvAno(@Param("seqDvAno") String seqDvAno);
+
+    /** Match exato pelo CNJ só-dígitos (20) — rede anti-duplicata do cadastro via monitoramento. */
+    List<ProcessoEntity> findByNumeroCnjDigitos(String numeroCnjDigitos);
+
+    /** Maior número interno do cliente — sugestão (max+1) para o cadastro via monitoramento. */
+    @Query("SELECT MAX(p.numeroInterno) FROM ProcessoEntity p WHERE p.cliente.id = :clienteId")
+    Integer findMaxNumeroInternoDoCliente(@Param("clienteId") Long clienteId);
+
     @Query(
             """
             SELECT p.id FROM ProcessoEntity p

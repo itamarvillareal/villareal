@@ -6,6 +6,7 @@ import lombok.Setter;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "pessoa")
@@ -43,6 +44,29 @@ public class PessoaEntity {
 
     @Column(name = "marcado_monitoramento", nullable = false)
     private Boolean marcadoMonitoramento = false;
+
+    /** Polo a vigiar na varredura PROJUDI por CPF/CNPJ: ATIVO, PASSIVO ou AMBOS (default). */
+    @Column(name = "polo_monitorado", nullable = false, length = 10)
+    private String poloMonitorado = "AMBOS";
+
+    /** Instante em que a baseline (primeira varredura completa) foi concluída; null = sem baseline. */
+    @Column(name = "baseline_em")
+    private LocalDateTime baselineEm;
+
+    /**
+     * Consentimento EXPLÍCITO para receber aviso de processo novo via WhatsApp (não herda o
+     * fundamento do lembrete de audiência). O envio do Bloco E é recusado no backend sem ele.
+     */
+    @Column(name = "aceita_aviso_processo_novo", nullable = false)
+    private Boolean aceitaAvisoProcessoNovo = false;
+
+    /** Momento do ÚLTIMO evento de consentimento (registro ou revogação). */
+    @Column(name = "aviso_consentimento_em")
+    private LocalDateTime avisoConsentimentoEm;
+
+    /** Origem do último evento (ex.: "cadastro manual", "revogacao: cadastro manual"). */
+    @Column(name = "aviso_consentimento_origem", length = 60)
+    private String avisoConsentimentoOrigem;
 
     @Column(name = "importacao_id", length = 36)
     private String importacaoId;

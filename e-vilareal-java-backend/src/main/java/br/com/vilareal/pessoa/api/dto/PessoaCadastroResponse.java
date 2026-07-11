@@ -3,6 +3,7 @@ package br.com.vilareal.pessoa.api.dto;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Schema(description = "Pessoa cadastrada (resposta)")
 public class PessoaCadastroResponse {
@@ -17,6 +18,44 @@ public class PessoaCadastroResponse {
     private Boolean marcadoMonitoramento;
     private Long responsavelId;
     private PessoaResponsavelResumo responsavel;
+    /** Consentimento explícito para aviso de processo novo (Bloco OPT-IN). */
+    private Boolean aceitaAvisoProcessoNovo;
+    private LocalDateTime avisoConsentimentoEm;
+    private String avisoConsentimentoOrigem;
+    /** Polo vigiado na varredura PROJUDI: ATIVO, PASSIVO ou AMBOS. */
+    private String poloMonitorado;
+
+    public String getPoloMonitorado() {
+        return poloMonitorado;
+    }
+
+    public void setPoloMonitorado(String poloMonitorado) {
+        this.poloMonitorado = poloMonitorado;
+    }
+
+    public Boolean getAceitaAvisoProcessoNovo() {
+        return aceitaAvisoProcessoNovo;
+    }
+
+    public void setAceitaAvisoProcessoNovo(Boolean aceitaAvisoProcessoNovo) {
+        this.aceitaAvisoProcessoNovo = aceitaAvisoProcessoNovo;
+    }
+
+    public LocalDateTime getAvisoConsentimentoEm() {
+        return avisoConsentimentoEm;
+    }
+
+    public void setAvisoConsentimentoEm(LocalDateTime avisoConsentimentoEm) {
+        this.avisoConsentimentoEm = avisoConsentimentoEm;
+    }
+
+    public String getAvisoConsentimentoOrigem() {
+        return avisoConsentimentoOrigem;
+    }
+
+    public void setAvisoConsentimentoOrigem(String avisoConsentimentoOrigem) {
+        this.avisoConsentimentoOrigem = avisoConsentimentoOrigem;
+    }
 
     public Long getId() {
         return id;

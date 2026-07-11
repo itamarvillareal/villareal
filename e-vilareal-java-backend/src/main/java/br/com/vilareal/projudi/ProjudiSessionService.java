@@ -516,9 +516,26 @@ public class ProjudiSessionService {
      * Se vier a tela de login, reautentica e refaz a busca na mesma sessão nova.</p>
      */
     public RespostaProjudi buscarProcessoConsulta(Long credencialId, String numeroProcesso) {
-        ProjudiSession sessao = getSessao(credencialId);
-        String corpo = montarCorpoBuscaProcesso(numeroProcesso);
         // (corpo já inclui QuantidadeRegistrosPagina alto p/ trazer TODAS as movimentações)
+        return executarBuscaProcessoConsulta(credencialId, montarCorpoBuscaProcesso(numeroProcesso));
+    }
+
+    /**
+     * Busca por CPF/CNPJ de parte — produção (monitoramento de pessoas, via
+     * {@link ProjudiBuscaParteService}); nasceu no spike e foi promovida.
+     *
+     * <p>Consulta por CPF/CNPJ de parte (SOMENTE LEITURA): mesmo POST gateado para
+     * {@value #BUSCA_PROCESSO_PATH} de {@link #buscarProcessoConsulta}, apenas trocando
+     * qual campo do formulário vai preenchido ({@code CpfCnpjParte} em vez de
+     * {@code ProcessoNumero}). Passa pela mesma barreira anti-ciência de
+     * {@link #postBuscaProcessoRaw} — nenhum path novo é autorizado.</p>
+     */
+    public RespostaProjudi buscarProcessosPorCpfCnpjParte(Long credencialId, String cpfCnpjDigitos) {
+        return executarBuscaProcessoConsulta(credencialId, montarCorpoBuscaPorParte(cpfCnpjDigitos));
+    }
+
+    private RespostaProjudi executarBuscaProcessoConsulta(Long credencialId, String corpo) {
+        ProjudiSession sessao = getSessao(credencialId);
         RespostaProjudi resp = toResposta(postBuscaProcessoRaw(sessao.client(), BUSCA_PROCESSO_PATH, corpo));
         if (pareceNaoLogado(resp.body())) {
             log.info(
@@ -659,6 +676,31 @@ public class ProjudiSessionService {
         // QuantidadeRegistrosPagina controla quantas movimentações a consulta devolve. Vazio = default
         // do PROJUDI (~100, só as mais recentes), o que deixava processos grandes parando de arquivar
         // movimentações novas/antigas além da janela. Enviamos um valor alto para listar TODAS.
+        return montarCorpoBuscaProcessoForm(numeroProcesso, "");
+    }
+
+    /**
+     * Corpo da busca por parte — produção (monitoramento de pessoas). Mesmo formulário de
+     * {@link #montarCorpoBuscaProcesso}, com {@code ProcessoNumero} vazio e
+     * {@code CpfCnpjParte} preenchido (só dígitos). {@code NomeParte} permanece vazio.
+     */
+    String montarCorpoBuscaPorParte(String cpfCnpjDigitos) {
+        String digitos = cpfCnpjDigitos == null ? "" : cpfCnpjDigitos.replaceAll("\\D", "");
+        if (digitos.length() != 11 && digitos.length() != 14) {
+            throw new BusinessRuleException(
+                    "CPF/CNPJ inválido para busca por parte (esperado 11 ou 14 dígitos): "
+                            + (cpfCnpjDigitos == null ? "" : cpfCnpjDigitos));
+        }
+        // NÃO adicionar "Proprio" aqui. O checkbox "Próprios" do form real é
+        // <input type="checkbox" name="Proprio" value="true">: desmarcado, o navegador OMITE o
+        // parâmetro (confirmado nos POSTs capturados em projudi-peticao-capture/requests.jsonl).
+        // A AUSÊNCIA de Proprio É o estado "desmarcado"/"não restringir". Enviar Proprio=false
+        // seria uma combinação que o form nunca produz — se o servlet testar presença em vez de
+        // valor, inverteria o filtro (só próprios) silenciosamente.
+        return montarCorpoBuscaProcessoForm("", digitos);
+    }
+
+    private String montarCorpoBuscaProcessoForm(String numeroProcesso, String cpfCnpjParte) {
         return "PaginaAtual=2"
                 + "&PaginaAnterior=2"
                 + "&TipoConsultaProcesso=null"
@@ -669,7 +711,7 @@ public class ProjudiSessionService {
                 + "&Inquerito="
                 + "&NomeParte="
                 + "&PesquisarNomeExato=false"
-                + "&CpfCnpjParte="
+                + "&CpfCnpjParte=" + enc(cpfCnpjParte)
                 + "&ProcessoStatus="
                 + "&Id_ProcessoStatus=null"
                 + "&ProcessoStatusCodigo=null"

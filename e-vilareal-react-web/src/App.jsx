@@ -53,7 +53,7 @@ import {
   LazyImoveisPagamentos,
   LazyConciliacaoBancaria,
   LazyAcertoCliente,
-  LazyMonitoringPeoplePage,
+  LazyMonitoramentoProjudiPage,
   LazyProcessos,
   LazyPublicacoesProcessos,
   LazyConsultasPeriodicas,
@@ -473,7 +473,7 @@ function App() {
               <Route path="/processos/recebiveis" element={<LazyProcessoRecebiveis />} />
               <Route path="/processos/peticionamento-projudi" element={<LazyPeticionamentoProjudi />} />
               <Route path="/processos/distribuicao-inicial-projudi" element={<LazyDistribuicaoInicialProjudi />} />
-              <Route path="/processos/monitoramento" element={<LazyMonitoringPeoplePage />} />
+              <Route path="/processos/monitoramento" element={<LazyMonitoramentoProjudiPage />} />
               <Route path="/imoveis" element={<LazyImoveis />} />
               <Route path="/imoveis/demandas" element={<LazyDemandas />} />
               <Route path="/iptu/:imovelId" element={<LazyIptu />} />

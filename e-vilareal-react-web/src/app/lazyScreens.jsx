@@ -51,9 +51,9 @@ export const LazyDistribuicaoInicialProjudi = fromNamed(
   () => import('../components/projudi/DistribuicaoInicialProjudi.jsx'),
   'DistribuicaoInicialProjudi'
 );
-export const LazyMonitoringPeoplePage = fromNamed(
-  () => import('../components/monitoring/MonitoringPeoplePage.jsx'),
-  'MonitoringPeoplePage'
+export const LazyMonitoramentoProjudiPage = fromNamed(
+  () => import('../components/monitoring/MonitoramentoProjudiPage.jsx'),
+  'MonitoramentoProjudiPage'
 );
 export const LazyImoveis = fromNamed(() => import('../components/Imoveis.jsx'), 'Imoveis');
 export const LazyDemandas = fromNamed(() => import('../components/Demandas.jsx'), 'Demandas');

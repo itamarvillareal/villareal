@@ -195,3 +195,31 @@ export async function excluirCliente(id) {
   const res = await fetch(`${BASE}/${id}`, getOptions('DELETE'));
   await handleResponse(res);
 }
+
+/**
+ * Define o polo vigiado na varredura PROJUDI da pessoa monitorada.
+ * @param {number} pessoaId
+ * @param {'ATIVO'|'PASSIVO'|'AMBOS'} polo
+ */
+export async function atualizarPoloMonitorado(pessoaId, polo) {
+  const res = await fetch(
+    `${BASE}/${pessoaId}/polo-monitorado?value=${encodeURIComponent(polo)}`,
+    getOptions('PATCH'),
+  );
+  return handleResponse(res);
+}
+
+/**
+ * Registra (aceita=true) ou revoga (aceita=false) o consentimento explícito para
+ * aviso de processo novo via WhatsApp, gravando data e origem no backend.
+ * @param {number} pessoaId
+ * @param {boolean} aceita
+ * @param {string} origem - ex.: "cadastro manual"
+ */
+export async function registrarConsentimentoAvisoProcesso(pessoaId, aceita, origem) {
+  const res = await fetch(
+    `${BASE}/${pessoaId}/consentimento-aviso-processo`,
+    getOptions('PATCH', { aceita, origem }),
+  );
+  return handleResponse(res);
+}

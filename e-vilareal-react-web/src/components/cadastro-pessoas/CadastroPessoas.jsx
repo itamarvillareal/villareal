@@ -24,6 +24,8 @@ import {
   excluirCliente,
   obterProximoIdCadastroPessoas,
   pesquisarCadastroPessoasPorTelefone,
+  registrarConsentimentoAvisoProcesso,
+  atualizarPoloMonitorado,
 } from '../../api/clientesService';
 import { analisarDocumentoPessoa } from '../../services/personAutoFillService.js';
 import { listarPessoasComDocumento, salvarDocumentoPessoa } from '../../services/pessoaDocumentoService.js';
@@ -146,8 +148,14 @@ const emptyPessoa = {
   email: '',
   contato: '',
   ativo: true,
-  /** Marca pessoa para a aba Processos → Monitoramento (DataJud). */
+  /** Marca a pessoa para a varredura PROJUDI por CPF/CNPJ (Processos → Monitoramento). */
   marcadoMonitoramento: false,
+  /** Polo vigiado na varredura PROJUDI: 'ATIVO' | 'PASSIVO' | 'AMBOS'. */
+  poloMonitorado: 'AMBOS',
+  /** Consentimento explícito para aviso de processo novo via WhatsApp (Bloco OPT-IN). */
+  aceitaAvisoProcessoNovo: false,
+  /** @type {string|null} data/hora do último evento de consentimento (ISO do backend) */
+  avisoConsentimentoEm: null,
   edicaoDesabilitada: true,
   /** @type {number|null} */
   responsavelId: null,
@@ -916,6 +924,9 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
         contato: pessoaAtual.telefone ?? '',
         ativo: pessoaAtual.ativo !== false,
         marcadoMonitoramento: pessoaAtual.marcadoMonitoramento === true,
+        poloMonitorado: pessoaAtual.poloMonitorado || 'AMBOS',
+        aceitaAvisoProcessoNovo: pessoaAtual.aceitaAvisoProcessoNovo === true,
+        avisoConsentimentoEm: pessoaAtual.avisoConsentimentoEm ?? null,
         responsavelId:
           pessoaAtual.responsavelId != null
             ? Number(pessoaAtual.responsavelId)
@@ -1058,6 +1069,9 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
       estadoCivil: item.estadoCivil ?? '',
       ativo: item.ativo !== false,
       marcadoMonitoramento: item.marcadoMonitoramento === true,
+      poloMonitorado: item.poloMonitorado || 'AMBOS',
+      aceitaAvisoProcessoNovo: item.aceitaAvisoProcessoNovo === true,
+      avisoConsentimentoEm: item.avisoConsentimentoEm ?? null,
       responsavelId:
         item.responsavelId != null
           ? Number(item.responsavelId)
@@ -1700,6 +1714,43 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
       setForm((f) => ({ ...f, marcadoMonitoramento: marcado }));
     } catch (err) {
       setError(err.message || 'Erro ao atualizar monitoramento.');
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  /** Polo vigiado na varredura PROJUDI: grava no ato via endpoint próprio (como o consentimento). */
+  const alterarPoloMonitoradoPessoaAtual = async (polo) => {
+    const id = Number(modo === 'editar' && editId != null ? editId : pessoaAtual?.id);
+    setForm((f) => ({ ...f, poloMonitorado: polo }));
+    if (!Number.isFinite(id) || id < 1) return;
+    try {
+      await atualizarPoloMonitorado(id, polo);
+    } catch (err) {
+      setError(err.message || 'Erro ao atualizar o polo monitorado.');
+    }
+  };
+
+  /**
+   * Consentimento do aviso de processo novo: grava IMEDIATAMENTE no backend (endpoint próprio,
+   * que registra data + origem do evento) — não passa pelo PUT do formulário, para o registro
+   * de consentimento nunca depender de um "salvar" posterior.
+   */
+  const alternarConsentimentoAvisoPessoaAtual = async () => {
+    const id = Number(modo === 'editar' && editId != null ? editId : pessoaAtual?.id);
+    if (!Number.isFinite(id) || id < 1) return;
+    const proximo = !form.aceitaAvisoProcessoNovo;
+    setSalvando(true);
+    setError(null);
+    try {
+      const atualizado = await registrarConsentimentoAvisoProcesso(id, proximo, 'cadastro manual');
+      setForm((f) => ({
+        ...f,
+        aceitaAvisoProcessoNovo: atualizado?.aceitaAvisoProcessoNovo === true,
+        avisoConsentimentoEm: atualizado?.avisoConsentimentoEm ?? null,
+      }));
+    } catch (err) {
+      setError(err.message || 'Erro ao registrar o consentimento de aviso de processo novo.');
     } finally {
       setSalvando(false);
     }
@@ -2572,8 +2623,58 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                         htmlFor="marcadoMonitoramento"
                         className="text-sm text-slate-700 cursor-pointer leading-snug"
                       >
-                        Incluir em <strong>Monitoramento de Pessoas</strong> (DataJud/CNJ). Configure
-                        frequência e chaves em Processos → Monitoramento.
+                        <strong>Monitorar novos processos no PROJUDI por CPF/CNPJ.</strong> A
+                        varredura detecta apenas processos FUTUROS (distribuídos após a primeira
+                        varredura completa); o histórico entra como referência, não como alerta.
+                        Acompanhe em Processos → Monitoramento.
+                      </label>
+                    </div>
+                    {form.marcadoMonitoramento ? (
+                      <div className="flex items-center gap-2 pl-6">
+                        <label htmlFor="poloMonitorado" className="text-sm text-slate-700">
+                          Polo a vigiar:
+                        </label>
+                        <select
+                          id="poloMonitorado"
+                          value={form.poloMonitorado || 'AMBOS'}
+                          onChange={(e) => {
+                            void alterarPoloMonitoradoPessoaAtual(e.target.value);
+                          }}
+                          disabled={form.edicaoDesabilitada || !(modo === 'editar' && editId != null)}
+                          className="px-2 py-1.5 text-sm border border-slate-300 rounded-lg bg-white disabled:opacity-50"
+                        >
+                          <option value="AMBOS">Ambos os polos</option>
+                          <option value="PASSIVO">Somente passivo (pessoa como ré/requerida)</option>
+                          <option value="ATIVO">Somente ativo (pessoa como autora/requerente)</option>
+                        </select>
+                      </div>
+                    ) : null}
+                    <div className="flex items-start gap-2 pt-1">
+                      <input
+                        type="checkbox"
+                        id="aceitaAvisoProcessoNovo"
+                        checked={!!form.aceitaAvisoProcessoNovo}
+                        onChange={() => {
+                          void alternarConsentimentoAvisoPessoaAtual();
+                        }}
+                        disabled={
+                          form.edicaoDesabilitada ||
+                          salvando ||
+                          !(modo === 'editar' && editId != null) 
+                        }
+                        className="mt-1 rounded border-slate-300 text-blue-600"
+                      />
+                      <label
+                        htmlFor="aceitaAvisoProcessoNovo"
+                        className="text-sm text-slate-700 cursor-pointer leading-snug"
+                      >
+                        Cliente <strong>consentiu em receber aviso de processo novo</strong> por
+                        WhatsApp (consentimento próprio; grava data e origem no ato).
+                        {form.avisoConsentimentoEm ? (
+                          <span className="block text-xs text-slate-500">
+                            Último registro: {new Date(form.avisoConsentimentoEm).toLocaleString('pt-BR')}
+                          </span>
+                        ) : null}
                       </label>
                     </div>
                     <div>

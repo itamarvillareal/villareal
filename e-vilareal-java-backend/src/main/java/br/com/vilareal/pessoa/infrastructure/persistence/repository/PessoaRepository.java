@@ -13,6 +13,9 @@ import java.util.Optional;
 
 public interface PessoaRepository extends JpaRepository<PessoaEntity, Long>, JpaSpecificationExecutor<PessoaEntity> {
 
+    /** Pessoas atualmente marcadas para o monitoramento PROJUDI (tela de monitoramento). */
+    List<PessoaEntity> findByMarcadoMonitoramentoTrueOrderByNomeAsc();
+
     /**
      * Pessoas por índice de telefone ({@code telefone_digitos} / {@code telefone_sufixo_8} e contatos).
      */
