@@ -684,11 +684,11 @@ async function main() {
 
   const token = await login(opts.baseUrl);
   const db = await mysql.createConnection({
-    host: '127.0.0.1',
-    port: 3307,
-    user: 'root',
-    password: 'root',
-    database: 'vilareal',
+    host: process.env.VILAREAL_MYSQL_HOST || '127.0.0.1',
+    port: Number(process.env.VILAREAL_MYSQL_PORT || 3307),
+    user: process.env.VILAREAL_MYSQL_USER || 'root',
+    password: process.env.VILAREAL_MYSQL_PASSWORD || 'root',
+    database: process.env.VILAREAL_MYSQL_DATABASE || 'vilareal',
     dateStrings: true,
   });
   const ctx = {
