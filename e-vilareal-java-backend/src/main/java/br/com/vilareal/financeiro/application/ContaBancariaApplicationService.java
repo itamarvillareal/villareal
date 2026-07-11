@@ -51,7 +51,8 @@ public class ContaBancariaApplicationService {
                         Boolean.TRUE.equals(c.getAtivo()),
                         c.getOfxBankId(),
                         c.getOfxAgencia(),
-                        c.getOfxConta()))
+                        c.getOfxConta(),
+                        Boolean.TRUE.equals(c.getExigeSomaZero())))
                 .toList();
     }
 
@@ -97,5 +98,24 @@ public class ContaBancariaApplicationService {
         return contaDoLancamento(lancamento)
                 .map(ContaBancariaEntity::getTipo)
                 .orElse("REAL");
+    }
+
+    /** Conta de acerto (CONTA ZERO): grupos soma zero exata + vínculo obrigatório. */
+    @Transactional(readOnly = true)
+    public boolean exigeSomaZero(LancamentoFinanceiroEntity lancamento) {
+        return contaDoLancamento(lancamento)
+                .map(c -> Boolean.TRUE.equals(c.getExigeSomaZero()))
+                .orElse(false);
+    }
+
+    /** Conta de acerto por numero_banco (para validar antes de criar o lançamento). */
+    @Transactional(readOnly = true)
+    public boolean exigeSomaZero(Integer numeroBanco) {
+        if (numeroBanco == null) {
+            return false;
+        }
+        return contaBancariaRepository.findByNumeroBanco(numeroBanco)
+                .map(c -> Boolean.TRUE.equals(c.getExigeSomaZero()))
+                .orElse(false);
     }
 }

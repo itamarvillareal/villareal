@@ -32,4 +32,8 @@ public class LancamentoExtratoListItemResponse {
     private String origem;
     private String etapa;
     private String grupoCompensacao;
+    /** Visão do cliente (CONTA ZERO): FALSE omite do relatório de acerto do cliente. */
+    private Boolean visivelCliente;
+    /** Visão do cliente (CONTA ZERO): valor alternativo no relatório do cliente (null = valor real). */
+    private BigDecimal valorCliente;
 }

@@ -9,6 +9,7 @@ package br.com.vilareal.financeiro.api.dto;
  * @param tipo        REAL (com extrato) | MANUAL (lançamentos manuais) | VIRTUAL (repasse interno).
  * @param temExtrato  se a conta possui extrato bancário (participa da conciliação por extrato).
  * @param ativo       se a conta está ativa.
+ * @param exigeSomaZero conta de acerto (CONTA ZERO): grupos soma zero exata + vínculo obrigatório.
  */
 public record ContaBancariaResponse(
         Integer numeroBanco,
@@ -18,5 +19,6 @@ public record ContaBancariaResponse(
         boolean ativo,
         String ofxBankId,
         String ofxAgencia,
-        String ofxConta) {
+        String ofxConta,
+        boolean exigeSomaZero) {
 }

@@ -2,6 +2,7 @@ package br.com.vilareal.financeiro.api;
 
 import br.com.vilareal.financeiro.api.dto.*;
 import br.com.vilareal.financeiro.application.CartaoBancoMapeamentoApplicationService;
+import br.com.vilareal.financeiro.application.ContaAcertoApplicationService;
 import br.com.vilareal.financeiro.application.ContaBancariaApplicationService;
 import br.com.vilareal.financeiro.application.ExtratoImportProtecaoService;
 import br.com.vilareal.financeiro.application.ExtratoPosImportApplicationService;
@@ -59,6 +60,7 @@ public class FinanceiroController {
     private final FinanceiroSaudeService financeiroSaudeService;
     private final FinanceiroMesApplicationService financeiroMesService;
     private final ContaBancariaApplicationService contaBancariaService;
+    private final ContaAcertoApplicationService contaAcertoService;
     private final FinanceiroSemelhantesEscritorioService semelhantesEscritorioService;
     private final FinanceiroFaturaCartaoFechamentoService faturaCartaoFechamentoService;
     private final InboxClassificarApplicationService inboxClassificarService;
@@ -80,6 +82,7 @@ public class FinanceiroController {
             FinanceiroSaudeService financeiroSaudeService,
             FinanceiroMesApplicationService financeiroMesService,
             ContaBancariaApplicationService contaBancariaService,
+            ContaAcertoApplicationService contaAcertoService,
             FinanceiroSemelhantesEscritorioService semelhantesEscritorioService,
             FinanceiroFaturaCartaoFechamentoService faturaCartaoFechamentoService,
             InboxClassificarApplicationService inboxClassificarService,
@@ -99,6 +102,7 @@ public class FinanceiroController {
         this.financeiroSaudeService = financeiroSaudeService;
         this.financeiroMesService = financeiroMesService;
         this.contaBancariaService = contaBancariaService;
+        this.contaAcertoService = contaAcertoService;
         this.semelhantesEscritorioService = semelhantesEscritorioService;
         this.faturaCartaoFechamentoService = faturaCartaoFechamentoService;
         this.inboxClassificarService = inboxClassificarService;
@@ -492,10 +496,27 @@ public class FinanceiroController {
         return financeiroCompensacaoService.parear(request);
     }
 
+    @PostMapping("/lancamentos/parear-grupo")
+    @Operation(description = "Pareamento em grupo (1:N). Em conta de acerto (exige_soma_zero): soma "
+            + "exatamente zero, mesmo vínculo e conta contábil preservada; em contas comuns: tolerância "
+            + "de 5% e conta E.")
+    public ParearGrupoCompensacaoResponse parearGrupoCompensacao(
+            @Valid @RequestBody ParearGrupoCompensacaoRequest request) {
+        return financeiroCompensacaoService.parearGrupo(request);
+    }
+
     @DeleteMapping("/lancamentos/parear/{grupoCompensacao}")
-    @Operation(description = "Remove vínculo de compensação de um grupo (volta conta N / IMPORTADO).")
+    @Operation(description = "Remove vínculo de compensação de um grupo (volta conta N / IMPORTADO; "
+            + "em conta de acerto a conta contábil é preservada).")
     public DesparearCompensacaoResponse desparearCompensacao(@PathVariable String grupoCompensacao) {
         return financeiroCompensacaoService.desparear(grupoCompensacao);
+    }
+
+    @GetMapping("/conta-acerto/resumo")
+    @Operation(description = "Resumo da conta de acerto (CONTA ZERO): pendências e saldo por vínculo "
+            + "(cliente ou pessoa/imóvel). somaPendente = 0 significa conta conciliada.")
+    public ContaAcertoResumoResponse resumoContaAcerto(@RequestParam("numeroBanco") Integer numeroBanco) {
+        return contaAcertoService.resumo(numeroBanco);
     }
 
     @PostMapping("/lancamentos/pares-sugeridos/descartar")

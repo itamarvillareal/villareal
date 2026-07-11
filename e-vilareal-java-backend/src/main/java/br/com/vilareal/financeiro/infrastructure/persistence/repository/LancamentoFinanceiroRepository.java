@@ -938,6 +938,35 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             """, nativeQuery = true)
     BigDecimal sumSaldoAssinadoPorGrupoCompensacaoAtivo(@Param("grupo") String grupo);
 
+    /**
+     * Resumo da conta de acerto (CONTA ZERO) por vínculo: cliente prevalece; senão pessoa/imóvel.
+     * Colunas: tipo ('C'|'P'|'-'), vinculo_id, total, saldo assinado, pendentes (sem grupo),
+     * saldo pendente assinado.
+     */
+    @Query(value = """
+            SELECT
+                CASE
+                    WHEN fl.cliente_id IS NOT NULL THEN 'C'
+                    WHEN fl.pessoa_ref_id IS NOT NULL THEN 'P'
+                    ELSE '-'
+                END AS tipo,
+                COALESCE(fl.cliente_id, fl.pessoa_ref_id) AS vinculo_id,
+                COUNT(*) AS total,
+                COALESCE(SUM(CASE WHEN fl.natureza = 'CREDITO' THEN fl.valor ELSE -fl.valor END), 0) AS saldo,
+                SUM(CASE WHEN fl.grupo_compensacao IS NULL THEN 1 ELSE 0 END) AS pendentes,
+                COALESCE(SUM(CASE WHEN fl.grupo_compensacao IS NULL
+                    THEN (CASE WHEN fl.natureza = 'CREDITO' THEN fl.valor ELSE -fl.valor END)
+                    ELSE 0 END), 0) AS saldo_pendente
+            FROM financeiro_lancamento fl
+            WHERE fl.numero_banco = :numeroBanco
+              AND fl.status = 'ATIVO'
+            GROUP BY 1, 2
+            ORDER BY ABS(COALESCE(SUM(CASE WHEN fl.grupo_compensacao IS NULL
+                THEN (CASE WHEN fl.natureza = 'CREDITO' THEN fl.valor ELSE -fl.valor END)
+                ELSE 0 END), 0)) DESC
+            """, nativeQuery = true)
+    List<Object[]> resumoContaAcertoPorVinculo(@Param("numeroBanco") Integer numeroBanco);
+
     @Query("""
             SELECT l FROM LancamentoFinanceiroEntity l
             JOIN FETCH l.contaContabil

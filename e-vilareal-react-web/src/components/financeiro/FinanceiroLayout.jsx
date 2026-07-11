@@ -4,6 +4,7 @@ import {
   BarChart3,
   CreditCard,
   FileText,
+  Handshake,
   Inbox,
   Layers,
   LayoutDashboard,
@@ -134,6 +135,10 @@ function FinanceiroSidebarContent({
         <NavLink to="/financeiro/relatorios" className={navClass} onClick={onNavigate}>
           <BarChart3 className="w-[15px] h-[15px] shrink-0" />
           Relatórios
+        </NavLink>
+        <NavLink to="/financeiro/acerto-cliente" className={navClass} onClick={onNavigate}>
+          <Handshake className="w-[15px] h-[15px] shrink-0" />
+          Acerto do Cliente
         </NavLink>
       </nav>
 

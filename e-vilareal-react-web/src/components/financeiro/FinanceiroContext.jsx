@@ -4,6 +4,7 @@ import { CARTAO_TO_NUMERO, compararOrdemExibicaoBancos, getBancoNumeroMapMerged 
 import {
   buildClassificacaoContasPorNumero,
   classificacaoConta,
+  contaExigeSomaZero as contaExigeSomaZeroFn,
   contaTemExtrato as contaTemExtratoFn,
   isContaManual as isContaManualFn,
   isContaVirtual as isContaVirtualFn,
@@ -61,6 +62,10 @@ export function FinanceiroProvider({
     (numero) => contaTemExtratoFn(numero, classificacaoPorNumero),
     [classificacaoPorNumero],
   );
+  const contaExigeSomaZero = useCallback(
+    (numero) => contaExigeSomaZeroFn(numero, classificacaoPorNumero),
+    [classificacaoPorNumero],
+  );
 
   const bancos = useMemo(() => {
     const map = getBancoNumeroMapMerged();
@@ -73,6 +78,7 @@ export function FinanceiroProvider({
           count: contadores[numero] ?? contadores[nome] ?? null,
           tipo: cls.tipo,
           temExtrato: cls.temExtrato,
+          exigeSomaZero: cls.exigeSomaZero === true,
           ofxBankId: cls.ofxBankId ?? null,
           ofxAgencia: cls.ofxAgencia ?? null,
           ofxConta: cls.ofxConta ?? null,
@@ -178,6 +184,7 @@ export function FinanceiroProvider({
       isContaManual,
       isContaVirtual,
       contaTemExtrato,
+      contaExigeSomaZero,
       bancoAtivo:
         extratoFilters.filters.bancos?.length === 1 ? extratoFilters.filters.bancos[0] : null,
       bancosAtivos: extratoFilters.filters.bancos ?? [],
@@ -199,6 +206,7 @@ export function FinanceiroProvider({
       isContaManual,
       isContaVirtual,
       contaTemExtrato,
+      contaExigeSomaZero,
       extratoFilters.filters.bancos,
       extratoFilters.filters.banco,
       extratoFilters.filters.mes,
@@ -226,6 +234,11 @@ export function useFinanceiroChrome() {
   const ctx = useContext(FinanceiroChromeContext);
   if (!ctx) throw new Error('useFinanceiroChrome deve ser usado dentro de FinanceiroProvider');
   return ctx;
+}
+
+/** Como useFinanceiroChrome, mas retorna null fora do provider (modais/telas avulsas). */
+export function useFinanceiroChromeOpcional() {
+  return useContext(FinanceiroChromeContext);
 }
 
 /** Compatibilidade: combina filtros + chrome (re-renderiza se qualquer um mudar). */

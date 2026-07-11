@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildClassificacaoContasPorNumero,
   classificacaoConta,
+  contaExigeSomaZero,
   contaTemExtrato,
   isContaManual,
   isContaVirtual,
@@ -13,6 +14,7 @@ const RESPOSTA_ENDPOINT = [
   { numeroBanco: 9, bancoNome: 'LANÇ MANUAIS', tipo: 'MANUAL', temExtrato: false, ativo: true },
   { numeroBanco: 17, bancoNome: 'LANÇ EM DINHEIRO', tipo: 'MANUAL', temExtrato: false, ativo: true },
   { numeroBanco: 18, bancoNome: 'LANÇ MANUAIS (2)', tipo: 'MANUAL', temExtrato: false, ativo: true },
+  { numeroBanco: 19, bancoNome: 'CONTA ZERO', tipo: 'MANUAL', temExtrato: false, ativo: true, exigeSomaZero: true },
   { numeroBanco: 900, bancoNome: 'REPASSE INTERNO', tipo: 'VIRTUAL', temExtrato: true, ativo: true },
 ];
 
@@ -65,5 +67,13 @@ describe('helpers de classificação — endpoint e fallback dão o mesmo result
   it('numero inválido → default REAL/com extrato (não quebra)', () => {
     expect(classificacaoConta(null, doEndpoint)).toMatchObject({ tipo: 'REAL', temExtrato: true });
     expect(classificacaoConta(undefined, semEndpoint)).toMatchObject({ tipo: 'REAL' });
+  });
+
+  it('19 = conta de acerto (exige soma zero), no endpoint e no fallback', () => {
+    expect(contaExigeSomaZero(19, doEndpoint)).toBe(true);
+    expect(contaExigeSomaZero(19, semEndpoint)).toBe(true);
+    expect(contaExigeSomaZero(18, doEndpoint)).toBe(false);
+    expect(contaExigeSomaZero(1, doEndpoint)).toBe(false);
+    expect(contaExigeSomaZero(null, doEndpoint)).toBe(false);
   });
 });

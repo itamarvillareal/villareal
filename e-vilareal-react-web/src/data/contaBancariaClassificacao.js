@@ -17,6 +17,7 @@ export const CONTA_CLASSIFICACAO_FALLBACK = Object.freeze({
   9: { tipo: 'MANUAL', temExtrato: false },
   17: { tipo: 'MANUAL', temExtrato: false },
   18: { tipo: 'MANUAL', temExtrato: false },
+  19: { tipo: 'MANUAL', temExtrato: false, exigeSomaZero: true },
   900: { tipo: 'VIRTUAL', temExtrato: true },
 });
 
@@ -44,6 +45,7 @@ export function buildClassificacaoContasPorNumero(contasApi) {
       ofxBankId: c?.ofxBankId ?? null,
       ofxAgencia: c?.ofxAgencia ?? null,
       ofxConta: c?.ofxConta ?? null,
+      exigeSomaZero: c?.exigeSomaZero === true,
     };
   }
   return map;
@@ -73,4 +75,9 @@ export function isContaVirtual(numeroBanco, classificacaoPorNumero) {
 /** Conta com extrato bancário (participa da conciliação por extrato). */
 export function contaTemExtrato(numeroBanco, classificacaoPorNumero) {
   return classificacaoConta(numeroBanco, classificacaoPorNumero).temExtrato === true;
+}
+
+/** Conta de acerto (CONTA ZERO): grupos soma zero exata, vínculo obrigatório, visão do cliente. */
+export function contaExigeSomaZero(numeroBanco, classificacaoPorNumero) {
+  return classificacaoConta(numeroBanco, classificacaoPorNumero).exigeSomaZero === true;
 }

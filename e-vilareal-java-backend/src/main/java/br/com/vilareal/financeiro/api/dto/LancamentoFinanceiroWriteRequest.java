@@ -20,6 +20,10 @@ public class LancamentoFinanceiroWriteRequest {
     private Long clienteId;
     private Long processoId;
 
+    @Schema(description = "pessoa.id do vínculo direto (repasses de imóveis próprios etc.); "
+            + "alternativa ao clienteId em contas com exige_soma_zero")
+    private Long pessoaRefId;
+
     @Size(max = 120)
     private String bancoNome;
 
@@ -65,4 +69,11 @@ public class LancamentoFinanceiroWriteRequest {
     /** Par de compensação (planilha col. M / Elo). */
     @Size(max = 40)
     private String grupoCompensacao;
+
+    /** Visão do cliente (CONTA ZERO): FALSE omite do relatório de acerto do cliente. Omitido = TRUE. */
+    private Boolean visivelCliente;
+
+    /** Visão do cliente (CONTA ZERO): valor alternativo no relatório do cliente (null = valor real). */
+    @DecimalMin(value = "0.0", inclusive = true, message = "valorCliente não pode ser negativo.")
+    private BigDecimal valorCliente;
 }

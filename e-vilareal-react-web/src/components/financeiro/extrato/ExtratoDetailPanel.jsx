@@ -46,6 +46,8 @@ import { ConfirmDialog } from '../shared/ConfirmDialog.jsx';
 import { useFinanceiroToast } from '../shared/Toast.jsx';
 import { dispatchRefreshPendentes } from '../hooks/useKeyboardShortcuts.js';
 import { ParearManualCompensacao } from './ParearManualCompensacao.jsx';
+import { useFinanceiroChromeOpcional } from '../FinanceiroContext.jsx';
+import { contaExigeSomaZero } from '../../../data/contaBancariaClassificacao.js';
 
 const ProcessosLazy = lazy(() =>
   import('../../Processos.jsx').then((module) => ({ default: module.Processos })),
@@ -219,11 +221,14 @@ export function ExtratoDetailPanel({
     obsEditadaManualRef.current = false;
   }, [item]);
 
+  const chrome = useFinanceiroChromeOpcional();
   const codLegenda = normalizarCodigoClienteFinanceiro(draft.codCliente);
   const procLegenda = normalizarProcFinanceiro(draft.proc);
   const contaCodigoDraft = String(draft.contaCodigo ?? 'N').trim().toUpperCase() || 'N';
   const isContaE = contaCodigoDraft === 'E';
   const isContaI = contaCodigoDraft === 'I';
+  const isContaAcerto =
+    !isCartao && contaExigeSomaZero(draft.numeroBanco, chrome?.classificacaoPorNumero);
   const numeroImovelLegenda = normalizarNumeroImovelFinanceiro(draft.numeroImovel);
   const grupoElo = String(draft.grupoCompensacao ?? draft.proc ?? '').trim();
 
@@ -940,6 +945,41 @@ export function ExtratoDetailPanel({
             ) : (
               <p className="text-sm text-slate-500">(nenhum)</p>
             )}
+          </section>
+        ) : null}
+
+        {isContaAcerto ? (
+          <section className="space-y-2 border-t border-slate-100 dark:border-slate-800 pt-3">
+            <p className="text-xs font-medium text-slate-500">Visão do cliente (acerto)</p>
+            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+              <input
+                type="checkbox"
+                checked={draft.visivelCliente !== false}
+                onChange={(e) => patch({ visivelCliente: e.target.checked })}
+                className="rounded border-slate-300 dark:border-slate-600"
+              />
+              Visível no relatório do cliente
+            </label>
+            <Field label="Valor para o cliente (opcional)">
+              <input
+                type="number"
+                step="0.01"
+                value={draft.valorCliente ?? ''}
+                onChange={(e) =>
+                  patch({ valorCliente: e.target.value === '' ? null : e.target.value })
+                }
+                className="w-full text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5"
+                placeholder={`Vazio = valor real (${Number(draft.valor ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`}
+              />
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Se preenchido, o relatório do cliente mostra este valor no lugar do valor real.
+              </p>
+            </Field>
+            {!draft.clienteId && !draft.pessoaRefId ? (
+              <p className="text-[11px] text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded px-2 py-1.5">
+                Conta de acerto exige vínculo com cliente ou pessoa/imóvel para salvar.
+              </p>
+            ) : null}
           </section>
         ) : null}
 

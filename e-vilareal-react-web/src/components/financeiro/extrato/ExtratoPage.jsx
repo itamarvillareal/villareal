@@ -13,6 +13,7 @@ import {
   listarContasFinanceiro,
   listarLancamentosExtratoPaginados,
   obterSaldoBancoFinanceiro,
+  parearGrupoCompensacaoApi,
   removerLancamentosFinanceiroApiEmLote,
 } from '../../../repositories/financeiroRepository.js';
 import { useFinanceiro } from '../FinanceiroContext.jsx';
@@ -37,10 +38,22 @@ import { mapApiLancamentoToExtratoRow } from './extratoMappers.js';
 import { filtroCompensacaoSemParAtivo } from './compensacaoSemPar.js';
 import { useExtratoParearPorClique } from './useExtratoParearPorClique.js';
 import { ModoParearBanner } from './ModoParearBanner.jsx';
+import { ContaAcertoAlerta } from './ContaAcertoAlerta.jsx';
 
 export function ExtratoPage() {
   const navigate = useNavigate();
-  const { apiQuery, filters, setPage, setSize, setMes, setBanco, bancoAtivo, toggleSortData } = useFinanceiro();
+  const {
+    apiQuery,
+    filters,
+    setPage,
+    setSize,
+    setMes,
+    setBanco,
+    setBusca,
+    bancoAtivo,
+    toggleSortData,
+    contaExigeSomaZero,
+  } = useFinanceiro();
   const toast = useFinanceiroToast();
 
   useExtratoMesAoSelecionarBanco(bancoAtivo, filters.mes, setMes);
@@ -83,6 +96,7 @@ export function ExtratoPage() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [contaLoteId, setContaLoteId] = useState('');
   const [bulkClassifying, setBulkClassifying] = useState(false);
+  const [pareandoGrupo, setPareandoGrupo] = useState(false);
 
   const contaToLetra = useMemo(
     () => buildContaToLetraMerge(loadPersistedContasContabeisExtrasFinanceiro()),
@@ -485,6 +499,63 @@ export function ExtratoPage() {
     }
   };
 
+  const isContaAcertoAtiva = bancoAtivo != null && contaExigeSomaZero?.(bancoAtivo) === true;
+
+  const parearGrupoInfo = useMemo(() => {
+    if (!isContaAcertoAtiva || selectedIds.size < 2) return null;
+    const selecionados = rows.filter((r) => selectedIds.has(r.id));
+    if (selecionados.length < 2) return null;
+    const soma = selecionados.reduce(
+      (acc, r) => acc + (r.natureza === 'DEBITO' ? -Number(r.valor) : Number(r.valor)),
+      0,
+    );
+    const somaZero = Math.abs(soma) < 0.005;
+    const chavesVinculo = new Set(
+      selecionados.map((r) =>
+        Number(r.clienteId) > 0
+          ? `cli-${Number(r.clienteId)}`
+          : Number(r.pessoaRefId) > 0
+            ? `pes-${Number(r.pessoaRefId)}`
+            : 'sem-vinculo',
+      ),
+    );
+    const semVinculo = chavesVinculo.has('sem-vinculo');
+    const mesmoVinculo = !semVinculo && chavesVinculo.size === 1;
+    const jaAgrupado = selecionados.some((r) => String(r.grupoCompensacao ?? '').trim() !== '');
+    let motivoInvalido = '';
+    if (!somaZero) motivoInvalido = 'A soma da seleção precisa ser exatamente zero.';
+    else if (semVinculo) motivoInvalido = 'Há lançamento sem vínculo (cliente ou pessoa/imóvel).';
+    else if (!mesmoVinculo) motivoInvalido = 'Todos os lançamentos devem ter o mesmo vínculo.';
+    else if (jaAgrupado) motivoInvalido = 'Há lançamento que já pertence a um grupo compensado.';
+    return {
+      soma,
+      somaZero,
+      valido: !motivoInvalido,
+      motivoInvalido,
+      busy: pareandoGrupo,
+    };
+  }, [isContaAcertoAtiva, selectedIds, rows, pareandoGrupo]);
+
+  const handleParearGrupo = async () => {
+    const ids = [...selectedIds].map(Number).filter((n) => Number.isFinite(n) && n > 0);
+    if (ids.length < 2) return;
+    setPareandoGrupo(true);
+    try {
+      const res = await parearGrupoCompensacaoApi({ lancamentoIds: ids });
+      toast.success(
+        `Grupo ${res?.grupoCompensacao ?? ''} compensado (${Number(res?.lancamentos ?? ids.length).toLocaleString('pt-BR')} lançamentos, soma zero).`,
+      );
+      limparCachePaginas();
+      setSelectedIds(new Set());
+      setExtratoRefreshKey((n) => n + 1);
+      dispatchRefreshPendentes();
+    } catch (e) {
+      toast.error(e?.message || 'Falha ao parear grupo.');
+    } finally {
+      setPareandoGrupo(false);
+    }
+  };
+
   const handleConfirmBulkDelete = async () => {
     const ids = [...selectedIds];
     if (!ids.length) {
@@ -547,6 +618,14 @@ export function ExtratoPage() {
         </p>
       ) : null}
 
+      {isContaAcertoAtiva ? (
+        <ContaAcertoAlerta
+          numeroBanco={bancoAtivo}
+          refreshKey={extratoRefreshKey}
+          onFiltrarVinculo={(v) => setBusca(String(v.codigoCliente ?? '').trim())}
+        />
+      ) : null}
+
       {modoParearAtivo ? <ModoParearBanner pareando={pareando} /> : null}
 
       <ExtratoBatchBar
@@ -558,6 +637,9 @@ export function ExtratoPage() {
         onAplicarLetra={() => void handleBulkTrocarLetra()}
         onExcluir={() => setConfirmBulkDelete(true)}
         onLimparSelecao={handleLimparSelecao}
+        parearGrupo={
+          parearGrupoInfo ? { ...parearGrupoInfo, onParear: () => void handleParearGrupo() } : null
+        }
       />
 
       {erro ? (

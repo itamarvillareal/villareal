@@ -42,6 +42,7 @@ public class FinanceiroCompensacaoService {
     private final LancamentoFinanceiroRepository lancamentoRepository;
     private final ContaContabilRepository contaContabilRepository;
     private final CompensacaoParDescarteRepository compensacaoParDescarteRepository;
+    private final ContaBancariaApplicationService contaBancariaApplicationService;
     private final FinanceiroSaudeService financeiroSaudeService;
     private final ConcurrentHashMap<String, CacheGreedyPares> cacheGreedyPares = new ConcurrentHashMap<>();
 
@@ -49,10 +50,12 @@ public class FinanceiroCompensacaoService {
             LancamentoFinanceiroRepository lancamentoRepository,
             ContaContabilRepository contaContabilRepository,
             CompensacaoParDescarteRepository compensacaoParDescarteRepository,
+            ContaBancariaApplicationService contaBancariaApplicationService,
             @Lazy FinanceiroSaudeService financeiroSaudeService) {
         this.lancamentoRepository = lancamentoRepository;
         this.contaContabilRepository = contaContabilRepository;
         this.compensacaoParDescarteRepository = compensacaoParDescarteRepository;
+        this.contaBancariaApplicationService = contaBancariaApplicationService;
         this.financeiroSaudeService = financeiroSaudeService;
     }
 
@@ -70,6 +73,122 @@ public class FinanceiroCompensacaoService {
         return response;
     }
 
+    /**
+     * Pareamento em grupo (1:N): compensa N lançamentos sob o mesmo {@code grupo_compensacao}.
+     *
+     * <p>Em conta de acerto ({@code exige_soma_zero}, CONTA ZERO): soma assinada exatamente 0 (sem
+     * tolerância), mesmo vínculo (cliente ou pessoa/imóvel) em todos, e a conta contábil de cada
+     * lançamento é preservada (a letra carrega significado: A acertos, D Veredas, I imóveis).
+     *
+     * <p>Em contas comuns: mesmo critério do pareamento 1:1 (tolerância de 5% do maior valor) e os
+     * lançamentos vão para a conta E.
+     */
+    @Transactional
+    public ParearGrupoCompensacaoResponse parearGrupo(ParearGrupoCompensacaoRequest request) {
+        List<Long> ids = request.getLancamentoIds() == null
+                ? List.of()
+                : request.getLancamentoIds().stream().filter(Objects::nonNull).distinct().toList();
+        if (ids.size() < 2) {
+            throw new IllegalArgumentException("Informe ao menos 2 lançamentos distintos para parear em grupo.");
+        }
+        List<LancamentoFinanceiroEntity> lancamentos = lancamentoRepository.findAllByIdIn(new LinkedHashSet<>(ids));
+        if (lancamentos.size() != ids.size()) {
+            Set<Long> encontrados = lancamentos.stream()
+                    .map(LancamentoFinanceiroEntity::getId)
+                    .collect(Collectors.toSet());
+            List<Long> faltantes = ids.stream().filter(id -> !encontrados.contains(id)).toList();
+            throw new ResourceNotFoundException("Lançamentos não encontrados: " + faltantes);
+        }
+        for (LancamentoFinanceiroEntity e : lancamentos) {
+            if (StringUtils.hasText(e.getGrupoCompensacao())) {
+                throw new IllegalArgumentException(
+                        "Lançamento " + e.getId() + " já pertence ao grupo " + e.getGrupoCompensacao()
+                                + ". Despareie antes de reagrupar.");
+            }
+        }
+
+        String grupo = StringUtils.hasText(request.getGrupoCompensacao())
+                ? request.getGrupoCompensacao().trim()
+                : gerarGrupoCompensacao();
+        if (!lancamentoRepository.findAllByGrupoCompensacao(grupo).isEmpty()) {
+            throw new IllegalArgumentException("Grupo de compensação já existe: " + grupo);
+        }
+
+        long somaZeroCount = lancamentos.stream()
+                .filter(contaBancariaApplicationService::exigeSomaZero)
+                .count();
+        if (somaZeroCount > 0 && somaZeroCount < lancamentos.size()) {
+            throw new IllegalArgumentException(
+                    "Grupo misto não permitido: todos os lançamentos devem estar na conta de acerto (soma zero) "
+                            + "ou nenhum deles.");
+        }
+
+        BigDecimal soma = lancamentos.stream()
+                .map(FinanceiroCompensacaoService::valorAssinado)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        if (somaZeroCount > 0) {
+            compensarGrupoContaAcerto(lancamentos, grupo, soma);
+        } else {
+            BigDecimal maiorAbs = lancamentos.stream()
+                    .map(e -> valorAssinado(e).abs())
+                    .reduce(BigDecimal.ZERO, BigDecimal::max);
+            BigDecimal tol = maiorAbs.multiply(new BigDecimal("0.05"));
+            if (soma.abs().compareTo(tol) > 0) {
+                throw new IllegalArgumentException("Soma do grupo fora da tolerância de 5%: " + soma);
+            }
+            ContaContabilEntity contaE = contaPorCodigo("E");
+            for (LancamentoFinanceiroEntity e : lancamentos) {
+                e.setContaContabil(contaE);
+                e.setGrupoCompensacao(grupo);
+                e.setEtapa(EtapaLancamento.COMPENSADO);
+            }
+        }
+        lancamentoRepository.saveAll(lancamentos);
+        cacheGreedyPares.clear();
+        financeiroSaudeService.invalidarCacheSaude();
+
+        ParearGrupoCompensacaoResponse response = new ParearGrupoCompensacaoResponse();
+        response.setGrupoCompensacao(grupo);
+        response.setLancamentos(lancamentos.size());
+        response.setSoma(soma);
+        return response;
+    }
+
+    /** Regras da conta de acerto: soma zero exata, mesmo vínculo, conta contábil preservada. */
+    private void compensarGrupoContaAcerto(
+            List<LancamentoFinanceiroEntity> lancamentos, String grupo, BigDecimal soma) {
+        if (soma.compareTo(BigDecimal.ZERO) != 0) {
+            throw new IllegalArgumentException(
+                    "Grupo em conta de acerto deve somar exatamente zero (crédito − débito). Soma atual: " + soma);
+        }
+        Set<String> vinculos = new HashSet<>();
+        for (LancamentoFinanceiroEntity e : lancamentos) {
+            vinculos.add(chaveVinculo(e));
+        }
+        if (vinculos.size() != 1) {
+            throw new IllegalArgumentException(
+                    "Grupo em conta de acerto deve ter o mesmo vínculo (cliente ou pessoa/imóvel) em todos os "
+                            + "lançamentos. Vínculos encontrados: " + vinculos);
+        }
+        for (LancamentoFinanceiroEntity e : lancamentos) {
+            e.setGrupoCompensacao(grupo);
+            e.setEtapa(EtapaLancamento.COMPENSADO);
+        }
+    }
+
+    /** Vínculo do lançamento na conta de acerto: cliente prevalece; senão pessoa/imóvel; senão erro. */
+    private static String chaveVinculo(LancamentoFinanceiroEntity e) {
+        if (e.getClienteEntidade() != null) {
+            return "cliente:" + e.getClienteEntidade().getId();
+        }
+        if (e.getPessoaRef() != null) {
+            return "pessoa:" + e.getPessoaRef().getId();
+        }
+        throw new IllegalArgumentException(
+                "Lançamento " + e.getId() + " sem vínculo (cliente ou pessoa/imóvel) — obrigatório na conta de acerto.");
+    }
+
     @Transactional
     public DesparearCompensacaoResponse desparear(String grupoCompensacao) {
         if (!StringUtils.hasText(grupoCompensacao)) {
@@ -80,9 +199,15 @@ public class FinanceiroCompensacaoService {
                 lancamentoRepository.findAllByGrupoCompensacao(grupoCompensacao.trim());
         for (LancamentoFinanceiroEntity e : lista) {
             e.setGrupoCompensacao(null);
-            e.setContaContabil(contaN);
             Long clienteId = e.getClienteEntidade() != null ? e.getClienteEntidade().getId() : null;
-            e.setEtapa(EtapaLancamento.calcular(contaN.getCodigo(), null, clienteId));
+            if (contaBancariaApplicationService.exigeSomaZero(e)) {
+                // Conta de acerto: a conta contábil carrega significado (A, D, I...) e é preservada.
+                String codigo = e.getContaContabil() != null ? e.getContaContabil().getCodigo() : null;
+                e.setEtapa(EtapaLancamento.calcular(codigo, null, clienteId));
+            } else {
+                e.setContaContabil(contaN);
+                e.setEtapa(EtapaLancamento.calcular(contaN.getCodigo(), null, clienteId));
+            }
         }
         lancamentoRepository.saveAll(lista);
         if (!lista.isEmpty()) {
@@ -661,6 +786,13 @@ public class FinanceiroCompensacaoService {
                     .orElseThrow(() -> new ResourceNotFoundException(
                             "Lançamento não encontrado: " + par.getLancamentoIdB()));
 
+            if (contaBancariaApplicationService.exigeSomaZero(a) || contaBancariaApplicationService.exigeSomaZero(b)) {
+                // Conta de acerto: par 1:1 segue as regras de grupo (soma zero exata, mesmo vínculo,
+                // conta contábil preservada) em vez da tolerância de 5% + conta E.
+                processarParContaAcerto(par, a, b, response);
+                return;
+            }
+
             BigDecimal soma = valorAssinado(a).add(valorAssinado(b));
             BigDecimal tol = maxAbsValor(a, b).multiply(new BigDecimal("0.05"));
             if (soma.abs().compareTo(tol) > 0) {
@@ -686,6 +818,39 @@ public class FinanceiroCompensacaoService {
             }
             response.getGruposGerados().add(grupo);
         } catch (ResourceNotFoundException ex) {
+            ParearCompensacaoErroResponse erro = new ParearCompensacaoErroResponse();
+            erro.setLancamentoIdA(par.getLancamentoIdA());
+            erro.setLancamentoIdB(par.getLancamentoIdB());
+            erro.setMotivo(ex.getMessage());
+            response.getErros().add(erro);
+        }
+    }
+
+    /** Par 1:1 em conta de acerto: valida como grupo soma zero e preserva a conta contábil. */
+    private void processarParContaAcerto(
+            ParearCompensacaoItemRequest par,
+            LancamentoFinanceiroEntity a,
+            LancamentoFinanceiroEntity b,
+            ParearCompensacaoResponse response) {
+        try {
+            if (!contaBancariaApplicationService.exigeSomaZero(a)
+                    || !contaBancariaApplicationService.exigeSomaZero(b)) {
+                throw new IllegalArgumentException(
+                        "Par misto não permitido: ambos os lançamentos devem estar na conta de acerto (soma zero).");
+            }
+            if (StringUtils.hasText(a.getGrupoCompensacao()) || StringUtils.hasText(b.getGrupoCompensacao())) {
+                throw new IllegalArgumentException(
+                        "Lançamento já pertence a um grupo de compensação. Despareie antes de reagrupar.");
+            }
+            String grupo = StringUtils.hasText(par.getGrupoCompensacao())
+                    ? par.getGrupoCompensacao().trim()
+                    : gerarGrupoCompensacao();
+            BigDecimal soma = valorAssinado(a).add(valorAssinado(b));
+            compensarGrupoContaAcerto(List.of(a, b), grupo, soma);
+            lancamentoRepository.saveAll(List.of(a, b));
+            response.setPareados(response.getPareados() + 1);
+            response.getGruposGerados().add(grupo);
+        } catch (IllegalArgumentException ex) {
             ParearCompensacaoErroResponse erro = new ParearCompensacaoErroResponse();
             erro.setLancamentoIdA(par.getLancamentoIdA());
             erro.setLancamentoIdB(par.getLancamentoIdB());

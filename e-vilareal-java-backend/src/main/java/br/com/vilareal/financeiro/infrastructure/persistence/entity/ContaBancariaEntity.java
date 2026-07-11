@@ -53,6 +53,13 @@ public class ContaBancariaEntity {
     @Column(nullable = false)
     private Boolean ativo = true;
 
+    /**
+     * Conta de acerto (CONTA ZERO, V203): grupos de compensação devem somar exatamente 0 com o
+     * mesmo vínculo; lançamentos sem grupo são pendências (alerta enquanto a conta não zera).
+     */
+    @Column(name = "exige_soma_zero", nullable = false)
+    private Boolean exigeSomaZero = false;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 

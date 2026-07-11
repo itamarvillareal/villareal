@@ -149,6 +149,8 @@ export function mapApiLancamentoToExtratoRow(l, contaToLetra) {
     parcela: '',
     origem: String(l.origem ?? ''),
     status: String(l.status ?? ''),
+    visivelCliente: l.visivelCliente !== false,
+    valorCliente: l.valorCliente != null ? Number(l.valorCliente) : null,
   };
 }
 
@@ -189,6 +191,8 @@ export function contaCorrenteTransacaoParaExtratoDetailItem(t) {
     grupoCompensacao: t._financeiroMeta?.grupoCompensacao ?? t.grupoCompensacao ?? null,
     ref: String(t.ref ?? 'N').toUpperCase() === 'R' ? 'R' : 'N',
     origem: String(t.origemImportacao ?? t.origem ?? ''),
+    visivelCliente: t.visivelCliente !== false,
+    valorCliente: t.valorCliente != null ? Number(t.valorCliente) : null,
   };
 }
 
@@ -228,6 +232,8 @@ export function extratoRowToUi(row) {
     numeroBanco: isCartao ? row.numeroCartao ?? row.numeroBanco : row.numeroBanco,
     origemImportacao: row.origem,
     origemExtrato: row.origemExtrato ?? 'banco',
+    visivelCliente: row.visivelCliente !== false,
+    valorCliente: row.valorCliente != null && row.valorCliente !== '' ? Number(row.valorCliente) : null,
     _financeiroMeta: {
       clienteId: letra === 'I' ? null : row.clienteId,
       pessoaRefId: letra === 'I' ? null : row.pessoaRefId ?? null,

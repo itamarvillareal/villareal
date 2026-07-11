@@ -1,10 +1,14 @@
 package br.com.vilareal.financeiro.application;
 
 import br.com.vilareal.financeiro.api.dto.DescartarParesCompensacaoResponse;
+import br.com.vilareal.financeiro.api.dto.DesparearCompensacaoResponse;
 import br.com.vilareal.financeiro.api.dto.ParearCompensacaoItemRequest;
 import br.com.vilareal.financeiro.api.dto.ParearCompensacaoRequest;
 import br.com.vilareal.financeiro.api.dto.ParearCompensacaoResponse;
+import br.com.vilareal.financeiro.api.dto.ParearGrupoCompensacaoRequest;
+import br.com.vilareal.financeiro.api.dto.ParearGrupoCompensacaoResponse;
 import br.com.vilareal.financeiro.api.dto.ParesSugeridosCompensacaoResponse;
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.financeiro.domain.NaturezaLancamento;
 import br.com.vilareal.financeiro.domain.TipoParCompensacao;
@@ -28,6 +32,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -46,6 +51,8 @@ class FinanceiroCompensacaoServiceTest {
     private ContaContabilRepository contaContabilRepository;
     @Mock
     private CompensacaoParDescarteRepository compensacaoParDescarteRepository;
+    @Mock
+    private ContaBancariaApplicationService contaBancariaApplicationService;
     @Mock
     private FinanceiroSaudeService financeiroSaudeService;
 
@@ -244,6 +251,210 @@ class FinanceiroCompensacaoServiceTest {
         assertThat(p1.getPares()).hasSize(1);
         assertThat(p0.getPares().get(0).getLancamentoA().getId()).isNotEqualTo(
                 p1.getPares().get(0).getLancamentoA().getId());
+    }
+
+    // --- Pareamento em grupo (CONTA ZERO) ---
+
+    private void stubContaAcertoPorNumeroBanco19() {
+        lenient()
+                .when(contaBancariaApplicationService.exigeSomaZero(any(LancamentoFinanceiroEntity.class)))
+                .thenAnswer(inv -> {
+                    LancamentoFinanceiroEntity l = inv.getArgument(0);
+                    return l.getNumeroBanco() != null && l.getNumeroBanco() == 19;
+                });
+    }
+
+    private LancamentoFinanceiroEntity lancamentoContaZero(
+            long id, NaturezaLancamento natureza, String valor, Long clienteId, String contaCodigo) {
+        LancamentoFinanceiroEntity e = new LancamentoFinanceiroEntity();
+        e.setId(id);
+        e.setNumeroBanco(19);
+        e.setValor(new BigDecimal(valor));
+        e.setNatureza(natureza);
+        e.setDataLancamento(LocalDate.of(2026, 6, 1));
+        ContaContabilEntity contaA = new ContaContabilEntity();
+        contaA.setId(1L);
+        contaA.setCodigo(contaCodigo);
+        e.setContaContabil(contaA);
+        if (clienteId != null) {
+            ClienteEntity c = new ClienteEntity();
+            c.setId(clienteId);
+            e.setClienteEntidade(c);
+        }
+        return e;
+    }
+
+    @Test
+    void parearGrupo_contaAcerto_somaZeroEMesmoVinculo_compensaPreservandoContaContabil() {
+        stubContaAcertoPorNumeroBanco19();
+        LancamentoFinanceiroEntity credito = lancamentoContaZero(1L, NaturezaLancamento.CREDITO, "100.00", 729L, "A");
+        LancamentoFinanceiroEntity debito1 = lancamentoContaZero(2L, NaturezaLancamento.DEBITO, "80.00", 729L, "A");
+        LancamentoFinanceiroEntity debito2 = lancamentoContaZero(3L, NaturezaLancamento.DEBITO, "20.00", 729L, "A");
+        when(lancamentoRepository.findAllByIdIn(any())).thenReturn(List.of(credito, debito1, debito2));
+        when(lancamentoRepository.findAllByGrupoCompensacao(any())).thenReturn(List.of());
+        when(lancamentoRepository.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        ParearGrupoCompensacaoRequest req = new ParearGrupoCompensacaoRequest();
+        req.setLancamentoIds(List.of(1L, 2L, 3L));
+
+        ParearGrupoCompensacaoResponse r = service.parearGrupo(req);
+
+        assertThat(r.getLancamentos()).isEqualTo(3);
+        assertThat(r.getSoma()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(r.getGrupoCompensacao()).startsWith("COMP-");
+        for (LancamentoFinanceiroEntity e : List.of(credito, debito1, debito2)) {
+            assertThat(e.getGrupoCompensacao()).isEqualTo(r.getGrupoCompensacao());
+            assertThat(e.getEtapa()).isEqualTo(EtapaLancamento.COMPENSADO);
+            assertThat(e.getContaContabil().getCodigo()).isEqualTo("A"); // preservada, não vira E
+        }
+    }
+
+    @Test
+    void parearGrupo_contaAcerto_somaDiferenteDeZero_erro() {
+        stubContaAcertoPorNumeroBanco19();
+        LancamentoFinanceiroEntity credito = lancamentoContaZero(1L, NaturezaLancamento.CREDITO, "100.00", 729L, "A");
+        LancamentoFinanceiroEntity debito = lancamentoContaZero(2L, NaturezaLancamento.DEBITO, "99.99", 729L, "A");
+        when(lancamentoRepository.findAllByIdIn(any())).thenReturn(List.of(credito, debito));
+        when(lancamentoRepository.findAllByGrupoCompensacao(any())).thenReturn(List.of());
+
+        ParearGrupoCompensacaoRequest req = new ParearGrupoCompensacaoRequest();
+        req.setLancamentoIds(List.of(1L, 2L));
+
+        assertThatThrownBy(() -> service.parearGrupo(req))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("somar exatamente zero");
+    }
+
+    @Test
+    void parearGrupo_contaAcerto_vinculosDiferentes_erro() {
+        stubContaAcertoPorNumeroBanco19();
+        LancamentoFinanceiroEntity credito = lancamentoContaZero(1L, NaturezaLancamento.CREDITO, "100.00", 729L, "A");
+        LancamentoFinanceiroEntity debito = lancamentoContaZero(2L, NaturezaLancamento.DEBITO, "100.00", 493L, "A");
+        when(lancamentoRepository.findAllByIdIn(any())).thenReturn(List.of(credito, debito));
+        when(lancamentoRepository.findAllByGrupoCompensacao(any())).thenReturn(List.of());
+
+        ParearGrupoCompensacaoRequest req = new ParearGrupoCompensacaoRequest();
+        req.setLancamentoIds(List.of(1L, 2L));
+
+        assertThatThrownBy(() -> service.parearGrupo(req))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("mesmo vínculo");
+    }
+
+    @Test
+    void parearGrupo_contaAcerto_semVinculo_erro() {
+        stubContaAcertoPorNumeroBanco19();
+        LancamentoFinanceiroEntity credito = lancamentoContaZero(1L, NaturezaLancamento.CREDITO, "100.00", null, "A");
+        LancamentoFinanceiroEntity debito = lancamentoContaZero(2L, NaturezaLancamento.DEBITO, "100.00", null, "A");
+        when(lancamentoRepository.findAllByIdIn(any())).thenReturn(List.of(credito, debito));
+        when(lancamentoRepository.findAllByGrupoCompensacao(any())).thenReturn(List.of());
+
+        ParearGrupoCompensacaoRequest req = new ParearGrupoCompensacaoRequest();
+        req.setLancamentoIds(List.of(1L, 2L));
+
+        assertThatThrownBy(() -> service.parearGrupo(req))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("sem vínculo");
+    }
+
+    @Test
+    void parearGrupo_misto_contaAcertoEComum_erro() {
+        stubContaAcertoPorNumeroBanco19();
+        LancamentoFinanceiroEntity contaZero = lancamentoContaZero(1L, NaturezaLancamento.CREDITO, "100.00", 729L, "A");
+        LancamentoFinanceiroEntity comum = lancamentoOrfao(2L, 1, NaturezaLancamento.DEBITO, LocalDate.of(2026, 6, 1));
+        comum.setValor(new BigDecimal("100.00"));
+        when(lancamentoRepository.findAllByIdIn(any())).thenReturn(List.of(contaZero, comum));
+        when(lancamentoRepository.findAllByGrupoCompensacao(any())).thenReturn(List.of());
+
+        ParearGrupoCompensacaoRequest req = new ParearGrupoCompensacaoRequest();
+        req.setLancamentoIds(List.of(1L, 2L));
+
+        assertThatThrownBy(() -> service.parearGrupo(req))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("misto");
+    }
+
+    @Test
+    void parearGrupo_contaComum_dentroDaTolerancia_movePraContaE() {
+        stubContaAcertoPorNumeroBanco19();
+        when(contaContabilRepository.findFirstByCodigoIgnoreCase("E")).thenReturn(Optional.of(contaE));
+        LancamentoFinanceiroEntity d = lancamentoOrfao(1L, 1, NaturezaLancamento.DEBITO, LocalDate.of(2026, 6, 1), contaN());
+        LancamentoFinanceiroEntity c = lancamentoOrfao(2L, 2, NaturezaLancamento.CREDITO, LocalDate.of(2026, 6, 1), contaN());
+        when(lancamentoRepository.findAllByIdIn(any())).thenReturn(List.of(d, c));
+        when(lancamentoRepository.findAllByGrupoCompensacao(any())).thenReturn(List.of());
+        when(lancamentoRepository.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        ParearGrupoCompensacaoRequest req = new ParearGrupoCompensacaoRequest();
+        req.setLancamentoIds(List.of(1L, 2L));
+
+        ParearGrupoCompensacaoResponse r = service.parearGrupo(req);
+
+        assertThat(r.getLancamentos()).isEqualTo(2);
+        assertThat(d.getContaContabil().getCodigo()).isEqualTo("E");
+        assertThat(c.getContaContabil().getCodigo()).isEqualTo("E");
+        assertThat(d.getEtapa()).isEqualTo(EtapaLancamento.COMPENSADO);
+    }
+
+    @Test
+    void parearGrupo_lancamentoJaAgrupado_erro() {
+        LancamentoFinanceiroEntity credito = lancamentoContaZero(1L, NaturezaLancamento.CREDITO, "100.00", 729L, "A");
+        credito.setGrupoCompensacao("COMP-abc");
+        LancamentoFinanceiroEntity debito = lancamentoContaZero(2L, NaturezaLancamento.DEBITO, "100.00", 729L, "A");
+        when(lancamentoRepository.findAllByIdIn(any())).thenReturn(List.of(credito, debito));
+
+        ParearGrupoCompensacaoRequest req = new ParearGrupoCompensacaoRequest();
+        req.setLancamentoIds(List.of(1L, 2L));
+
+        assertThatThrownBy(() -> service.parearGrupo(req))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("já pertence ao grupo");
+    }
+
+    @Test
+    void desparear_contaAcerto_preservaContaContabil() {
+        stubContaAcertoPorNumeroBanco19();
+        when(contaContabilRepository.findFirstByCodigoIgnoreCase("N")).thenReturn(Optional.of(contaN()));
+        LancamentoFinanceiroEntity credito = lancamentoContaZero(1L, NaturezaLancamento.CREDITO, "100.00", 729L, "A");
+        LancamentoFinanceiroEntity debito = lancamentoContaZero(2L, NaturezaLancamento.DEBITO, "100.00", 729L, "A");
+        credito.setGrupoCompensacao("COMP-cz1");
+        debito.setGrupoCompensacao("COMP-cz1");
+        when(lancamentoRepository.findAllByGrupoCompensacao("COMP-cz1")).thenReturn(List.of(credito, debito));
+        when(lancamentoRepository.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        DesparearCompensacaoResponse r = service.desparear("COMP-cz1");
+
+        assertThat(r.getDesvinculados()).isEqualTo(2);
+        assertThat(credito.getGrupoCompensacao()).isNull();
+        assertThat(credito.getContaContabil().getCodigo()).isEqualTo("A"); // não vira N
+        assertThat(credito.getEtapa()).isEqualTo(EtapaLancamento.VINCULADO); // A + cliente
+    }
+
+    @Test
+    void parear_parNaContaAcerto_exigeSomaExataEPreservaConta() {
+        stubContaAcertoPorNumeroBanco19();
+        when(contaContabilRepository.findFirstByCodigoIgnoreCase("E")).thenReturn(Optional.of(contaE));
+        LancamentoFinanceiroEntity credito = lancamentoContaZero(1L, NaturezaLancamento.CREDITO, "100.00", 729L, "A");
+        LancamentoFinanceiroEntity debito = lancamentoContaZero(2L, NaturezaLancamento.DEBITO, "98.00", 729L, "A");
+        when(lancamentoRepository.findById(1L)).thenReturn(Optional.of(credito));
+        when(lancamentoRepository.findById(2L)).thenReturn(Optional.of(debito));
+
+        ParearCompensacaoItemRequest item = new ParearCompensacaoItemRequest();
+        item.setLancamentoIdA(1L);
+        item.setLancamentoIdB(2L);
+        ParearCompensacaoRequest req = new ParearCompensacaoRequest();
+        req.setPares(List.of(item));
+
+        // 98 vs 100 passaria na tolerância de 5%, mas na conta de acerto exige soma exata → erro
+        ParearCompensacaoResponse r = service.parear(req);
+        assertThat(r.getPareados()).isZero();
+        assertThat(r.getErros()).hasSize(1);
+
+        debito.setValor(new BigDecimal("100.00"));
+        when(lancamentoRepository.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
+        ParearCompensacaoResponse ok = service.parear(req);
+        assertThat(ok.getPareados()).isEqualTo(1);
+        assertThat(credito.getContaContabil().getCodigo()).isEqualTo("A"); // preservada
+        assertThat(credito.getEtapa()).isEqualTo(EtapaLancamento.COMPENSADO);
     }
 
     @Test

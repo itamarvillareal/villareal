@@ -102,6 +102,14 @@ public class LancamentoFinanceiroEntity {
     @Column(name = "grupo_compensacao", length = 40)
     private String grupoCompensacao;
 
+    /** Visão do cliente (CONTA ZERO, V203): FALSE omite o lançamento do relatório de acerto do cliente. */
+    @Column(name = "visivel_cliente", nullable = false)
+    private Boolean visivelCliente = true;
+
+    /** Visão do cliente (CONTA ZERO, V203): valor alternativo exibido no relatório do cliente (null = valor real). */
+    @Column(name = "valor_cliente", precision = 19, scale = 2)
+    private BigDecimal valorCliente;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 

@@ -172,6 +172,8 @@ function mapApiLancamentoToUi(l, contaToLetra) {
     nomeBanco: String(l.bancoNome ?? l.cartaoNome ?? ''),
     numeroBanco: l.numeroBanco ?? l.numeroCartao ?? null,
     origemImportacao,
+    visivelCliente: l.visivelCliente !== false,
+    valorCliente: l.valorCliente != null ? Number(l.valorCliente) : null,
     _financeiroMeta: {
       clienteId: l.clienteId ?? null,
       pessoaRefId: l.pessoaRefId ?? null,
@@ -214,6 +216,7 @@ function mapUiLancamentoToApi(t, contaIdByNome, letraToConta) {
   const body = {
     contaContabilId,
     clienteId: Number(meta.clienteId) || null,
+    pessoaRefId: Number(meta.pessoaRefId) || null,
     processoId: Number(meta.processoId) || null,
     bancoNome: t.nomeBanco || null,
     numeroBanco: Number.isFinite(Number(t.numeroBanco)) ? Number(t.numeroBanco) : null,
@@ -234,6 +237,11 @@ function mapUiLancamentoToApi(t, contaIdByNome, letraToConta) {
       grupoAtual: meta.grupoCompensacao,
     }),
   };
+  if (t.visivelCliente != null) body.visivelCliente = t.visivelCliente !== false;
+  if (t.valorCliente != null && t.valorCliente !== '') {
+    const vc = Number(t.valorCliente);
+    if (Number.isFinite(vc)) body.valorCliente = vc;
+  }
   return body;
 }
 
@@ -1512,6 +1520,25 @@ export async function aplicarSugestaoClassificacaoApi(body, opts = {}) {
 export async function parearCompensacaoApi(body, opts = {}) {
   if (!featureFlags.useApiFinanceiro) throw new Error('API financeiro desativada');
   return request('/api/financeiro/lancamentos/parear', { method: 'POST', body, signal: opts.signal });
+}
+
+/** Compensação 1:N (grupo). Para conta de acerto (soma zero), exige soma exata e mesmo vínculo. */
+export async function parearGrupoCompensacaoApi(body, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) throw new Error('API financeiro desativada');
+  return request('/api/financeiro/lancamentos/parear-grupo', {
+    method: 'POST',
+    body,
+    signal: opts.signal,
+  });
+}
+
+/** Resumo da CONTA ZERO: soma da conta, pendências e saldos por vínculo (cliente/pessoa). */
+export async function obterContaAcertoResumoApi(numeroBanco, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) return null;
+  return request('/api/financeiro/conta-acerto/resumo', {
+    query: { numeroBanco: Number(numeroBanco) },
+    signal: opts.signal,
+  });
 }
 
 export async function descartarParesCompensacaoApi(body, opts = {}) {

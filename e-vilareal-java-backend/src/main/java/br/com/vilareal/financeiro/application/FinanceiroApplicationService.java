@@ -70,6 +70,7 @@ public class FinanceiroApplicationService {
     private final ClienteCodigoPessoaResolver clienteCodigoPessoaResolver;
     private final ClienteResolverService clienteResolverService;
     private final ContaBancariaResolverService contaBancariaResolverService;
+    private final ContaBancariaApplicationService contaBancariaApplicationService;
     private final FinanceiroSaudeService financeiroSaudeService;
     private final FinanceiroExtratoAcessoService extratoAcessoService;
     private final ImovelLancamentoFiltroResolver imovelLancamentoFiltroResolver;
@@ -85,6 +86,7 @@ public class FinanceiroApplicationService {
             ClienteCodigoPessoaResolver clienteCodigoPessoaResolver,
             ClienteResolverService clienteResolverService,
             ContaBancariaResolverService contaBancariaResolverService,
+            ContaBancariaApplicationService contaBancariaApplicationService,
             @Lazy FinanceiroSaudeService financeiroSaudeService,
             FinanceiroExtratoAcessoService extratoAcessoService,
             ImovelLancamentoFiltroResolver imovelLancamentoFiltroResolver) {
@@ -98,6 +100,7 @@ public class FinanceiroApplicationService {
         this.clienteCodigoPessoaResolver = clienteCodigoPessoaResolver;
         this.clienteResolverService = clienteResolverService;
         this.contaBancariaResolverService = contaBancariaResolverService;
+        this.contaBancariaApplicationService = contaBancariaApplicationService;
         this.financeiroSaudeService = financeiroSaudeService;
         this.extratoAcessoService = extratoAcessoService;
         this.imovelLancamentoFiltroResolver = imovelLancamentoFiltroResolver;
@@ -571,6 +574,7 @@ public class FinanceiroApplicationService {
                 .orElseThrow(() -> new ResourceNotFoundException("Lançamento não encontrado: " + id));
         String grupoAnterior = e.getGrupoCompensacao();
         extratoAcessoService.assertAcessoAlteracaoLancamento(e, req.getContaContabilId());
+        validarAlteracaoContaSomaZero(e, req);
         aplicarLancamento(e, req, false);
         LancamentoFinanceiroEntity saved = lancamentoRepository.save(e);
         recomputarEtapasGrupoCompensacao(saved.getGrupoCompensacao());
@@ -587,6 +591,11 @@ public class FinanceiroApplicationService {
     public void removerLancamento(Long id) {
         LancamentoFinanceiroEntity e = lancamentoRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Lançamento não encontrado: " + id));
+        if (StringUtils.hasText(e.getGrupoCompensacao()) && contaBancariaApplicationService.exigeSomaZero(e)) {
+            throw new BusinessRuleException(
+                    "Lançamento pertence a grupo compensado de conta de acerto (soma zero). "
+                            + "Despareie o grupo inteiro antes de excluir.");
+        }
         String grupo = e.getGrupoCompensacao();
         removerDependenciasLancamentos(List.of(id));
         lancamentoRepository.deleteById(id);
@@ -785,6 +794,12 @@ public class FinanceiroApplicationService {
                 clienteResolverService.resolverVinculoOpcional(req.getClienteId(), processo);
         e.setClienteEntidade(vinculo.clienteEntidade());
         e.setProcesso(processo);
+        if (req.getPessoaRefId() != null) {
+            PessoaEntity pessoaRef = pessoaRepository.findById(req.getPessoaRefId())
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Pessoa não encontrada: " + req.getPessoaRefId()));
+            e.setPessoaRef(pessoaRef);
+        }
 
         e.setBancoNome(req.getBancoNome() != null && !req.getBancoNome().isBlank() ? req.getBancoNome().trim() : null);
         e.setNumeroBanco(req.getNumeroBanco());
@@ -821,7 +836,66 @@ public class FinanceiroApplicationService {
             e.setGrupoCompensacao(StringUtils.hasText(g) ? g : null);
         }
 
+        if (req.getVisivelCliente() != null) {
+            e.setVisivelCliente(req.getVisivelCliente());
+        } else if (e.getVisivelCliente() == null) {
+            e.setVisivelCliente(true);
+        }
+        e.setValorCliente(req.getValorCliente());
+
+        validarRegrasContaSomaZero(e, criacao);
+
         aplicarEtapa(e, req, conta);
+    }
+
+    /**
+     * Conta de acerto (CONTA ZERO, {@code exige_soma_zero}): todo lançamento precisa de vínculo
+     * (cliente OU pessoa/imóvel) e o grupo de compensação só pode ser atribuído pelo pareamento em
+     * grupo (que valida soma zero exata e mesmo vínculo) — nunca direto pelo write.
+     */
+    private void validarRegrasContaSomaZero(LancamentoFinanceiroEntity e, boolean criacao) {
+        if (!contaBancariaApplicationService.exigeSomaZero(e.getNumeroBanco())) {
+            return;
+        }
+        if (e.getClienteEntidade() == null && e.getPessoaRef() == null) {
+            throw new BusinessRuleException(
+                    "Lançamento em conta de acerto (soma zero) exige vínculo: clienteId ou pessoaRefId.");
+        }
+        if (criacao && StringUtils.hasText(e.getGrupoCompensacao())) {
+            throw new BusinessRuleException(
+                    "Em conta de acerto (soma zero) o grupo de compensação é atribuído apenas pelo "
+                            + "pareamento em grupo (parear-grupo), que valida soma zero e vínculo.");
+        }
+    }
+
+    /**
+     * Conta de acerto: lançamento que pertence a grupo compensado não pode ter valor, natureza,
+     * grupo ou vínculo alterados — qualquer mudança dessas quebraria a soma zero / mesmo vínculo
+     * do grupo. É obrigatório desparear o grupo inteiro antes.
+     */
+    private void validarAlteracaoContaSomaZero(LancamentoFinanceiroEntity e, LancamentoFinanceiroWriteRequest req) {
+        if (!contaBancariaApplicationService.exigeSomaZero(e)) {
+            return;
+        }
+        if (!StringUtils.hasText(e.getGrupoCompensacao())) {
+            if (req.getGrupoCompensacao() != null && StringUtils.hasText(req.getGrupoCompensacao())) {
+                throw new BusinessRuleException(
+                        "Em conta de acerto (soma zero) o grupo de compensação é atribuído apenas pelo "
+                                + "pareamento em grupo (parear-grupo), que valida soma zero e vínculo.");
+            }
+            return;
+        }
+        boolean valorMudou = req.getValor() != null
+                && e.getValor() != null
+                && req.getValor().compareTo(e.getValor()) != 0;
+        boolean naturezaMudou = req.getNatureza() != null && req.getNatureza() != e.getNatureza();
+        boolean grupoMudou = req.getGrupoCompensacao() != null
+                && !e.getGrupoCompensacao().equals(req.getGrupoCompensacao().trim());
+        if (valorMudou || naturezaMudou || grupoMudou) {
+            throw new BusinessRuleException(
+                    "Lançamento pertence a grupo compensado de conta de acerto (soma zero). "
+                            + "Despareie o grupo inteiro antes de alterar valor, natureza ou grupo.");
+        }
     }
 
     private void aplicarEtapa(
@@ -989,6 +1063,8 @@ public class FinanceiroApplicationService {
         r.setOrigem(e.getOrigem());
         r.setEtapa(e.getEtapa() != null ? e.getEtapa().name() : EtapaLancamento.IMPORTADO.name());
         r.setGrupoCompensacao(e.getGrupoCompensacao());
+        r.setVisivelCliente(e.getVisivelCliente() == null || e.getVisivelCliente());
+        r.setValorCliente(e.getValorCliente());
         return r;
     }
 
@@ -1024,6 +1100,8 @@ public class FinanceiroApplicationService {
         r.setStatus(Utf8MojibakeUtil.corrigir(e.getStatus()));
         r.setEtapa(e.getEtapa() != null ? e.getEtapa().name() : EtapaLancamento.IMPORTADO.name());
         r.setGrupoCompensacao(Utf8MojibakeUtil.corrigir(e.getGrupoCompensacao()));
+        r.setVisivelCliente(e.getVisivelCliente() == null || e.getVisivelCliente());
+        r.setValorCliente(e.getValorCliente());
         return r;
     }
 
