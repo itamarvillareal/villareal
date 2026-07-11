@@ -1279,8 +1279,8 @@ export function Diagnosticos() {
                 Espelhar audiências dos processos na agenda
               </p>
               <p className="text-[11px] text-slate-600 text-center leading-relaxed">
-                Fonte canônica: data/hora/tipo gravados em cada processo. Cria ou atualiza compromissos na agenda de
-                todos os colaboradores. Use após importações ou se a agenda estiver desatualizada.
+                Fonte canônica: data/hora/tipo gravados em cada processo. O backend espelha automaticamente 3 vezes ao
+                dia (6h, 12h e 18h); use o botão abaixo para forçar agora (importações ou correção imediata).
               </p>
               <div className="flex flex-wrap items-center justify-center gap-2">
                 <button

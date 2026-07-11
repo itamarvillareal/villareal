@@ -86,9 +86,10 @@ export function ModalEspelharAudienciasAgenda({ open, onClose }) {
                 cria ou atualiza os compromissos correspondentes na agenda de <strong>todos os colaboradores</strong>.
               </p>
               <ul className="list-disc pl-5 space-y-1 text-[13px] text-slate-600">
+                <li>O sistema já executa este espelhamento automaticamente 3 vezes ao dia (6h, 12h e 18h).</li>
                 <li>Processos sem audiência: eventos antigos na agenda são removidos.</li>
                 <li>Eventos órfãos (processo inexistente) também são limpos.</li>
-                <li>Use após importações ou se alguma audiência não aparecer na Agenda.</li>
+                <li>Use manualmente após importações em massa ou se precisar forçar agora.</li>
               </ul>
               {executando ? (
                 <div className="flex items-center justify-center gap-2 py-4 text-emerald-800" role="status">
