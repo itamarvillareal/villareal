@@ -4,7 +4,7 @@ import {
   carregarImovelCadastro,
   carregarImovelCadastroParaPainel,
   carregarImovelCadastroPorNumeroPlanilha,
-  MAX_NUMERO_PLANILHA_RELATORIO_IMOVEIS,
+  filtrarItensRelatorioPlanilhaAdmin,
 } from './imoveisRepository.js';
 
 vi.mock('../api/httpClient.js', () => ({
@@ -170,8 +170,16 @@ describe('carregarImovelCadastro (id interno)', () => {
   });
 });
 
-describe('constantes planilha admin', () => {
-  it('MAX_NUMERO_PLANILHA_RELATORIO_IMOVEIS cobre col. A da planilha Itamar', () => {
-    expect(MAX_NUMERO_PLANILHA_RELATORIO_IMOVEIS).toBe(66);
+describe('filtrarItensRelatorioPlanilhaAdmin', () => {
+  it('aceita nº de planilha acima de 66 (sem teto) e descarta nº inválido', () => {
+    const itens = [
+      { imovelId: 1, unidade: 'A' },
+      { imovelId: 67, unidade: 'B' },
+      { imovelId: 120, unidade: 'C' },
+      { imovelId: 0, unidade: 'inválido' },
+      { imovelId: null, unidade: 'sem nº' },
+    ];
+    const out = filtrarItensRelatorioPlanilhaAdmin(itens);
+    expect(out.map((i) => i.imovelId)).toEqual([1, 67, 120]);
   });
 });

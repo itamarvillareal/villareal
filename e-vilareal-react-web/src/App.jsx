@@ -24,6 +24,7 @@ import {
   LazyFinanceiroCartao,
   LazyFinanceiroAnalises,
   LazyFinanceiroInvestimentos,
+  LazyFinanceiroAcertoContaZero,
   LazyFinanceiroCompensacao,
   LazyFinanceiroConfig,
   LazyFinanceiroConsolidado,
@@ -45,11 +46,15 @@ import {
   LazyIntegracoesTribunalScraperLab,
   LazyTribunaisCatalogoAdmin,
   LazyImoveis,
+  LazyImoveisCentralLayout,
+  LazyImoveisVisaoGeral,
+  LazyImovelDetalhe,
+  LazyImoveisConciliacao,
+  LazyImoveisRelatoriosHub,
   LazyDemandas,
   LazyIptu,
   LazyIptuDashboard,
   LazyImoveisAdministracaoFinanceiro,
-  LazyImoveisSugestoesVinculoGeral,
   LazyImoveisPagamentos,
   LazyConciliacaoBancaria,
   LazyAcertoCliente,
@@ -474,18 +479,29 @@ function App() {
               <Route path="/processos/peticionamento-projudi" element={<LazyPeticionamentoProjudi />} />
               <Route path="/processos/distribuicao-inicial-projudi" element={<LazyDistribuicaoInicialProjudi />} />
               <Route path="/processos/monitoramento" element={<LazyMonitoramentoProjudiPage />} />
-              <Route path="/imoveis" element={<LazyImoveis />} />
-              <Route path="/imoveis/demandas" element={<LazyDemandas />} />
+              <Route path="/imoveis" element={<LazyImoveisCentralLayout />}>
+                <Route index element={<LazyImoveisVisaoGeral />} />
+                <Route path="cadastro" element={<LazyImoveis />} />
+                <Route path="conciliacao" element={<LazyImoveisConciliacao />} />
+                <Route path="relatorios" element={<LazyImoveisRelatoriosHub />} />
+                <Route path="relatorios/financeiro" element={<LazyRelatorioFinanceiroImoveis />} />
+                <Route path="relatorios/pagamentos" element={<LazyRelatorioPagamentos />} />
+                <Route path="relatorios/cadastro" element={<LazyRelatorioImoveis />} />
+                <Route path="relatorios/acerto" element={<LazyAcertoCliente />} />
+                <Route path="demandas" element={<LazyDemandas />} />
+                <Route path="financeiro" element={<LazyImoveisAdministracaoFinanceiro />} />
+                <Route path="pagamentos" element={<LazyImoveisPagamentos />} />
+                <Route path="pagamentos/conciliacao" element={<LazyConciliacaoBancaria />} />
+                {/* Rotas antigas → novos destinos (bookmarks/links internos não quebram) */}
+                <Route path="acerto-cliente" element={<Navigate to="/imoveis/relatorios/acerto" replace />} />
+                <Route path="sugestoes-vinculo" element={<Navigate to="/imoveis/conciliacao" replace />} />
+                <Route path="relatorio-financeiro" element={<Navigate to="/imoveis/relatorios/financeiro" replace />} />
+                <Route path="relatorio-pagamentos" element={<Navigate to="/imoveis/relatorios/pagamentos" replace />} />
+                <Route path=":numero" element={<LazyImovelDetalhe />} />
+              </Route>
               <Route path="/iptu/:imovelId" element={<LazyIptu />} />
               <Route path="/iptu" element={<LazyIptuDashboard />} />
-              <Route path="/imoveis/financeiro" element={<LazyImoveisAdministracaoFinanceiro />} />
-              <Route path="/imoveis/pagamentos" element={<LazyImoveisPagamentos />} />
-              <Route path="/imoveis/pagamentos/conciliacao" element={<LazyConciliacaoBancaria />} />
-              <Route path="/imoveis/acerto-cliente" element={<LazyAcertoCliente />} />
-              <Route path="/imoveis/sugestoes-vinculo" element={<LazyImoveisSugestoesVinculoGeral />} />
-              <Route path="/imoveis/relatorio-financeiro" element={<LazyRelatorioFinanceiroImoveis />} />
-              <Route path="/imoveis/relatorio-pagamentos" element={<LazyRelatorioPagamentos />} />
-              <Route path="/relatorio-imoveis" element={<LazyRelatorioImoveis />} />
+              <Route path="/relatorio-imoveis" element={<Navigate to="/imoveis/relatorios/cadastro" replace />} />
               <Route path="/relatorio" element={<LazyRelatorio />} />
               <Route path="/resultado-financeiro" element={<Navigate to="/resultado-financeiro/autos" replace />} />
               <Route path="/resultado-financeiro/autos" element={<LazyRelatorioResultadoProcessos />} />
@@ -540,6 +556,7 @@ function App() {
                 <Route path="cartao" element={<LazyFinanceiroCartao />} />
                 <Route path="cartao/:id" element={<LazyFinanceiroCartao />} />
                 <Route path="relatorios" element={<LazyFinanceiroRelatorios />} />
+                <Route path="acerto-cliente" element={<LazyFinanceiroAcertoContaZero />} />
                 <Route path="configuracao" element={<LazyFinanceiroConfig />} />
                 {/* Legado: view completa extrato+consolidado */}
                 <Route path="legado" element={<LazyFinanceiro />} />

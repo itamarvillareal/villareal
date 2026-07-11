@@ -631,6 +631,8 @@ const MENU_ICONS = {
   'imoveis/acerto-cliente': IconAcertoCliente,
   'imoveis/relatorio-pagamentos': IconSpreadsheet,
   'imoveis/sugestoes-vinculo': IconSparkles,
+  'imoveis/conciliacao': IconConciliacao,
+  'imoveis/relatorios': IconSpreadsheet,
   iptu: IconIptuMenu,
   'imoveis/relatorio-financeiro': IconFinanceiro,
   'relatorio-imoveis': IconSpreadsheet,

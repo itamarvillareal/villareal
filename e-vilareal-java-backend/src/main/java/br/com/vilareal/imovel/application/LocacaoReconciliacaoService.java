@@ -27,6 +27,7 @@ import br.com.vilareal.imovel.api.dto.ReconciliacaoResultadoResponse;
 import br.com.vilareal.imovel.api.dto.ReconciliacaoResultadoResponse.ReconciliacaoResultadoCompetenciaResponse;
 import br.com.vilareal.imovel.api.dto.RepassePendenteCarteiraResponse;
 import br.com.vilareal.imovel.api.dto.RepassePendenteItemResponse;
+import br.com.vilareal.imovel.api.dto.SugestoesAluguelPendenteResponse;
 import br.com.vilareal.imovel.api.dto.ReconciliacaoSugestaoItemResponse;
 import br.com.vilareal.imovel.api.dto.ReconciliacaoVincularRequest;
 import br.com.vilareal.imovel.api.dto.ReconciliacaoVinculoResponse;
@@ -652,6 +653,155 @@ public class LocacaoReconciliacaoService {
             ContratoLocacaoEntity contrato, Long processoId, LocalDate inicio, LocalDate fim) {
         return lancamentoRepository.findCreditosCoraSemVinculoAluguelNoContrato(
                 NUMERO_BANCO_CORA, processoId, contrato.getId(), inicio, fim);
+    }
+
+    /** Máximo de créditos sugeridos por contrato (evita ruído na UI). */
+    private static final int MAX_SUGESTOES_POR_CONTRATO = 5;
+
+    /**
+     * Read-only: para CADA contrato vigente sem aluguel na competência, cruza os créditos do
+     * extrato ainda não classificados (órfãos, tipicamente PIX Cora com o nome do pagador na
+     * descrição) e os créditos Cora já no processo, sugerindo o vínculo ALUGUEL por
+     * nome do inquilino × valor × dia de vencimento. Nada é gravado — a confirmação usa o
+     * mesmo {@link #vincular} de sempre (que adota o lançamento órfão).
+     */
+    @Transactional(readOnly = true)
+    public SugestoesAluguelPendenteResponse sugerirAlugueisPendentes(String competenciaParam) {
+        YearMonth ym = StringUtils.hasText(competenciaParam)
+                ? parseCompetencia(competenciaParam.trim())
+                : YearMonth.now();
+        String competencia = ym.toString();
+        LocalDate inicio = ym.atDay(1);
+        LocalDate fim = ym.atEndOfMonth();
+
+        List<ContratoLocacaoEntity> pendentes =
+                contratoLocacaoRepository.findVigentesSemAluguelNaCompetencia(competencia, inicio, fim);
+
+        List<LancamentoFinanceiroEntity> orfaosCredito = lancamentoRepository
+                .findOrfaosNoIntervalo(inicio, fim)
+                .stream()
+                .filter(l -> l.getNatureza() == NaturezaLancamento.CREDITO)
+                .toList();
+        Map<Long, Set<String>> tokensPorOrfao = new HashMap<>();
+        for (LancamentoFinanceiroEntity l : orfaosCredito) {
+            tokensPorOrfao.put(l.getId(), tokensNome(descricaoNorm(l)));
+        }
+
+        List<SugestoesAluguelPendenteResponse.ContratoPendenteItem> contratos = new ArrayList<>();
+        int totalComSugestao = 0;
+        for (ContratoLocacaoEntity contrato : pendentes) {
+            List<SugestoesAluguelPendenteResponse.SugestaoCreditoItem> sugestoes =
+                    sugestoesParaContrato(contrato, orfaosCredito, tokensPorOrfao, inicio, fim);
+            if (!sugestoes.isEmpty()) {
+                totalComSugestao++;
+            }
+            ImovelEntity imovel = contrato.getImovel();
+            contratos.add(new SugestoesAluguelPendenteResponse.ContratoPendenteItem(
+                    contrato.getId(),
+                    imovel != null ? imovel.getNumeroPlanilha() : null,
+                    imovel != null ? imovel.getEnderecoCompleto() : null,
+                    nomePessoa(contrato.getInquilinoPessoa()),
+                    contrato.getValorAluguel(),
+                    contrato.getDiaVencimentoAluguel(),
+                    sugestoes));
+        }
+
+        // Contratos com sugestão primeiro; depois por número da planilha.
+        contratos.sort(Comparator
+                .comparing((SugestoesAluguelPendenteResponse.ContratoPendenteItem c) -> c.sugestoes().isEmpty())
+                .thenComparing(
+                        SugestoesAluguelPendenteResponse.ContratoPendenteItem::imovelNumeroPlanilha,
+                        Comparator.nullsLast(Integer::compareTo)));
+
+        return new SugestoesAluguelPendenteResponse(competencia, pendentes.size(), totalComSugestao, contratos);
+    }
+
+    private List<SugestoesAluguelPendenteResponse.SugestaoCreditoItem> sugestoesParaContrato(
+            ContratoLocacaoEntity contrato,
+            List<LancamentoFinanceiroEntity> orfaosCredito,
+            Map<Long, Set<String>> tokensPorOrfao,
+            LocalDate inicio,
+            LocalDate fim) {
+        Set<String> tokensInquilino = tokensNome(nomePessoa(contrato.getInquilinoPessoa()));
+        List<SugestoesAluguelPendenteResponse.SugestaoCreditoItem> saida = new ArrayList<>();
+
+        // (1) Órfãos do extrato: nome do pagador é o sinal principal; valor sozinho só entra com dia próximo.
+        for (LancamentoFinanceiroEntity l : orfaosCredito) {
+            SugestaoCredito s = avaliarCreditoParaAluguel(
+                    l, contrato, tokensPorOrfao.getOrDefault(l.getId(), Set.of()), tokensInquilino, true);
+            if (s != null) {
+                saida.add(toSugestaoCreditoItem(l, "ORFAO", s));
+            }
+        }
+
+        // (2) Créditos Cora já no processo do imóvel, sem vínculo ALUGUEL (casos "para revisão").
+        Long processoId = processoIdDoContrato(contrato);
+        if (processoId != null) {
+            for (LancamentoFinanceiroEntity l : creditosCandidatos(contrato, processoId, inicio, fim)) {
+                SugestaoCredito s = avaliarCreditoParaAluguel(
+                        l, contrato, tokensNome(descricaoNorm(l)), tokensInquilino, false);
+                if (s != null) {
+                    saida.add(toSugestaoCreditoItem(l, "PROCESSO", s));
+                }
+            }
+        }
+
+        saida.sort(Comparator
+                .comparingInt((SugestoesAluguelPendenteResponse.SugestaoCreditoItem it) ->
+                        ConfiancaSugestao.valueOf(it.confianca()).ordinal())
+                .thenComparing(
+                        SugestoesAluguelPendenteResponse.SugestaoCreditoItem::dataLancamento,
+                        Comparator.nullsLast(LocalDate::compareTo)));
+        if (saida.size() > MAX_SUGESTOES_POR_CONTRATO) {
+            return List.copyOf(saida.subList(0, MAX_SUGESTOES_POR_CONTRATO));
+        }
+        return saida;
+    }
+
+    private record SugestaoCredito(ConfiancaSugestao confianca, boolean nomeOk, boolean valorOk, boolean diaOk) {}
+
+    /**
+     * Avalia um crédito como candidato a ALUGUEL do contrato. Para órfãos (globais, podem casar com
+     * qualquer contrato), exige nome OU (valor na faixa E dia próximo) — valor sozinho geraria
+     * falso positivo entre contratos de mesmo preço. Para créditos já no processo do imóvel, o
+     * escopo já é o imóvel: basta nome OU valor na faixa.
+     */
+    private SugestaoCredito avaliarCreditoParaAluguel(
+            LancamentoFinanceiroEntity l,
+            ContratoLocacaoEntity contrato,
+            Set<String> tokensDescricao,
+            Set<String> tokensInquilino,
+            boolean exigirDiaQuandoSoValor) {
+        if (l.getValor() == null) {
+            return null;
+        }
+        boolean nomeOk = nomeCasa(tokensDescricao, tokensInquilino);
+        boolean valorOk = valorNaFaixaDoAluguel(l.getValor(), contrato.getValorAluguel());
+        boolean diaOk = diaProximo(
+                l.getDataLancamento() != null ? l.getDataLancamento().getDayOfMonth() : -1,
+                contrato.getDiaVencimentoAluguel());
+        if (!nomeOk && !valorOk) {
+            return null;
+        }
+        if (!nomeOk && exigirDiaQuandoSoValor && !diaOk) {
+            return null;
+        }
+        return new SugestaoCredito(confiancaOrfao(nomeOk, valorOk, diaOk), nomeOk, valorOk, diaOk);
+    }
+
+    private static SugestoesAluguelPendenteResponse.SugestaoCreditoItem toSugestaoCreditoItem(
+            LancamentoFinanceiroEntity l, String origemCandidato, SugestaoCredito s) {
+        return new SugestoesAluguelPendenteResponse.SugestaoCreditoItem(
+                l.getId(),
+                l.getDataLancamento(),
+                StringUtils.hasText(l.getDescricao()) ? l.getDescricao().trim() : descricaoNorm(l),
+                l.getValor() != null ? l.getValor().abs() : null,
+                l.getNumeroBanco(),
+                origemCandidato,
+                s.confianca().name(),
+                s.nomeOk(),
+                s.valorOk(),
+                s.diaOk());
     }
 
     private static ConciliarAlugueisAutomaticoResponse.SemCreditoItem semCreditoItem(ContratoLocacaoEntity contrato) {

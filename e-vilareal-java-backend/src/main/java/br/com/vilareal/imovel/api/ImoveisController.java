@@ -9,9 +9,11 @@ import br.com.vilareal.imovel.api.dto.ImovelVinculoLocatarioResponse;
 import br.com.vilareal.imovel.api.dto.ImovelVinculoLocatarioWriteRequest;
 import br.com.vilareal.imovel.api.dto.ImovelVinculoPrincipalWriteRequest;
 import br.com.vilareal.imovel.api.dto.ImovelVinculosProcessoResponse;
+import br.com.vilareal.imovel.api.dto.ImovelVisaoGeralResponse;
 import br.com.vilareal.imovel.api.dto.ImovelWriteRequest;
 import br.com.vilareal.imovel.api.dto.RelatorioFinanceiroImoveisResponse;
 import br.com.vilareal.imovel.application.ImovelApplicationService;
+import br.com.vilareal.imovel.application.ImoveisVisaoGeralService;
 import br.com.vilareal.imovel.application.RelatorioFinanceiroImoveisService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -30,18 +32,29 @@ public class ImoveisController {
 
     private final ImovelApplicationService imovelApplicationService;
     private final RelatorioFinanceiroImoveisService relatorioFinanceiroImoveisService;
+    private final ImoveisVisaoGeralService imoveisVisaoGeralService;
 
     public ImoveisController(
             ImovelApplicationService imovelApplicationService,
-            RelatorioFinanceiroImoveisService relatorioFinanceiroImoveisService) {
+            RelatorioFinanceiroImoveisService relatorioFinanceiroImoveisService,
+            ImoveisVisaoGeralService imoveisVisaoGeralService) {
         this.imovelApplicationService = imovelApplicationService;
         this.relatorioFinanceiroImoveisService = relatorioFinanceiroImoveisService;
+        this.imoveisVisaoGeralService = imoveisVisaoGeralService;
     }
 
     @GetMapping
     @Operation(summary = "Listar imóveis")
     public List<ImovelResponse> listar() {
         return imovelApplicationService.listarImoveis();
+    }
+
+    @GetMapping("/visao-geral")
+    @Operation(summary = "Visão geral do portfólio: cadastro + contrato + status financeiro da competência, todos os imóveis numa chamada")
+    public ImovelVisaoGeralResponse visaoGeral(
+            @RequestParam(required = false) String competencia,
+            @RequestParam(defaultValue = "false") boolean soOcupados) {
+        return imoveisVisaoGeralService.gerar(competencia, soOcupados);
     }
 
     @GetMapping("/relatorio-financeiro")

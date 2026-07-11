@@ -75,6 +75,18 @@ public class LocacoesController {
         return reconciliacaoService.repassesPendentes(ate);
     }
 
+    @GetMapping("/sugestoes-alugueis-pendentes")
+    @Operation(
+            summary = "Sugestões de aluguel para contratos sem crédito na competência",
+            description =
+                    "Read-only: cruza créditos do extrato ainda sem Cod.+Proc. (ex.: PIX Cora com o nome do "
+                            + "pagador) e créditos Cora do processo com nome do inquilino × valor × dia de "
+                            + "vencimento. A confirmação usa POST /{contratoId}/reconciliacao/vincular.")
+    public SugestoesAluguelPendenteResponse sugestoesAlugueisPendentes(
+            @RequestParam(required = false) String competencia) {
+        return reconciliacaoService.sugerirAlugueisPendentes(competencia);
+    }
+
     @PostMapping("/conciliar-alugueis")
     @Operation(
             summary = "Auto-conciliar aluguéis Cora inequívocos",

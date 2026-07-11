@@ -554,11 +554,7 @@ export function RelatorioImoveis() {
                   <tr
                     key={r.apiImovelId ?? `row-${r.id}`}
                     className="hover:bg-blue-50/60 cursor-pointer"
-                    onClick={() =>
-                      navigate('/imoveis', {
-                        state: { numeroPlanilha: r.id },
-                      })
-                    }
+                    onClick={() => navigate(`/imoveis/${r.id}`)}
                   >
                     {colunasVisiveis.map((col) => {
                       const val = r[col.key];

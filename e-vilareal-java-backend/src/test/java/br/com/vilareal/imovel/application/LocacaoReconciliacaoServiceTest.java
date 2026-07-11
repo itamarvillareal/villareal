@@ -1044,6 +1044,91 @@ class LocacaoReconciliacaoServiceTest {
         verify(vinculoRepository, never()).save(any());
     }
 
+    // ------------------------------------------------------------------ sugestões de aluguel pendente
+
+    @Test
+    void sugerirAlugueisPendentesCasaOrfaoPeloNomeDoInquilino() {
+        ContratoLocacaoEntity contrato = contratoTerceiro();
+        contrato.setInquilinoPessoa(pessoa("Maria Jose da Silva"));
+        contrato.getImovel().setNumeroPlanilha(42);
+        when(contratoLocacaoRepository.findVigentesSemAluguelNaCompetencia(
+                        eq("2026-06"), eq(LocalDate.of(2026, 6, 1)), eq(LocalDate.of(2026, 6, 30))))
+                .thenReturn(List.of(contrato));
+
+        LancamentoFinanceiroEntity pix = lancamento(
+                77L, NaturezaLancamento.CREDITO, "1000.00", LocalDate.of(2026, 6, 9),
+                "PIX RECEBIDO MARIA JOSE DA SILVA");
+        pix.setNumeroBanco(26);
+        when(lancamentoRepository.findOrfaosNoIntervalo(
+                        eq(LocalDate.of(2026, 6, 1)), eq(LocalDate.of(2026, 6, 30))))
+                .thenReturn(List.of(pix));
+        when(lancamentoRepository.findCreditosCoraSemVinculoAluguelNoContrato(
+                        eq(26), eq(PROCESSO_ID), eq(CONTRATO_ID), any(), any()))
+                .thenReturn(List.of());
+
+        var resp = service.sugerirAlugueisPendentes("2026-06");
+
+        assertThat(resp.totalContratosPendentes()).isEqualTo(1);
+        assertThat(resp.totalComSugestao()).isEqualTo(1);
+        var item = resp.contratos().get(0);
+        assertThat(item.contratoId()).isEqualTo(CONTRATO_ID);
+        assertThat(item.inquilinoNome()).isEqualTo("Maria Jose da Silva");
+        assertThat(item.sugestoes()).hasSize(1);
+        var s = item.sugestoes().get(0);
+        assertThat(s.lancamentoFinanceiroId()).isEqualTo(77L);
+        assertThat(s.origemCandidato()).isEqualTo("ORFAO");
+        assertThat(s.confianca()).isEqualTo("ALTA");
+        assertThat(s.nomeConfere()).isTrue();
+        assertThat(s.valorConfere()).isTrue();
+        // read-only: nada gravado
+        verify(vinculoRepository, never()).save(any());
+    }
+
+    @Test
+    void sugerirAlugueisPendentesNaoSugereOrfaoSoPorValorComDiaDistante() {
+        ContratoLocacaoEntity contrato = contratoTerceiro(); // aluguel 1000, vencimento dia 10
+        contrato.setInquilinoPessoa(pessoa("Sergio Gonzaga"));
+        when(contratoLocacaoRepository.findVigentesSemAluguelNaCompetencia(eq("2026-06"), any(), any()))
+                .thenReturn(List.of(contrato));
+
+        LancamentoFinanceiroEntity outroPagador = lancamento(
+                78L, NaturezaLancamento.CREDITO, "1000.00", LocalDate.of(2026, 6, 25),
+                "PIX RECEBIDO FULANO DE TAL");
+        when(lancamentoRepository.findOrfaosNoIntervalo(any(), any())).thenReturn(List.of(outroPagador));
+        when(lancamentoRepository.findCreditosCoraSemVinculoAluguelNoContrato(
+                        eq(26), eq(PROCESSO_ID), eq(CONTRATO_ID), any(), any()))
+                .thenReturn(List.of());
+
+        var resp = service.sugerirAlugueisPendentes("2026-06");
+
+        assertThat(resp.totalComSugestao()).isZero();
+        assertThat(resp.contratos().get(0).sugestoes()).isEmpty();
+    }
+
+    @Test
+    void sugerirAlugueisPendentesIncluiCreditoCoraDoProcessoComoCandidato() {
+        ContratoLocacaoEntity contrato = contratoTerceiro();
+        contrato.setInquilinoPessoa(pessoa("Denise Cirino"));
+        when(contratoLocacaoRepository.findVigentesSemAluguelNaCompetencia(eq("2026-06"), any(), any()))
+                .thenReturn(List.of(contrato));
+        when(lancamentoRepository.findOrfaosNoIntervalo(any(), any())).thenReturn(List.of());
+
+        LancamentoFinanceiroEntity creditoProcesso = lancamento(
+                79L, NaturezaLancamento.CREDITO, "990.00", LocalDate.of(2026, 6, 11), "TED DENISE CIRINO");
+        creditoProcesso.setNumeroBanco(26);
+        when(lancamentoRepository.findCreditosCoraSemVinculoAluguelNoContrato(
+                        eq(26), eq(PROCESSO_ID), eq(CONTRATO_ID), any(), any()))
+                .thenReturn(List.of(creditoProcesso));
+
+        var resp = service.sugerirAlugueisPendentes("2026-06");
+
+        assertThat(resp.totalComSugestao()).isEqualTo(1);
+        var s = resp.contratos().get(0).sugestoes().get(0);
+        assertThat(s.lancamentoFinanceiroId()).isEqualTo(79L);
+        assertThat(s.origemCandidato()).isEqualTo("PROCESSO");
+        assertThat(s.confianca()).isEqualTo("ALTA");
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private static final AtomicLong SEQ = new AtomicLong(1000);

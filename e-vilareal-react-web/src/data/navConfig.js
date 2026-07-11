@@ -18,15 +18,10 @@ export const navItems = [
     label: 'Imóveis',
     icon: 'Building2',
     children: [
-      { id: 'imoveis', label: 'Imóveis', icon: 'Building2' },
+      { id: 'imoveis', label: 'Visão Geral', icon: 'Building2' },
+      { id: 'imoveis/conciliacao', label: 'Conciliação', icon: 'Link2' },
+      { id: 'imoveis/relatorios', label: 'Relatórios', icon: 'BarChart3' },
       { id: 'iptu', label: 'IPTU', icon: 'Receipt' },
-      { id: 'imoveis/demandas', label: 'Demandas', icon: 'LayoutGrid' },
-      { id: 'imoveis/pagamentos/conciliacao', label: 'Conciliação bancária', icon: 'Link2' },
-      { id: 'imoveis/acerto-cliente', label: 'Acerto com Cliente', icon: 'FileCheck' },
-      { id: 'imoveis/relatorio-pagamentos', label: 'Relatório Pagamentos', icon: 'BarChart3' },
-      { id: 'imoveis/relatorio-financeiro', label: 'Relatório Financeiro Imóveis', icon: 'CircleDollarSign' },
-      { id: 'imoveis/sugestoes-vinculo', label: 'Sugestões de vínculo', icon: 'Sparkles' },
-      { id: 'relatorio-imoveis', label: 'Relatório Imóveis', icon: 'FileSpreadsheet' },
     ],
   },
   {

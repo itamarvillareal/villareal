@@ -1653,9 +1653,6 @@ export async function carregarImovelCadastro({ imovelId }) {
   }
 }
 
-/** Export admin Itamar: col. A da planilha = nº 1…66 (não código de cliente nem id interno da API). */
-export const MAX_NUMERO_PLANILHA_RELATORIO_IMOVEIS = 66;
-
 function scoreItemRelatorioImovel(item) {
   let s = 0;
   if (String(item?.unidade ?? '').trim()) s += 4;
@@ -1665,12 +1662,12 @@ function scoreItemRelatorioImovel(item) {
   return s;
 }
 
-/** Uma linha por nº da planilha (1–66); descarta duplicados de import-real e registos com nº inválido. */
+/** Uma linha por nº da planilha (col. A, sem teto); descarta duplicados de import-real e registos com nº inválido. */
 export function filtrarItensRelatorioPlanilhaAdmin(itens) {
   const porNumero = new Map();
   for (const item of itens || []) {
     const np = Number(item?.imovelId ?? item?.numeroPlanilhaColA);
-    if (!Number.isFinite(np) || np < 1 || np > MAX_NUMERO_PLANILHA_RELATORIO_IMOVEIS) continue;
+    if (!Number.isFinite(np) || np < 1) continue;
     const prev = porNumero.get(np);
     if (!prev || scoreItemRelatorioImovel(item) > scoreItemRelatorioImovel(prev)) {
       porNumero.set(np, item);
@@ -1696,7 +1693,7 @@ export async function carregarItensRelatorioImoveisApi() {
     const extrasSemPlanilha = [];
     for (const im of list) {
       const np = im.numeroPlanilha != null ? Number(im.numeroPlanilha) : null;
-      if (Number.isFinite(np) && np >= 1 && np <= MAX_NUMERO_PLANILHA_RELATORIO_IMOVEIS) {
+      if (Number.isFinite(np) && np >= 1) {
         numerosPlanilha.add(np);
       } else if (im?.id) {
         extrasSemPlanilha.push(im);
@@ -1745,6 +1742,70 @@ export function vinculosMapFromApiRows(rows) {
     });
   }
   return map;
+}
+
+/**
+ * Auto-conciliar aluguéis Cora inequívocos da competência (origem=AUTO).
+ * Idempotente no backend — não duplica nem altera vínculos manuais.
+ */
+export async function conciliarAlugueisAutomaticoApi({ competencia } = {}) {
+  if (!featureFlags.useApiImoveis) {
+    return { competencia: competencia ?? null, autoVinculados: 0, autoVinculadosDetalhes: [], paraRevisao: [], semCredito: [] };
+  }
+  return request('/api/locacoes/conciliar-alugueis', {
+    method: 'POST',
+    query: { competencia: competencia || undefined },
+  });
+}
+
+/**
+ * Sugestões de aluguel (read-only): para cada contrato vigente sem crédito na competência,
+ * lista créditos do extrato que casam por nome do pagador × valor × dia. A confirmação usa
+ * vincularReconciliacaoApi(contratoId, [...]), que adota o lançamento órfão.
+ */
+export async function listarSugestoesAlugueisPendentesApi({ competencia, signal } = {}) {
+  if (!featureFlags.useApiImoveis) {
+    return { competencia: competencia ?? null, totalContratosPendentes: 0, totalComSugestao: 0, contratos: [] };
+  }
+  return request('/api/locacoes/sugestoes-alugueis-pendentes', {
+    signal,
+    query: { competencia: competencia || undefined },
+  });
+}
+
+/** Contratos de locação do imóvel (id interno da API), mais recentes primeiro. */
+export async function listarContratosLocacaoImovelApi(imovelIdApi, { signal } = {}) {
+  if (!featureFlags.useApiImoveis) return [];
+  const id = Number(imovelIdApi);
+  if (!Number.isFinite(id) || id < 1) return [];
+  const contratos = await request('/api/locacoes/contratos', { signal, query: { imovelId: id } });
+  return Array.isArray(contratos) ? contratos : [];
+}
+
+/**
+ * Visão geral do portfólio (uma chamada): cadastro resumido + contrato vigente + status
+ * financeiro da competência para todos os imóveis, sem teto de nº de planilha.
+ */
+export async function carregarVisaoGeralImoveisApi({ competencia, soOcupados = false, signal } = {}) {
+  if (!featureFlags.useApiImoveis) {
+    return { ok: false, motivo: 'Ative VITE_USE_API_IMOVEIS para carregar a visão geral.', competencia: null, itens: [] };
+  }
+  try {
+    const res = await request('/api/imoveis/visao-geral', {
+      signal,
+      query: {
+        competencia: competencia || undefined,
+        soOcupados,
+      },
+    });
+    return {
+      ok: true,
+      competencia: res?.competencia ?? competencia ?? null,
+      itens: Array.isArray(res?.itens) ? res.itens : [],
+    };
+  } catch (e) {
+    return { ok: false, motivo: e?.message || 'Falha ao carregar a visão geral de imóveis.', competencia: null, itens: [] };
+  }
 }
 
 /**

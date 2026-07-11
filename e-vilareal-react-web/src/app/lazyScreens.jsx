@@ -56,6 +56,26 @@ export const LazyMonitoramentoProjudiPage = fromNamed(
   'MonitoramentoProjudiPage'
 );
 export const LazyImoveis = fromNamed(() => import('../components/Imoveis.jsx'), 'Imoveis');
+export const LazyImoveisCentralLayout = fromNamed(
+  () => import('../components/imoveis/central/ImoveisCentralLayout.jsx'),
+  'ImoveisCentralLayout'
+);
+export const LazyImoveisVisaoGeral = fromNamed(
+  () => import('../components/imoveis/central/ImoveisVisaoGeralPage.jsx'),
+  'ImoveisVisaoGeralPage'
+);
+export const LazyImovelDetalhe = fromNamed(
+  () => import('../components/imoveis/central/ImovelDetalhePage.jsx'),
+  'ImovelDetalhePage'
+);
+export const LazyImoveisConciliacao = fromNamed(
+  () => import('../components/imoveis/central/ImoveisConciliacaoPage.jsx'),
+  'ImoveisConciliacaoPage'
+);
+export const LazyImoveisRelatoriosHub = fromNamed(
+  () => import('../components/imoveis/central/ImoveisRelatoriosHubPage.jsx'),
+  'ImoveisRelatoriosHubPage'
+);
 export const LazyDemandas = fromNamed(() => import('../components/Demandas.jsx'), 'Demandas');
 export const LazyIptu = fromNamed(() => import('../components/Iptu.jsx'), 'Iptu');
 export const LazyIptuDashboard = fromNamed(() => import('../components/IptuDashboard.jsx'), 'IptuDashboard');
@@ -147,6 +167,10 @@ export const LazyFinanceiroCartao = fromNamed(
 export const LazyFinanceiroConfig = fromNamed(
   () => import('../components/financeiro/config/ConfigPage.jsx'),
   'ConfigPage',
+);
+export const LazyFinanceiroAcertoContaZero = fromNamed(
+  () => import('../components/financeiro/relatorios/AcertoContaZeroPage.jsx'),
+  'AcertoContaZeroPage',
 );
 export const LazyFinanceiro = fromNamed(() => import('../components/Financeiro.jsx'), 'Financeiro');
 export const LazyFinanceiroRelatorios = fromNamed(

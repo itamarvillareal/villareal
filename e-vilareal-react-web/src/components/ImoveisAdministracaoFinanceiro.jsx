@@ -105,7 +105,11 @@ function SecaoColapsavel({ titulo, subtitulo, aberto, onToggle, children }) {
   );
 }
 
-export function ImoveisAdministracaoFinanceiro() {
+export function ImoveisAdministracaoFinanceiro({
+  imovelIdProp = null,
+  imovelIdApiProp = null,
+  embutido = false,
+} = {}) {
   const navigate = useNavigate();
   const location = useLocation();
   const [refreshTick, setRefreshTick] = useState(0);
@@ -133,6 +137,8 @@ export function ImoveisAdministracaoFinanceiro() {
   const [linhasVinculadasRecentes, setLinhasVinculadasRecentes] = useState(() => new Set());
 
   const imovelId = useMemo(() => {
+    const fromProp = imovelIdProp != null ? Number(imovelIdProp) : NaN;
+    if (Number.isFinite(fromProp) && fromProp >= 1) return Math.floor(fromProp);
     const st = location.state && typeof location.state === 'object' ? location.state : null;
     const fromState = st?.imovelId != null ? Number(st.imovelId) : NaN;
     if (Number.isFinite(fromState) && fromState >= 1) return Math.floor(fromState);
@@ -140,9 +146,12 @@ export function ImoveisAdministracaoFinanceiro() {
     const fromQ = Number(q.get('imovel'));
     if (Number.isFinite(fromQ) && fromQ >= 1) return Math.floor(fromQ);
     return 1;
-  }, [location.state, location.search]);
+  }, [imovelIdProp, location.state, location.search]);
 
   const imovelIdApi = useMemo(() => {
+    const fromProp = imovelIdApiProp != null ? Number(imovelIdApiProp) : NaN;
+    if (Number.isFinite(fromProp) && fromProp >= 1) return Math.floor(fromProp);
+    if (imovelIdProp != null) return null;
     const st = location.state && typeof location.state === 'object' ? location.state : null;
     const fromState = st?.imovelIdApi != null ? Number(st.imovelIdApi) : NaN;
     if (Number.isFinite(fromState) && fromState >= 1) return Math.floor(fromState);
@@ -150,7 +159,7 @@ export function ImoveisAdministracaoFinanceiro() {
     const fromQ = Number(q.get('imovelApi'));
     if (Number.isFinite(fromQ) && fromQ >= 1) return Math.floor(fromQ);
     return null;
-  }, [location.state, location.search]);
+  }, [imovelIdProp, imovelIdApiProp, location.state, location.search]);
 
   const mock = useMemo(() => imovelUi, [imovelUi]);
   const codigoStr = mock ? String(mock.codigo ?? '').trim() : '';
@@ -606,18 +615,20 @@ export function ImoveisAdministracaoFinanceiro() {
         <div className="sticky top-0 z-20 -mx-4 px-4 py-3 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
           <div className="max-w-[1400px] mx-auto flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <button
-                type="button"
-                onClick={() =>
-                  navigate('/imoveis', {
-                    state: mock ? { numeroPlanilha: mock.imovelId } : { imovelId },
-                  })
-                }
-                className="p-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 shrink-0"
-                aria-label="Voltar"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </button>
+              {!embutido ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate('/imoveis', {
+                      state: mock ? { numeroPlanilha: mock.imovelId } : { imovelId },
+                    })
+                  }
+                  className="p-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 shrink-0"
+                  aria-label="Voltar"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+              ) : null}
               <div className="min-w-0">
                 <h1 className="text-base font-bold text-slate-800 truncate flex items-center gap-2">
                   <Landmark className="w-4 h-4 text-indigo-600 shrink-0" aria-hidden />

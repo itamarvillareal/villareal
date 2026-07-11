@@ -316,6 +316,15 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange, onMenu
                               ativo = path === '/clientes/relatorio';
                             } else if (ch.id === 'relatorio-imoveis') {
                               ativo = path === '/relatorio-imoveis';
+                            } else if (ch.id === 'imoveis') {
+                              ativo =
+                                path === '/imoveis' ||
+                                path === '/imoveis/cadastro' ||
+                                /^\/imoveis\/\d+$/.test(path);
+                            } else if (ch.id === 'imoveis/relatorios') {
+                              ativo =
+                                path === '/imoveis/relatorios' ||
+                                path.startsWith('/imoveis/relatorios/');
                             } else if (ch.id === 'iptu') {
                               ativo = path === '/iptu' || path.startsWith('/iptu/');
                             } else if (ch.id === 'financeiro') {
