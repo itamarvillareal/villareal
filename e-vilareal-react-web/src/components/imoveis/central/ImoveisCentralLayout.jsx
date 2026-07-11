@@ -2,6 +2,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   BarChart3,
+  BellRing,
   Building2,
   FileSpreadsheet,
   LayoutDashboard,
@@ -12,6 +13,8 @@ import {
   RefreshCw,
   Wallet,
 } from 'lucide-react';
+import { featureFlags } from '../../../config/featureFlags.js';
+import { carregarFollowupAlugueisApi } from '../../../repositories/imoveisRepository.js';
 import { ImoveisCentralProvider, useImoveisCentral } from './ImoveisCentralContext.jsx';
 
 const navClass = ({ isActive }) =>
@@ -76,9 +79,39 @@ function ImoveisSidebarContent({ location, onNavigate }) {
   );
 }
 
+/**
+ * Alerta persistente do follow-up: aparece em qualquer tela da Central enquanto houver caso de
+ * aluguel exigindo ação — a gestão não depende de o usuário lembrar de abrir a Conciliação.
+ */
+function AlertaCasosEmAberto({ competencia, versaoRecarga }) {
+  const [total, setTotal] = useState(0);
+
+  useEffect(() => {
+    if (!featureFlags.useApiImoveis) return undefined;
+    const ac = new AbortController();
+    carregarFollowupAlugueisApi({ competencia, signal: ac.signal })
+      .then((r) => setTotal(Number(r?.totalAcaoHoje) || 0))
+      .catch(() => {});
+    return () => ac.abort();
+  }, [competencia, versaoRecarga]);
+
+  if (total <= 0) return null;
+  return (
+    <NavLink
+      to="/imoveis/conciliacao"
+      className="inline-flex items-center gap-1.5 rounded-full border border-red-300 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-800 hover:bg-red-100 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300"
+      title="Casos de aluguel em atraso aguardando ação (cobrar, reenviar ou ligar)"
+    >
+      <BellRing className="w-3.5 h-3.5 shrink-0" aria-hidden />
+      <span className="tabular-nums">{total}</span>
+      <span className="hidden sm:inline">caso{total === 1 ? '' : 's'} exigindo ação</span>
+    </NavLink>
+  );
+}
+
 function ImoveisShell() {
   const location = useLocation();
-  const { competencia, setCompetencia, carregando, recarregar } = useImoveisCentral();
+  const { competencia, setCompetencia, carregando, recarregar, versaoRecarga } = useImoveisCentral();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
@@ -101,6 +134,7 @@ function ImoveisShell() {
           <h1 className="text-base font-medium text-slate-900 dark:text-slate-100 truncate">Imóveis</h1>
         </div>
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          <AlertaCasosEmAberto competencia={competencia} versaoRecarga={versaoRecarga} />
           <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
             <span className="hidden sm:inline">Competência</span>
             <input

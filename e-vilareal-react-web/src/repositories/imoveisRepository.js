@@ -1773,6 +1773,66 @@ export async function listarSugestoesAlugueisPendentesApi({ competencia, signal 
   });
 }
 
+/**
+ * Triagem automática dos aluguéis da competência: PAGAMENTO_PROVAVEL (conciliar),
+ * EM_ATRASO (cobrar via WhatsApp) ou A_VENCER. Read-only.
+ */
+export async function carregarTriagemAlugueisApi({ competencia, signal } = {}) {
+  if (!featureFlags.useApiImoveis) {
+    return { competencia: competencia ?? null, totalPendentes: 0, totalPagamentoProvavel: 0, totalEmAtraso: 0, totalAVencer: 0, itens: [] };
+  }
+  return request('/api/locacoes/alugueis-triagem', {
+    signal,
+    query: { competencia: competencia || undefined },
+  });
+}
+
+/** Dispara cobrança WhatsApp (template cobranca_pagamento) para contratos em atraso. */
+export async function cobrarAlugueisAtrasadosApi({ contratoIds, competencia } = {}) {
+  if (!featureFlags.useApiImoveis) {
+    return { loteId: null, total: 0, enviados: 0, falhos: 0, semTelefone: 0, jaCobrados: 0, puladosInelegiveis: 0 };
+  }
+  const ids = (contratoIds || []).map(Number).filter((n) => Number.isFinite(n) && n > 0);
+  if (ids.length === 0) throw new Error('Selecione ao menos um contrato para cobrança.');
+  return request('/api/locacoes/alugueis-cobrar', {
+    method: 'POST',
+    body: { contratoIds: ids, competencia: competencia || null },
+  });
+}
+
+/**
+ * Casos em aberto de aluguel com próxima ação calculada pela API (follow-up):
+ * enviar mensagem, reenviar, ligar, verificar resposta ou aguardar — com prazo.
+ * Analisa também competências anteriores para nenhum caso cair no esquecimento.
+ */
+export async function carregarFollowupAlugueisApi({ competencia, meses, signal } = {}) {
+  if (!featureFlags.useApiImoveis) {
+    return { competenciaBase: competencia ?? null, mesesAnalisados: 0, totalCasos: 0, totalAcaoHoje: 0, totalAguardando: 0, itens: [] };
+  }
+  return request('/api/locacoes/alugueis-followup', {
+    signal,
+    query: { competencia: competencia || undefined, meses: meses || undefined },
+  });
+}
+
+/**
+ * Registra evento manual de um caso de follow-up.
+ * tipo: LIGACAO, ANOTACAO, ADIAR (com adiadoAte AAAA-MM-DD) ou RESOLVIDO_MANUAL.
+ */
+export async function registrarEventoFollowupAluguelApi({ contratoId, competencia, tipo, observacao, adiadoAte } = {}) {
+  if (!featureFlags.useApiImoveis) return;
+  return request('/api/locacoes/alugueis-followup/evento', {
+    method: 'POST',
+    body: {
+      contratoId: Number(contratoId),
+      competencia: competencia || null,
+      tipo,
+      observacao: observacao || null,
+      adiadoAte: adiadoAte || null,
+    },
+  });
+}
+
 /** Contratos de locação do imóvel (id interno da API), mais recentes primeiro. */
 export async function listarContratosLocacaoImovelApi(imovelIdApi, { signal } = {}) {
   if (!featureFlags.useApiImoveis) return [];

@@ -71,8 +71,10 @@ export function ImoveisCentralProvider({ children }) {
       erro,
       ultimaCarga,
       recarregar,
+      // Incrementa a cada recarregar(): permite que telas com fetch próprio se atualizem juntas.
+      versaoRecarga: tick,
     }),
-    [competencia, itens, porNumeroPlanilha, carregando, erro, ultimaCarga, recarregar],
+    [competencia, itens, porNumeroPlanilha, carregando, erro, ultimaCarga, recarregar, tick],
   );
 
   return <ImoveisCentralContext.Provider value={value}>{children}</ImoveisCentralContext.Provider>;

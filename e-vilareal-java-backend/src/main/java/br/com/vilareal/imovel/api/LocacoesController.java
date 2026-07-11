@@ -1,15 +1,21 @@
 package br.com.vilareal.imovel.api;
 
 import br.com.vilareal.imovel.api.dto.*;
+import br.com.vilareal.imovel.application.AluguelCobrancaService;
+import br.com.vilareal.imovel.application.AluguelFollowupService;
 import br.com.vilareal.imovel.application.DespesaCondominioAutoConciliacaoService;
 import br.com.vilareal.imovel.application.DespesaCondominioCandidatoService;
 import br.com.vilareal.imovel.application.DespesaCondominioConfirmacaoService;
 import br.com.vilareal.imovel.application.ImovelApplicationService;
 import br.com.vilareal.imovel.application.LocacaoReconciliacaoService;
+import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.CobrancaLoteResultDTO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
@@ -26,18 +32,24 @@ public class LocacoesController {
     private final DespesaCondominioCandidatoService despesaCondominioCandidatoService;
     private final DespesaCondominioConfirmacaoService despesaCondominioConfirmacaoService;
     private final DespesaCondominioAutoConciliacaoService despesaCondominioAutoConciliacaoService;
+    private final AluguelCobrancaService aluguelCobrancaService;
+    private final AluguelFollowupService aluguelFollowupService;
 
     public LocacoesController(
             ImovelApplicationService imovelApplicationService,
             LocacaoReconciliacaoService reconciliacaoService,
             DespesaCondominioCandidatoService despesaCondominioCandidatoService,
             DespesaCondominioConfirmacaoService despesaCondominioConfirmacaoService,
-            DespesaCondominioAutoConciliacaoService despesaCondominioAutoConciliacaoService) {
+            DespesaCondominioAutoConciliacaoService despesaCondominioAutoConciliacaoService,
+            AluguelCobrancaService aluguelCobrancaService,
+            AluguelFollowupService aluguelFollowupService) {
         this.imovelApplicationService = imovelApplicationService;
         this.reconciliacaoService = reconciliacaoService;
         this.despesaCondominioCandidatoService = despesaCondominioCandidatoService;
         this.despesaCondominioConfirmacaoService = despesaCondominioConfirmacaoService;
         this.despesaCondominioAutoConciliacaoService = despesaCondominioAutoConciliacaoService;
+        this.aluguelCobrancaService = aluguelCobrancaService;
+        this.aluguelFollowupService = aluguelFollowupService;
     }
 
     @GetMapping("/contratos")
@@ -85,6 +97,57 @@ public class LocacoesController {
     public SugestoesAluguelPendenteResponse sugestoesAlugueisPendentes(
             @RequestParam(required = false) String competencia) {
         return reconciliacaoService.sugerirAlugueisPendentes(competencia);
+    }
+
+    @GetMapping("/alugueis-triagem")
+    @Operation(
+            summary = "Triagem automática dos aluguéis da competência",
+            description =
+                    "Classifica cada contrato pendente: PAGAMENTO_PROVAVEL (crédito no extrato — conciliar), "
+                            + "EM_ATRASO (vencido sem crédito — cobrar) ou A_VENCER. Read-only.")
+    public AluguelTriagemResponse alugueisTriagem(@RequestParam(required = false) String competencia) {
+        return aluguelCobrancaService.triagem(competencia);
+    }
+
+    @PostMapping("/alugueis-cobrar")
+    @Operation(
+            summary = "Disparar cobrança WhatsApp para aluguéis em atraso",
+            description =
+                    "Envia o template cobranca_pagamento aos inquilinos dos contratos selecionados. "
+                            + "Contratos cujo aluguel foi vinculado nesse meio tempo são ignorados.")
+    public CobrancaLoteResultDTO cobrarAlugueis(@Valid @RequestBody AluguelTriagemResponse.CobrarRequest request) {
+        return aluguelCobrancaService.cobrarAlugueis(
+                request.contratoIds(), request.competencia(), currentUsername());
+    }
+
+    @GetMapping("/alugueis-followup")
+    @Operation(
+            summary = "Casos em aberto de aluguel com próxima ação calculada (follow-up)",
+            description =
+                    "Cada contrato × competência vencida sem pagamento vira um caso acompanhado até a "
+                            + "resolução: a API verifica sozinha se o inquilino respondeu no WhatsApp e diz "
+                            + "a próxima ação (enviar, reenviar, ligar, verificar resposta) com prazo. "
+                            + "Analisa também competências anteriores para nada cair no esquecimento.")
+    public AluguelFollowupResponse alugueisFollowup(
+            @RequestParam(required = false) String competencia,
+            @RequestParam(required = false) Integer meses) {
+        return aluguelFollowupService.followup(competencia, meses);
+    }
+
+    @PostMapping("/alugueis-followup/evento")
+    @Operation(
+            summary = "Registrar evento manual de um caso de follow-up",
+            description = "Tipos: LIGACAO (liguei para o inquilino), ANOTACAO, ADIAR (com adiadoAte) "
+                    + "ou RESOLVIDO_MANUAL (tira o caso da lista).")
+    public ResponseEntity<Void> registrarEventoFollowup(
+            @Valid @RequestBody AluguelFollowupResponse.EventoRequest request) {
+        aluguelFollowupService.registrarEvento(request, currentUsername());
+        return ResponseEntity.noContent().build();
+    }
+
+    private static String currentUsername() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null && StringUtils.hasText(auth.getName()) ? auth.getName() : "sistema";
     }
 
     @PostMapping("/conciliar-alugueis")

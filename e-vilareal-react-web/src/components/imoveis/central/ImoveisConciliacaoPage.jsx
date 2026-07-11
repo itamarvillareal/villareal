@@ -1,12 +1,27 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, CircleDollarSign, Link2, Loader2, Sparkles, TriangleAlert, Wand2 } from 'lucide-react';
+import {
+  BellRing,
+  Check,
+  CircleDollarSign,
+  Link2,
+  Loader2,
+  MessageCircle,
+  Phone,
+  Sparkles,
+  TriangleAlert,
+  Wand2,
+} from 'lucide-react';
 import { featureFlags } from '../../../config/featureFlags.js';
 import {
+  carregarFollowupAlugueisApi,
+  carregarTriagemAlugueisApi,
+  cobrarAlugueisAtrasadosApi,
   conciliarAlugueisAutomaticoApi,
   gerarRepassesInternosApi,
   listarRepassesPendentesApi,
   listarSugestoesAlugueisPendentesApi,
+  registrarEventoFollowupAluguelApi,
   vincularReconciliacaoApi,
 } from '../../../repositories/imoveisRepository.js';
 import { ImoveisSugestoesVinculoPanel } from '../ImoveisSugestoesVinculoPanel.jsx';
@@ -18,9 +33,9 @@ const th =
 const td =
   'px-3 py-2 text-sm text-slate-800 dark:text-slate-200 border-b border-slate-100 dark:border-slate-800/60 align-middle';
 
-function Secao({ titulo, subtitulo, icone: Icone, acoes, children }) {
+function Secao({ id, titulo, subtitulo, icone: Icone, acoes, children }) {
   return (
-    <section className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-3">
+    <section id={id} className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
@@ -36,21 +51,62 @@ function Secao({ titulo, subtitulo, icone: Icone, acoes, children }) {
   );
 }
 
-/** Aluguéis do mês: contratos vigentes sem aluguel vinculado + auto-conciliação Cora. */
+const SITUACAO_INFO = {
+  EM_ATRASO: { rotulo: 'Em atraso', classe: 'bg-red-100 text-red-900 border-red-300' },
+  PAGAMENTO_PROVAVEL: { rotulo: 'Pagamento no extrato', classe: 'bg-sky-100 text-sky-900 border-sky-300' },
+  A_VENCER: { rotulo: 'A vencer', classe: 'bg-slate-100 text-slate-700 border-slate-300' },
+};
+
+function KpiChip({ valor, rotulo, classe }) {
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${classe}`}>
+      <span className="tabular-nums text-sm">{valor}</span> {rotulo}
+    </span>
+  );
+}
+
+/**
+ * Triagem automática dos aluguéis do mês: a API separa o que ela resolve sozinha (pagamento
+ * localizado no extrato → conciliar) do que precisa de ação humana (atraso → cobrar WhatsApp).
+ */
 function SecaoAlugueisDoMes() {
   const navigate = useNavigate();
-  const { competencia, itens, carregando, recarregar } = useImoveisCentral();
+  const { competencia, recarregar, versaoRecarga } = useImoveisCentral();
+  const [triagem, setTriagem] = useState(null);
+  const [carregando, setCarregando] = useState(false);
   const [autoConciliando, setAutoConciliando] = useState(false);
   const [resultadoAuto, setResultadoAuto] = useState(null);
   const [erro, setErro] = useState('');
+  const [sucesso, setSucesso] = useState('');
+  const [cobrandoContratoId, setCobrandoContratoId] = useState(null);
+  const [cobrandoLote, setCobrandoLote] = useState(false);
 
-  const pendentes = useMemo(
-    () =>
-      itens.filter(
-        (it) => it.ocupado && it.contratoId != null && !(Number(it.aluguelRecebido) > 0),
-      ),
+  useEffect(() => {
+    if (!featureFlags.useApiImoveis) return undefined;
+    const ac = new AbortController();
+    setCarregando(true);
+    setErro('');
+    carregarTriagemAlugueisApi({ competencia, signal: ac.signal })
+      .then((r) => setTriagem(r || null))
+      .catch((e) => {
+        if (e?.name !== 'AbortError') setErro(e?.message || 'Falha ao carregar a triagem de aluguéis.');
+      })
+      .finally(() => setCarregando(false));
+    return () => ac.abort();
+  }, [competencia, versaoRecarga]);
+
+  const itens = useMemo(() => (Array.isArray(triagem?.itens) ? triagem.itens : []), [triagem]);
+  const cobraveis = useMemo(
+    () => itens.filter((it) => it.situacao === 'EM_ATRASO' && it.temTelefone && !it.jaCobradoEsteMes),
     [itens],
   );
+
+  function resumoLote(resp) {
+    const partes = [`${resp?.enviados ?? 0} cobrança${(resp?.enviados ?? 0) === 1 ? '' : 's'} enviada${(resp?.enviados ?? 0) === 1 ? '' : 's'}`];
+    if (resp?.semTelefone > 0) partes.push(`${resp.semTelefone} sem telefone`);
+    if (resp?.falhos > 0) partes.push(`${resp.falhos} com falha`);
+    return partes.join(' · ') + '.';
+  }
 
   async function autoConciliar() {
     setAutoConciliando(true);
@@ -67,28 +123,74 @@ function SecaoAlugueisDoMes() {
     }
   }
 
+  async function cobrar(contratoIds, { lote = false } = {}) {
+    if (lote) setCobrandoLote(true);
+    else setCobrandoContratoId(contratoIds[0]);
+    setErro('');
+    setSucesso('');
+    try {
+      const resp = await cobrarAlugueisAtrasadosApi({ contratoIds, competencia });
+      setSucesso(resumoLote(resp));
+      recarregar();
+    } catch (e) {
+      setErro(e?.message || 'Falha ao disparar a cobrança.');
+    } finally {
+      setCobrandoLote(false);
+      setCobrandoContratoId(null);
+    }
+  }
+
+  function irParaSugestoes() {
+    document.getElementById('sugestoes-pagador')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  const ocupado = autoConciliando || cobrandoLote || cobrandoContratoId != null;
+
   return (
     <Secao
-      titulo={`Aluguéis sem crédito vinculado · ${competenciaLabel(competencia)}`}
-      subtitulo="Contratos vigentes cuja competência ainda não tem aluguel confirmado. A auto-conciliação vincula créditos Cora inequívocos; o restante se resolve na Conta Corrente do imóvel."
+      titulo={`Aluguéis do mês · ${competenciaLabel(competencia)}`}
+      subtitulo="Triagem automática: quem já pagou (crédito localizado no extrato) vai para conciliação 1-clique; quem está em atraso já vem com a cobrança WhatsApp pronta — você só aprova."
       icone={CircleDollarSign}
       acoes={
-        <button
-          type="button"
-          onClick={() => void autoConciliar()}
-          disabled={autoConciliando || !featureFlags.useApiImoveis}
-          className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-teal-600 text-white font-semibold hover:bg-teal-700 disabled:opacity-50"
-        >
-          {autoConciliando ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
-          ) : (
-            <Wand2 className="w-3.5 h-3.5" aria-hidden />
-          )}
-          Auto-conciliar Cora
-        </button>
+        <>
+          {cobraveis.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => void cobrar(cobraveis.map((it) => it.contratoId), { lote: true })}
+              disabled={ocupado}
+              className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-red-600 text-white font-semibold hover:bg-red-700 disabled:opacity-50"
+            >
+              {cobrandoLote ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
+              ) : (
+                <MessageCircle className="w-3.5 h-3.5" aria-hidden />
+              )}
+              Cobrar {cobraveis.length} em atraso
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void autoConciliar()}
+            disabled={ocupado || !featureFlags.useApiImoveis}
+            className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-teal-600 text-white font-semibold hover:bg-teal-700 disabled:opacity-50"
+          >
+            {autoConciliando ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
+            ) : (
+              <Wand2 className="w-3.5 h-3.5" aria-hidden />
+            )}
+            Auto-conciliar Cora
+          </button>
+        </>
       }
     >
       {erro ? <p className="text-sm text-red-700">{erro}</p> : null}
+      {sucesso ? (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 flex items-center gap-2">
+          <Check className="w-4 h-4 shrink-0" aria-hidden />
+          {sucesso}
+        </div>
+      ) : null}
       {resultadoAuto ? (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 flex items-center gap-2">
           <Check className="w-4 h-4 shrink-0" aria-hidden />
@@ -99,50 +201,421 @@ function SecaoAlugueisDoMes() {
           </span>
         </div>
       ) : null}
-      {carregando ? <p className="text-sm text-slate-500">Carregando…</p> : null}
-      {!carregando && pendentes.length === 0 ? (
+      {triagem ? (
+        <div className="flex flex-wrap gap-2">
+          <KpiChip valor={triagem.totalEmAtraso ?? 0} rotulo="em atraso" classe="bg-red-50 text-red-800 border-red-200" />
+          <KpiChip
+            valor={triagem.totalPagamentoProvavel ?? 0}
+            rotulo="com pagamento no extrato"
+            classe="bg-sky-50 text-sky-800 border-sky-200"
+          />
+          <KpiChip valor={triagem.totalAVencer ?? 0} rotulo="a vencer" classe="bg-slate-50 text-slate-600 border-slate-200" />
+        </div>
+      ) : null}
+      {carregando ? <p className="text-sm text-slate-500">Analisando contratos e extrato…</p> : null}
+      {!carregando && itens.length === 0 ? (
         <p className="text-sm text-emerald-700 dark:text-emerald-300">
           Todos os contratos vigentes têm aluguel vinculado nesta competência.
         </p>
       ) : null}
-      {pendentes.length > 0 ? (
+      {itens.length > 0 ? (
         <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
-          <table className="w-full min-w-[760px] text-left border-collapse">
+          <table className="w-full min-w-[980px] text-left border-collapse">
             <thead>
               <tr>
                 <th className={th}>Nº</th>
                 <th className={th}>Imóvel</th>
                 <th className={th}>Inquilino</th>
-                <th className={`${th} text-right`}>Aluguel esperado</th>
+                <th className={`${th} text-right`}>Aluguel</th>
                 <th className={th}>Venc.</th>
+                <th className={th}>Situação</th>
                 <th className={th} aria-label="Ações" />
               </tr>
             </thead>
             <tbody>
-              {pendentes.map((it) => (
-                <tr key={it.imovelId ?? `np-${it.numeroPlanilha}`} className="hover:bg-teal-50/50 dark:hover:bg-teal-950/20">
-                  <td className={`${td} font-semibold tabular-nums`}>{it.numeroPlanilha ?? '—'}</td>
-                  <td className={`${td} max-w-[260px] truncate`}>
-                    {[it.condominio, it.unidade].filter(Boolean).join(' · ') || it.enderecoCompleto || '—'}
-                  </td>
-                  <td className={`${td} max-w-[180px] truncate`}>{it.inquilino || '—'}</td>
-                  <td className={`${td} text-right tabular-nums`}>
-                    {it.valorAluguel != null ? formatBRL(it.valorAluguel) : '—'}
-                  </td>
-                  <td className={`${td} tabular-nums`}>dia {it.diaVencimentoAluguel ?? '—'}</td>
-                  <td className={`${td} text-right`}>
-                    {it.numeroPlanilha != null ? (
+              {itens.map((it) => {
+                const info = SITUACAO_INFO[it.situacao] || SITUACAO_INFO.A_VENCER;
+                const atrasado = it.situacao === 'EM_ATRASO';
+                return (
+                  <tr key={it.contratoId} className="hover:bg-teal-50/50 dark:hover:bg-teal-950/20">
+                    <td className={`${td} font-semibold tabular-nums`}>{it.imovelNumeroPlanilha ?? '—'}</td>
+                    <td className={`${td} max-w-[240px] truncate`} title={it.imovelEndereco ?? undefined}>
+                      {[it.condominio, it.unidade].filter(Boolean).join(' · ') || it.imovelEndereco || '—'}
+                    </td>
+                    <td className={`${td} max-w-[180px] truncate`} title={it.inquilinoNome ?? undefined}>
+                      {it.inquilinoNome || '—'}
+                      {atrasado && !it.temTelefone ? (
+                        <span className="ml-1.5 text-[10px] uppercase text-red-500">sem telefone</span>
+                      ) : null}
+                    </td>
+                    <td className={`${td} text-right tabular-nums`}>
+                      {it.valorAluguel != null ? formatBRL(it.valorAluguel) : '—'}
+                    </td>
+                    <td className={`${td} tabular-nums`}>dia {it.diaVencimentoAluguel ?? '10'}</td>
+                    <td className={td}>
+                      <span
+                        className={`inline-flex px-2 py-0.5 rounded-full border text-[11px] font-semibold whitespace-nowrap ${info.classe}`}
+                      >
+                        {atrasado && it.diasAtraso > 0
+                          ? `Em atraso · ${it.diasAtraso}d`
+                          : it.situacao === 'PAGAMENTO_PROVAVEL' && it.confiancaPagamento
+                            ? `${info.rotulo} (${it.confiancaPagamento === 'ALTA' ? 'alta' : it.confiancaPagamento === 'MEDIA' ? 'média' : 'baixa'})`
+                            : info.rotulo}
+                      </span>
+                      {atrasado && it.jaCobradoEsteMes ? (
+                        <span className="ml-1.5 inline-flex px-2 py-0.5 rounded-full border border-emerald-300 bg-emerald-50 text-emerald-800 text-[11px] font-semibold whitespace-nowrap">
+                          Cobrado este mês
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className={`${td} text-right whitespace-nowrap`}>
+                      {it.situacao === 'PAGAMENTO_PROVAVEL' ? (
+                        <button
+                          type="button"
+                          onClick={irParaSugestoes}
+                          className="text-xs font-medium text-sky-700 dark:text-sky-300 hover:underline mr-3"
+                        >
+                          Conciliar abaixo
+                        </button>
+                      ) : null}
+                      {atrasado && it.temTelefone ? (
+                        <button
+                          type="button"
+                          onClick={() => void cobrar([it.contratoId])}
+                          disabled={ocupado}
+                          className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-md font-semibold disabled:opacity-50 mr-3 ${
+                            it.jaCobradoEsteMes
+                              ? 'border border-red-300 text-red-700 hover:bg-red-50'
+                              : 'bg-red-600 text-white hover:bg-red-700'
+                          }`}
+                          title={it.telefoneFormatado || undefined}
+                        >
+                          {cobrandoContratoId === it.contratoId ? (
+                            <Loader2 className="w-3 h-3 animate-spin" aria-hidden />
+                          ) : (
+                            <MessageCircle className="w-3 h-3" aria-hidden />
+                          )}
+                          {it.jaCobradoEsteMes ? 'Cobrar de novo' : 'Cobrar WhatsApp'}
+                        </button>
+                      ) : null}
+                      {it.imovelNumeroPlanilha != null ? (
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/imoveis/${it.imovelNumeroPlanilha}?aba=conta-corrente`)}
+                          className="text-xs font-medium text-teal-700 dark:text-teal-300 hover:underline"
+                        >
+                          Conta corrente
+                        </button>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </Secao>
+  );
+}
+
+const ACAO_INFO = {
+  CONCILIAR: { rotulo: 'Conciliar crédito', classe: 'bg-sky-100 text-sky-900 border-sky-300' },
+  ENVIAR_MENSAGEM: { rotulo: 'Enviar cobrança', classe: 'bg-red-100 text-red-900 border-red-300' },
+  REENVIAR_MENSAGEM: { rotulo: 'Reenviar cobrança', classe: 'bg-red-100 text-red-900 border-red-300' },
+  LIGAR: { rotulo: 'Ligar', classe: 'bg-orange-100 text-orange-900 border-orange-300' },
+  VERIFICAR_RESPOSTA: { rotulo: 'Verificar resposta', classe: 'bg-violet-100 text-violet-900 border-violet-300' },
+  AGUARDAR: { rotulo: 'Aguardando', classe: 'bg-slate-100 text-slate-700 border-slate-300' },
+};
+
+function dataHoraCurta(iso) {
+  if (!iso) return '—';
+  const dt = new Date(iso);
+  if (Number.isNaN(dt.getTime())) return '—';
+  return dt.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+}
+
+/**
+ * Casos em aberto — o gestor de follow-up. Cada atraso (inclusive de meses anteriores) é um caso
+ * que a API acompanha até a resolução: ela verifica sozinha se o inquilino respondeu no WhatsApp
+ * e escala a ação (mensagem → reenviar → ligar), com prazo. Nada depende da memória do usuário.
+ */
+function SecaoCasosEmAberto() {
+  const navigate = useNavigate();
+  const { competencia, recarregar, versaoRecarga } = useImoveisCentral();
+  const [dados, setDados] = useState(null);
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState('');
+  const [sucesso, setSucesso] = useState('');
+  const [ocupadoKey, setOcupadoKey] = useState(null);
+
+  useEffect(() => {
+    if (!featureFlags.useApiImoveis) return undefined;
+    const ac = new AbortController();
+    setCarregando(true);
+    setErro('');
+    carregarFollowupAlugueisApi({ competencia, signal: ac.signal })
+      .then((r) => setDados(r || null))
+      .catch((e) => {
+        if (e?.name !== 'AbortError') setErro(e?.message || 'Falha ao carregar os casos em aberto.');
+      })
+      .finally(() => setCarregando(false));
+    return () => ac.abort();
+  }, [competencia, versaoRecarga]);
+
+  const itens = useMemo(() => (Array.isArray(dados?.itens) ? dados.itens : []), [dados]);
+
+  async function executar(key, fn, mensagemOk) {
+    setOcupadoKey(key);
+    setErro('');
+    setSucesso('');
+    try {
+      await fn();
+      if (mensagemOk) setSucesso(mensagemOk);
+      recarregar();
+    } catch (e) {
+      setErro(e?.message || 'Falha ao executar a ação.');
+    } finally {
+      setOcupadoKey(null);
+    }
+  }
+
+  function cobrar(item) {
+    void executar(`cobrar-${item.contratoId}-${item.competencia}`, async () => {
+      const resp = await cobrarAlugueisAtrasadosApi({ contratoIds: [item.contratoId], competencia: item.competencia });
+      if ((resp?.enviados ?? 0) === 0) throw new Error('A cobrança não foi enviada — verifique o telefone.');
+    }, `Cobrança enviada para ${item.inquilinoNome || 'o inquilino'} (${item.competencia}).`);
+  }
+
+  function registrarLigacao(item) {
+    const observacao = window.prompt('O que ficou combinado na ligação? (opcional)') ?? undefined;
+    void executar(
+      `ligacao-${item.contratoId}-${item.competencia}`,
+      () => registrarEventoFollowupAluguelApi({
+        contratoId: item.contratoId,
+        competencia: item.competencia,
+        tipo: 'LIGACAO',
+        observacao,
+      }),
+      'Ligação registrada — a API recalculou o próximo passo do caso.',
+    );
+  }
+
+  function adiar(item, dias) {
+    const ate = new Date();
+    ate.setDate(ate.getDate() + dias);
+    const adiadoAte = ate.toISOString().slice(0, 10);
+    void executar(
+      `adiar-${item.contratoId}-${item.competencia}`,
+      () => registrarEventoFollowupAluguelApi({
+        contratoId: item.contratoId,
+        competencia: item.competencia,
+        tipo: 'ADIAR',
+        adiadoAte,
+      }),
+      `Caso adiado até ${dataHoraCurta(adiadoAte)} — ele volta a cobrar você automaticamente.`,
+    );
+  }
+
+  function resolver(item) {
+    const observacao = window.prompt(
+      'Marcar este caso como tratado (ele sai da lista). Por quê? Ex.: acordo fechado, pagamento em espécie…',
+    );
+    if (observacao == null) return;
+    void executar(
+      `resolver-${item.contratoId}-${item.competencia}`,
+      () => registrarEventoFollowupAluguelApi({
+        contratoId: item.contratoId,
+        competencia: item.competencia,
+        tipo: 'RESOLVIDO_MANUAL',
+        observacao: observacao || undefined,
+      }),
+      'Caso marcado como tratado.',
+    );
+  }
+
+  function abrirConversa(item) {
+    if (item.telefoneE164) navigate(`/whatsapp/conversas?telefone=${encodeURIComponent(item.telefoneE164)}`);
+  }
+
+  function irParaSugestoes() {
+    document.getElementById('sugestoes-pagador')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  const ocupado = ocupadoKey != null;
+
+  return (
+    <Secao
+      titulo="Casos em aberto — follow-up"
+      subtitulo={`A API acompanha cada atraso até a solução, inclusive de meses anteriores (${dados?.mesesAnalisados ?? 3} competências analisadas): confere sozinha se o inquilino respondeu no WhatsApp e escala a ação — mensagem, reenvio, ligação. O caso some da lista quando o aluguel é conciliado.`}
+      icone={BellRing}
+    >
+      {erro ? <p className="text-sm text-red-700">{erro}</p> : null}
+      {sucesso ? (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 flex items-center gap-2">
+          <Check className="w-4 h-4 shrink-0" aria-hidden />
+          {sucesso}
+        </div>
+      ) : null}
+      {dados ? (
+        <div className="flex flex-wrap gap-2">
+          <KpiChip valor={dados.totalAcaoHoje ?? 0} rotulo="exigem ação agora" classe="bg-red-50 text-red-800 border-red-200" />
+          <KpiChip valor={dados.totalAguardando ?? 0} rotulo="aguardando prazo" classe="bg-slate-50 text-slate-600 border-slate-200" />
+        </div>
+      ) : null}
+      {carregando ? <p className="text-sm text-slate-500">Verificando mensagens, respostas e prazos…</p> : null}
+      {!carregando && itens.length === 0 ? (
+        <p className="text-sm text-emerald-700 dark:text-emerald-300">
+          Nenhum caso de aluguel em aberto. Tudo tratado ou conciliado.
+        </p>
+      ) : null}
+      {itens.length > 0 ? (
+        <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
+          <table className="w-full min-w-[1100px] text-left border-collapse">
+            <thead>
+              <tr>
+                <th className={th}>Nº</th>
+                <th className={th}>Inquilino</th>
+                <th className={th}>Competência</th>
+                <th className={`${th} text-right`}>Aluguel</th>
+                <th className={th}>Atraso</th>
+                <th className={th}>Histórico do caso</th>
+                <th className={th}>Próxima ação</th>
+                <th className={th} aria-label="Ações" />
+              </tr>
+            </thead>
+            <tbody>
+              {itens.map((it) => {
+                const key = `${it.contratoId}-${it.competencia}`;
+                const acao = ACAO_INFO[it.proximaAcao] || ACAO_INFO.AGUARDAR;
+                const historico = [];
+                if (it.cobrancasEnviadas > 0) {
+                  historico.push(
+                    `${it.cobrancasEnviadas} msg${it.cobrancasEnviadas === 1 ? '' : 's'} (última ${dataHoraCurta(it.ultimaCobrancaEm)})`,
+                  );
+                }
+                if (it.ligacoesRegistradas > 0) {
+                  historico.push(`${it.ligacoesRegistradas} ligação${it.ligacoesRegistradas === 1 ? '' : 'ões'}`);
+                }
+                if (it.respondeuAposUltimaAcao) historico.push(`respondeu ${dataHoraCurta(it.ultimaRespostaEm)}`);
+                else if (it.cobrancasEnviadas > 0 || it.ligacoesRegistradas > 0) historico.push('sem resposta');
+                return (
+                  <tr
+                    key={key}
+                    className={`hover:bg-teal-50/50 dark:hover:bg-teal-950/20 ${it.acaoVencida ? 'bg-red-50/40 dark:bg-red-950/10' : ''}`}
+                  >
+                    <td className={`${td} font-semibold tabular-nums`}>{it.imovelNumeroPlanilha ?? '—'}</td>
+                    <td className={`${td} max-w-[180px] truncate`} title={it.inquilinoNome ?? undefined}>
+                      {it.inquilinoNome || '—'}
+                      {!it.temTelefone ? (
+                        <span className="ml-1.5 text-[10px] uppercase text-red-500">sem WhatsApp</span>
+                      ) : null}
+                    </td>
+                    <td className={`${td} tabular-nums`}>{competenciaLabel(it.competencia)}</td>
+                    <td className={`${td} text-right tabular-nums`}>
+                      {it.valorAluguel != null ? formatBRL(it.valorAluguel) : '—'}
+                    </td>
+                    <td className={`${td} tabular-nums font-semibold text-red-700 dark:text-red-300`}>
+                      {it.diasAtraso}d
+                    </td>
+                    <td className={`${td} max-w-[240px]`}>
+                      <span className="text-xs text-slate-600 dark:text-slate-300">
+                        {historico.length > 0 ? historico.join(' · ') : 'nenhuma cobrança ainda'}
+                      </span>
+                      {it.ultimaAnotacao ? (
+                        <span className="block text-[11px] text-slate-400 truncate" title={it.ultimaAnotacao}>
+                          “{it.ultimaAnotacao}”
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className={td}>
+                      <span
+                        className={`inline-flex px-2 py-0.5 rounded-full border text-[11px] font-semibold whitespace-nowrap ${acao.classe}`}
+                        title={it.proximaAcaoDescricao || undefined}
+                      >
+                        {acao.rotulo}
+                        {it.proximaAcao === 'AGUARDAR' && it.prazoAcao ? ` até ${dataHoraCurta(it.prazoAcao)}` : ''}
+                      </span>
+                      {it.acaoVencida && it.proximaAcao !== 'AGUARDAR' ? (
+                        <span className="block mt-0.5 text-[11px] text-red-600 dark:text-red-400">
+                          {it.proximaAcaoDescricao}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className={`${td} text-right whitespace-nowrap`}>
+                      {it.proximaAcao === 'CONCILIAR' ? (
+                        <button
+                          type="button"
+                          onClick={irParaSugestoes}
+                          className="text-xs font-medium text-sky-700 dark:text-sky-300 hover:underline mr-3"
+                        >
+                          Conciliar abaixo
+                        </button>
+                      ) : null}
+                      {(it.proximaAcao === 'ENVIAR_MENSAGEM' || it.proximaAcao === 'REENVIAR_MENSAGEM') && it.temTelefone ? (
+                        <button
+                          type="button"
+                          onClick={() => cobrar(it)}
+                          disabled={ocupado}
+                          className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-red-600 text-white font-semibold hover:bg-red-700 disabled:opacity-50 mr-3"
+                          title={it.telefoneFormatado || undefined}
+                        >
+                          {ocupadoKey === `cobrar-${key}` ? (
+                            <Loader2 className="w-3 h-3 animate-spin" aria-hidden />
+                          ) : (
+                            <MessageCircle className="w-3 h-3" aria-hidden />
+                          )}
+                          {it.proximaAcao === 'REENVIAR_MENSAGEM' ? 'Reenviar' : 'Cobrar'}
+                        </button>
+                      ) : null}
+                      {it.proximaAcao === 'VERIFICAR_RESPOSTA' && it.temTelefone ? (
+                        <button
+                          type="button"
+                          onClick={() => abrirConversa(it)}
+                          className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-violet-600 text-white font-semibold hover:bg-violet-700 mr-3"
+                        >
+                          <MessageCircle className="w-3 h-3" aria-hidden />
+                          Abrir conversa
+                        </button>
+                      ) : null}
+                      {it.proximaAcao === 'LIGAR' ? (
+                        <button
+                          type="button"
+                          onClick={() => registrarLigacao(it)}
+                          disabled={ocupado}
+                          className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-orange-600 text-white font-semibold hover:bg-orange-700 disabled:opacity-50 mr-3"
+                          title={it.telefoneFormatado ? `Ligar para ${it.telefoneFormatado}` : undefined}
+                        >
+                          {ocupadoKey === `ligacao-${key}` ? (
+                            <Loader2 className="w-3 h-3 animate-spin" aria-hidden />
+                          ) : (
+                            <Phone className="w-3 h-3" aria-hidden />
+                          )}
+                          {it.telefoneFormatado ? `Liguei (${it.telefoneFormatado})` : 'Registrar contato'}
+                        </button>
+                      ) : null}
                       <button
                         type="button"
-                        onClick={() => navigate(`/imoveis/${it.numeroPlanilha}?aba=conta-corrente`)}
-                        className="text-xs font-medium text-teal-700 dark:text-teal-300 hover:underline whitespace-nowrap"
+                        onClick={() => adiar(it, 3)}
+                        disabled={ocupado}
+                        className="text-xs font-medium text-slate-500 dark:text-slate-400 hover:underline disabled:opacity-50 mr-3"
+                        title="Silencia o caso por 3 dias — depois disso ele volta a exigir ação"
                       >
-                        Abrir conta corrente
+                        Adiar 3d
                       </button>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
+                      <button
+                        type="button"
+                        onClick={() => resolver(it)}
+                        disabled={ocupado}
+                        className="text-xs font-medium text-slate-500 dark:text-slate-400 hover:underline disabled:opacity-50"
+                        title="Marcar como tratado fora do sistema (sai da lista)"
+                      >
+                        Resolvido
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -168,14 +641,13 @@ function dataCurta(iso) {
  * que casam com o inquilino de contratos ainda sem aluguel na competência. Confirmar = 1 clique.
  */
 function SecaoSugestoesAluguelPorPagador() {
-  const { competencia, recarregar } = useImoveisCentral();
+  const { competencia, recarregar, versaoRecarga } = useImoveisCentral();
   const [dados, setDados] = useState(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState('');
   const [vinculandoKey, setVinculandoKey] = useState(null);
   const [vinculandoLote, setVinculandoLote] = useState(false);
-  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     if (!featureFlags.useApiImoveis) return undefined;
@@ -189,7 +661,7 @@ function SecaoSugestoesAluguelPorPagador() {
       })
       .finally(() => setCarregando(false));
     return () => ac.abort();
-  }, [competencia, tick]);
+  }, [competencia, versaoRecarga]);
 
   const contratosComSugestao = useMemo(
     () => (Array.isArray(dados?.contratos) ? dados.contratos.filter((c) => c.sugestoes?.length > 0) : []),
@@ -221,7 +693,6 @@ function SecaoSugestoesAluguelPorPagador() {
       setSucesso(
         `Aluguel do imóvel ${contrato.imovelNumeroPlanilha ?? contrato.contratoId} vinculado (${formatBRL(sugestao.valor)}).`,
       );
-      setTick((t) => t + 1);
       recarregar();
     } catch (e) {
       setErro(e?.message || 'Falha ao vincular o crédito.');
@@ -240,7 +711,6 @@ function SecaoSugestoesAluguelPorPagador() {
       const s = contrato.sugestoes[0];
       try {
         // Sequencial de propósito: evita corrida quando o mesmo crédito aparece em 2 contratos.
-        // eslint-disable-next-line no-await-in-loop
         await vincularReconciliacaoApi(contrato.contratoId, [
           { lancamentoFinanceiroId: s.lancamentoFinanceiroId, papel: 'ALUGUEL', competenciaMes: competencia },
         ]);
@@ -252,12 +722,12 @@ function SecaoSugestoesAluguelPorPagador() {
     if (ok > 0) setSucesso(`${ok} aluguel${ok === 1 ? '' : 'éis'} vinculado${ok === 1 ? '' : 's'} em lote.`);
     if (falhas.length > 0) setErro(falhas.join(' · '));
     setVinculandoLote(false);
-    setTick((t) => t + 1);
     recarregar();
   }
 
   return (
     <Secao
+      id="sugestoes-pagador"
       titulo={`Sugestões de aluguel por pagador · ${competenciaLabel(competencia)}`}
       subtitulo="A API cruza os créditos do extrato (PIX/TED com o nome do pagador) com o inquilino, o valor e o dia de vencimento de cada contrato pendente. Você só confirma — o vínculo e a classificação (Cod.+Proc.) são gravados de uma vez."
       icone={Sparkles}
@@ -373,13 +843,12 @@ function SecaoSugestoesAluguelPorPagador() {
 /** Repasses pendentes/divergentes (carteira derivada dos vínculos). */
 function SecaoRepassesPendentes() {
   const navigate = useNavigate();
-  const { competencia, porNumeroPlanilha, recarregar } = useImoveisCentral();
+  const { competencia, porNumeroPlanilha, recarregar, versaoRecarga } = useImoveisCentral();
   const [carteira, setCarteira] = useState(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState('');
   const [gerandoContratoId, setGerandoContratoId] = useState(null);
   const [sucesso, setSucesso] = useState('');
-  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     if (!featureFlags.useApiImoveis) return undefined;
@@ -399,7 +868,7 @@ function SecaoRepassesPendentes() {
     return () => {
       ativo = false;
     };
-  }, [competencia, tick]);
+  }, [competencia, versaoRecarga]);
 
   async function gerarRepasseInterno(item) {
     if (!item?.contratoId) return;
@@ -414,7 +883,6 @@ function SecaoRepassesPendentes() {
           ? `${n} repasse${n === 1 ? '' : 's'} interno${n === 1 ? '' : 's'} gerado${n === 1 ? '' : 's'} (conta virtual 900).`
           : 'Nenhum repasse pendente para gerar neste contrato.',
       );
-      setTick((t) => t + 1);
       recarregar();
     } catch (e) {
       setErro(e?.message || 'Falha ao gerar repasse interno.');
@@ -536,6 +1004,7 @@ export function ImoveisConciliacaoPage() {
 
   return (
     <div className="p-4 space-y-4 max-w-[1500px] w-full mx-auto">
+      <SecaoCasosEmAberto />
       <SecaoAlugueisDoMes />
       <SecaoSugestoesAluguelPorPagador />
       <SecaoRepassesPendentes />

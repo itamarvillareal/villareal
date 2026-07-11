@@ -306,6 +306,17 @@ public class CobrancaWhatsAppService {
 
     @Transactional
     public CobrancaLoteResultDTO dispararLote(List<CobrancaItemDTO> itens, String loteDescricao, String createdBy) {
+        return dispararLote(itens, loteDescricao, createdBy, true);
+    }
+
+    /**
+     * @param verificarElegibilidade quando {@code false}, pula a elegibilidade condominial
+     *     (cálculo/recebíveis) — usado pela cobrança de ALUGUEL, cuja elegibilidade é o próprio
+     *     atraso apurado pela reconciliação de locação.
+     */
+    @Transactional
+    public CobrancaLoteResultDTO dispararLote(
+            List<CobrancaItemDTO> itens, String loteDescricao, String createdBy, boolean verificarElegibilidade) {
         validarTemplateCobrancaAprovado();
         if (itens == null || itens.isEmpty()) {
             throw new IllegalArgumentException("Selecione ao menos uma unidade para cobrança.");
@@ -322,7 +333,7 @@ public class CobrancaWhatsAppService {
             if (item == null) {
                 continue;
             }
-            Optional<String> inelegivel = motivoInelegivelEnvio(item);
+            Optional<String> inelegivel = verificarElegibilidade ? motivoInelegivelEnvio(item) : Optional.empty();
             if (inelegivel.isPresent()) {
                 puladosInelegiveis++;
                 salvarFalha(loteId, loteDescricao, item, createdBy, inelegivel.get(), item.telefone());
@@ -748,7 +759,9 @@ public class CobrancaWhatsAppService {
         return resolverTelefoneContatosPessoa(pessoaId);
     }
 
-    private String resolverTelefonePessoa(Long pessoaId, Long clienteIdHint) {
+    /** Telefone WhatsApp de uma pessoa: cadastro do cliente vinculado → contatos → telefone base. */
+    @Transactional(readOnly = true)
+    public String resolverTelefonePessoa(Long pessoaId, Long clienteIdHint) {
         if (clienteIdHint != null) {
             String tel = resolverTelefoneCliente(clienteIdHint);
             if (StringUtils.hasText(tel)) {
@@ -783,7 +796,7 @@ public class CobrancaWhatsAppService {
         return pessoaRepository.findTelefoneById(pessoaId).filter(StringUtils::hasText).map(String::trim).orElse(null);
     }
 
-    static String montarUnidadeDescricao(String unidade) {
+    public static String montarUnidadeDescricao(String unidade) {
         if (!StringUtils.hasText(unidade)) {
             return "Unidade";
         }
