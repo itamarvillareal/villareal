@@ -77,6 +77,18 @@ export async function cadastrarDescoberto(descobertoId, corpo = null) {
 }
 
 /**
+ * Histórico de varreduras, mais recentes primeiro. Sem pessoaId retorna de todas as pessoas;
+ * a primeira linha é a última varredura executada (exibida no cabeçalho da tela).
+ */
+export async function listarVarreduras({ pessoaId = null, limite = 100 } = {}) {
+  const params = new URLSearchParams();
+  if (pessoaId != null) params.set('pessoaId', pessoaId);
+  params.set('limite', limite);
+  const res = await fetch(`${BASE}/varreduras?${params}`, getOptions('GET'));
+  return handleResponse(res);
+}
+
+/**
  * Contexto do aviso WhatsApp (Bloco E): consentimento, telefones do cadastro, status do
  * template na Meta e mensagem sugerida. Sem efeito colateral.
  */

@@ -5,11 +5,14 @@ import br.com.vilareal.common.exception.ResourceNotFoundException;
 import br.com.vilareal.monitoramento.api.dto.PessoaMonitoradaResponse;
 import br.com.vilareal.monitoramento.api.dto.ProcessoDescobertoResponse;
 import br.com.vilareal.monitoramento.api.dto.SegredoContagemResponse;
+import br.com.vilareal.monitoramento.api.dto.VarreduraResponse;
 import br.com.vilareal.monitoramento.domain.SituacaoProcessoDescoberto;
 import br.com.vilareal.monitoramento.infrastructure.persistence.entity.ProcessoDescobertoEntity;
 import br.com.vilareal.monitoramento.infrastructure.persistence.repository.ProcessoDescobertoRepository;
 import br.com.vilareal.monitoramento.infrastructure.persistence.repository.SegredoJusticaContagemRepository;
+import br.com.vilareal.monitoramento.infrastructure.persistence.repository.VarreduraPessoaRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,18 +32,24 @@ public class MonitoramentoConsultaService {
     /** Janela do recorte "recentes": distribuídos nos últimos 30 dias. */
     static final int RECENTES_DIAS = 30;
 
+    /** Teto do histórico de varreduras devolvido de uma vez (modal de conferência). */
+    static final int HISTORICO_LIMITE_MAX = 500;
+
     private final ProcessoDescobertoRepository descobertoRepository;
     private final SegredoJusticaContagemRepository segredoRepository;
+    private final VarreduraPessoaRepository varreduraRepository;
     private final PessoaRepository pessoaRepository;
     private final Clock clock;
 
     public MonitoramentoConsultaService(
             ProcessoDescobertoRepository descobertoRepository,
             SegredoJusticaContagemRepository segredoRepository,
+            VarreduraPessoaRepository varreduraRepository,
             PessoaRepository pessoaRepository,
             Clock clock) {
         this.descobertoRepository = descobertoRepository;
         this.segredoRepository = segredoRepository;
+        this.varreduraRepository = varreduraRepository;
         this.pessoaRepository = pessoaRepository;
         this.clock = clock;
     }
@@ -117,6 +126,20 @@ public class MonitoramentoConsultaService {
                         totais.getOrDefault(p.getId(), 0L),
                         segredo.getOrDefault(p.getId(), 0L)))
                 .toList();
+    }
+
+    /**
+     * Histórico de varreduras, mais recentes primeiro, opcionalmente de uma pessoa só.
+     * A primeira linha (sem filtro) é a "última varredura" exibida no cabeçalho da tela.
+     */
+    @Transactional(readOnly = true)
+    public List<VarreduraResponse> historicoVarreduras(Long pessoaId, Integer limite) {
+        int tamanho = limite == null || limite < 1 ? 100 : Math.min(limite, HISTORICO_LIMITE_MAX);
+        PageRequest pagina = PageRequest.of(0, tamanho);
+        var varreduras = pessoaId == null
+                ? varreduraRepository.findHistorico(pagina)
+                : varreduraRepository.findHistoricoDaPessoa(pessoaId, pagina);
+        return varreduras.stream().map(VarreduraResponse::de).toList();
     }
 
     @Transactional(readOnly = true)

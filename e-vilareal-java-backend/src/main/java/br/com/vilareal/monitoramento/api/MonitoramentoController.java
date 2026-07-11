@@ -4,6 +4,7 @@ import br.com.vilareal.monitoramento.api.dto.CadastroDescobertoResponse;
 import br.com.vilareal.monitoramento.api.dto.PessoaMonitoradaResponse;
 import br.com.vilareal.monitoramento.api.dto.ProcessoDescobertoResponse;
 import br.com.vilareal.monitoramento.api.dto.SegredoContagemResponse;
+import br.com.vilareal.monitoramento.api.dto.VarreduraResponse;
 import br.com.vilareal.monitoramento.application.MonitoramentoAvisoService;
 import br.com.vilareal.monitoramento.application.MonitoramentoCadastroService;
 import br.com.vilareal.monitoramento.application.MonitoramentoConsultaService;
@@ -74,6 +75,15 @@ public class MonitoramentoController {
     @Operation(summary = "Contagem de processos em segredo de justiça por serventia da pessoa")
     public List<SegredoContagemResponse> segredoDaPessoa(@PathVariable Long id) {
         return consultaService.segredoDaPessoa(id);
+    }
+
+    @GetMapping("/varreduras")
+    @Operation(summary = "Histórico de varreduras (mais recentes primeiro), opcionalmente de uma pessoa. "
+            + "A primeira linha sem filtro é a última varredura executada")
+    public List<VarreduraResponse> varreduras(
+            @RequestParam(required = false) Long pessoaId,
+            @RequestParam(required = false, defaultValue = "100") Integer limite) {
+        return consultaService.historicoVarreduras(pessoaId, limite);
     }
 
     @PostMapping("/descobertos/{id}/ignorar")

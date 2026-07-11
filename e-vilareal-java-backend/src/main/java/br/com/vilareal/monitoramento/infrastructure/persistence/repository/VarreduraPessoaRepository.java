@@ -12,6 +12,18 @@ public interface VarreduraPessoaRepository extends JpaRepository<VarreduraPessoa
 
     Optional<VarreduraPessoaEntity> findFirstByPessoaIdOrderByInicioDesc(Long pessoaId);
 
+    /** Histórico para a tela: JOIN FETCH da pessoa evita N+1 na montagem do DTO. */
+    @Query("SELECT v FROM VarreduraPessoaEntity v JOIN FETCH v.pessoa ORDER BY v.inicio DESC, v.id DESC")
+    List<VarreduraPessoaEntity> findHistorico(Pageable pageable);
+
+    @Query(
+            """
+            SELECT v FROM VarreduraPessoaEntity v JOIN FETCH v.pessoa
+            WHERE v.pessoa.id = :pessoaId
+            ORDER BY v.inicio DESC, v.id DESC
+            """)
+    List<VarreduraPessoaEntity> findHistoricoDaPessoa(Long pessoaId, Pageable pageable);
+
     /**
      * Pessoas elegíveis à varredura (marcadas para monitoramento, ativas, com documento),
      * priorizando quem tem a última varredura mais antiga — quem NUNCA foi varrido vem

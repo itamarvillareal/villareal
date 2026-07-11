@@ -9,6 +9,7 @@ import br.com.vilareal.monitoramento.domain.SituacaoProcessoDescoberto;
 import br.com.vilareal.monitoramento.infrastructure.persistence.entity.ProcessoDescobertoEntity;
 import br.com.vilareal.monitoramento.infrastructure.persistence.repository.ProcessoDescobertoRepository;
 import br.com.vilareal.monitoramento.infrastructure.persistence.repository.SegredoJusticaContagemRepository;
+import br.com.vilareal.monitoramento.infrastructure.persistence.repository.VarreduraPessoaRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
@@ -44,7 +45,11 @@ class MonitoramentoConsultaServiceTest {
         PessoaRepository pessoaRepository = mock(PessoaRepository.class);
         when(pessoaRepository.existsById(anyLong())).thenReturn(true);
         service = new MonitoramentoConsultaService(
-                descobertoRepository, segredoRepository, pessoaRepository, Clock.fixed(AGORA, ZONA));
+                descobertoRepository,
+                segredoRepository,
+                mock(VarreduraPessoaRepository.class),
+                pessoaRepository,
+                Clock.fixed(AGORA, ZONA));
 
         pessoa = new PessoaEntity();
         pessoa.setId(1809L);
@@ -161,6 +166,7 @@ class MonitoramentoConsultaServiceTest {
         MonitoramentoConsultaService semPessoa = new MonitoramentoConsultaService(
                 descobertoRepository,
                 mock(SegredoJusticaContagemRepository.class),
+                mock(VarreduraPessoaRepository.class),
                 pessoaRepository,
                 Clock.fixed(AGORA, ZONA));
         assertThrows(ResourceNotFoundException.class,

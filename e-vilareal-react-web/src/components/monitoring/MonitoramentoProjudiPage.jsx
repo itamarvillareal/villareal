@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   EyeOff,
   FilePlus2,
+  History,
   Inbox,
   Loader2,
   Lock,
@@ -22,6 +23,7 @@ import {
   cadastrarDescoberto,
   obterContextoAviso,
   avisarCliente,
+  listarVarreduras,
 } from '../../api/monitoramentoService.js';
 
 /** Filtros da caixa de entrada: rótulo amigável → parâmetro do backend. Nunca expõe o enum cru. */
@@ -748,6 +750,154 @@ function PainelPessoa({ pessoa, onVoltar, onCadastrar, onAvisar, onIgnorar, busy
   );
 }
 
+const ROTULOS_STATUS_VARREDURA = {
+  EXECUTANDO: { rotulo: 'Em execução', cor: 'bg-blue-100 text-blue-800 border-blue-300' },
+  SUCESSO: { rotulo: 'Concluída', cor: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+  PARCIAL: { rotulo: 'Parcial (continua)', cor: 'bg-amber-100 text-amber-800 border-amber-300' },
+  ERRO: { rotulo: 'Erro', cor: 'bg-rose-100 text-rose-800 border-rose-300' },
+};
+
+function StatusVarreduraBadge({ status }) {
+  const s = ROTULOS_STATUS_VARREDURA[status] || {
+    rotulo: status || '—',
+    cor: 'bg-slate-100 text-slate-600 border-slate-300',
+  };
+  return (
+    <span className={`inline-block px-2 py-0.5 text-xs font-semibold rounded-full border ${s.cor}`}>
+      {s.rotulo}
+    </span>
+  );
+}
+
+function fmtDuracao(segundos) {
+  if (segundos == null) return '—';
+  if (segundos < 60) return `${segundos}s`;
+  return `${Math.floor(segundos / 60)}min ${segundos % 60}s`;
+}
+
+/** Histórico de varreduras para conferência: quando rodou, para quem, resultado e erros. */
+function ModalHistoricoVarreduras({ pessoas, onFechar }) {
+  const [varreduras, setVarreduras] = useState([]);
+  const [filtroPessoaId, setFiltroPessoaId] = useState('');
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState('');
+
+  useEffect(() => {
+    let ativo = true;
+    setCarregando(true);
+    setErro('');
+    (async () => {
+      try {
+        const lista = await listarVarreduras({
+          pessoaId: filtroPessoaId || null,
+          limite: 200,
+        });
+        if (ativo) setVarreduras(lista);
+      } catch (e) {
+        if (ativo) setErro(e.message || 'Falha ao carregar o histórico de varreduras.');
+      } finally {
+        if (ativo) setCarregando(false);
+      }
+    })();
+    return () => {
+      ativo = false;
+    };
+  }, [filtroPessoaId]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[85vh] flex flex-col">
+        <div className="p-5 border-b border-slate-200 flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+              <History className="w-5 h-5 text-blue-700" /> Histórico de varreduras
+            </h3>
+            <p className="text-sm text-slate-500">
+              Cada linha é uma execução: quando rodou, qual pessoa, quantas páginas e processos, e o
+              erro quando houve. Últimas 200 execuções.
+            </p>
+          </div>
+          <select
+            value={filtroPessoaId}
+            onChange={(e) => setFiltroPessoaId(e.target.value)}
+            className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm bg-white shrink-0"
+          >
+            <option value="">Todas as pessoas</option>
+            {pessoas.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nome}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="p-4 overflow-y-auto grow">
+          {carregando ? (
+            <div className="flex items-center gap-3 text-slate-600 py-8 justify-center">
+              <Loader2 className="w-5 h-5 animate-spin" /> Carregando histórico…
+            </div>
+          ) : erro ? (
+            <div className="border border-rose-200 bg-rose-50 text-rose-800 rounded-lg p-3 text-sm">{erro}</div>
+          ) : varreduras.length === 0 ? (
+            <div className="text-center py-10 text-slate-500 text-sm">
+              Nenhuma varredura registrada{filtroPessoaId ? ' para esta pessoa' : ''} ainda. As
+              execuções aparecem aqui assim que a varredura automática rodar.
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase tracking-wide text-slate-400 border-b border-slate-200">
+                  <th className="py-2 pr-3">Início</th>
+                  <th className="py-2 pr-3">Pessoa</th>
+                  <th className="py-2 pr-3">Status</th>
+                  <th className="py-2 pr-3 text-right">Duração</th>
+                  <th className="py-2 pr-3 text-right" title="Páginas da lista lidas no PROJUDI">Págs.</th>
+                  <th className="py-2 pr-3 text-right" title="Linhas de processo vistas na varredura">Vistos</th>
+                  <th className="py-2 pr-3 text-right" title="Processos inéditos gravados">Novos</th>
+                  <th className="py-2 text-right" title="Linhas em segredo de justiça">Segredo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {varreduras.map((v) => (
+                  <tr key={v.id} className="border-b border-slate-100 align-top">
+                    <td className="py-2 pr-3 whitespace-nowrap text-slate-700">{fmtDataHora(v.inicio)}</td>
+                    <td className="py-2 pr-3 text-slate-700">{v.pessoaNome}</td>
+                    <td className="py-2 pr-3">
+                      <StatusVarreduraBadge status={v.status} />
+                      {v.erroCodigo ? (
+                        <div className="mt-0.5 text-xs text-rose-700" title={v.erroMensagem || ''}>
+                          {v.erroCodigo}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td className="py-2 pr-3 text-right text-slate-600 whitespace-nowrap">{fmtDuracao(v.duracaoSegundos)}</td>
+                    <td className="py-2 pr-3 text-right text-slate-600">{v.paginasLidas ?? '—'}</td>
+                    <td className="py-2 pr-3 text-right text-slate-600">{v.encontrados ?? '—'}</td>
+                    <td className={`py-2 pr-3 text-right font-semibold ${v.novos > 0 ? 'text-amber-700' : 'text-slate-600'}`}>
+                      {v.novos ?? '—'}
+                    </td>
+                    <td className="py-2 text-right text-slate-600">{v.qtdSegredo ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="p-4 border-t border-slate-200 flex justify-end">
+          <button
+            type="button"
+            onClick={onFechar}
+            className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100"
+          >
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Tela Processos → Monitoramento: caixa de entrada dos descobertos da varredura PROJUDI. */
 export function MonitoramentoProjudiPage() {
   const [pessoas, setPessoas] = useState([]);
@@ -759,6 +909,8 @@ export function MonitoramentoProjudiPage() {
   const [erro, setErro] = useState('');
   const [modalCadastro, setModalCadastro] = useState(null);
   const [modalAviso, setModalAviso] = useState(null);
+  const [modalHistorico, setModalHistorico] = useState(false);
+  const [ultimaVarredura, setUltimaVarredura] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [revisao, setRevisao] = useState(0);
 
@@ -766,12 +918,14 @@ export function MonitoramentoProjudiPage() {
     setCarregando(true);
     setErro('');
     try {
-      const [ps, ds] = await Promise.all([
+      const [ps, ds, vs] = await Promise.all([
         listarPessoasMonitoradas(),
         listarDescobertos(filtroSituacao),
+        listarVarreduras({ limite: 1 }),
       ]);
       setPessoas(ps);
       setDescobertos(ds);
+      setUltimaVarredura(vs[0] || null);
     } catch (e) {
       setErro(e.message || 'Falha ao carregar o monitoramento.');
     } finally {
@@ -818,15 +972,35 @@ export function MonitoramentoProjudiPage() {
             <p className="text-sm text-slate-500">
               Processos descobertos pela varredura por CPF/CNPJ das pessoas marcadas.
             </p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {ultimaVarredura ? (
+                <>
+                  Última varredura: <strong className="text-slate-700">{fmtDataHora(ultimaVarredura.inicio)}</strong>
+                  {' — '}{ultimaVarredura.pessoaNome}{' '}
+                  <StatusVarreduraBadge status={ultimaVarredura.status} />
+                </>
+              ) : (
+                'Nenhuma varredura executada ainda.'
+              )}
+            </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={recarregarTudo}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100"
-        >
-          <RefreshCw className="w-4 h-4" /> Atualizar
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setModalHistorico(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100"
+          >
+            <History className="w-4 h-4" /> Histórico de varreduras
+          </button>
+          <button
+            type="button"
+            onClick={recarregarTudo}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100"
+          >
+            <RefreshCw className="w-4 h-4" /> Atualizar
+          </button>
+        </div>
       </div>
 
       {pessoaSelecionada ? (
@@ -949,6 +1123,10 @@ export function MonitoramentoProjudiPage() {
           onFechar={() => setModalAviso(null)}
           onConcluido={recarregarTudo}
         />
+      ) : null}
+
+      {modalHistorico ? (
+        <ModalHistoricoVarreduras pessoas={pessoas} onFechar={() => setModalHistorico(false)} />
       ) : null}
     </div>
   );
