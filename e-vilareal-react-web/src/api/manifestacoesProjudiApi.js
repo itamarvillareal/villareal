@@ -1,4 +1,5 @@
 import { listarPublicacoesModulo } from '../repositories/publicacoesRepository.js';
+import { ordenarPorEntradaEmail } from '../data/publicacoesEmailOrdenacao.js';
 import { request } from './httpClient.js';
 
 /**
@@ -31,7 +32,7 @@ export async function buscarManifestacoesProjudi({ texto, status, filtroVinculo,
       out.push(row);
     }
   }
-  return out;
+  return ordenarPorEntradaEmail(out, false);
 }
 
 /** Status da última busca incremental no Gmail (a mais recente entre Projudi e TRT). */

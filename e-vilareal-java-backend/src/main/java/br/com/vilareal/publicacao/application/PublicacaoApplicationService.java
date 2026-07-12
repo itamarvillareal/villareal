@@ -90,7 +90,9 @@ public class PublicacaoApplicationService {
                 clientePk,
                 texto,
                 origemImportacao);
-        List<PublicacaoEntity> lista = publicacaoRepository.findAll(spec, Sort.by(Sort.Direction.DESC, "createdAt"));
+        List<PublicacaoEntity> lista = publicacaoRepository.findAll(
+                spec,
+                Sort.by(Sort.Order.desc("emailRecebidoEm").nullsLast(), Sort.Order.desc("createdAt")));
         Set<Long> procIds = new LinkedHashSet<>();
         for (PublicacaoEntity e : lista) {
             Long pid = extrairProcessoIdSeguro(e);
