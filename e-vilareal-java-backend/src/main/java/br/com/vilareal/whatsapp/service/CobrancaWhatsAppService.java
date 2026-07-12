@@ -391,6 +391,20 @@ public class CobrancaWhatsAppService {
     @Transactional
     public AgendarCobrancaResultDTO agendarLote(
             List<CobrancaItemDTO> itens, String loteDescricao, Instant scheduledAt, String createdBy) {
+        return agendarLote(itens, loteDescricao, scheduledAt, createdBy, true);
+    }
+
+    /**
+     * @param verificarElegibilidade quando {@code false}, pula elegibilidade condominial — usado por
+     *     cobrança de ALUGUEL.
+     */
+    @Transactional
+    public AgendarCobrancaResultDTO agendarLote(
+            List<CobrancaItemDTO> itens,
+            String loteDescricao,
+            Instant scheduledAt,
+            String createdBy,
+            boolean verificarElegibilidade) {
         validarTemplateCobrancaAprovado();
         if (itens == null || itens.isEmpty()) {
             throw new IllegalArgumentException("Selecione ao menos uma unidade para cobrança.");
@@ -408,7 +422,8 @@ public class CobrancaWhatsAppService {
             if (item == null) {
                 continue;
             }
-            Optional<String> inelegivel = motivoInelegivelEnvio(item);
+            Optional<String> inelegivel =
+                    verificarElegibilidade ? motivoInelegivelEnvio(item) : Optional.empty();
             if (inelegivel.isPresent()) {
                 puladosInelegiveis++;
                 salvarAgendamentoFalha(

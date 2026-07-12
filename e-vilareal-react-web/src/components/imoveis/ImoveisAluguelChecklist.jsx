@@ -1,4 +1,4 @@
-import { Check, ChevronRight, CircleAlert, CircleDashed } from 'lucide-react';
+import { Check, ChevronRight, Circle, CircleAlert, CircleDashed, HelpCircle, Loader2 } from 'lucide-react';
 import {
   infoEstadoCompetencia,
   rotuloCompetenciaCurta,
@@ -27,6 +27,10 @@ function IconeEstado({ icon }) {
  *   valorAluguelContrato?: number | null,
  *   carregando?: boolean,
  *   modoFiltro?: boolean,
+ *   conferidoPorCompetencia?: Record<string, boolean>,
+ *   conferindoCompetencia?: string | null,
+ *   onConferirMes?: (comp: string, lancamentoId: number | null, conferido: boolean) => void,
+ *   mostrarConferencia?: boolean,
  * }} props
  */
 export function ImoveisAluguelChecklist({
@@ -36,8 +40,14 @@ export function ImoveisAluguelChecklist({
   valorAluguelContrato,
   carregando = false,
   modoFiltro = false,
+  conferidoPorCompetencia = {},
+  conferindoCompetencia = null,
+  onConferirMes,
+  mostrarConferencia = false,
 }) {
   const lista = Array.isArray(meses) ? meses : [];
+  const vinculados = lista.filter((m) => String(m.estado).toUpperCase() === 'VINCULADO');
+  const conferidos = vinculados.filter((m) => conferidoPorCompetencia[m.competencia]).length;
 
   if (carregando) {
     return (
@@ -67,6 +77,18 @@ export function ImoveisAluguelChecklist({
             : 'Clique no mês para classificar.'}{' '}
           Esperado: <strong>{formatBRL(valorAluguelContrato)}</strong> por mês (contrato vigente).
         </p>
+        {mostrarConferencia && vinculados.length > 0 ? (
+          <p className="text-[11px] text-slate-600 mt-1 flex items-center gap-1">
+            Conferência: <strong className="tabular-nums">{conferidos}</strong> de{' '}
+            <strong className="tabular-nums">{vinculados.length}</strong> meses conferidos
+            <span
+              className="inline-flex items-center text-slate-400"
+              title="Repasse do mês anterior: o repasse ao locador referente à competência N costuma aparecer no extrato no mês N+1 (regra repasseMesAnterior). Conferir marca que você validou aluguel + repasse daquele ciclo."
+            >
+              <HelpCircle className="w-3.5 h-3.5" aria-hidden />
+            </span>
+          </p>
+        ) : null}
       </div>
       <ul className="divide-y divide-slate-100 max-h-[min(420px,50vh)] overflow-y-auto">
         {lista.map((item) => {
@@ -75,16 +97,38 @@ export function ImoveisAluguelChecklist({
           const ativo = comp === competenciaAtiva;
           const vinc = item.aluguelVinculado;
           const repasse = statusRepasseInfo(item.statusRepasse);
+          const conferido = Boolean(conferidoPorCompetencia[comp]);
+          const lancId = vinc?.lancamentoFinanceiroId != null ? Number(vinc.lancamentoFinanceiroId) : null;
 
           return (
             <li key={comp}>
-              <button
-                type="button"
-                onClick={() => onSelecionarCompetencia(comp)}
-                className={`w-full text-left px-4 py-2.5 flex items-center gap-3 transition-colors hover:bg-indigo-50/60 ${
-                  ativo ? 'bg-indigo-50 ring-1 ring-inset ring-indigo-200' : ''
-                }`}
-              >
+              <div className={`flex items-stretch ${ativo ? 'bg-indigo-50 ring-1 ring-inset ring-indigo-200' : ''}`}>
+                {mostrarConferencia && String(item.estado).toUpperCase() === 'VINCULADO' ? (
+                  <button
+                    type="button"
+                    disabled={!lancId || conferindoCompetencia === comp}
+                    onClick={() => onConferirMes?.(comp, lancId, !conferido)}
+                    className="px-2 flex items-center justify-center border-r border-slate-100 hover:bg-slate-50 disabled:opacity-40"
+                    title={
+                      conferido
+                        ? 'Desmarcar conferência deste mês'
+                        : 'Marcar mês como conferido (aluguel + repasse validados)'
+                    }
+                  >
+                    {conferindoCompetencia === comp ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-slate-400" aria-hidden />
+                    ) : conferido ? (
+                      <Check className="w-4 h-4 text-emerald-600" aria-hidden />
+                    ) : (
+                      <Circle className="w-4 h-4 text-slate-300" aria-hidden />
+                    )}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => onSelecionarCompetencia(comp)}
+                  className="flex-1 text-left px-4 py-2.5 flex items-center gap-3 transition-colors hover:bg-indigo-50/60"
+                >
                 <IconeEstado icon={info.icon} />
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
@@ -125,7 +169,8 @@ export function ImoveisAluguelChecklist({
                   className={`w-4 h-4 shrink-0 ${ativo ? 'text-indigo-600' : 'text-slate-300'}`}
                   aria-hidden
                 />
-              </button>
+                </button>
+              </div>
             </li>
           );
         })}

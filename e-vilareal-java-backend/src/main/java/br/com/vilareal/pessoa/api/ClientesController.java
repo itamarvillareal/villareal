@@ -4,6 +4,7 @@ import br.com.vilareal.pessoa.api.dto.ClienteContextoResponse;
 import br.com.vilareal.pessoa.api.dto.ClienteCreateRequest;
 import br.com.vilareal.pessoa.api.dto.ClienteCreateResult;
 import br.com.vilareal.pessoa.api.dto.ClienteListItemResponse;
+import br.com.vilareal.pessoa.api.dto.ClienteProprioPatchRequest;
 import br.com.vilareal.processo.application.ProcessoApplicationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -11,6 +12,8 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -86,6 +89,17 @@ public class ClientesController {
         return r.criadoNovo()
                 ? ResponseEntity.status(HttpStatus.CREATED).body(r.cliente())
                 : ResponseEntity.ok(r.cliente());
+    }
+
+    @PatchMapping("/{id}/proprio")
+    @Operation(
+            summary = "Atualizar flag imóvel próprio (cliente.proprio)",
+            description =
+                    "Define se o cliente é proprietário de imóveis próprios (repasse interno I/A na CONTA ZERO). "
+                            + "Altera o fluxo de repasse de todos os imóveis vinculados ao código.")
+    public ClienteListItemResponse atualizarProprio(
+            @PathVariable Long id, @Valid @RequestBody ClienteProprioPatchRequest request) {
+        return processoApplicationService.atualizarProprio(id, Boolean.TRUE.equals(request.getProprio()));
     }
 
     @GetMapping("/resolucao")

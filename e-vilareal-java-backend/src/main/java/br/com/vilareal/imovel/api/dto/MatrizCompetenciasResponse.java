@@ -4,6 +4,7 @@ import br.com.vilareal.financeiro.domain.ConfiancaSugestao;
 import br.com.vilareal.imovel.domain.StatusRepasse;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -33,7 +34,8 @@ public record MatrizCompetenciasResponse(
             Long lancamentoFinanceiroId,
             LocalDate data,
             String descricao,
-            BigDecimal valor) {}
+            BigDecimal valor,
+            Instant conferidoEm) {}
 
     public record MatrizCompetenciaCandidatoResponse(
             Long lancamentoFinanceiroId,

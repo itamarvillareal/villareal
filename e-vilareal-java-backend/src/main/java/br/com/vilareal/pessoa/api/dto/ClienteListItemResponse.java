@@ -22,6 +22,9 @@ public class ClienteListItemResponse {
 
     private Boolean inativo;
 
+    /** {@code true} = imóvel próprio (repasse interno I/A na CONTA ZERO). */
+    private Boolean proprio;
+
     private Long usuarioResponsavelPadraoId;
 
     private String usuarioResponsavelPadraoNome;
@@ -114,6 +117,14 @@ public class ClienteListItemResponse {
 
     public void setInativo(Boolean inativo) {
         this.inativo = inativo;
+    }
+
+    public Boolean getProprio() {
+        return proprio;
+    }
+
+    public void setProprio(Boolean proprio) {
+        this.proprio = proprio;
     }
 
     public Long getUsuarioResponsavelPadraoId() {

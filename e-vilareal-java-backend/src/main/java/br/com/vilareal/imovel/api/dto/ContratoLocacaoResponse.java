@@ -26,6 +26,7 @@ public class ContratoLocacaoResponse {
     private String observacoes;
     private List<Long> fiadoresPessoaIds;
     private List<Long> inquilinosPessoaIds;
+    private Boolean agendarCobrancaWhatsApp;
 
     public Long getId() {
         return id;
@@ -185,5 +186,13 @@ public class ContratoLocacaoResponse {
 
     public void setInquilinosPessoaIds(List<Long> inquilinosPessoaIds) {
         this.inquilinosPessoaIds = inquilinosPessoaIds;
+    }
+
+    public Boolean getAgendarCobrancaWhatsApp() {
+        return agendarCobrancaWhatsApp;
+    }
+
+    public void setAgendarCobrancaWhatsApp(Boolean agendarCobrancaWhatsApp) {
+        this.agendarCobrancaWhatsApp = agendarCobrancaWhatsApp;
     }
 }

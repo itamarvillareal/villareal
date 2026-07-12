@@ -18,6 +18,7 @@ import { Imoveis } from '../../Imoveis.jsx';
 import { ImoveisAdministracaoFinanceiro } from '../../ImoveisAdministracaoFinanceiro.jsx';
 import { useImoveisCentral } from './ImoveisCentralContext.jsx';
 import { competenciaLabel, formatBRL, statusMesItem } from './imoveisCentralFormat.js';
+import { ImovelFichaRegrasPanel } from './ImovelFichaRegrasPanel.jsx';
 
 const ABAS = [
   { key: 'resumo', label: 'Resumo' },
@@ -65,6 +66,7 @@ function HistoricoCompetencias({ matriz }) {
 }
 
 function AbaResumo({ item, competencia }) {
+  const { recarregar } = useImoveisCentral();
   const [matriz, setMatriz] = useState(null);
 
   useEffect(() => {
@@ -95,6 +97,7 @@ function AbaResumo({ item, competencia }) {
 
   return (
     <div className="space-y-4">
+      <ImovelFichaRegrasPanel item={item} onAtualizado={recarregar} />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <CardInfo titulo="Contrato vigente">
           {item.contratoId ? (

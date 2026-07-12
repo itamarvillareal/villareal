@@ -2,6 +2,8 @@ package br.com.vilareal.imovel.application;
 
 import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
+import br.com.vilareal.financeiro.api.dto.ParearGrupoCompensacaoRequest;
+import br.com.vilareal.financeiro.application.FinanceiroCompensacaoService;
 import br.com.vilareal.financeiro.domain.ConfiancaSugestao;
 import br.com.vilareal.financeiro.domain.DescricaoNormalizer;
 import br.com.vilareal.financeiro.domain.EtapaLancamento;
@@ -79,11 +81,15 @@ public class LocacaoReconciliacaoService {
 
     /** Tolerância relativa (±5%) entre o valor do lançamento órfão e o valor esperado (aluguel/repasse). */
     private static final BigDecimal TOLERANCIA_VALOR_ORFAO = new BigDecimal("0.05");
-    /** Conta contábil "A" (Escritório) — toda administração de imóvel flui aqui. */
+    /** Conta contábil "A" (Escritório) — débito do repasse interno de imóvel próprio. */
     private static final String CODIGO_CONTA_ADMINISTRACAO = "A";
+    /** Conta contábil "I" (Imóveis) — crédito do rendimento líquido na Conta Imóveis (pessoa física). */
+    private static final String CODIGO_CONTA_IMOVEIS = "I";
 
-    /** Banco virtual dos lançamentos automáticos de repasse interno (extrato no Financeiro). */
-    private static final String TIPO_CONTA_REPASSE_INTERNO = "VIRTUAL";
+    /** CONTA ZERO (numero_banco=19): repasse interno de imóvel próprio como par soma zero I/A. */
+    private static final int NUMERO_BANCO_CONTA_ZERO = 19;
+    /** Banco virtual legado (modelo antigo — migração 900→19). */
+    private static final String TIPO_CONTA_REPASSE_INTERNO_LEGADO = "VIRTUAL";
     /** Origem dos lançamentos gerados automaticamente. */
     private static final String ORIGEM_AUTO = "AUTO";
     /** Origem do vínculo locacao_repasse_lancamento criado pela conciliação automática. */
@@ -100,6 +106,7 @@ public class LocacaoReconciliacaoService {
     private final ContaContabilRepository contaContabilRepository;
     private final ContaBancariaRepository contaBancariaRepository;
     private final ImovelProcessoRepository imovelProcessoRepository;
+    private final FinanceiroCompensacaoService financeiroCompensacaoService;
 
     public LocacaoReconciliacaoService(
             ContratoLocacaoRepository contratoLocacaoRepository,
@@ -107,13 +114,15 @@ public class LocacaoReconciliacaoService {
             LancamentoFinanceiroRepository lancamentoRepository,
             ContaContabilRepository contaContabilRepository,
             ContaBancariaRepository contaBancariaRepository,
-            ImovelProcessoRepository imovelProcessoRepository) {
+            ImovelProcessoRepository imovelProcessoRepository,
+            FinanceiroCompensacaoService financeiroCompensacaoService) {
         this.contratoLocacaoRepository = contratoLocacaoRepository;
         this.vinculoRepository = vinculoRepository;
         this.lancamentoRepository = lancamentoRepository;
         this.contaContabilRepository = contaContabilRepository;
         this.contaBancariaRepository = contaBancariaRepository;
         this.imovelProcessoRepository = imovelProcessoRepository;
+        this.financeiroCompensacaoService = financeiroCompensacaoService;
     }
 
     // ----------------------------------------------------------------------------------------- (B)
@@ -907,13 +916,13 @@ public class LocacaoReconciliacaoService {
                     });
         }
 
-        // 1) Remove APENAS lançamentos AUTO (banco virtual) indesejados: órfãos ou modelo antigo
-        //    (só débito sem crédito / sem grupo). Os pares esperados são tratados no passo 2.
-        Integer numeroBancoVirtual = contaRepasseInterno().getNumeroBanco();
+        // 1) Remove lançamentos AUTO legados (conta 900) ou incorretos na conta 19 fora do conjunto esperado.
+        List<Integer> bancosRepasseInterno = List.of(
+                contaRepasseInternoLegado().getNumeroBanco(), NUMERO_BANCO_CONTA_ZERO);
         List<LancamentoFinanceiroEntity> autosIndesejados =
                 lancamentoRepository.findByProcessoId(processoId).stream()
                         .filter(l -> ORIGEM_AUTO.equals(l.getOrigem())
-                                && numeroBancoVirtual.equals(l.getNumeroBanco()))
+                                && bancosRepasseInterno.contains(l.getNumeroBanco()))
                         .filter(l -> !lancamentosEsperados.contains(l.getId()))
                         .toList();
         int removidosIndesejados = removerLancamentosComVinculos(contratoId, autosIndesejados);
@@ -1080,7 +1089,8 @@ public class LocacaoReconciliacaoService {
                 lancamento != null ? lancamento.getId() : null,
                 lancamento != null ? lancamento.getDataLancamento() : null,
                 lancamento != null ? lancamento.getDescricao() : null,
-                lancamento != null && lancamento.getValor() != null ? lancamento.getValor().abs() : null);
+                lancamento != null && lancamento.getValor() != null ? lancamento.getValor().abs() : null,
+                lancamento != null ? lancamento.getConferidoEm() : null);
     }
 
     private MatrizCompetenciaCandidatoResponse toCandidatoMatriz(ReconciliacaoSugestaoItemResponse s) {
@@ -1118,7 +1128,7 @@ public class LocacaoReconciliacaoService {
         return true;
     }
 
-    /** Par de repasse correto: débito + crédito na conta virtual, mesmo grupo, data = data do aluguel. */
+    /** Par de repasse correto: débito A + crédito I na conta 19, grupo compensado, data = data do aluguel. */
     private boolean parRepasseInternoCorreto(
             LancamentoFinanceiroEntity debito,
             Long aluguelVinculoId,
@@ -1134,14 +1144,18 @@ public class LocacaoReconciliacaoService {
         }
         LancamentoFinanceiroEntity credito = creditoOpt.get();
         return credito.getNatureza() == NaturezaLancamento.CREDITO
+                && credito.getContaContabil() != null
+                && CODIGO_CONTA_IMOVEIS.equalsIgnoreCase(credito.getContaContabil().getCodigo())
+                && Integer.valueOf(NUMERO_BANCO_CONTA_ZERO).equals(credito.getNumeroBanco())
                 && credito.getValor() != null
                 && credito.getValor().compareTo(repasseEsperado) == 0
                 && dataEsperada != null
                 && dataEsperada.equals(credito.getDataLancamento())
-                && grupoRepasseInterno(aluguelVinculoId).equals(credito.getGrupoCompensacao());
+                && grupoRepasseInterno(aluguelVinculoId).equals(credito.getGrupoCompensacao())
+                && credito.getEtapa() == EtapaLancamento.COMPENSADO;
     }
 
-    /** Um débito de repasse está correto se: DEBITO conta A, banco virtual, data = aluguel, grupo pareado, valor ok. */
+    /** Débito de repasse correto: DEBITO conta A, conta 19, data = aluguel, grupo compensado, valor ok. */
     private boolean debitoRepasseCorreto(
             LancamentoFinanceiroEntity debito,
             Long aluguelVinculoId,
@@ -1150,9 +1164,10 @@ public class LocacaoReconciliacaoService {
         return debito.getNatureza() == NaturezaLancamento.DEBITO
                 && debito.getContaContabil() != null
                 && CODIGO_CONTA_ADMINISTRACAO.equalsIgnoreCase(debito.getContaContabil().getCodigo())
+                && Integer.valueOf(NUMERO_BANCO_CONTA_ZERO).equals(debito.getNumeroBanco())
                 && dataEsperada != null && dataEsperada.equals(debito.getDataLancamento())
                 && grupoRepasseInterno(aluguelVinculoId).equals(debito.getGrupoCompensacao())
-                && debito.getEtapa() == EtapaLancamento.VINCULADO
+                && debito.getEtapa() == EtapaLancamento.COMPENSADO
                 && debito.getValor() != null && debito.getValor().compareTo(repasseEsperado) == 0;
     }
 
@@ -1242,11 +1257,9 @@ public class LocacaoReconciliacaoService {
     // --------------------------------------------------------------------- repasse interno (imóvel próprio)
 
     /**
-     * Gera o par de repasse interno (débito + crédito na conta virtual 900) para um vínculo de
-     * ALUGUEL em imóvel próprio (idempotente).
-     *
-     * <p>O débito é vinculado como {@code papel=REPASSE}. O crédito é a contrapartida no extrato
-     * virtual (mesmo {@code grupo_compensacao}, soma zero na conta 900).
+     * Gera o par de repasse interno na CONTA ZERO (19): crédito letra I (rendimento líquido do dono)
+     * + débito letra A (débito do escritório), compensados com soma zero e vínculo {@code pessoa_ref}
+     * do dono. Idempotente.
      */
     private void gerarParRepasseInterno(LocacaoRepasseLancamentoEntity aluguelVinculo, ContratoLocacaoEntity contrato) {
         if (!isImovelProprio(contrato)) {
@@ -1264,31 +1277,45 @@ public class LocacaoReconciliacaoService {
             return;
         }
 
-        ClienteEntity cliente = clienteDoImovel(contrato);
+        PessoaEntity pessoaDono = pessoaRefDoDono(contrato);
+        if (pessoaDono == null) {
+            throw new BusinessRuleException(
+                    "Imóvel próprio sem pessoa do dono (pessoa_ref): não é possível gerar repasse interno na CONTA ZERO.");
+        }
         ProcessoEntity processo = processoAtivoDoContrato(contrato);
         LocalDate dataLancamento = dataLancamentoDoAluguel(aluguelVinculo);
         LocalDate dataCompetencia = competenciaParaData(aluguelVinculo.getCompetenciaMes(), dataLancamento);
         String compLabel = StringUtils.hasText(aluguelVinculo.getCompetenciaMes()) ? aluguelVinculo.getCompetenciaMes() : "";
         String grupo = grupoRepasseInterno(aluguelVinculo.getId());
-        Long clienteId = cliente != null ? cliente.getId() : null;
 
         LancamentoFinanceiroEntity debito = novoLancamentoRepasseInterno(
                 NaturezaLancamento.DEBITO,
-                repasse, cliente, processo, dataLancamento, dataCompetencia,
+                repasse,
+                pessoaDono,
+                processo,
+                dataLancamento,
+                dataCompetencia,
                 ("Repasse interno (imóvel próprio) " + compLabel).trim(),
                 numeroDebitoRepasseInterno(aluguelVinculo.getId()),
-                grupo,
-                EtapaLancamento.VINCULADO);
+                contaAdministracao());
         lancamentoRepository.save(debito);
 
         LancamentoFinanceiroEntity credito = novoLancamentoRepasseInterno(
                 NaturezaLancamento.CREDITO,
-                repasse, cliente, processo, dataLancamento, dataCompetencia,
-                ("Contrapartida repasse interno " + compLabel).trim(),
+                repasse,
+                pessoaDono,
+                processo,
+                dataLancamento,
+                dataCompetencia,
+                ("Rendimento imóvel próprio " + compLabel).trim(),
                 numeroCreditoRepasseInterno(aluguelVinculo.getId()),
-                grupo,
-                EtapaLancamento.calcular(CODIGO_CONTA_ADMINISTRACAO, grupo, clienteId));
+                contaImoveis());
         lancamentoRepository.save(credito);
+
+        ParearGrupoCompensacaoRequest parear = new ParearGrupoCompensacaoRequest();
+        parear.setLancamentoIds(List.of(debito.getId(), credito.getId()));
+        parear.setGrupoCompensacao(grupo);
+        financeiroCompensacaoService.parearGrupo(parear);
 
         LocacaoRepasseLancamentoEntity repasseVinculo = new LocacaoRepasseLancamentoEntity();
         repasseVinculo.setContratoLocacao(contrato);
@@ -1299,8 +1326,8 @@ public class LocacaoReconciliacaoService {
         repasseVinculo.setOrigemAluguelVinculo(aluguelVinculo);
         vinculoRepository.save(repasseVinculo);
 
-        log.info("[reconciliacao-imovel] REPASSE-INTERNO (par D/C) contrato={} aluguelVinculo={} repasse={} debito={} credito={} data={}",
-                contrato.getId(), aluguelVinculo.getId(), repasse, debito.getId(), credito.getId(), dataLancamento);
+        log.info("[reconciliacao-imovel] REPASSE-INTERNO (par I/A conta 19) contrato={} aluguelVinculo={} repasse={} debito={} credito={} pessoaRef={} data={}",
+                contrato.getId(), aluguelVinculo.getId(), repasse, debito.getId(), credito.getId(), pessoaDono.getId(), dataLancamento);
     }
 
     /**
@@ -1315,13 +1342,23 @@ public class LocacaoReconciliacaoService {
         }
         LocacaoRepasseLancamentoEntity repasse = repasseOpt.get();
         LancamentoFinanceiroEntity debito = repasse.getLancamentoFinanceiro();
+        String grupo = debito != null ? debito.getGrupoCompensacao() : null;
         vinculoRepository.delete(repasse);
         vinculoRepository.flush();
-        if (debito != null) {
-            lancamentoRepository.delete(debito);
+        if (StringUtils.hasText(grupo)) {
+            try {
+                financeiroCompensacaoService.desparear(grupo.trim());
+            } catch (IllegalArgumentException ex) {
+                log.warn("[reconciliacao-imovel] desparear grupo {} falhou ao remover repasse interno: {}",
+                        grupo, ex.getMessage());
+            }
+        } else {
+            if (debito != null) {
+                lancamentoRepository.delete(debito);
+            }
+            lancamentoRepository.findByNumeroLancamento(numeroCreditoRepasseInterno(aluguelVinculoId))
+                    .ifPresent(lancamentoRepository::delete);
         }
-        lancamentoRepository.findByNumeroLancamento(numeroCreditoRepasseInterno(aluguelVinculoId))
-                .ifPresent(lancamentoRepository::delete);
         log.info("[reconciliacao-imovel] REPASSE-INTERNO removido contrato={} aluguelVinculo={} debito={}",
                 contratoId, aluguelVinculoId, debito != null ? debito.getId() : null);
     }
@@ -1396,22 +1433,27 @@ public class LocacaoReconciliacaoService {
     }
 
     /**
-     * Cria um lançamento AUTO na conta virtual de repasse interno (par débito/crédito no extrato 900).
+     * Cria um lançamento AUTO de repasse interno na CONTA ZERO (19), com vínculo {@code pessoa_ref}
+     * do dono. O grupo de compensação é atribuído depois via {@code parearGrupo}.
      */
     private LancamentoFinanceiroEntity novoLancamentoRepasseInterno(
             NaturezaLancamento natureza,
-            BigDecimal valor, ClienteEntity cliente, ProcessoEntity processo,
-            LocalDate dataLancamento, LocalDate dataCompetencia,
-            String descricao, String numeroLancamento, String grupoCompensacao,
-            EtapaLancamento etapa) {
-        ContaBancariaEntity contaVirtual = contaRepasseInterno();
+            BigDecimal valor,
+            PessoaEntity pessoaDono,
+            ProcessoEntity processo,
+            LocalDate dataLancamento,
+            LocalDate dataCompetencia,
+            String descricao,
+            String numeroLancamento,
+            ContaContabilEntity contaContabil) {
+        ContaBancariaEntity contaZero = contaContaZero();
         LancamentoFinanceiroEntity l = new LancamentoFinanceiroEntity();
-        l.setContaContabil(contaAdministracao());
-        l.setClienteEntidade(cliente);
+        l.setContaContabil(contaContabil);
+        l.setPessoaRef(pessoaDono);
         l.setProcesso(processo);
-        l.setNumeroBanco(contaVirtual.getNumeroBanco());
-        l.setBancoNome(contaVirtual.getBancoNome());
-        l.setContaBancaria(contaVirtual);
+        l.setNumeroBanco(contaZero.getNumeroBanco());
+        l.setBancoNome(contaZero.getBancoNome());
+        l.setContaBancaria(contaZero);
         l.setNumeroLancamento(numeroLancamento);
         l.setDataLancamento(dataLancamento);
         l.setDataCompetencia(dataCompetencia);
@@ -1420,22 +1462,47 @@ public class LocacaoReconciliacaoService {
         l.setNatureza(natureza);
         l.setOrigem(ORIGEM_AUTO);
         l.setStatus("ATIVO");
-        l.setGrupoCompensacao(grupoCompensacao);
-        l.setEtapa(etapa);
+        l.setEtapa(EtapaLancamento.VINCULADO);
         return l;
     }
 
+    /** CONTA ZERO (numero_banco=19) para repasse interno de imóvel próprio. */
+    private ContaBancariaEntity contaContaZero() {
+        return contaBancariaRepository.findByNumeroBanco(NUMERO_BANCO_CONTA_ZERO)
+                .orElseThrow(() -> new IllegalStateException(
+                        "CONTA ZERO (numero_banco=19) não encontrada. Verifique a migration V203."));
+    }
+
+    private ContaContabilEntity contaImoveis() {
+        return contaContabilRepository.findFirstByCodigoIgnoreCase(CODIGO_CONTA_IMOVEIS)
+                .orElseThrow(() -> new BusinessRuleException(
+                        "Conta contábil de imóveis (I) não encontrada."));
+    }
+
     /**
-     * Conta bancária VIRTUAL do repasse interno (extrato no Financeiro, banco 900).
+     * Conta bancária VIRTUAL legada (banco 900) — usada apenas para localizar pares antigos na migração.
      */
-    private ContaBancariaEntity contaRepasseInterno() {
-        List<ContaBancariaEntity> virtuais = contaBancariaRepository.findByTipo(TIPO_CONTA_REPASSE_INTERNO);
+    private ContaBancariaEntity contaRepasseInternoLegado() {
+        List<ContaBancariaEntity> virtuais = contaBancariaRepository.findByTipo(TIPO_CONTA_REPASSE_INTERNO_LEGADO);
         if (virtuais.size() != 1) {
             throw new IllegalStateException(
-                    "Esperada exatamente 1 conta bancária tipo VIRTUAL (repasse interno); encontradas: "
+                    "Esperada exatamente 1 conta bancária tipo VIRTUAL (repasse interno legado); encontradas: "
                             + virtuais.size() + ". Verifique o seed/config de conta_bancaria.");
         }
         return virtuais.get(0);
+    }
+
+    /** Pessoa do dono do imóvel (vínculo na CONTA ZERO): imovel.pessoa ou cliente.pessoa. */
+    private static PessoaEntity pessoaRefDoDono(ContratoLocacaoEntity contrato) {
+        ImovelEntity imovel = contrato != null ? contrato.getImovel() : null;
+        if (imovel == null) {
+            return null;
+        }
+        if (imovel.getPessoa() != null) {
+            return imovel.getPessoa();
+        }
+        ClienteEntity cliente = imovel.getCliente();
+        return cliente != null ? cliente.getPessoa() : null;
     }
 
     private static LocalDate competenciaParaData(String competenciaMes, LocalDate fallback) {

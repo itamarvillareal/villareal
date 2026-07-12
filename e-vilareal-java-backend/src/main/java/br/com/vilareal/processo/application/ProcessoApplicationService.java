@@ -393,7 +393,18 @@ public class ProcessoApplicationService {
                 Boolean.TRUE.equals(c.getInativo()));
         resumo.setUsuarioResponsavelPadraoId(responsavelPadraoId(c));
         resumo.setUsuarioResponsavelPadraoNome(responsavelPadraoNome(c));
+        resumo.setProprio(Boolean.TRUE.equals(c.getProprio()));
         return resumo;
+    }
+
+    @Transactional
+    public ClienteListItemResponse atualizarProprio(Long clienteId, boolean proprio) {
+        ClienteEntity c = clienteRepository
+                .findById(clienteId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cliente não encontrado: " + clienteId));
+        c.setProprio(proprio);
+        c = clienteRepository.save(c);
+        return clienteEntityParaResumo(c);
     }
 
     private static Long responsavelPadraoId(ClienteEntity c) {

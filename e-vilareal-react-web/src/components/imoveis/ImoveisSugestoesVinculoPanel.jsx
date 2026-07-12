@@ -14,10 +14,12 @@ import {
 } from '../../data/imoveisVinculoSugestoes.js';
 import { buildExtratoUrlParaLancamento } from '../financeiro/extrato/extratoDeepLink.js';
 import {
+  aplicarSugestaoVinculoComClassificacaoApi,
   aplicarSugestaoVinculoImovelExtrato,
   carregarSugestoesVinculoImoveisExtrato,
   invalidarCachesSugestoesVinculoImoveis,
 } from '../../repositories/imoveisRepository.js';
+import { rotuloCompetenciaCurta } from '../../data/imoveisAluguelChecklist.js';
 
 function formatBRL(n) {
   const v = Number(n);
@@ -76,6 +78,8 @@ function tipoDestaqueNomeSugestao(s) {
  *   limite?: number,
  *   maxParesPorLancamento?: number,
  *   mostrarLinkCentral?: boolean,
+ *   competencia?: string | null,
+ *   classificarAluguelAoAprovar?: boolean,
  * }} props
  */
 export function ImoveisSugestoesVinculoPanel({
@@ -86,6 +90,8 @@ export function ImoveisSugestoesVinculoPanel({
   limite = 50,
   maxParesPorLancamento = 6,
   mostrarLinkCentral = true,
+  competencia = null,
+  classificarAluguelAoAprovar = true,
 }) {
   const navigate = useNavigate();
   const [carregandoInicial, setCarregandoInicial] = useState(true);
@@ -102,6 +108,7 @@ export function ImoveisSugestoesVinculoPanel({
   const [busca, setBusca] = useState('');
   const [filtroConfianca, setFiltroConfianca] = useState('todas');
   const [filtroCorNome, setFiltroCorNome] = useState('todas');
+  const [competenciaPorLancamento, setCompetenciaPorLancamento] = useState({});
   const montadoRef = useRef(true);
   const extratoTimerRef = useRef(null);
 
@@ -167,6 +174,29 @@ export function ImoveisSugestoesVinculoPanel({
     void recarregar();
   }, [recarregar]);
 
+  useEffect(() => {
+    setCompetenciaPorLancamento((prev) => {
+      const next = { ...prev };
+      for (const s of sugestoes) {
+        const key = chaveSugestaoRow(s);
+        if (!next[key]) {
+          next[key] = competencia || s.chaveMes || mesDaDataBr(s.data) || '';
+        }
+      }
+      return next;
+    });
+  }, [sugestoes, competencia]);
+
+  function mesDaDataBr(dataBr) {
+    const d = String(dataBr ?? '').trim();
+    const m = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(d);
+    return m ? `${m[3]}-${m[2]}` : '';
+  }
+
+  function competenciaPagamento(s) {
+    return mesDaDataBr(s?.data) || s?.chaveMes || '';
+  }
+
   const agendarAtualizacaoExtrato = useCallback(() => {
     if (!onAprovado) return;
     if (extratoTimerRef.current) clearTimeout(extratoTimerRef.current);
@@ -209,10 +239,15 @@ export function ImoveisSugestoesVinculoPanel({
   }, [sugestoes, imovelIdContexto, somenteEsteImovel, busca, filtroConfianca, filtroCorNome, estrategia]);
 
   async function aprovar(s) {
-    setAcaoId(`aprovar-${chaveSugestaoRow(s)}`);
+    const key = chaveSugestaoRow(s);
+    setAcaoId(`aprovar-${key}`);
     setErro('');
     try {
-      await aplicarSugestaoVinculoImovelExtrato(s);
+      const compAluguel = competenciaPorLancamento[key] || competencia || s.chaveMes || mesDaDataBr(s.data);
+      const ehAluguel = classificarAluguelAoAprovar && s.natureza !== 'DEBITO';
+      const resp = ehAluguel
+        ? await aplicarSugestaoVinculoComClassificacaoApi(s, { competencia: compAluguel })
+        : { ...(await aplicarSugestaoVinculoImovelExtrato(s)), classificado: false, avisoCompetencia: false };
       descartarSugestaoVinculoImovel({
         lancamentoId: s.lancamentoId,
         codigoCliente: s.codigoCliente,
@@ -224,8 +259,16 @@ export function ImoveisSugestoesVinculoPanel({
       const chave = chaveSugestaoRow(s);
       setSugestoes((prev) => prev.filter((x) => chaveSugestaoRow(x) !== chave));
       recarregarDescartes();
+      const extra =
+        resp?.classificado && compAluguel
+          ? ` · classificado ALUGUEL ${rotuloCompetenciaCurta(compAluguel)}`
+          : '';
+      const aviso =
+        resp?.avisoCompetencia && compAluguel
+          ? ` Atenção: pagamento em ${rotuloCompetenciaCurta(competenciaPagamento(s))}, competência ${rotuloCompetenciaCurta(compAluguel)}.`
+          : '';
       setSucesso(
-        `Vínculo aprovado: Cod. ${s.codigoCliente} / Proc. ${s.proc} (${s.mesReferencia || 'mês do lançamento'}).`,
+        `Vínculo aprovado: Cod. ${s.codigoCliente} / Proc. ${s.proc} (${s.mesReferencia || 'mês do lançamento'})${extra}.${aviso}`,
       );
       agendarAtualizacaoExtrato();
     } catch (e) {
@@ -465,6 +508,7 @@ export function ImoveisSugestoesVinculoPanel({
                   <th className="px-3 py-2">Lançamento</th>
                   <th className="px-3 py-2">Vínculo sugerido</th>
                   <th className="px-3 py-2">Confiança</th>
+                  {classificarAluguelAoAprovar ? <th className="px-3 py-2">Competência</th> : null}
                   <th className="px-3 py-2 text-right w-52">Ações</th>
                 </tr>
               </thead>
@@ -537,10 +581,44 @@ export function ImoveisSugestoesVinculoPanel({
                         <td className="px-3 py-2 align-top">
                           <div className="space-y-1">
                             {badgeConfianca(s.confianca)}
-                            <span className="block text-[10px] text-slate-500">score {s.score}</span>
+                            <span className="block text-[10px] text-slate-500">score {s.score}                        </span>
+                      </div>
+                    </td>
+                    {classificarAluguelAoAprovar ? (
+                      <td className="px-3 py-2 align-top">
+                        {s.natureza !== 'DEBITO' ? (
+                          <div className="space-y-1">
+                            <input
+                              type="month"
+                              value={competenciaPorLancamento[rowKey] ?? competencia ?? s.chaveMes ?? ''}
+                              onChange={(e) =>
+                                setCompetenciaPorLancamento((prev) => ({
+                                  ...prev,
+                                  [rowKey]: e.target.value,
+                                }))
+                              }
+                              className="rounded border border-violet-200 bg-white px-2 py-1 text-xs tabular-nums w-full min-w-[8.5rem]"
+                              aria-label="Competência do aluguel"
+                            />
+                            {(() => {
+                              const comp = competenciaPorLancamento[rowKey] || competencia || s.chaveMes;
+                              const pag = competenciaPagamento(s);
+                              if (comp && pag && comp !== pag) {
+                                return (
+                                  <p className="text-[10px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+                                    Pag. {rotuloCompetenciaCurta(pag)} ≠ ref. {rotuloCompetenciaCurta(comp)}
+                                  </p>
+                                );
+                              }
+                              return null;
+                            })()}
                           </div>
-                        </td>
-                        <td className="px-3 py-2 align-top" onDoubleClick={(e) => e.stopPropagation()}>
+                        ) : (
+                          <span className="text-[10px] text-slate-400">—</span>
+                        )}
+                      </td>
+                    ) : null}
+                    <td className="px-3 py-2 align-top" onDoubleClick={(e) => e.stopPropagation()}>
                           <div className="flex flex-col items-end gap-1.5">
                             <button
                               type="button"
@@ -589,7 +667,7 @@ export function ImoveisSugestoesVinculoPanel({
                                 : 'bg-slate-50/80'
                           }`}
                         >
-                          <td colSpan={5} className="px-4 py-2">
+                          <td colSpan={classificarAluguelAoAprovar ? 6 : 5} className="px-4 py-2">
                             <p className="text-[11px] font-semibold text-slate-600 mb-1">Por que sugerimos este vínculo:</p>
                             <ul className="text-xs text-slate-600 list-disc pl-4 space-y-0.5">
                               {s.motivos.map((m) => (

@@ -8,6 +8,7 @@ import br.com.vilareal.imovel.infrastructure.persistence.entity.ImovelEntity;
 import br.com.vilareal.imovel.infrastructure.persistence.repository.ContratoLocacaoRepository;
 import br.com.vilareal.imovel.infrastructure.persistence.repository.ImovelProcessoRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
+import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.AgendarCobrancaResultDTO;
 import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.CobrancaItemDTO;
 import br.com.vilareal.whatsapp.dto.CobrancaWhatsAppDTOs.CobrancaLoteResultDTO;
 import br.com.vilareal.whatsapp.infrastructure.persistence.repository.CobrancaWhatsAppRepository;
@@ -21,6 +22,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
@@ -49,6 +51,9 @@ public class AluguelCobrancaService {
     public static final String SITUACAO_PAGAMENTO_PROVAVEL = "PAGAMENTO_PROVAVEL";
     public static final String SITUACAO_EM_ATRASO = "EM_ATRASO";
     public static final String SITUACAO_A_VENCER = "A_VENCER";
+
+    /** Horário padrão do envio agendado (09:00 BRT). */
+    private static final LocalTime HORA_ENVIO_AGENDADO = LocalTime.of(9, 0);
 
     private final ContratoLocacaoRepository contratoLocacaoRepository;
     private final LocacaoReconciliacaoService reconciliacaoService;
@@ -118,7 +123,8 @@ public class AluguelCobrancaService {
      * o contrato é ignorado (nunca cobra quem já pagou).
      */
     @Transactional
-    public CobrancaLoteResultDTO cobrarAlugueis(List<Long> contratoIds, String competenciaParam, String createdBy) {
+    public CobrancaLoteResultDTO cobrarAlugueis(
+            List<Long> contratoIds, String competenciaParam, String createdBy, boolean agendarCobrancaWhatsApp) {
         if (contratoIds == null || contratoIds.isEmpty()) {
             throw new BusinessRuleException("Selecione ao menos um contrato para cobrança.");
         }
@@ -126,19 +132,88 @@ public class AluguelCobrancaService {
         Set<Long> selecionados = new HashSet<>(contratoIds);
 
         List<CobrancaItemDTO> itens = new ArrayList<>();
+        List<ContratoLocacaoEntity> contratosSelecionados = new ArrayList<>();
         for (ContratoLocacaoEntity contrato : contratosPendentes(ym)) {
             if (!selecionados.contains(contrato.getId())) {
                 continue;
             }
             itens.add(montarItemCobranca(contrato));
+            contratosSelecionados.add(contrato);
         }
         if (itens.isEmpty()) {
             throw new BusinessRuleException(
                     "Nenhum dos contratos selecionados segue com aluguel pendente em " + ym + ".");
         }
         String loteDescricao = "Aluguel em atraso · " + ym;
+
+        boolean agendar = agendarCobrancaWhatsApp
+                || contratosSelecionados.stream().anyMatch(c -> Boolean.TRUE.equals(c.getAgendarCobrancaWhatsApp()));
+        if (agendar) {
+            Instant scheduledAt = instantVencimentoCompetencia(contratosSelecionados.get(0), ym);
+            log.info(
+                    "[cobranca-aluguel] agendamento lote competencia={} contratos={} scheduledAt={}",
+                    ym,
+                    itens.size(),
+                    scheduledAt);
+            AgendarCobrancaResultDTO ag =
+                    cobrancaWhatsAppService.agendarLote(itens, loteDescricao, scheduledAt, createdBy, false);
+            return new CobrancaLoteResultDTO(
+                    ag.loteId(), ag.total(), 0, 0, ag.semTelefone(), 0, ag.puladosInelegiveis());
+        }
+
         log.info("[cobranca-aluguel] disparo lote competencia={} contratos={}", ym, itens.size());
         return cobrancaWhatsAppService.dispararLote(itens, loteDescricao, createdBy, false);
+    }
+
+    /**
+     * Job diário: agenda cobrança no vencimento para contratos com opt-in ainda sem aluguel na competência.
+     * Idempotente — ignora contratos já cobrados/agendados no mês.
+     */
+    @Transactional
+    public int agendarCobrancasVencimentoOptIn() {
+        YearMonth ym = YearMonth.now(ZONE_BRASILIA);
+        LocalDate hoje = LocalDate.now(ZONE_BRASILIA);
+        int agendados = 0;
+        for (ContratoLocacaoEntity contrato : contratosPendentes(ym)) {
+            if (!Boolean.TRUE.equals(contrato.getAgendarCobrancaWhatsApp())) {
+                continue;
+            }
+            LocalDate vencimento = dataVencimento(contrato, ym);
+            if (!hoje.equals(vencimento)) {
+                continue;
+            }
+            ImovelEntity imovel = contrato.getImovel();
+            if (imovel != null
+                    && imovel.getId() != null
+                    && cobrancaWhatsAppRepository.existsCobrancaNoMes(
+                            imovel.getId(), inicioMesAtual(hoje), fimMesAtual(hoje))) {
+                continue;
+            }
+            CobrancaItemDTO item = montarItemCobranca(contrato);
+            if (!StringUtils.hasText(item.telefone())) {
+                continue;
+            }
+            Instant scheduledAt = vencimento.atTime(HORA_ENVIO_AGENDADO).atZone(ZONE_BRASILIA).toInstant();
+            if (!scheduledAt.isAfter(Instant.now())) {
+                scheduledAt = Instant.now().plusSeconds(120);
+            }
+            String loteDescricao = "Aluguel vencimento · " + ym;
+            cobrancaWhatsAppService.agendarLote(List.of(item), loteDescricao, scheduledAt, "sistema", false);
+            agendados++;
+        }
+        if (agendados > 0) {
+            log.info("[cobranca-aluguel] opt-in vencimento competencia={} agendados={}", ym, agendados);
+        }
+        return agendados;
+    }
+
+    private static Instant instantVencimentoCompetencia(ContratoLocacaoEntity contrato, YearMonth ym) {
+        LocalDate vencimento = dataVencimento(contrato, ym);
+        Instant scheduledAt = vencimento.atTime(HORA_ENVIO_AGENDADO).atZone(ZONE_BRASILIA).toInstant();
+        if (!scheduledAt.isAfter(Instant.now())) {
+            scheduledAt = Instant.now().plusSeconds(120);
+        }
+        return scheduledAt;
     }
 
     private List<ContratoLocacaoEntity> contratosPendentes(YearMonth ym) {
@@ -190,7 +265,8 @@ public class AluguelCobrancaService {
                 temSugestao ? sugestao.sugestoes().size() : 0,
                 temTelefone,
                 temTelefone ? WhatsAppService.formatPhoneDisplay(telefone) : null,
-                jaCobrado);
+                jaCobrado,
+                Boolean.TRUE.equals(contrato.getAgendarCobrancaWhatsApp()));
     }
 
     private CobrancaItemDTO montarItemCobranca(ContratoLocacaoEntity contrato) {

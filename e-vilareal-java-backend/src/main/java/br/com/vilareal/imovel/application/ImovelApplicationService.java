@@ -718,6 +718,9 @@ public class ImovelApplicationService {
         c.setValorGarantia(req.getValorGarantia());
         c.setDadosBancariosRepasseJson(trimToNull(req.getDadosBancariosRepasseJson()));
         c.setObservacoes(trimToNull(req.getObservacoes()));
+        if (req.getAgendarCobrancaWhatsApp() != null) {
+            c.setAgendarCobrancaWhatsApp(req.getAgendarCobrancaWhatsApp());
+        }
         if (StringUtils.hasText(req.getStatus())) {
             c.setStatus(req.getStatus().trim());
         } else if (novo) {
@@ -853,6 +856,7 @@ public class ImovelApplicationService {
         r.setObservacoes(c.getObservacoes());
         r.setFiadoresPessoaIds(ContratoLocacaoFiadorSupport.extrairPessoaIds(c.getFiadoresJson()));
         r.setInquilinosPessoaIds(ContratoLocacaoFiadorSupport.extrairPessoaIds(c.getInquilinosJson()));
+        r.setAgendarCobrancaWhatsApp(Boolean.TRUE.equals(c.getAgendarCobrancaWhatsApp()));
         if ((r.getInquilinosPessoaIds() == null || r.getInquilinosPessoaIds().isEmpty())
                 && r.getInquilinoPessoaId() != null) {
             r.setInquilinosPessoaIds(List.of(r.getInquilinoPessoaId()));

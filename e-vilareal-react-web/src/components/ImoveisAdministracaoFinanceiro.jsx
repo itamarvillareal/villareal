@@ -23,6 +23,7 @@ import {
   obterResultadoImovelApi,
   vincularReconciliacaoApi,
 } from '../repositories/imoveisRepository.js';
+import { conferirLancamentosAcertoApi } from '../repositories/financeiroRepository.js';
 import {
   competenciaAtual,
   competenciaValida,
@@ -135,6 +136,8 @@ export function ImoveisAdministracaoFinanceiro({
   const [filtroCompetencia, setFiltroCompetencia] = useState(null);
   const [vinculandoLancamentoId, setVinculandoLancamentoId] = useState(null);
   const [linhasVinculadasRecentes, setLinhasVinculadasRecentes] = useState(() => new Set());
+  const [conferidoPorCompetencia, setConferidoPorCompetencia] = useState({});
+  const [conferindoCompetencia, setConferindoCompetencia] = useState(null);
 
   const imovelId = useMemo(() => {
     const fromProp = imovelIdProp != null ? Number(imovelIdProp) : NaN;
@@ -192,6 +195,15 @@ export function ImoveisAdministracaoFinanceiro({
       setMatriz(mat || null);
       setVinculosContrato(Array.isArray(vinculos) ? vinculos : []);
       setResultado(res || null);
+      if (mat?.meses?.length) {
+        const conferidos = {};
+        for (const m of mat.meses) {
+          if (m.aluguelVinculado?.conferidoEm) {
+            conferidos[m.competencia] = true;
+          }
+        }
+        setConferidoPorCompetencia(conferidos);
+      }
     },
     [contratoId, competencia],
   );
@@ -222,6 +234,23 @@ export function ImoveisAdministracaoFinanceiro({
     const max = contratoVigenteApi?.dataFim ? String(contratoVigenteApi.dataFim).slice(0, 7) : undefined;
     return { min, max };
   }, [contratoVigenteApi]);
+
+  async function conferirMesMatriz(comp, lancamentoId, conferido) {
+    if (!lancamentoId) return;
+    setConferindoCompetencia(comp);
+    setErroReconc('');
+    try {
+      await conferirLancamentosAcertoApi({
+        lancamentoIds: [Number(lancamentoId)],
+        conferido: conferido === true,
+      });
+      setConferidoPorCompetencia((prev) => ({ ...prev, [comp]: conferido === true }));
+    } catch (e) {
+      setErroReconc(e?.message || 'Falha ao marcar conferência.');
+    } finally {
+      setConferindoCompetencia(null);
+    }
+  }
 
   /** lancamentoFinanceiroId → { papel, competenciaMes, vinculoId } */
   const vinculosPorLancamento = useMemo(() => {
@@ -265,6 +294,15 @@ export function ImoveisAdministracaoFinanceiro({
         setMatriz(mat || null);
         setVinculosContrato(Array.isArray(vinculos) ? vinculos : []);
         setResultado(res || null);
+        if (mat?.meses?.length) {
+          const conferidos = {};
+          for (const m of mat.meses) {
+            if (m.aluguelVinculado?.conferidoEm) {
+              conferidos[m.competencia] = true;
+            }
+          }
+          setConferidoPorCompetencia(conferidos);
+        }
         if (mat?.meses?.length && !mat.meses.some((m) => m.competencia === competencia)) {
           const primeiraPendente = mat.meses.find((m) => m.estado !== 'VINCULADO');
           setCompetencia(primeiraPendente?.competencia ?? mat.meses[0]?.competencia ?? competencia);
@@ -754,6 +792,10 @@ export function ImoveisAdministracaoFinanceiro({
                         valorAluguelContrato={matriz?.valorAluguelContrato ?? contratoVigenteApi?.valorAluguel}
                         carregando={carregandoMatriz}
                         modoFiltro
+                        mostrarConferencia
+                        conferidoPorCompetencia={conferidoPorCompetencia}
+                        conferindoCompetencia={conferindoCompetencia}
+                        onConferirMes={conferirMesMatriz}
                       />
                       {filtroCompetencia ? (
                         <button

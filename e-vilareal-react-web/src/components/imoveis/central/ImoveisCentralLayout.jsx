@@ -4,6 +4,7 @@ import {
   BarChart3,
   BellRing,
   Building2,
+  ClipboardCheck,
   FileSpreadsheet,
   LayoutDashboard,
   LayoutGrid,
@@ -32,13 +33,17 @@ function ImoveisSidebarContent({ location, onNavigate }) {
         Central de Imóveis
       </p>
       <nav className="px-1 space-y-0.5" aria-label="Navegação imóveis">
+        <NavLink to="/imoveis/fechar-mes" className={navClass} onClick={onNavigate}>
+          <ClipboardCheck className="w-[15px] h-[15px] shrink-0" />
+          Fechar o Mês
+        </NavLink>
         <NavLink to="/imoveis" end className={navClass} onClick={onNavigate}>
           <LayoutDashboard className="w-[15px] h-[15px] shrink-0" />
           Visão Geral
         </NavLink>
         <NavLink to="/imoveis/conciliacao" className={navClass} onClick={onNavigate}>
           <Link2 className="w-[15px] h-[15px] shrink-0" />
-          Conciliação
+          Conciliação de aluguéis
         </NavLink>
         <NavLink
           to="/imoveis/relatorios"
@@ -64,7 +69,7 @@ function ImoveisSidebarContent({ location, onNavigate }) {
         </NavLink>
         <NavLink to="/imoveis/pagamentos/conciliacao" className={navClass} onClick={onNavigate}>
           <Link2 className="w-[15px] h-[15px] shrink-0" />
-          Conciliação bancária
+          Conciliação AP/boletos
         </NavLink>
         <NavLink to="/imoveis/demandas" className={navClass} onClick={onNavigate}>
           <LayoutGrid className="w-[15px] h-[15px] shrink-0" />

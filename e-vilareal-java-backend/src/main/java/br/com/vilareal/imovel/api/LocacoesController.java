@@ -117,7 +117,10 @@ public class LocacoesController {
                             + "Contratos cujo aluguel foi vinculado nesse meio tempo são ignorados.")
     public CobrancaLoteResultDTO cobrarAlugueis(@Valid @RequestBody AluguelTriagemResponse.CobrarRequest request) {
         return aluguelCobrancaService.cobrarAlugueis(
-                request.contratoIds(), request.competencia(), currentUsername());
+                request.contratoIds(),
+                request.competencia(),
+                currentUsername(),
+                Boolean.TRUE.equals(request.agendarCobrancaWhatsApp()));
     }
 
     @GetMapping("/alugueis-followup")
@@ -238,8 +241,9 @@ public class LocacoesController {
     @Operation(
             summary = "Gerar repasses internos (imóvel próprio)",
             description =
-                    "Cria par débito + crédito na conta virtual 900 para cada ALUGUEL vinculado ainda "
-                            + "sem REPASSE. Idempotente. Disparo manual (não automático ao vincular).")
+                    "Cria par soma zero na CONTA ZERO (banco 19): crédito letra I (rendimento líquido do dono) "
+                            + "+ débito letra A (débito do escritório), vínculo pessoa_ref do dono, compensado via "
+                            + "parearGrupo. Idempotente. Disparo manual (não automático ao vincular).")
     public GerarRepassesInternosResponse gerarRepassesInternos(
             @PathVariable Long contratoId, @RequestParam(required = false) String competencia) {
         return reconciliacaoService.gerarRepassesInternosContrato(contratoId, competencia);

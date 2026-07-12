@@ -1788,7 +1788,7 @@ export async function carregarTriagemAlugueisApi({ competencia, signal } = {}) {
 }
 
 /** Dispara cobrança WhatsApp (template cobranca_pagamento) para contratos em atraso. */
-export async function cobrarAlugueisAtrasadosApi({ contratoIds, competencia } = {}) {
+export async function cobrarAlugueisAtrasadosApi({ contratoIds, competencia, agendarCobrancaWhatsApp } = {}) {
   if (!featureFlags.useApiImoveis) {
     return { loteId: null, total: 0, enviados: 0, falhos: 0, semTelefone: 0, jaCobrados: 0, puladosInelegiveis: 0 };
   }
@@ -1796,7 +1796,11 @@ export async function cobrarAlugueisAtrasadosApi({ contratoIds, competencia } = 
   if (ids.length === 0) throw new Error('Selecione ao menos um contrato para cobrança.');
   return request('/api/locacoes/alugueis-cobrar', {
     method: 'POST',
-    body: { contratoIds: ids, competencia: competencia || null },
+    body: {
+      contratoIds: ids,
+      competencia: competencia || null,
+      ...(agendarCobrancaWhatsApp === true ? { agendarCobrancaWhatsApp: true } : {}),
+    },
   });
 }
 
@@ -2265,6 +2269,203 @@ export async function obterResultadoImovelApi(contratoId, { competencia, inicio,
   });
 }
 
+/**
+ * Checklist «Fechar o Mês»: tenta GET dedicado; se 404, agrega visão geral + triagem + follow-up + repasses.
+ */
+export async function carregarFecharMesApi({ competencia, signal } = {}) {
+  if (!featureFlags.useApiImoveis) {
+    return {
+      competencia: competencia ?? null,
+      fonte: 'mock',
+      checklist: {
+        alugueisRecebidos: 0,
+        alugueisTotal: 0,
+        cobrancasAFazer: 0,
+        repassesHoje: 0,
+        repassesHojeValor: 0,
+        despesasAClassificar: 0,
+        sugestoesVinculo: 0,
+      },
+      repassesPendentes: { totalEmAberto: 0, itens: [] },
+    };
+  }
+  try {
+    const res = await request('/api/imoveis/fechar-mes', {
+      signal,
+      query: { competencia: competencia || undefined },
+    });
+    return { ...res, fonte: 'api' };
+  } catch (e) {
+    if (e?.status !== 404 && e?.response?.status !== 404) throw e;
+  }
+
+  const [visao, triagem, followup, repasses] = await Promise.all([
+    carregarVisaoGeralImoveisApi({ competencia, signal }),
+    carregarTriagemAlugueisApi({ competencia, signal }),
+    carregarFollowupAlugueisApi({ competencia, signal }),
+    listarRepassesPendentesApi({ ate: competencia }),
+  ]);
+
+  const itens = Array.isArray(visao?.itens) ? visao.itens : [];
+  const ocupadosComContrato = itens.filter((it) => it.ocupado && it.contratoId);
+  const alugueisRecebidos = ocupadosComContrato.filter((it) => Number(it.aluguelRecebido) > 0).length;
+  const alugueisTotal = ocupadosComContrato.length;
+  const cobrancasAFazer =
+    (Number(followup?.totalAcaoHoje) || 0) + (Number(triagem?.totalEmAtraso) || 0);
+  const diaHoje = new Date().getDate();
+  const repassesTerceiros = (Array.isArray(repasses?.itens) ? repasses.itens : []).filter((r) => {
+    const np = Number(r.imovelNumeroPlanilha);
+    const vis = itens.find((it) => Number(it.numeroPlanilha) === np);
+    return vis && !vis.repasseInterno;
+  });
+  const repassesHojeLista = repassesTerceiros.filter((r) => {
+    const np = Number(r.imovelNumeroPlanilha);
+    const vis = itens.find((it) => Number(it.numeroPlanilha) === np);
+    return Number(vis?.diaRepasse) === diaHoje;
+  });
+  const repassesHojeValor = repassesHojeLista.reduce(
+    (s, r) => s + (Number(r.repasseEsperado) - Number(r.despesas || 0)),
+    0,
+  );
+  const despesasAClassificar = itens.filter(
+    (it) =>
+      it.ocupado &&
+      Number(it.aluguelRecebido) > 0 &&
+      String(it.statusRepasse ?? '').toUpperCase() !== 'FEITO',
+  ).length;
+
+  let sugestoesVinculo = 0;
+  try {
+    const sug = await carregarSugestoesVinculoImoveisExtrato({
+      estrategia: 'todosParesQualificados',
+      limite: 300,
+      maxParesPorLancamento: 8,
+    });
+    sugestoesVinculo = Array.isArray(sug?.sugestoes) ? sug.sugestoes.length : 0;
+  } catch {
+    sugestoesVinculo = 0;
+  }
+
+  return {
+    competencia: visao?.competencia ?? competencia ?? null,
+    fonte: 'agregado',
+    checklist: {
+      alugueisRecebidos,
+      alugueisTotal,
+      cobrancasAFazer,
+      repassesHoje: repassesHojeLista.length,
+      repassesHojeValor,
+      despesasAClassificar,
+      sugestoesVinculo,
+    },
+    repassesPendentes: repasses,
+  };
+}
+
+/** Lê flag cliente.proprio (imóvel próprio) por código — fallback null se endpoint indisponível. */
+export async function obterProprioClientePorCodigoApi(codigoCliente) {
+  if (!codigoCliente || !featureFlags.useApiClientes) return null;
+  try {
+    const ctx = await request('/api/clientes/contexto', {
+      query: { codigoCliente: String(codigoCliente).trim() },
+    });
+    const cliente = ctx?.cliente;
+    if (!cliente) return null;
+    const clienteId =
+      cliente.clienteId != null
+        ? Number(cliente.clienteId)
+        : cliente.id != null
+          ? Number(cliente.id)
+          : null;
+    return {
+      clienteId: Number.isFinite(clienteId) ? clienteId : null,
+      proprio: cliente.proprio != null ? Boolean(cliente.proprio) : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Atualiza cliente.proprio (imóvel próprio / repasse interno). */
+export async function atualizarProprioClienteApi(clienteId, proprio) {
+  if (!featureFlags.useApiClientes) throw new Error('API de clientes desativada.');
+  const id = Number(clienteId);
+  if (!id) throw new Error('Cliente inválido.');
+  return request(`/api/clientes/${id}/proprio`, {
+    method: 'PATCH',
+    body: { proprio: proprio === true },
+  });
+}
+
+/** Atualiza regras do contrato vigente (dias, taxa) preservando demais campos. */
+export async function atualizarContratoRegrasApi(contratoId, { imovelId, diaVencimentoAluguel, diaRepasse, taxaAdministracaoPercent, contratoBase } = {}) {
+  if (!featureFlags.useApiImoveis) throw new Error('API de imóveis desativada.');
+  const id = Number(contratoId);
+  if (!id) throw new Error('Contrato inválido.');
+  const base = contratoBase && typeof contratoBase === 'object' ? contratoBase : {};
+  const body = {
+    imovelId: Number(imovelId) || Number(base.imovelId),
+    processoId: base.processoId ?? null,
+    locadorPessoaId: base.locadorPessoaId ?? null,
+    inquilinoPessoaId: base.inquilinoPessoaId ?? null,
+    inquilinosPessoaIds: base.inquilinosPessoaIds ?? undefined,
+    dataInicio: base.dataInicio ?? null,
+    dataFim: base.dataFim ?? null,
+    valorAluguel: base.valorAluguel ?? null,
+    valorRepassePactuado: base.valorRepassePactuado ?? null,
+    diaVencimentoAluguel:
+      diaVencimentoAluguel != null && Number.isFinite(Number(diaVencimentoAluguel))
+        ? Number(diaVencimentoAluguel)
+        : base.diaVencimentoAluguel ?? null,
+    diaRepasse:
+      diaRepasse != null && Number.isFinite(Number(diaRepasse)) ? Number(diaRepasse) : base.diaRepasse ?? null,
+    taxaAdministracaoPercent:
+      taxaAdministracaoPercent != null && Number.isFinite(Number(taxaAdministracaoPercent))
+        ? Number(taxaAdministracaoPercent)
+        : base.taxaAdministracaoPercent ?? null,
+    formaPagamentoAluguel: base.formaPagamentoAluguel ?? null,
+    garantiaTipo: base.garantiaTipo ?? null,
+    valorGarantia: base.valorGarantia ?? null,
+    dadosBancariosRepasseJson: base.dadosBancariosRepasseJson ?? null,
+    status: base.status ?? 'VIGENTE',
+    observacoes: base.observacoes ?? null,
+    fiadoresPessoaIds: base.fiadoresPessoaIds ?? undefined,
+  };
+  return request(`/api/locacoes/contratos/${id}`, { method: 'PUT', body });
+}
+
+/**
+ * Aprova vínculo extrato → imóvel e, para créditos de aluguel, classifica como ALUGUEL na competência.
+ */
+export async function aplicarSugestaoVinculoComClassificacaoApi(sugestao, { competencia } = {}) {
+  const resultadoVinculo = await aplicarSugestaoVinculoImovelExtrato(sugestao);
+  const ehAluguel =
+    sugestao?.natureza !== 'DEBITO' &&
+    (sugestao?.tipo === 'aluguel' || String(sugestao?.tagSugerida ?? '').toUpperCase().includes('ALUGUEL'));
+  if (!ehAluguel) return { ...resultadoVinculo, classificado: false };
+
+  const competenciaMes = competencia || sugestao?.chaveMes || null;
+  const contratoId = await resolverContratoLocacaoIdParaImovel(sugestao?.imovelId);
+  if (!contratoId || !competenciaMes) {
+    return { ...resultadoVinculo, classificado: false, avisoCompetencia: false };
+  }
+  await vincularReconciliacaoApi(contratoId, [
+    {
+      lancamentoFinanceiroId: sugestao.lancamentoId,
+      papel: 'ALUGUEL',
+      competenciaMes,
+    },
+  ]);
+  const mesPag = (() => {
+    const d = String(sugestao?.data ?? '').trim();
+    if (/^\d{4}-\d{2}/.test(d)) return d.slice(0, 7);
+    const m = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(d);
+    return m ? `${m[3]}-${m[2]}` : sugestao?.chaveMes || null;
+  })();
+  const avisoCompetencia = Boolean(mesPag && competenciaMes && mesPag !== competenciaMes);
+  return { ...resultadoVinculo, classificado: true, competenciaMes, avisoCompetencia };
+}
+
 /** Carteira de repasses pendentes/divergentes (todos os imóveis). */
 export async function listarRepassesPendentesApi({ ate } = {}) {
   if (!featureFlags.useApiImoveis) return { totalEmAberto: 0, itens: [] };
@@ -2273,7 +2474,10 @@ export async function listarRepassesPendentesApi({ ate } = {}) {
   });
 }
 
-/** Gera repasses internos (par débito/crédito na conta 900) para ALUGUELs vinculados sem REPASSE. */
+/**
+ * Gera repasses internos (par débito/crédito na conta virtual 900; repasse I/A na conta 19)
+ * para ALUGUELs vinculados sem REPASSE em imóveis próprios (cliente.proprio).
+ */
 export async function gerarRepassesInternosApi(contratoId, { competencia } = {}) {
   if (!featureFlags.useApiImoveis) return { repassesGerados: 0, repassesJaExistentes: 0, alugueisSemRepasse: 0 };
   const id = Number(contratoId);

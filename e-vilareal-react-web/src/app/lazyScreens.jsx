@@ -72,6 +72,10 @@ export const LazyImoveisConciliacao = fromNamed(
   () => import('../components/imoveis/central/ImoveisConciliacaoPage.jsx'),
   'ImoveisConciliacaoPage'
 );
+export const LazyImoveisFecharMes = fromNamed(
+  () => import('../components/imoveis/central/ImoveisFecharMesPage.jsx'),
+  'ImoveisFecharMesPage'
+);
 export const LazyImoveisRelatoriosHub = fromNamed(
   () => import('../components/imoveis/central/ImoveisRelatoriosHubPage.jsx'),
   'ImoveisRelatoriosHubPage'

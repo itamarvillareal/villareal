@@ -39,7 +39,9 @@ public record AluguelTriagemResponse(
             int qtdSugestoesExtrato,
             boolean temTelefone,
             String telefoneFormatado,
-            boolean jaCobradoEsteMes) {}
+            boolean jaCobradoEsteMes,
+            /** Opt-in: agendar cobrança WhatsApp no dia de vencimento (contrato). */
+            boolean agendarCobrancaWhatsApp) {}
 
-    public record CobrarRequest(List<Long> contratoIds, String competencia) {}
+    public record CobrarRequest(List<Long> contratoIds, String competencia, Boolean agendarCobrancaWhatsApp) {}
 }

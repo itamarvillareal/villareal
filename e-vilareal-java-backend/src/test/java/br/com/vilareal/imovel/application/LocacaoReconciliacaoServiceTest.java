@@ -1,6 +1,9 @@
 package br.com.vilareal.imovel.application;
 
 import br.com.vilareal.common.exception.BusinessRuleException;
+import br.com.vilareal.financeiro.api.dto.ParearGrupoCompensacaoRequest;
+import br.com.vilareal.financeiro.api.dto.ParearGrupoCompensacaoResponse;
+import br.com.vilareal.financeiro.application.FinanceiroCompensacaoService;
 import br.com.vilareal.financeiro.domain.ConfiancaSugestao;
 import br.com.vilareal.financeiro.domain.EtapaLancamento;
 import br.com.vilareal.financeiro.domain.NaturezaLancamento;
@@ -76,19 +79,35 @@ class LocacaoReconciliacaoServiceTest {
     private ContaBancariaRepository contaBancariaRepository;
     @Mock
     private ImovelProcessoRepository imovelProcessoRepository;
+    @Mock
+    private FinanceiroCompensacaoService financeiroCompensacaoService;
 
     @InjectMocks
     private LocacaoReconciliacaoService service;
 
     @BeforeEach
-    void stubContaVirtual() {
-        // B2: o débito de repasse interno busca a conta VIRTUAL (numero_banco/banco_nome vêm dela).
-        // lenient: nem todo teste gera repasse interno.
+    void stubContasRepasseInterno() {
+        lenient().when(contaBancariaRepository.findByNumeroBanco(19)).thenReturn(Optional.of(contaZero()));
         lenient().when(contaBancariaRepository.findByTipo("VIRTUAL")).thenReturn(List.of(contaVirtual()));
-        // Item 4 (fonte única): o processo do contrato vem da linha ATIVA de imovel_processo.
+        lenient().when(contaContabilRepository.findFirstByCodigoIgnoreCase("A")).thenReturn(Optional.of(contaA()));
+        lenient().when(contaContabilRepository.findFirstByCodigoIgnoreCase("I")).thenReturn(Optional.of(contaI()));
         lenient()
                 .when(imovelProcessoRepository.findFirstByImovel_IdAndAtivoTrueOrderByIdDesc(IMOVEL_ID))
                 .thenReturn(Optional.of(imovelProcessoAtivo(processoComId(PROCESSO_ID))));
+        lenient().when(lancamentoRepository.save(any())).thenAnswer(inv -> {
+            LancamentoFinanceiroEntity l = inv.getArgument(0);
+            if (l.getId() == null) {
+                l.setId(SEQ.incrementAndGet());
+            }
+            return l;
+        });
+        lenient().when(financeiroCompensacaoService.parearGrupo(any())).thenAnswer(inv -> {
+            ParearGrupoCompensacaoRequest req = inv.getArgument(0);
+            ParearGrupoCompensacaoResponse resp = new ParearGrupoCompensacaoResponse();
+            resp.setGrupoCompensacao(req.getGrupoCompensacao());
+            resp.setLancamentos(req.getLancamentoIds() != null ? req.getLancamentoIds().size() : 0);
+            return resp;
+        });
     }
 
     private static ImovelProcessoEntity imovelProcessoAtivo(ProcessoEntity processo) {
@@ -616,7 +635,7 @@ class LocacaoReconciliacaoServiceTest {
     }
 
     @Test
-    void gerarRepassesInternosGeraParDebitoCreditoNaContaVirtual() {
+    void gerarRepassesInternosGeraParDebitoCreditoNaContaZero() {
         ContratoLocacaoEntity c = contrato();
         c.setValorAluguel(new BigDecimal("1700.00"));
         when(contratoLocacaoRepository.findById(CONTRATO_ID)).thenReturn(Optional.of(c));
@@ -627,7 +646,6 @@ class LocacaoReconciliacaoServiceTest {
                 .thenReturn(List.of());
         when(vinculoRepository.findByOrigemAluguelVinculo_IdAndPapel(77L, PapelReconciliacao.REPASSE))
                 .thenReturn(Optional.empty());
-        when(contaContabilRepository.findFirstByCodigoIgnoreCase("A")).thenReturn(Optional.of(contaA()));
         when(vinculoRepository.save(any())).thenAnswer(inv -> withId(inv.getArgument(0), 88L));
 
         var resp = service.gerarRepassesInternosContrato(CONTRATO_ID, "2026-05");
@@ -641,12 +659,20 @@ class LocacaoReconciliacaoServiceTest {
                 .filter(l -> l.getNatureza() == NaturezaLancamento.CREDITO).findFirst().orElseThrow();
         assertThat(debito.getValor()).isEqualByComparingTo("1530.00");
         assertThat(credito.getValor()).isEqualByComparingTo("1530.00");
-        assertThat(debito.getGrupoCompensacao()).isEqualTo("AUTO-REP-77");
-        assertThat(credito.getGrupoCompensacao()).isEqualTo("AUTO-REP-77");
         assertThat(debito.getNumeroLancamento()).isEqualTo("AUTO-REP-77-D");
         assertThat(credito.getNumeroLancamento()).isEqualTo("AUTO-REP-77-C");
-        assertThat(debito.getNumeroBanco()).isEqualTo(900);
+        assertThat(debito.getNumeroBanco()).isEqualTo(19);
+        assertThat(credito.getNumeroBanco()).isEqualTo(19);
+        assertThat(debito.getContaContabil().getCodigo()).isEqualTo("A");
+        assertThat(credito.getContaContabil().getCodigo()).isEqualTo("I");
+        assertThat(debito.getPessoaRef()).isNotNull();
+        assertThat(credito.getPessoaRef()).isEqualTo(debito.getPessoaRef());
         assertThat(debito.getDataLancamento()).isEqualTo(LocalDate.of(2026, 5, 7));
+        ArgumentCaptor<ParearGrupoCompensacaoRequest> parearCap =
+                ArgumentCaptor.forClass(ParearGrupoCompensacaoRequest.class);
+        verify(financeiroCompensacaoService).parearGrupo(parearCap.capture());
+        assertThat(parearCap.getValue().getGrupoCompensacao()).isEqualTo("AUTO-REP-77");
+        assertThat(parearCap.getValue().getLancamentoIds()).hasSize(2);
     }
 
     @Test
@@ -810,7 +836,8 @@ class LocacaoReconciliacaoServiceTest {
         int corrigidos = service.corrigirRepasseInternoContrato(CONTRATO_ID);
 
         assertThat(corrigidos).isEqualTo(1);
-        verify(lancamentoRepository).delete(errado);
+        verify(financeiroCompensacaoService).desparear("AUTO-REP-5");
+        verify(vinculoRepository).delete(repasseErrado);
         ArgumentCaptor<LancamentoFinanceiroEntity> cap = ArgumentCaptor.forClass(LancamentoFinanceiroEntity.class);
         verify(lancamentoRepository, times(2)).save(cap.capture());
         assertThat(cap.getAllValues()).anySatisfy(l -> {
@@ -919,11 +946,10 @@ class LocacaoReconciliacaoServiceTest {
     // ------------------------------------------------------------------ B2: conta VIRTUAL (não 900 hardcoded)
 
     @Test
-    void repasseInternoUsaNumeroBancoEBancoNomeDaContaVirtual() {
-        ContaBancariaEntity virtual = contaVirtual();
-        virtual.setNumeroBanco(950);
-        virtual.setBancoNome("REPASSE INTERNO (V2)");
-        when(contaBancariaRepository.findByTipo("VIRTUAL")).thenReturn(List.of(virtual));
+    void repasseInternoUsaContaZeroNumeroBanco19() {
+        ContaBancariaEntity cz = contaZero();
+        cz.setBancoNome("CONTA ZERO (TESTE)");
+        when(contaBancariaRepository.findByNumeroBanco(19)).thenReturn(Optional.of(cz));
         ContratoLocacaoEntity c = contrato();
         c.setValorAluguel(new BigDecimal("1700.00"));
         when(contratoLocacaoRepository.findById(CONTRATO_ID)).thenReturn(Optional.of(c));
@@ -932,7 +958,6 @@ class LocacaoReconciliacaoServiceTest {
                 .thenReturn(List.of(aluguel));
         when(vinculoRepository.findByOrigemAluguelVinculo_IdAndPapel(77L, PapelReconciliacao.REPASSE))
                 .thenReturn(Optional.empty());
-        when(contaContabilRepository.findFirstByCodigoIgnoreCase("A")).thenReturn(Optional.of(contaA()));
         when(vinculoRepository.save(any())).thenAnswer(inv -> withId(inv.getArgument(0), 88L));
 
         service.gerarRepassesInternosContrato(CONTRATO_ID, "2026-05");
@@ -941,15 +966,15 @@ class LocacaoReconciliacaoServiceTest {
         verify(lancamentoRepository, times(2)).save(cap.capture());
         LancamentoFinanceiroEntity debito = cap.getAllValues().stream()
                 .filter(l -> l.getNatureza() == NaturezaLancamento.DEBITO).findFirst().orElseThrow();
-        assertThat(debito.getNumeroBanco()).isEqualTo(950);
-        assertThat(debito.getBancoNome()).isEqualTo("REPASSE INTERNO (V2)");
-        assertThat(debito.getContaBancaria()).isSameAs(virtual);
+        assertThat(debito.getNumeroBanco()).isEqualTo(19);
+        assertThat(debito.getBancoNome()).isEqualTo("CONTA ZERO (TESTE)");
+        assertThat(debito.getContaBancaria()).isSameAs(cz);
         assertThat(debito.getValor()).isEqualByComparingTo("1530.00");
     }
 
     @Test
-    void repasseInternoSemContaVirtualFalhaClaro() {
-        when(contaBancariaRepository.findByTipo("VIRTUAL")).thenReturn(List.of());
+    void repasseInternoSemContaZeroFalhaClaro() {
+        when(contaBancariaRepository.findByNumeroBanco(19)).thenReturn(Optional.empty());
         when(contratoLocacaoRepository.findById(CONTRATO_ID)).thenReturn(Optional.of(contrato()));
         LocacaoRepasseLancamentoEntity aluguel = vinculoAluguel(77L, "1700.00", "2026-05", LocalDate.of(2026, 5, 7));
         when(vinculoRepository.findByContratoLocacao_IdOrderByCompetenciaMesAscIdAsc(CONTRATO_ID))
@@ -959,7 +984,7 @@ class LocacaoReconciliacaoServiceTest {
 
         assertThatThrownBy(() -> service.gerarRepassesInternosContrato(CONTRATO_ID, "2026-05"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("VIRTUAL");
+                .hasMessageContaining("CONTA ZERO");
 
         verify(lancamentoRepository, never()).save(any(LancamentoFinanceiroEntity.class));
     }
@@ -1135,14 +1160,18 @@ class LocacaoReconciliacaoServiceTest {
 
     private static ContratoLocacaoEntity contrato() {
         ProcessoEntity processo = processoComId(PROCESSO_ID);
+        PessoaEntity pessoaDono = pessoa("Itamar Villa Real");
+        pessoaDono.setId(100L);
         ClienteEntity cliente = new ClienteEntity();
         cliente.setId(938L);
         cliente.setCodigoCliente("00000938");
-        cliente.setProprio(true); // fonte da verdade do "imóvel próprio" (V114)
+        cliente.setProprio(true);
+        cliente.setPessoa(pessoaDono);
         ImovelEntity imovel = new ImovelEntity();
         imovel.setId(IMOVEL_ID);
         imovel.setProcesso(processo);
         imovel.setCliente(cliente);
+        imovel.setPessoa(pessoaDono);
         ContratoLocacaoEntity c = new ContratoLocacaoEntity();
         c.setId(CONTRATO_ID);
         c.setImovel(imovel);
@@ -1223,14 +1252,33 @@ class LocacaoReconciliacaoServiceTest {
         return v;
     }
 
-    /** Débito de repasse interno (conta A, banco virtual 900, par balanceado). */
+    private static ContaBancariaEntity contaZero() {
+        ContaBancariaEntity c = new ContaBancariaEntity();
+        c.setId(19L);
+        c.setNumeroBanco(19);
+        c.setBancoNome("CONTA ZERO");
+        c.setTipo("MANUAL");
+        c.setExigeSomaZero(true);
+        c.setAtivo(true);
+        return c;
+    }
+
+    private static ContaContabilEntity contaI() {
+        ContaContabilEntity c = new ContaContabilEntity();
+        c.setId(9L);
+        c.setCodigo("I");
+        c.setNome("Imóveis");
+        return c;
+    }
+
+    /** Débito de repasse interno (conta A, CONTA ZERO 19, par compensado). */
     private static LancamentoFinanceiroEntity debitoRepasseInterno(
             Long id, String valor, LocalDate data, String numero, Long aluguelVinculoId) {
         LancamentoFinanceiroEntity d = lancamento(id, NaturezaLancamento.DEBITO, valor, data, "Repasse interno (imóvel próprio) 2026-05");
         d.setContaContabil(contaA());
-        d.setEtapa(EtapaLancamento.VINCULADO);
-        d.setNumeroBanco(900);
-        d.setBancoNome("REPASSE INTERNO");
+        d.setEtapa(EtapaLancamento.COMPENSADO);
+        d.setNumeroBanco(19);
+        d.setBancoNome("CONTA ZERO");
         d.setOrigem("AUTO");
         d.setStatus("ATIVO");
         d.setNumeroLancamento(numero);
@@ -1241,11 +1289,11 @@ class LocacaoReconciliacaoServiceTest {
 
     private static LancamentoFinanceiroEntity creditoRepasseInterno(
             Long id, String valor, LocalDate data, String numero, Long aluguelVinculoId) {
-        LancamentoFinanceiroEntity c = lancamento(id, NaturezaLancamento.CREDITO, valor, data, "Contrapartida repasse interno 2026-05");
-        c.setContaContabil(contaA());
-        c.setEtapa(EtapaLancamento.VINCULADO);
-        c.setNumeroBanco(900);
-        c.setBancoNome("REPASSE INTERNO");
+        LancamentoFinanceiroEntity c = lancamento(id, NaturezaLancamento.CREDITO, valor, data, "Rendimento imóvel próprio 2026-05");
+        c.setContaContabil(contaI());
+        c.setEtapa(EtapaLancamento.COMPENSADO);
+        c.setNumeroBanco(19);
+        c.setBancoNome("CONTA ZERO");
         c.setOrigem("AUTO");
         c.setStatus("ATIVO");
         c.setNumeroLancamento(numero);

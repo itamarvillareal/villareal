@@ -120,7 +120,7 @@ class AluguelCobrancaServiceTest {
         when(cobrancaWhatsAppService.dispararLote(anyList(), anyString(), anyString(), eq(false)))
                 .thenReturn(resultado);
 
-        CobrancaLoteResultDTO resp = service.cobrarAlugueis(List.of(1L), COMPETENCIA_PASSADA, "itamar");
+        CobrancaLoteResultDTO resp = service.cobrarAlugueis(List.of(1L), COMPETENCIA_PASSADA, "itamar", false);
 
         assertThat(resp.enviados()).isEqualTo(1);
         @SuppressWarnings("unchecked")
@@ -140,7 +140,7 @@ class AluguelCobrancaServiceTest {
                         eq(COMPETENCIA_PASSADA), any(), any()))
                 .thenReturn(List.of());
 
-        assertThatThrownBy(() -> service.cobrarAlugueis(List.of(1L), COMPETENCIA_PASSADA, "itamar"))
+        assertThatThrownBy(() -> service.cobrarAlugueis(List.of(1L), COMPETENCIA_PASSADA, "itamar", false))
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("pendente");
         verify(cobrancaWhatsAppService, never()).dispararLote(anyList(), anyString(), anyString(), eq(false));

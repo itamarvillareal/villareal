@@ -80,6 +80,10 @@ public class ContratoLocacaoEntity {
     @Column(name = "inquilinos_json", columnDefinition = "TEXT")
     private String inquilinosJson;
 
+    /** Opt-in: agendar cobrança WhatsApp automaticamente no dia de vencimento do aluguel. */
+    @Column(name = "agendar_cobranca_whatsapp", nullable = false)
+    private Boolean agendarCobrancaWhatsApp = false;
+
     @Column(nullable = false, length = 40)
     private String status = "RASCUNHO";
 

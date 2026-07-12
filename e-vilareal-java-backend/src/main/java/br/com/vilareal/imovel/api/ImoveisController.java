@@ -1,5 +1,6 @@
 package br.com.vilareal.imovel.api;
 
+import br.com.vilareal.imovel.api.dto.ImovelFecharMesResponse;
 import br.com.vilareal.imovel.api.dto.ImovelNumeroPlanilhaResponse;
 import br.com.vilareal.imovel.api.dto.ImovelProcessoPatchRequest;
 import br.com.vilareal.imovel.api.dto.ImovelProcessoResponse;
@@ -13,6 +14,7 @@ import br.com.vilareal.imovel.api.dto.ImovelVisaoGeralResponse;
 import br.com.vilareal.imovel.api.dto.ImovelWriteRequest;
 import br.com.vilareal.imovel.api.dto.RelatorioFinanceiroImoveisResponse;
 import br.com.vilareal.imovel.application.ImovelApplicationService;
+import br.com.vilareal.imovel.application.ImoveisFecharMesService;
 import br.com.vilareal.imovel.application.ImoveisVisaoGeralService;
 import br.com.vilareal.imovel.application.RelatorioFinanceiroImoveisService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -33,20 +35,33 @@ public class ImoveisController {
     private final ImovelApplicationService imovelApplicationService;
     private final RelatorioFinanceiroImoveisService relatorioFinanceiroImoveisService;
     private final ImoveisVisaoGeralService imoveisVisaoGeralService;
+    private final ImoveisFecharMesService imoveisFecharMesService;
 
     public ImoveisController(
             ImovelApplicationService imovelApplicationService,
             RelatorioFinanceiroImoveisService relatorioFinanceiroImoveisService,
-            ImoveisVisaoGeralService imoveisVisaoGeralService) {
+            ImoveisVisaoGeralService imoveisVisaoGeralService,
+            ImoveisFecharMesService imoveisFecharMesService) {
         this.imovelApplicationService = imovelApplicationService;
         this.relatorioFinanceiroImoveisService = relatorioFinanceiroImoveisService;
         this.imoveisVisaoGeralService = imoveisVisaoGeralService;
+        this.imoveisFecharMesService = imoveisFecharMesService;
     }
 
     @GetMapping
     @Operation(summary = "Listar imóveis")
     public List<ImovelResponse> listar() {
         return imovelApplicationService.listarImoveis();
+    }
+
+    @GetMapping("/fechar-mes")
+    @Operation(
+            summary = "Checklist «Fechar o Mês»",
+            description =
+                    "Agregação server-side do ciclo mensal: aluguéis recebidos, cobranças, repasses do dia, "
+                            + "despesas pendentes e sugestões de vínculo — sem somar mil linhas no browser.")
+    public ImovelFecharMesResponse fecharMes(@RequestParam(required = false) String competencia) {
+        return imoveisFecharMesService.gerar(competencia);
     }
 
     @GetMapping("/visao-geral")

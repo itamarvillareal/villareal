@@ -50,6 +50,7 @@ import {
   LazyImoveisVisaoGeral,
   LazyImovelDetalhe,
   LazyImoveisConciliacao,
+  LazyImoveisFecharMes,
   LazyImoveisRelatoriosHub,
   LazyDemandas,
   LazyIptu,
@@ -481,6 +482,7 @@ function App() {
               <Route path="/processos/monitoramento" element={<LazyMonitoramentoProjudiPage />} />
               <Route path="/imoveis" element={<LazyImoveisCentralLayout />}>
                 <Route index element={<LazyImoveisVisaoGeral />} />
+                <Route path="fechar-mes" element={<LazyImoveisFecharMes />} />
                 <Route path="cadastro" element={<LazyImoveis />} />
                 <Route path="conciliacao" element={<LazyImoveisConciliacao />} />
                 <Route path="relatorios" element={<LazyImoveisRelatoriosHub />} />
@@ -489,7 +491,7 @@ function App() {
                 <Route path="relatorios/cadastro" element={<LazyRelatorioImoveis />} />
                 <Route path="relatorios/acerto" element={<LazyAcertoCliente />} />
                 <Route path="demandas" element={<LazyDemandas />} />
-                <Route path="financeiro" element={<LazyImoveisAdministracaoFinanceiro />} />
+                <Route path="financeiro" element={<Navigate to="/imoveis/conciliacao" replace />} />
                 <Route path="pagamentos" element={<LazyImoveisPagamentos />} />
                 <Route path="pagamentos/conciliacao" element={<LazyConciliacaoBancaria />} />
                 {/* Rotas antigas → novos destinos (bookmarks/links internos não quebram) */}
