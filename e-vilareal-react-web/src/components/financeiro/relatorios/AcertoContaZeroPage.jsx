@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link2, Printer, RefreshCw, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link2, Printer, RefreshCw, HelpCircle, X } from 'lucide-react';
 import { featureFlags } from '../../../config/featureFlags.js';
 import {
   listarContasBancariasClassificacaoApi,
@@ -9,12 +9,20 @@ import {
 import { formatMoeda } from '../shared/financeiroFormat.js';
 import { useFinanceiroToast } from '../shared/Toast.jsx';
 import { ExtratoDetailPanel } from '../extrato/ExtratoDetailPanel.jsx';
+import { ProcessoEmbedModal } from '../../ProcessoEmbedModal.jsx';
 import { AcertoFichaPanel } from './acerto/AcertoFichaPanel.jsx';
 import { AcertoPeriodosView } from './acerto/AcertoPeriodosView.jsx';
 import { AcertoProcessosView } from './acerto/AcertoProcessosView.jsx';
 import { AcertoLancamentosView } from './acerto/AcertoLancamentosView.jsx';
 import { AcertoImpressaoModal } from './acerto/AcertoImpressaoModal.jsx';
+import { AcertoCardModal } from './acerto/AcertoCardModal.jsx';
+import { AcertoGuiaRapido } from './acerto/AcertoGuiaRapido.jsx';
+import { mostrarGuiaNovamente, isGuiaOculto } from './acerto/acertoGuiaRapido.js';
 import { valorAssinadoAcerto } from './acerto/acertoUtils.js';
+import {
+  criarEmbedConsultaContaCorrente,
+  criarEmbedConsultaProcesso,
+} from './acerto/acertoConsultaRapida.js';
 
 /**
  * Tela de trabalho "Acerto do Cliente" (Etapas 5/5b da CONTA ZERO): visão agrupada por processo,
@@ -34,9 +42,16 @@ export function AcertoContaZeroPage() {
   const [selecao, setSelecao] = useState(() => new Map());
   const [compensando, setCompensando] = useState(false);
   const [detailItem, setDetailItem] = useState(null);
+  const [cardModal, setCardModal] = useState(null);
   const [imprimindo, setImprimindo] = useState(null);
   const [periodoSel, setPeriodoSel] = useState(null);
   const [periodosResumo, setPeriodosResumo] = useState(null);
+  /** Consulta rápida proc/CC — fechar só limpa o modal, sem refresh da tela. */
+  const [consultaEmbed, setConsultaEmbed] = useState(null);
+  const [resumoProcessos, setResumoProcessos] = useState(null);
+  const [filtroSugeridoKey, setFiltroSugeridoKey] = useState(0);
+  const [guiaVisivel, setGuiaVisivel] = useState(() => !isGuiaOculto());
+  const trabalhoProcessosRef = useRef(null);
 
   useEffect(() => {
     if (!featureFlags.useApiFinanceiro) return undefined;
@@ -73,6 +88,7 @@ export function AcertoContaZeroPage() {
     setDetailItem(null);
     setPeriodoSel(null);
     setPeriodosResumo(null);
+    setResumoProcessos(null);
   }, []);
 
   const toggleSelecao = useCallback((id, lancamento) => {
@@ -112,14 +128,49 @@ export function AcertoContaZeroPage() {
     }
   };
 
-  if (!featureFlags.useApiFinanceiro) {
-    return <div className="p-6 text-sm text-slate-600 dark:text-slate-400">API financeiro desativada.</div>;
-  }
+  const codigoCliente = vinculoSel?.codigoCliente ? String(vinculoSel.codigoCliente).trim() : null;
 
-  const vinculos = resumo?.vinculos ?? [];
-  const nomeConta =
-    contasAcerto.find((c) => Number(c.numeroBanco) === Number(numeroBanco))?.bancoNome || 'CONTA ZERO';
-  const clienteId = vinculoSel?.clienteId != null ? Number(vinculoSel.clienteId) : null;
+  const abrirCard = useCallback((card) => {
+    if (!card) return;
+    setCardModal(card);
+  }, []);
+
+  const abrirConsultaProcesso = useCallback(
+    ({ numeroInterno, processoId }) => {
+      if (!codigoCliente) return;
+      setConsultaEmbed(criarEmbedConsultaProcesso(codigoCliente, { numeroInterno, processoId }));
+    },
+    [codigoCliente],
+  );
+
+  const aplicarFiltroSugerido = useCallback(() => {
+    setAba('processos');
+    setFiltroSugeridoKey((k) => k + 1);
+    setPeriodoSel((atual) => {
+      const abertoIdx = periodosResumo?.periodoAbertoIndice;
+      if (abertoIdx == null) return atual;
+      const aberto = periodosResumo?.periodos?.[abertoIdx];
+      if (aberto?.status === 'ABERTO') return abertoIdx;
+      return atual;
+    });
+    window.requestAnimationFrame(() => {
+      trabalhoProcessosRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    toast.success('Filtro «só não conferidos» ativado — role até a tabela Por processo abaixo.');
+  }, [periodosResumo, toast]);
+
+  const reabrirGuia = useCallback(() => {
+    mostrarGuiaNovamente();
+    setGuiaVisivel(true);
+  }, []);
+
+  const abrirConsultaContaCorrente = useCallback(
+    ({ numeroInterno }) => {
+      if (!codigoCliente) return;
+      setConsultaEmbed(criarEmbedConsultaContaCorrente(codigoCliente, { numeroInterno }));
+    },
+    [codigoCliente],
+  );
 
   const periodoAtivo = useMemo(() => {
     const lista = periodosResumo?.periodos;
@@ -149,6 +200,15 @@ export function AcertoContaZeroPage() {
     return map;
   }, [periodosResumo]);
 
+  if (!featureFlags.useApiFinanceiro) {
+    return <div className="p-6 text-sm text-slate-600 dark:text-slate-400">API financeiro desativada.</div>;
+  }
+
+  const vinculos = resumo?.vinculos ?? [];
+  const nomeConta =
+    contasAcerto.find((c) => Number(c.numeroBanco) === Number(numeroBanco))?.bancoNome || 'CONTA ZERO';
+  const clienteId = vinculoSel?.clienteId != null ? Number(vinculoSel.clienteId) : null;
+
   return (
     <div className="relative flex flex-col min-h-0 h-full overflow-auto p-4 space-y-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
@@ -176,6 +236,15 @@ export function AcertoContaZeroPage() {
               ))}
             </select>
           ) : null}
+          <button
+            type="button"
+            onClick={reabrirGuia}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800"
+            title="Reabrir guia «Como usar esta tela»"
+          >
+            <HelpCircle className="w-4 h-4" />
+            Guia
+          </button>
           <button
             type="button"
             onClick={refresh}
@@ -272,15 +341,31 @@ export function AcertoContaZeroPage() {
                 onConfigSalva={refresh}
               />
 
+              {guiaVisivel ? (
+                <AcertoGuiaRapido
+                  periodosResumo={periodosResumo}
+                  resumoProcessos={resumoProcessos}
+                  periodoAtivo={periodoAtivo}
+                  onAplicarFiltroSugerido={aplicarFiltroSugerido}
+                  onDispensar={() => setGuiaVisivel(false)}
+                />
+              ) : null}
+
               <AcertoPeriodosView
                 numeroBanco={numeroBanco}
                 clienteId={clienteId}
                 refreshKey={refreshKey}
                 periodoSel={periodoSel}
                 onSelecionarPeriodo={setPeriodoSel}
+                onAbrirCard={abrirCard}
                 onResumoCarregado={setPeriodosResumo}
               />
 
+              <div
+                id="acerto-trabalho-processos"
+                ref={trabalhoProcessosRef}
+                className="scroll-mt-4 space-y-3 rounded-lg ring-offset-2 focus-within:ring-2 focus-within:ring-sky-400/40"
+              >
               <div className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-700">
                 {[
                   { id: 'processos', label: 'Por processo' },
@@ -316,7 +401,13 @@ export function AcertoContaZeroPage() {
                   periodoGrupoCompensacao={periodoFiltro.grupoCompensacao}
                   somenteLeitura={periodoFiltro.somenteLeitura}
                   cardsPorProc={cardsPorProc}
-                  onSelecionarCard={setPeriodoSel}
+                  onAbrirCard={abrirCard}
+                  codigoCliente={codigoCliente}
+                  onAbrirConsultaProcesso={abrirConsultaProcesso}
+                  onAbrirConsultaContaCorrente={abrirConsultaContaCorrente}
+                  onResumoCarregado={setResumoProcessos}
+                  filtroSugeridoKey={filtroSugeridoKey}
+                  onAplicarFiltroSugerido={aplicarFiltroSugerido}
                 />
               ) : (
                 <AcertoLancamentosView
@@ -334,6 +425,7 @@ export function AcertoContaZeroPage() {
                   somenteLeitura={periodoFiltro.somenteLeitura}
                 />
               )}
+              </div>
             </>
           )}
         </main>
@@ -372,10 +464,10 @@ export function AcertoContaZeroPage() {
       ) : null}
 
       {detailItem ? (
-        <>
+        <div className={cardModal ? 'fixed inset-0 z-[85]' : 'absolute inset-0 z-10'}>
           <button
             type="button"
-            className="absolute inset-0 z-10 bg-black/20"
+            className="absolute inset-0 bg-black/20"
             aria-label="Fechar painel"
             onClick={() => setDetailItem(null)}
           />
@@ -391,7 +483,21 @@ export function AcertoContaZeroPage() {
               refresh();
             }}
           />
-        </>
+        </div>
+      ) : null}
+
+      {cardModal ? (
+        <AcertoCardModal
+          card={cardModal}
+          numeroBanco={numeroBanco}
+          clienteId={clienteId}
+          codigoCliente={codigoCliente}
+          refreshKey={refreshKey}
+          onClose={() => setCardModal(null)}
+          onAbrirLancamento={setDetailItem}
+          onAbrirConsultaProcesso={abrirConsultaProcesso}
+          onAbrirConsultaContaCorrente={abrirConsultaContaCorrente}
+        />
       ) : null}
 
       {imprimindo && clienteId ? (
@@ -404,6 +510,12 @@ export function AcertoContaZeroPage() {
           onClose={() => setImprimindo(null)}
         />
       ) : null}
+
+      <ProcessoEmbedModal
+        embed={consultaEmbed}
+        onFechar={() => setConsultaEmbed(null)}
+        titulo={consultaEmbed?.titulo ?? 'Consulta rápida'}
+      />
     </div>
   );
 }

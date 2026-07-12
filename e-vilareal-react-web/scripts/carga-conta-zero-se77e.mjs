@@ -6,8 +6,8 @@
  *   mensalidades  — CREDITO R$ 2.500/mês de 02/2024 até o mês atual (proc 0, "Sette Mensal - MM/AAAA")
  *   parcelas50k   — espelhos CREDITO dos 2 pagamentos de R$ 50.000 (ids 175718 e 269273, 06/01/2025)
  *   orfaos        — vincula cliente 729 nos lançamentos que citam SE77E sem cliente_id
- *   recebimentos  — p/ cada crédito real ≥ 11/01/2024 (por proc): DEBITO espelho (repasse devido,
- *                   valor cheio) + CREDITO honorários 20% na conta 19
+ *   recebimentos  — p/ cada crédito real ≥ 11/01/2024 (por proc): DEBITO repasse líquido ao cliente
+ *                   na conta 19 (valor × (1 − 20%)); honorários ficam implícitos (recebimento − repasse)
  *   devolucao     — espelho invertido da DEV PIX R$ 155 (id 266025): CREDITO 155 + DEBITO 31 (estorno 20%)
  *   mensalista    — cadastra SE77E como mensalista (R$ 2.500, dia 10, início 08/2026)
  *   resumo        — GET /conta-acerto/resumo e conferência de sanidade
@@ -308,31 +308,21 @@ async function etapaRecebimentos(ctx) {
   for (const r of rows) {
     const data = String(r.data_lancamento).slice(0, 10);
     const valor = Number(r.valor);
-    const hon = round2(valor * PCT_HONORARIOS);
+    const repasseLiquido = round2(valor * (1 - PCT_HONORARIOS));
     const detalhe = String(r.descricao_detalhada ?? '').trim() || `${r.descricao} ${TAG}`;
     itens.push({
       numeroLancamento: `CZ-REP-${r.id}`,
       data,
       natureza: 'DEBITO',
-      valor,
+      valor: repasseLiquido,
       processoId: r.processo_id,
-      descricao: `Repasse devido — ${String(r.descricao ?? '').slice(0, 460)}`,
-      descricaoDetalhada: detalhe,
-    });
-    itens.push({
-      numeroLancamento: `CZ-HON-${r.id}`,
-      data,
-      natureza: 'CREDITO',
-      valor: hon,
-      processoId: r.processo_id,
-      descricao: `Honorários 20% — ${String(r.descricao ?? '').slice(0, 460)}`,
+      descricao: `Repasse ao cliente — ${String(r.descricao ?? '').slice(0, 460)}`,
       descricaoDetalhada: detalhe,
     });
   }
-  const somaDeb = itens.filter((i) => i.natureza === 'DEBITO').reduce((a, i) => a + i.valor, 0);
-  const somaHon = itens.filter((i) => i.natureza === 'CREDITO').reduce((a, i) => a + i.valor, 0);
+  const somaRep = itens.reduce((a, i) => a + i.valor, 0);
   console.log(
-    `  A criar: ${itens.length} lançamentos (repasses −${brl(somaDeb)} + honorários +${brl(somaHon)} → líquido ${brl(somaHon - somaDeb)}).`,
+    `  A criar: ${itens.length} repasse(s) líquido(s) somando −${brl(somaRep)} (80% dos créditos).`,
   );
   await criarEmLote(ctx, itens, 'recebimentos');
 }
@@ -347,7 +337,7 @@ async function etapaDevolucao(ctx) {
   const r = rows[0];
   const data = String(r.data_lancamento).slice(0, 10);
   const valor = Number(r.valor);
-  const hon = round2(valor * PCT_HONORARIOS);
+  const repasseLiquido = round2(valor * (1 - PCT_HONORARIOS));
   await criarEmLote(
     ctx,
     [
@@ -355,24 +345,15 @@ async function etapaDevolucao(ctx) {
         numeroLancamento: `CZ-DEV-${r.id}`,
         data,
         natureza: 'CREDITO',
-        valor,
+        valor: repasseLiquido,
         processoId: r.processo_id,
-        descricao: `Estorno de repasse — devolução PIX (${r.descricao})`,
-        descricaoDetalhada: `Espelho invertido do lançamento ${r.id} ${TAG}`,
-      },
-      {
-        numeroLancamento: `CZ-DEVHON-${r.id}`,
-        data,
-        natureza: 'DEBITO',
-        valor: hon,
-        processoId: r.processo_id,
-        descricao: `Estorno honorários 20% — devolução PIX (${r.descricao})`,
+        descricao: `Estorno repasse ao cliente — devolução PIX (${r.descricao})`,
         descricaoDetalhada: `Espelho invertido do lançamento ${r.id} ${TAG}`,
       },
     ],
     'devolucao',
   );
-  console.log(`  Espelho CREDITO ${brl(valor)} + DEBITO ${brl(hon)} (líquido +${brl(valor - hon)}).`);
+  console.log(`  Espelho CREDITO repasse líquido ${brl(repasseLiquido)}.`);
 }
 
 async function etapaMensalista(ctx) {

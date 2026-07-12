@@ -521,6 +521,16 @@ public class FinanceiroController {
         return financeiroService.listarLancamentosPorGrupoCompensacao(grupoCompensacao);
     }
 
+    @GetMapping("/lancamentos/compensacao-por-row-ids")
+    @Operation(
+            description =
+                    "Elos numéricos (Conta Compensação) ligados a rowIds da planilha (prefixo descricao_detalhada). "
+                            + "Retorna lançamentos ATIVO priorizando contas novas da API (CONTA ZERO) e ocultando "
+                            + "lados legados 9/17/18 substituídos na migração.")
+    public List<EloCompensacaoResponse> listarCompensacaoPorRowIds(@RequestParam("rowIds") List<Integer> rowIds) {
+        return financeiroService.listarCompensacaoPorRowIds(rowIds);
+    }
+
     @PostMapping("/lancamentos/grupos-compensacao/lote")
     @Operation(description = "Backfill: atualiza grupo_compensacao (planilha col. M) por numeroLancamento.")
     public GrupoCompensacaoLoteResult sincronizarGruposCompensacaoLote(

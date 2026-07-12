@@ -13,6 +13,7 @@ import {
   lancamentoPendente,
   valorAssinadoAcerto,
 } from './acertoUtils.js';
+import { AcertoConsultaRapidaButtons } from './AcertoConsultaRapidaButtons.jsx';
 
 const CHAVE_SEM_PROC = 'sem-proc';
 
@@ -38,7 +39,13 @@ export function AcertoProcessosView({
   periodoGrupoCompensacao,
   somenteLeitura = false,
   cardsPorProc,
-  onSelecionarCard,
+  onAbrirCard,
+  codigoCliente,
+  onAbrirConsultaProcesso,
+  onAbrirConsultaContaCorrente,
+  onResumoCarregado,
+  filtroSugeridoKey = 0,
+  onAplicarFiltroSugerido,
 }) {
   const toast = useFinanceiroToast();
   const [dados, setDados] = useState(null);
@@ -51,6 +58,7 @@ export function AcertoProcessosView({
   const [dataFim, setDataFim] = useState('');
   const [soPendentes, setSoPendentes] = useState(false);
   const [soNaoConferidos, setSoNaoConferidos] = useState(false);
+  const [destaqueFiltro, setDestaqueFiltro] = useState(false);
 
   useEffect(() => {
     if (periodoDataInicio) setDataInicio(periodoDataInicio);
@@ -58,6 +66,14 @@ export function AcertoProcessosView({
     if (periodoDataFim) setDataFim(periodoDataFim);
     else setDataFim('');
   }, [periodoDataInicio, periodoDataFim]);
+
+  useEffect(() => {
+    if (filtroSugeridoKey <= 0) return undefined;
+    setSoNaoConferidos(true);
+    setDestaqueFiltro(true);
+    const t = window.setTimeout(() => setDestaqueFiltro(false), 2800);
+    return () => window.clearTimeout(t);
+  }, [filtroSugeridoKey]);
 
   const [expandido, setExpandido] = useState(() => new Set());
   const [lancamentosPorProc, setLancamentosPorProc] = useState({});
@@ -81,7 +97,10 @@ export function AcertoProcessosView({
       },
       { signal: ac.signal },
     )
-      .then((r) => setDados(r ?? null))
+      .then((r) => {
+        setDados(r ?? null);
+        onResumoCarregado?.(r ?? null);
+      })
       .catch((e) => {
         if (e?.name !== 'AbortError') {
           setErro(e?.message || 'Falha ao carregar a visão por processo.');
@@ -183,7 +202,11 @@ export function AcertoProcessosView({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-end gap-2 text-xs">
+      <div
+        className={`flex flex-wrap items-end gap-2 text-xs rounded-lg p-2 -mx-2 transition-shadow ${
+          destaqueFiltro ? 'ring-2 ring-sky-400 bg-sky-50/80 dark:bg-sky-950/30' : ''
+        }`}
+      >
         <label className="flex flex-col gap-0.5">
           Busca (proc ou devedor)
           <input
@@ -253,6 +276,27 @@ export function AcertoProcessosView({
         </p>
       ) : null}
 
+      {dados && Number(dados.lancamentosNaoConferidos) > 0 && !somenteLeitura ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-200 bg-sky-50/80 dark:border-sky-900/50 dark:bg-sky-950/30 px-3 py-2 text-xs text-sky-950 dark:text-sky-100">
+          <p>
+            <strong>{Number(dados.totalProcessos).toLocaleString('pt-BR')}</strong> processo(s) ·{' '}
+            <strong>{Number(dados.lancamentosNaoConferidos).toLocaleString('pt-BR')}</strong> lanç. sem conferir — trabalhe{' '}
+            <strong>proc a proc</strong> (expandir → Proc/CC → conferir).
+          </p>
+          {!soNaoConferidos ? (
+            <button
+              type="button"
+              onClick={() => (onAplicarFiltroSugerido ? onAplicarFiltroSugerido() : setSoNaoConferidos(true))}
+              className="shrink-0 px-2.5 py-1 font-medium rounded-md bg-sky-600 text-white hover:bg-sky-700"
+            >
+              Aplicar filtro sugerido
+            </button>
+          ) : (
+            <span className="shrink-0 text-sky-800 dark:text-sky-200 font-medium">Filtro ativo</span>
+          )}
+        </div>
+      ) : null}
+
       {dados ? (
         <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden">
           <div className="overflow-x-auto">
@@ -267,6 +311,11 @@ export function AcertoProcessosView({
                   <th className="px-2 py-1.5 text-right">Débitos</th>
                   <th className="px-2 py-1.5 text-right">Saldo</th>
                   <th className="px-2 py-1.5 text-right">Pend.</th>
+                  {codigoCliente ? (
+                    <th className="px-2 py-1.5 text-center whitespace-nowrap" title="Abrir processo ou conta corrente em modal">
+                      Consulta
+                    </th>
+                  ) : null}
                   <th className="px-2 py-1.5 text-center">Conferência</th>
                 </tr>
               </thead>
@@ -303,7 +352,7 @@ export function AcertoProcessosView({
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  onSelecionarCard?.(card.indice);
+                                  onAbrirCard?.(card);
                                 }}
                                 className="text-[10px] text-indigo-700 dark:text-indigo-300 hover:underline"
                                 title={card.grupoCompensacao ?? ''}
@@ -343,6 +392,17 @@ export function AcertoProcessosView({
                           <span className="text-slate-400">0</span>
                         )}
                       </td>
+                      {codigoCliente ? (
+                        <td className="px-2 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+                          <AcertoConsultaRapidaButtons
+                            codigoCliente={codigoCliente}
+                            numeroInterno={p.numeroInterno}
+                            processoId={p.processoId}
+                            onAbrirProcesso={onAbrirConsultaProcesso}
+                            onAbrirContaCorrente={onAbrirConsultaContaCorrente}
+                          />
+                        </td>
+                      ) : null}
                       <td className="px-2 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
                         {somenteLeitura ? (
                           conferido ? (
@@ -375,7 +435,7 @@ export function AcertoProcessosView({
                     </tr>,
                     aberto ? (
                       <tr key={`${chave}-det`} className="bg-slate-50/60 dark:bg-slate-800/40">
-                        <td colSpan={9} className="px-4 py-2">
+                        <td colSpan={codigoCliente ? 10 : 9} className="px-4 py-2">
                           {carregandoProc.has(chave) && !lancs ? (
                             <p className="flex items-center gap-2 text-slate-500 py-2">
                               <Loader2 className="w-3.5 h-3.5 animate-spin" /> Carregando…
@@ -453,7 +513,7 @@ export function AcertoProcessosView({
                 })}
                 {dados.processos.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={codigoCliente ? 10 : 9} className="px-4 py-8 text-center text-slate-500">
                       Nenhum processo neste recorte.
                     </td>
                   </tr>

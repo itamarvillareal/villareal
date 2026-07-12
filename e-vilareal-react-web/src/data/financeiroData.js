@@ -1667,6 +1667,19 @@ export function textoDimensaoEq(t) {
   return a || b;
 }
 
+/** Linhas internas da CONTA ZERO que não entram na Conta Corrente do cliente. */
+const RE_CZ_HON_INTERNO = /^CZ-(HON|DEVHON)-/i;
+
+export function filtrarLinhasContaCorrenteCliente(linhas) {
+  if (!Array.isArray(linhas)) return [];
+  return linhas.filter((t) => {
+    if (t?.visivelCliente === false) return false;
+    const num = String(t.numero ?? t.numeroLancamento ?? '').trim();
+    if (RE_CZ_HON_INTERNO.test(num)) return false;
+    return true;
+  });
+}
+
 function lancamentoParaContaCorrenteModal(t) {
   const obs = textoCategoriaObservacao(t);
   return {
@@ -1692,8 +1705,9 @@ function lancamentoParaContaCorrenteModal(t) {
  * para o mesmo shape usado pelo modal Conta Corrente em Processos.
  */
 export function mapLinhasFinanceiroParaContaCorrenteModal(linhas) {
-  if (!Array.isArray(linhas) || linhas.length === 0) return { lancamentos: [], soma: 0 };
-  const sorted = [...linhas].sort((a, b) => {
+  const visiveis = filtrarLinhasContaCorrenteCliente(linhas);
+  if (!visiveis.length) return { lancamentos: [], soma: 0 };
+  const sorted = [...visiveis].sort((a, b) => {
     const byData = String(a.data ?? '').localeCompare(String(b.data ?? ''));
     if (byData !== 0) return byData;
     return Number(a.numero) - Number(b.numero);

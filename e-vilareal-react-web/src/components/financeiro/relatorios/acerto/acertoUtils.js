@@ -30,6 +30,11 @@ export function lancamentoPendente(l) {
   return String(l.grupoCompensacao ?? '').trim() === '';
 }
 
+/** Período/card de acerto já compensado (grupo soma zero). */
+export function isCardAcerto(p) {
+  return p?.status === 'FECHADO_GRUPO' || p?.tipoPeriodo === 'CARD';
+}
+
 /** Legenda do saldo na convenção da conta de acerto: crédito = devido ao escritório. */
 export function legendaSaldoAcerto(saldo) {
   if (Math.abs(saldo) < 0.005) return 'acerto zerado';
