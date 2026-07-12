@@ -33,4 +33,14 @@ public class AcertoResumoPeriodoResponse {
     /** Preenchido quando status = FECHADO (fechamento formal com PDF). */
     private Long fechamentoId;
     private boolean temPdf;
+
+    /** Card fechado por grupo_compensacao (bloco da planilha / parear-grupo). */
+    private String grupoCompensacao;
+    /** Primeiro comentário significativo do bloco (ex.: "Compensado no Contrato mensal..."). */
+    private String titulo;
+    /** Nº interno do processo quando o card envolve um único proc. */
+    private Integer numeroInternoProcesso;
+
+    /** CARD (FECHADO_GRUPO), HISTORICO (manual/auto/formal) ou ABERTO — facilita a UI. */
+    private String tipoPeriodo;
 }

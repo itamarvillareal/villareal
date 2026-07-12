@@ -35,7 +35,10 @@ export function AcertoProcessosView({
   versaoLancamentos,
   periodoDataInicio,
   periodoDataFim,
+  periodoGrupoCompensacao,
   somenteLeitura = false,
+  cardsPorProc,
+  onSelecionarCard,
 }) {
   const toast = useFinanceiroToast();
   const [dados, setDados] = useState(null);
@@ -292,6 +295,30 @@ export function AcertoProcessosView({
                         <span className="block text-[10px] text-slate-400">
                           {p.primeiraData ? `${fmtDataAcerto(p.primeiraData)} a ${fmtDataAcerto(p.ultimaData)}` : ''}
                         </span>
+                        {p.numeroInterno != null && cardsPorProc?.get(Number(p.numeroInterno))?.length ? (
+                          <span className="block mt-0.5 space-x-1">
+                            {cardsPorProc.get(Number(p.numeroInterno)).map((card) => (
+                              <button
+                                key={card.indice ?? card.grupoCompensacao}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onSelecionarCard?.(card.indice);
+                                }}
+                                className="text-[10px] text-indigo-700 dark:text-indigo-300 hover:underline"
+                                title={card.grupoCompensacao ?? ''}
+                              >
+                                Card: {card.titulo?.slice(0, 40) ?? card.grupoCompensacao}
+                              </button>
+                            ))}
+                          </span>
+                        ) : null}
+                        {Number(p.numeroInterno) === 9 ? (
+                          <span className="block text-[10px] text-slate-500 mt-0.5">
+                            Alvará judicial (ex.: 27/05/2020) fica na conta corrente do proc — o card de acerto
+                            contabiliza só o ajuste interno (−10.687,76 + mensalidades Sette).
+                          </span>
+                        ) : null}
                       </td>
                       <td className="px-2 py-1.5 text-right tabular-nums">
                         {Number(p.qtdLancamentos).toLocaleString('pt-BR')}

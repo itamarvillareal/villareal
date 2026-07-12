@@ -257,6 +257,12 @@ public class AcertoTrabalhoApplicationService {
     }
 
     private static AcertoPeriodosDetector.LancamentoLeve toLancamentoLeve(Object[] row) {
+        String detalhada = row[8] != null ? row[8].toString() : null;
+        String grupo = row[7] != null ? row[7].toString().trim() : null;
+        if (grupo != null && grupo.isEmpty()) {
+            grupo = null;
+        }
+        Integer numeroInterno = row[9] != null ? ((Number) row[9]).intValue() : null;
         return new AcertoPeriodosDetector.LancamentoLeve(
                 row[0] != null ? ((Number) row[0]).longValue() : null,
                 toLocalDate(row[1]),
@@ -264,7 +270,10 @@ public class AcertoTrabalhoApplicationService {
                 row[3] != null ? new BigDecimal(row[3].toString()) : BigDecimal.ZERO,
                 row[4] != null && ((Number) row[4]).intValue() == 1,
                 row[5] != null && ((Number) row[5]).intValue() == 1,
-                row[6] != null ? ((Number) row[6]).longValue() : null);
+                row[6] != null ? ((Number) row[6]).longValue() : null,
+                grupo,
+                AcertoPeriodosDetector.extrairResumoDetalhada(detalhada),
+                numeroInterno);
     }
 
     void validarContaAcerto(Integer numeroBanco) {

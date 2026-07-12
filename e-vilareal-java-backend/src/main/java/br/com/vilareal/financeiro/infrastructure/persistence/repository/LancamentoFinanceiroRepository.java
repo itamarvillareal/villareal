@@ -1087,8 +1087,12 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             SELECT fl.id, fl.data_lancamento, fl.natureza, fl.valor,
                    CASE WHEN fl.grupo_compensacao IS NULL OR fl.grupo_compensacao = '' THEN 1 ELSE 0 END,
                    CASE WHEN fl.conferido_em IS NULL THEN 1 ELSE 0 END,
-                   fl.processo_id
+                   fl.processo_id,
+                   fl.grupo_compensacao,
+                   CAST(fl.descricao_detalhada AS CHAR),
+                   pr.numero_interno
             FROM financeiro_lancamento fl
+            LEFT JOIN processo pr ON pr.id = fl.processo_id
             WHERE fl.numero_banco = :numeroBanco
               AND fl.status = 'ATIVO'
               AND fl.cliente_id = :clienteId

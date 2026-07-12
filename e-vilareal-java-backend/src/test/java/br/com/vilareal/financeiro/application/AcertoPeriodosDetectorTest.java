@@ -13,13 +13,40 @@ class AcertoPeriodosDetectorTest {
     private static AcertoPeriodosDetector.LancamentoLeve cred(
             long id, LocalDate data, String valor, Long processoId) {
         return new AcertoPeriodosDetector.LancamentoLeve(
-                id, data, "CREDITO", new BigDecimal(valor), false, false, processoId);
+                id, data, "CREDITO", new BigDecimal(valor), false, false, processoId, null, null, null);
     }
 
     private static AcertoPeriodosDetector.LancamentoLeve deb(
             long id, LocalDate data, String valor, Long processoId) {
         return new AcertoPeriodosDetector.LancamentoLeve(
-                id, data, "DEBITO", new BigDecimal(valor), true, true, processoId);
+                id, data, "DEBITO", new BigDecimal(valor), true, true, processoId, null, null, null);
+    }
+
+    private static AcertoPeriodosDetector.LancamentoLeve debGrupo(
+            long id,
+            LocalDate data,
+            String valor,
+            Long processoId,
+            String grupo,
+            String resumo,
+            Integer numeroInterno) {
+        return new AcertoPeriodosDetector.LancamentoLeve(
+                id,
+                data,
+                "DEBITO",
+                new BigDecimal(valor),
+                false,
+                false,
+                processoId,
+                grupo,
+                resumo,
+                numeroInterno);
+    }
+
+    private static AcertoPeriodosDetector.LancamentoLeve credGrupo(
+            long id, LocalDate data, String valor, String grupo) {
+        return new AcertoPeriodosDetector.LancamentoLeve(
+                id, data, "CREDITO", new BigDecimal(valor), false, false, null, grupo, null, null);
     }
 
     @Test
@@ -53,6 +80,79 @@ class AcertoPeriodosDetectorTest {
     }
 
     @Test
+    void detectar_grupoCompensacaoZeradoViraCard() {
+        String grupo = "CZ-B728-5494";
+        List<AcertoPeriodosDetector.LancamentoLeve> todos = List.of(
+                debGrupo(
+                        165252,
+                        LocalDate.of(2020, 8, 28),
+                        "10687.76",
+                        9L,
+                        grupo,
+                        "Compensado no Contrato mensal de honorários",
+                        9),
+                credGrupo(165254, LocalDate.of(2020, 8, 28), "2000.00", grupo),
+                credGrupo(165255, LocalDate.of(2020, 8, 28), "2000.00", grupo),
+                credGrupo(165256, LocalDate.of(2020, 8, 28), "2000.00", grupo),
+                credGrupo(165257, LocalDate.of(2020, 8, 28), "2000.00", grupo),
+                credGrupo(165258, LocalDate.of(2020, 8, 28), "2000.00", grupo),
+                credGrupo(165259, LocalDate.of(2020, 8, 28), "687.76", grupo),
+                cred(9, LocalDate.of(2024, 2, 1), "100.00", 12L));
+
+        var resumo = AcertoPeriodosDetector.montarResumo(todos, null, List.of());
+
+        assertThat(resumo.getPeriodos()).hasSize(2);
+        assertThat(resumo.getPeriodos().get(0).getStatus()).isEqualTo(AcertoPeriodosDetector.STATUS_FECHADO_GRUPO);
+        assertThat(resumo.getPeriodos().get(0).getTipoPeriodo()).isEqualTo("CARD");
+        assertThat(resumo.getPeriodos().get(0).getGrupoCompensacao()).isEqualTo(grupo);
+        assertThat(resumo.getPeriodos().get(0).getTitulo()).isEqualTo("Compensado no Contrato mensal de honorários");
+        assertThat(resumo.getPeriodos().get(0).getNumeroInternoProcesso()).isEqualTo(9);
+        assertThat(resumo.getPeriodos().get(0).getQtdLancamentos()).isEqualTo(7);
+        assertThat(resumo.getPeriodos().get(0).getPendentes()).isZero();
+        assertThat(resumo.getPeriodos().get(1).getStatus()).isEqualTo(AcertoPeriodosDetector.STATUS_ABERTO);
+    }
+
+    @Test
+    void detectar_cardVisivelMesmoComCorteManual() {
+        String grupo = "CZ-B728-5494";
+        List<AcertoPeriodosDetector.LancamentoLeve> card = List.of(
+                debGrupo(
+                        165252,
+                        LocalDate.of(2020, 8, 28),
+                        "10687.76",
+                        9L,
+                        grupo,
+                        "Compensado no Contrato mensal de honorários",
+                        9),
+                credGrupo(165254, LocalDate.of(2020, 8, 28), "2000.00", grupo),
+                credGrupo(165255, LocalDate.of(2020, 8, 28), "2000.00", grupo),
+                credGrupo(165256, LocalDate.of(2020, 8, 28), "2000.00", grupo),
+                credGrupo(165257, LocalDate.of(2020, 8, 28), "2000.00", grupo),
+                credGrupo(165258, LocalDate.of(2020, 8, 28), "2000.00", grupo),
+                credGrupo(165259, LocalDate.of(2020, 8, 28), "687.76", grupo));
+        List<AcertoPeriodosDetector.LancamentoLeve> todos = new java.util.ArrayList<>(card);
+        todos.add(cred(1, LocalDate.of(2023, 12, 1), "100.00", 10L));
+        todos.add(deb(2, LocalDate.of(2023, 12, 5), "100.00", 10L));
+        todos.add(cred(3, LocalDate.of(2024, 2, 1), "200.00", 12L));
+
+        var resumo = AcertoPeriodosDetector.montarResumo(
+                todos, LocalDate.of(2024, 1, 10), List.of());
+
+        assertThat(resumo.getPeriodos()).hasSize(3);
+
+        assertThat(resumo.getPeriodos().get(0).getStatus()).isEqualTo(AcertoPeriodosDetector.STATUS_FECHADO_GRUPO);
+        assertThat(resumo.getPeriodos().get(0).getGrupoCompensacao()).isEqualTo(grupo);
+        assertThat(resumo.getPeriodos().get(0).getQtdLancamentos()).isEqualTo(7);
+
+        assertThat(resumo.getPeriodos().get(1).getStatus()).isEqualTo(AcertoPeriodosDetector.STATUS_FECHADO_MANUAL);
+        assertThat(resumo.getPeriodos().get(1).getQtdLancamentos()).isEqualTo(2);
+        assertThat(resumo.getPeriodos().get(1).getTipoPeriodo()).isEqualTo("HISTORICO");
+
+        assertThat(resumo.getPeriodos().get(2).getStatus()).isEqualTo(AcertoPeriodosDetector.STATUS_ABERTO);
+        assertThat(resumo.getPeriodoAbertoIndice()).isEqualTo(2);
+    }
+
+    @Test
     void detectar_fechamentoFormalSobrepoeAuto() {
         List<AcertoPeriodosDetector.LancamentoLeve> todos = List.of(
                 cred(1, LocalDate.of(2024, 3, 1), "80.00", 1L),
@@ -80,5 +180,12 @@ class AcertoPeriodosDetectorTest {
 
         assertThat(resumo.getPeriodos()).hasSize(1);
         assertThat(resumo.getPeriodos().get(0).getStatus()).isEqualTo(AcertoPeriodosDetector.STATUS_FECHADO_AUTO);
+    }
+
+    @Test
+    void extrairResumoDetalhada_removePrefixoRowId() {
+        assertThat(AcertoPeriodosDetector.extrairResumoDetalhada(
+                        "5494 · Compensado no Contrato mensal de honorários [CC_CLI:728] · migrado"))
+                .isEqualTo("Compensado no Contrato mensal de honorários");
     }
 }

@@ -128,13 +128,26 @@ export function AcertoContaZeroPage() {
   }, [periodosResumo, periodoSel]);
 
   const periodoFiltro = useMemo(() => {
-    if (!periodoAtivo) return { dataInicio: undefined, dataFim: undefined, somenteLeitura: false };
+    if (!periodoAtivo) return { dataInicio: undefined, dataFim: undefined, somenteLeitura: false, grupoCompensacao: undefined };
     return {
       dataInicio: periodoAtivo.dataInicio ? String(periodoAtivo.dataInicio).slice(0, 10) : undefined,
       dataFim: periodoAtivo.dataFim ? String(periodoAtivo.dataFim).slice(0, 10) : undefined,
       somenteLeitura: periodoAtivo.status !== 'ABERTO',
+      grupoCompensacao: periodoAtivo.grupoCompensacao ? String(periodoAtivo.grupoCompensacao) : undefined,
     };
   }, [periodoAtivo]);
+
+  const cardsPorProc = useMemo(() => {
+    const map = new Map();
+    for (const p of periodosResumo?.periodos ?? []) {
+      if (p.status !== 'FECHADO_GRUPO' && p.tipoPeriodo !== 'CARD') continue;
+      if (p.numeroInternoProcesso == null) continue;
+      const n = Number(p.numeroInternoProcesso);
+      if (!map.has(n)) map.set(n, []);
+      map.get(n).push(p);
+    }
+    return map;
+  }, [periodosResumo]);
 
   return (
     <div className="relative flex flex-col min-h-0 h-full overflow-auto p-4 space-y-4">
@@ -300,7 +313,10 @@ export function AcertoContaZeroPage() {
                   versaoLancamentos={versaoLancamentos}
                   periodoDataInicio={periodoFiltro.dataInicio}
                   periodoDataFim={periodoFiltro.dataFim}
+                  periodoGrupoCompensacao={periodoFiltro.grupoCompensacao}
                   somenteLeitura={periodoFiltro.somenteLeitura}
+                  cardsPorProc={cardsPorProc}
+                  onSelecionarCard={setPeriodoSel}
                 />
               ) : (
                 <AcertoLancamentosView
@@ -314,6 +330,7 @@ export function AcertoContaZeroPage() {
                   versaoLancamentos={versaoLancamentos}
                   periodoDataInicio={periodoFiltro.dataInicio}
                   periodoDataFim={periodoFiltro.dataFim}
+                  periodoGrupoCompensacao={periodoFiltro.grupoCompensacao}
                   somenteLeitura={periodoFiltro.somenteLeitura}
                 />
               )}

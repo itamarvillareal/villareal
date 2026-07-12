@@ -4,6 +4,7 @@ import {
   conferirLancamentosAcertoApi,
   desparearCompensacaoApi,
   listarLancamentosExtratoPaginados,
+  listarLancamentosPorGrupoCompensacaoApi,
   obterTotaisExtratoApi,
 } from '../../../../repositories/financeiroRepository.js';
 import { formatMoeda } from '../../shared/financeiroFormat.js';
@@ -35,6 +36,7 @@ export function AcertoLancamentosView({
   versaoLancamentos,
   periodoDataInicio,
   periodoDataFim,
+  periodoGrupoCompensacao,
   somenteLeitura = false,
 }) {
   const toast = useFinanceiroToast();
@@ -96,6 +98,51 @@ export function AcertoLancamentosView({
     const ac = new AbortController();
     setCarregando(true);
     setErro('');
+
+    if (periodoGrupoCompensacao) {
+      listarLancamentosPorGrupoCompensacaoApi(periodoGrupoCompensacao, { signal: ac.signal })
+        .then((lista) => {
+          const filtrados = (Array.isArray(lista) ? lista : []).filter(
+            (l) => Number(l.numeroBanco) === Number(numeroBanco) && Number(l.clienteId) === Number(clienteId),
+          );
+          setRows(filtrados);
+          setTotalElements(filtrados.length);
+          setTotalPages(1);
+          let cred = 0;
+          let deb = 0;
+          let pend = 0;
+          let naoConf = 0;
+          let saldo = 0;
+          for (const l of filtrados) {
+            const v = valorAssinadoAcerto(l);
+            saldo += v;
+            if (v >= 0) cred += v;
+            else deb += Math.abs(v);
+            if (lancamentoPendente(l)) pend += 1;
+            if (!l.conferidoEm) naoConf += 1;
+          }
+          setTotais({
+            quantidade: filtrados.length,
+            somaCreditos: cred,
+            somaDebitos: deb,
+            saldo,
+            pendentes: pend,
+            naoConferidos: naoConf,
+          });
+        })
+        .catch((e) => {
+          if (e?.name !== 'AbortError') {
+            setErro(e?.message || 'Falha ao carregar lançamentos do card.');
+            setRows([]);
+            setTotais(null);
+          }
+        })
+        .finally(() => {
+          if (!ac.signal.aborted) setCarregando(false);
+        });
+      return () => ac.abort();
+    }
+
     Promise.all([
       listarLancamentosExtratoPaginados(
         { ...filtros, page, size: pageSize, sort: 'dataLancamento,asc' },
@@ -120,7 +167,7 @@ export function AcertoLancamentosView({
         if (!ac.signal.aborted) setCarregando(false);
       });
     return () => ac.abort();
-  }, [numeroBanco, clienteId, filtros, page, pageSize, refreshKey, versaoLancamentos]);
+  }, [numeroBanco, clienteId, filtros, page, pageSize, refreshKey, versaoLancamentos, periodoGrupoCompensacao]);
 
   const conferirLinha = async (l) => {
     const marcar = !l.conferidoEm;
