@@ -1,6 +1,10 @@
 import { clampFinanceiroPageSize } from '../components/financeiro/constants/financeiroConstants.js';
 import { request, postFormData } from '../api/httpClient.js';
 import { featureFlags } from '../config/featureFlags.js';
+import { API_BASE_URL } from '../api/config.js';
+import { buildAuditoriaHeaders } from '../services/auditoriaCliente.js';
+import { getAccessToken } from '../api/authTokenStorage.js';
+import { emitApiUnauthorized } from '../api/apiAuthHeaders.js';
 import {
   buildContaToLetraMerge,
   buildLetraToContaMerge,
@@ -375,6 +379,10 @@ function queryLancamentosPaginados(filtros = {}) {
         ? Number(filtros.numeroInternoProcesso)
         : undefined,
     numeroImovel: filtros.numeroImovel ?? undefined,
+    visivelCliente: typeof filtros.visivelCliente === 'boolean' ? filtros.visivelCliente : undefined,
+    conferido: typeof filtros.conferido === 'boolean' ? filtros.conferido : undefined,
+    natureza: filtros.natureza ?? undefined,
+    semProcesso: filtros.semProcesso === true ? true : undefined,
   };
 }
 
@@ -1539,6 +1547,129 @@ export async function obterContaAcertoResumoApi(numeroBanco, opts = {}) {
     query: { numeroBanco: Number(numeroBanco) },
     signal: opts.signal,
   });
+}
+
+/** Desfaz um grupo de compensação inteiro. */
+export async function desparearCompensacaoApi(grupoCompensacao, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) throw new Error('API financeiro desativada');
+  return request(
+    `/api/financeiro/lancamentos/parear/${encodeURIComponent(String(grupoCompensacao))}`,
+    { method: 'DELETE', signal: opts.signal },
+  );
+}
+
+/** Totais agregados do recorte filtrado do extrato (mesmos filtros de /extrato/paginada). */
+export async function obterTotaisExtratoApi(filtros = {}, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) return null;
+  const { page: _page, size: _size, sort: _sort, ...query } = queryLancamentosPaginados(filtros);
+  return request('/api/financeiro/lancamentos/extrato/totais', { query, signal: opts.signal });
+}
+
+/** Visão do acerto agrupada por processo: somas, pendências e progresso de conferência. */
+export async function obterAcertoResumoProcessosApi(filtros = {}, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) return null;
+  return request('/api/financeiro/acerto/resumo-processos', {
+    query: {
+      numeroBanco: Number(filtros.numeroBanco),
+      clienteId: filtros.clienteId ?? undefined,
+      pessoaRefId: filtros.pessoaRefId ?? undefined,
+      dataInicio: filtros.dataInicio || undefined,
+      dataFim: filtros.dataFim || undefined,
+      busca: filtros.busca || undefined,
+      apenasPendentes: filtros.apenasPendentes === true ? true : undefined,
+      apenasNaoConferidos: filtros.apenasNaoConferidos === true ? true : undefined,
+    },
+    signal: opts.signal,
+  });
+}
+
+/** Marca/desmarca conferência de lançamentos por id (Etapa 5b). */
+export async function conferirLancamentosAcertoApi({ lancamentoIds, conferido }, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) throw new Error('API financeiro desativada');
+  return request('/api/financeiro/acerto/conferir', {
+    method: 'POST',
+    body: { lancamentoIds, conferido: conferido === true },
+    signal: opts.signal,
+  });
+}
+
+/** Conferência em cascata por processo (Etapa 5b). */
+export async function conferirProcessoAcertoApi(body, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) throw new Error('API financeiro desativada');
+  return request('/api/financeiro/acerto/conferir-processo', {
+    method: 'POST',
+    body,
+    signal: opts.signal,
+  });
+}
+
+/** Ficha do Acerto do cliente: regras, mensalidade (cadastro mensalista) e último fechamento. */
+export async function obterAcertoConfigApi({ clienteId, numeroBanco }, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) return null;
+  return request('/api/financeiro/acerto/config', {
+    query: { clienteId: Number(clienteId), numeroBanco: numeroBanco ?? undefined },
+    signal: opts.signal,
+  });
+}
+
+export async function salvarAcertoConfigApi(body, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) throw new Error('API financeiro desativada');
+  return request('/api/financeiro/acerto/config', { method: 'PUT', body, signal: opts.signal });
+}
+
+/** Acertos (fechamentos) do cliente na conta, mais recentes primeiro. */
+export async function listarAcertoFechamentosApi({ clienteId, numeroBanco }, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) return [];
+  return request('/api/financeiro/acerto/fechamentos', {
+    query: { clienteId: Number(clienteId), numeroBanco: Number(numeroBanco) },
+    signal: opts.signal,
+  });
+}
+
+export async function iniciarAcertoFechamentoApi(body, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) throw new Error('API financeiro desativada');
+  return request('/api/financeiro/acerto/fechamentos', { method: 'POST', body, signal: opts.signal });
+}
+
+export async function atualizarAcertoFechamentoApi(id, body, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) throw new Error('API financeiro desativada');
+  return request(`/api/financeiro/acerto/fechamentos/${Number(id)}`, {
+    method: 'PUT',
+    body,
+    signal: opts.signal,
+  });
+}
+
+export async function excluirAcertoFechamentoApi(id, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) throw new Error('API financeiro desativada');
+  return request(`/api/financeiro/acerto/fechamentos/${Number(id)}`, {
+    method: 'DELETE',
+    signal: opts.signal,
+  });
+}
+
+/** Fecha o acerto: grava saldo final, vincula grupos e arquiva o PDF do relatório. */
+export async function fecharAcertoFechamentoApi(id, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) throw new Error('API financeiro desativada');
+  return request(`/api/financeiro/acerto/fechamentos/${Number(id)}/fechar`, {
+    method: 'POST',
+    signal: opts.signal,
+  });
+}
+
+/** Baixa o PDF arquivado de um acerto fechado (blob). */
+export async function baixarPdfAcertoFechamentoApi(id, opts = {}) {
+  const headers = { ...buildAuditoriaHeaders() };
+  const token = getAccessToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const url = `${API_BASE_URL}/api/financeiro/acerto/fechamentos/${Number(id)}/pdf`;
+  const res = await fetch(url, { method: 'GET', headers, signal: opts.signal });
+  if (res.status === 401) emitApiUnauthorized();
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Erro ${res.status} ao baixar PDF.`);
+  }
+  return res.blob();
 }
 
 export async function descartarParesCompensacaoApi(body, opts = {}) {

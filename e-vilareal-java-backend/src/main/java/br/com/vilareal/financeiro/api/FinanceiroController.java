@@ -240,6 +240,10 @@ public class FinanceiroController {
             @RequestParam(value = "numeroInternoProcesso", required = false) Integer numeroInternoProcesso,
             @RequestParam(value = "numeroImovel", required = false) String numeroImovel,
             @RequestParam(value = "compensacaoSemPar", required = false) Boolean compensacaoSemPar,
+            @RequestParam(value = "visivelCliente", required = false) Boolean visivelCliente,
+            @RequestParam(value = "conferido", required = false) Boolean conferido,
+            @RequestParam(value = "natureza", required = false) String natureza,
+            @RequestParam(value = "semProcesso", required = false) Boolean semProcesso,
             @PageableDefault(size = 20, sort = "dataLancamento", direction = Sort.Direction.ASC) Pageable pageable) {
         EtapaLancamento etapaEnum = null;
         if (!Boolean.TRUE.equals(compensacaoSemPar) && etapa != null && !etapa.isBlank()) {
@@ -265,7 +269,74 @@ public class FinanceiroController {
                 numeroInternoProcesso,
                 numeroImovel,
                 compensacaoSemPar,
+                visivelCliente,
+                conferido,
+                parseNatureza(natureza),
+                semProcesso,
                 pageable);
+    }
+
+    @GetMapping("/lancamentos/extrato/totais")
+    @Operation(description = "Totais agregados do recorte filtrado do extrato (mesmos filtros de /extrato/paginada).")
+    public LancamentoExtratoTotaisResponse totaisExtrato(
+            @RequestParam(value = "clienteId", required = false) Long clienteId,
+            @RequestParam(value = "processoId", required = false) Long processoId,
+            @RequestParam(value = "contaContabilId", required = false) Long contaContabilId,
+            @RequestParam(value = "dataInicio", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataInicio,
+            @RequestParam(value = "dataFim", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataFim,
+            @RequestParam(value = "etapa", required = false) String etapa,
+            @RequestParam(value = "numeroBanco", required = false) Integer numeroBanco,
+            @RequestParam(value = "busca", required = false) String busca,
+            @RequestParam(value = "semClienteId", required = false) Boolean semClienteId,
+            @RequestParam(value = "semGrupoCompensacao", required = false) Boolean semGrupoCompensacao,
+            @RequestParam(value = "ano", required = false) Integer ano,
+            @RequestParam(value = "mes", required = false) Integer mes,
+            @RequestParam(value = "contaCodigos", required = false) String contaCodigos,
+            @RequestParam(value = "contaCodigosExcluir", required = false) Boolean contaCodigosExcluir,
+            @RequestParam(value = "cadastroPlenitude", required = false) String cadastroPlenitude,
+            @RequestParam(value = "codigoCliente", required = false) String codigoCliente,
+            @RequestParam(value = "numeroInternoProcesso", required = false) Integer numeroInternoProcesso,
+            @RequestParam(value = "numeroImovel", required = false) String numeroImovel,
+            @RequestParam(value = "compensacaoSemPar", required = false) Boolean compensacaoSemPar,
+            @RequestParam(value = "visivelCliente", required = false) Boolean visivelCliente,
+            @RequestParam(value = "conferido", required = false) Boolean conferido,
+            @RequestParam(value = "natureza", required = false) String natureza,
+            @RequestParam(value = "semProcesso", required = false) Boolean semProcesso) {
+        EtapaLancamento etapaEnum = null;
+        if (!Boolean.TRUE.equals(compensacaoSemPar) && etapa != null && !etapa.isBlank()) {
+            etapaEnum = EtapaLancamento.valueOf(etapa.trim().toUpperCase());
+        }
+        return financeiroService.totaisExtrato(
+                clienteId,
+                processoId,
+                contaContabilId,
+                dataInicio,
+                dataFim,
+                etapaEnum,
+                numeroBanco,
+                busca,
+                semClienteId,
+                semGrupoCompensacao,
+                ano,
+                mes,
+                contaCodigos,
+                contaCodigosExcluir,
+                cadastroPlenitude,
+                codigoCliente,
+                numeroInternoProcesso,
+                numeroImovel,
+                compensacaoSemPar,
+                visivelCliente,
+                conferido,
+                parseNatureza(natureza),
+                semProcesso);
+    }
+
+    private static br.com.vilareal.financeiro.domain.NaturezaLancamento parseNatureza(String natureza) {
+        if (natureza == null || natureza.isBlank()) {
+            return null;
+        }
+        return br.com.vilareal.financeiro.domain.NaturezaLancamento.valueOf(natureza.trim().toUpperCase());
     }
 
     @GetMapping("/lancamentos/pesquisa-valor-data")

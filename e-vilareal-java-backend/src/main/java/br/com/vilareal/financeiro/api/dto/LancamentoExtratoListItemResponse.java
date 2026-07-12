@@ -36,4 +36,7 @@ public class LancamentoExtratoListItemResponse {
     private Boolean visivelCliente;
     /** Visão do cliente (CONTA ZERO): valor alternativo no relatório do cliente (null = valor real). */
     private BigDecimal valorCliente;
+    /** Conferência do acerto (V205): null = pendente de conferência. */
+    private java.time.Instant conferidoEm;
+    private String conferidoPorNome;
 }

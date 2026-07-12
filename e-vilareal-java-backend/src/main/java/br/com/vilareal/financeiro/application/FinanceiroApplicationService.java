@@ -75,6 +75,9 @@ public class FinanceiroApplicationService {
     private final FinanceiroExtratoAcessoService extratoAcessoService;
     private final ImovelLancamentoFiltroResolver imovelLancamentoFiltroResolver;
 
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
+
     public FinanceiroApplicationService(
             ContaContabilRepository contaContabilRepository,
             LancamentoFinanceiroRepository lancamentoRepository,
@@ -262,7 +265,125 @@ public class FinanceiroApplicationService {
             Integer numeroInternoProcesso,
             String numeroImovel,
             Boolean compensacaoSemPar,
+            Boolean visivelCliente,
+            Boolean conferido,
+            NaturezaLancamento natureza,
+            Boolean semProcesso,
             Pageable pageable) {
+        var spec = specExtrato(
+                clienteId, processoId, contaContabilId, dataInicio, dataFim, etapa, numeroBanco,
+                busca, semClienteId, semGrupoCompensacao, ano, mes, contaCodigos, contaCodigosExcluir,
+                cadastroPlenitude, codigoCliente, numeroInternoProcesso, numeroImovel,
+                compensacaoSemPar, visivelCliente, conferido, natureza, semProcesso);
+        return lancamentoRepository.findAll(spec, pageable).map(this::toExtratoListItem);
+    }
+
+    /**
+     * Totais do recorte filtrado do extrato (Etapa 5 do acerto): mesmos filtros da listagem
+     * paginada, agregados no banco — alimenta a barra fixa de totais da tela sem baixar as páginas.
+     */
+    @Transactional(readOnly = true)
+    public LancamentoExtratoTotaisResponse totaisExtrato(
+            Long clienteId,
+            Long processoId,
+            Long contaContabilId,
+            java.time.LocalDate dataInicio,
+            java.time.LocalDate dataFim,
+            EtapaLancamento etapa,
+            Integer numeroBanco,
+            String busca,
+            Boolean semClienteId,
+            Boolean semGrupoCompensacao,
+            Integer ano,
+            Integer mes,
+            String contaCodigos,
+            Boolean contaCodigosExcluir,
+            String cadastroPlenitude,
+            String codigoCliente,
+            Integer numeroInternoProcesso,
+            String numeroImovel,
+            Boolean compensacaoSemPar,
+            Boolean visivelCliente,
+            Boolean conferido,
+            NaturezaLancamento natureza,
+            Boolean semProcesso) {
+        var spec = specExtrato(
+                clienteId, processoId, contaContabilId, dataInicio, dataFim, etapa, numeroBanco,
+                busca, semClienteId, semGrupoCompensacao, ano, mes, contaCodigos, contaCodigosExcluir,
+                cadastroPlenitude, codigoCliente, numeroInternoProcesso, numeroImovel,
+                compensacaoSemPar, visivelCliente, conferido, natureza, semProcesso);
+
+        var cb = entityManager.getCriteriaBuilder();
+        var cq = cb.createQuery(Object[].class);
+        var root = cq.from(LancamentoFinanceiroEntity.class);
+        var pred = spec.toPredicate(root, cq, cb);
+        cq.distinct(false);
+
+        var valorCredito = cb.<java.math.BigDecimal>selectCase()
+                .when(cb.equal(root.get("natureza"), NaturezaLancamento.CREDITO), root.<java.math.BigDecimal>get("valor"))
+                .otherwise(java.math.BigDecimal.ZERO);
+        var valorDebito = cb.<java.math.BigDecimal>selectCase()
+                .when(cb.equal(root.get("natureza"), NaturezaLancamento.DEBITO), root.<java.math.BigDecimal>get("valor"))
+                .otherwise(java.math.BigDecimal.ZERO);
+        var pendente = cb.<Long>selectCase()
+                .when(cb.or(
+                        cb.isNull(root.get("grupoCompensacao")),
+                        cb.equal(root.get("grupoCompensacao"), "")), 1L)
+                .otherwise(0L);
+        var naoConferido = cb.<Long>selectCase()
+                .when(cb.isNull(root.get("conferidoEm")), 1L)
+                .otherwise(0L);
+
+        cq.multiselect(
+                cb.count(root),
+                cb.sum(valorCredito),
+                cb.sum(valorDebito),
+                cb.sum(pendente),
+                cb.sum(naoConferido));
+        if (pred != null) {
+            cq.where(pred);
+        }
+
+        Object[] row = entityManager.createQuery(cq).getSingleResult();
+        LancamentoExtratoTotaisResponse r = new LancamentoExtratoTotaisResponse();
+        long qtd = row[0] != null ? ((Number) row[0]).longValue() : 0;
+        java.math.BigDecimal creditos =
+                row[1] != null ? new java.math.BigDecimal(row[1].toString()) : java.math.BigDecimal.ZERO;
+        java.math.BigDecimal debitos =
+                row[2] != null ? new java.math.BigDecimal(row[2].toString()) : java.math.BigDecimal.ZERO;
+        r.setQuantidade(qtd);
+        r.setSomaCreditos(creditos);
+        r.setSomaDebitos(debitos);
+        r.setSaldo(creditos.subtract(debitos));
+        r.setPendentes(row[3] != null ? ((Number) row[3]).longValue() : 0);
+        r.setNaoConferidos(row[4] != null ? ((Number) row[4]).longValue() : 0);
+        return r;
+    }
+
+    private Specification<LancamentoFinanceiroEntity> specExtrato(
+            Long clienteId,
+            Long processoId,
+            Long contaContabilId,
+            java.time.LocalDate dataInicio,
+            java.time.LocalDate dataFim,
+            EtapaLancamento etapa,
+            Integer numeroBanco,
+            String busca,
+            Boolean semClienteId,
+            Boolean semGrupoCompensacao,
+            Integer ano,
+            Integer mes,
+            String contaCodigos,
+            Boolean contaCodigosExcluir,
+            String cadastroPlenitude,
+            String codigoCliente,
+            Integer numeroInternoProcesso,
+            String numeroImovel,
+            Boolean compensacaoSemPar,
+            Boolean visivelCliente,
+            Boolean conferido,
+            NaturezaLancamento natureza,
+            Boolean semProcesso) {
         var codigos = LancamentoFinanceiroSpecifications.parseContaCodigosParam(contaCodigos);
         boolean excluir = Boolean.TRUE.equals(contaCodigosExcluir);
         var spec = LancamentoFinanceiroSpecifications.comFiltros(
@@ -284,8 +405,11 @@ public class FinanceiroApplicationService {
                 compensacaoSemPar);
         spec = spec.and(comChaveNaturalContaCorrente(codigoCliente, numeroInternoProcesso));
         spec = spec.and(comFiltroNumeroImovel(numeroImovel));
-        spec = aplicarRestricaoExtratoBancos(spec, numeroBanco);
-        return lancamentoRepository.findAll(spec, pageable).map(this::toExtratoListItem);
+        spec = spec.and(LancamentoFinanceiroSpecifications.comVisivelCliente(visivelCliente));
+        spec = spec.and(LancamentoFinanceiroSpecifications.comConferido(conferido));
+        spec = spec.and(LancamentoFinanceiroSpecifications.comNatureza(natureza));
+        spec = spec.and(LancamentoFinanceiroSpecifications.semProcesso(semProcesso));
+        return aplicarRestricaoExtratoBancos(spec, numeroBanco);
     }
 
     @Transactional(readOnly = true)
@@ -1065,6 +1189,10 @@ public class FinanceiroApplicationService {
         r.setGrupoCompensacao(e.getGrupoCompensacao());
         r.setVisivelCliente(e.getVisivelCliente() == null || e.getVisivelCliente());
         r.setValorCliente(e.getValorCliente());
+        r.setConferidoEm(e.getConferidoEm());
+        if (e.getConferidoPorUsuario() != null) {
+            r.setConferidoPorNome(Utf8MojibakeUtil.corrigir(e.getConferidoPorUsuario().getNome()));
+        }
         return r;
     }
 

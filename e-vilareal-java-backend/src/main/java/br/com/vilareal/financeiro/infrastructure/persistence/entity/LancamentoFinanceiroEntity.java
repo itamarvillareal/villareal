@@ -110,6 +110,15 @@ public class LancamentoFinanceiroEntity {
     @Column(name = "valor_cliente", precision = 19, scale = 2)
     private BigDecimal valorCliente;
 
+    /** Conferência do acerto (V205): quando foi marcado como conferido (null = pendente de conferência). */
+    @Column(name = "conferido_em")
+    private Instant conferidoEm;
+
+    /** Conferência do acerto (V205): quem conferiu. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "conferido_por_usuario_id")
+    private br.com.vilareal.usuario.infrastructure.persistence.entity.UsuarioEntity conferidoPorUsuario;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 

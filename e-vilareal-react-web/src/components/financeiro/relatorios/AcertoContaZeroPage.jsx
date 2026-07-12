@@ -1,65 +1,39 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Eye, EyeOff, Loader2, Printer, RefreshCw } from 'lucide-react';
+import { Link2, Printer, RefreshCw, X } from 'lucide-react';
 import { featureFlags } from '../../../config/featureFlags.js';
 import {
   listarContasBancariasClassificacaoApi,
-  listarLancamentosFinanceiroPaginados,
   obterContaAcertoResumoApi,
+  parearGrupoCompensacaoApi,
 } from '../../../repositories/financeiroRepository.js';
 import { formatMoeda } from '../shared/financeiroFormat.js';
-
-function fmtData(iso) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso ?? ''));
-  return m ? `${m[3]}/${m[2]}/${m[1]}` : String(iso ?? '');
-}
-
-/** Valor assinado do lançamento na visão pedida (cliente usa valorCliente quando preenchido). */
-function valorAssinado(l, visaoCliente) {
-  const bruto =
-    visaoCliente && l.valorCliente != null ? Number(l.valorCliente) : Math.abs(Number(l.valor ?? 0));
-  return String(l.natureza ?? '').toUpperCase() === 'DEBITO' ? -bruto : bruto;
-}
-
-function refExibicao(l) {
-  const grupo = String(l.grupoCompensacao ?? '').trim();
-  const ni = l.numeroInternoProcesso;
-  if (ni != null && ni !== '') return String(ni);
-  if (l.processoId != null) return String(l.processoId);
-  return grupo || '0';
-}
-
-async function carregarTodosLancamentos({ numeroBanco, clienteId }, opts = {}) {
-  const out = [];
-  let page = 0;
-  let totalPages = 1;
-  while (page < totalPages && page < 100) {
-    const res = await listarLancamentosFinanceiroPaginados(
-      { numeroBanco, clienteId, page, size: 200, sort: 'dataLancamento,asc' },
-      opts,
-    );
-    out.push(...(res?.content ?? []));
-    totalPages = Math.max(1, Number(res?.totalPages) || 1);
-    page += 1;
-    if (!res?.content?.length) break;
-  }
-  return out;
-}
+import { useFinanceiroToast } from '../shared/Toast.jsx';
+import { ExtratoDetailPanel } from '../extrato/ExtratoDetailPanel.jsx';
+import { AcertoFichaPanel } from './acerto/AcertoFichaPanel.jsx';
+import { AcertoProcessosView } from './acerto/AcertoProcessosView.jsx';
+import { AcertoLancamentosView } from './acerto/AcertoLancamentosView.jsx';
+import { AcertoImpressaoModal } from './acerto/AcertoImpressaoModal.jsx';
+import { valorAssinadoAcerto } from './acerto/acertoUtils.js';
 
 /**
- * Relatório "Acerto do Cliente" da conta de acerto (CONTA ZERO), no formato do PDF de referência:
- * lançamentos em ordem cronológica com saldo acumulado. Visão do cliente filtra
- * visivel_cliente = true e usa valor_cliente quando preenchido; visão interna mostra tudo.
+ * Tela de trabalho "Acerto do Cliente" (Etapas 5/5b da CONTA ZERO): visão agrupada por processo,
+ * lançamentos paginados com filtros, conferência persistente, compensação de seleção na tela,
+ * Ficha do Acerto com fluxo Iniciar → Fechar, e impressão como modo separado.
  */
 export function AcertoContaZeroPage() {
+  const toast = useFinanceiroToast();
   const [contasAcerto, setContasAcerto] = useState([]);
   const [numeroBanco, setNumeroBanco] = useState(null);
   const [resumo, setResumo] = useState(null);
   const [vinculoSel, setVinculoSel] = useState(null);
-  const [lancamentos, setLancamentos] = useState([]);
-  const [visaoCliente, setVisaoCliente] = useState(true);
-  const [carregando, setCarregando] = useState(false);
-  const [erro, setErro] = useState('');
+  const [aba, setAba] = useState('processos');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [versaoLancamentos, setVersaoLancamentos] = useState(0);
+
+  const [selecao, setSelecao] = useState(() => new Map());
+  const [compensando, setCompensando] = useState(false);
+  const [detailItem, setDetailItem] = useState(null);
+  const [imprimindo, setImprimindo] = useState(null);
 
   useEffect(() => {
     if (!featureFlags.useApiFinanceiro) return undefined;
@@ -85,48 +59,49 @@ export function AcertoContaZeroPage() {
     return () => ac.abort();
   }, [numeroBanco, refreshKey]);
 
-  useEffect(() => {
-    const clienteId = vinculoSel?.clienteId;
-    if (!featureFlags.useApiFinanceiro || numeroBanco == null || !clienteId) {
-      setLancamentos([]);
-      return undefined;
-    }
-    const ac = new AbortController();
-    setCarregando(true);
-    setErro('');
-    carregarTodosLancamentos({ numeroBanco, clienteId: Number(clienteId) }, { signal: ac.signal })
-      .then((lista) => setLancamentos(lista))
-      .catch((e) => {
-        if (e?.name !== 'AbortError') {
-          setErro(e?.message || 'Falha ao carregar lançamentos.');
-          setLancamentos([]);
-        }
-      })
-      .finally(() => {
-        if (!ac.signal.aborted) setCarregando(false);
-      });
-    return () => ac.abort();
-  }, [numeroBanco, vinculoSel?.clienteId, refreshKey]);
+  const refresh = useCallback(() => {
+    setRefreshKey((n) => n + 1);
+    setVersaoLancamentos((n) => n + 1);
+  }, []);
 
-  const linhas = useMemo(() => {
-    const filtrados = visaoCliente
-      ? lancamentos.filter((l) => l.visivelCliente !== false)
-      : lancamentos;
-    let saldo = 0;
-    return filtrados.map((l) => {
-      const v = valorAssinado(l, visaoCliente);
-      saldo += v;
-      return { l, valor: v, saldo };
+  const selecionarVinculo = useCallback((v) => {
+    setVinculoSel(v);
+    setSelecao(new Map());
+    setDetailItem(null);
+  }, []);
+
+  const toggleSelecao = useCallback((id, lancamento) => {
+    setSelecao((m) => {
+      const n = new Map(m);
+      if (n.has(id)) n.delete(id);
+      else n.set(id, lancamento);
+      return n;
     });
-  }, [lancamentos, visaoCliente]);
+  }, []);
 
-  const saldoFinal = linhas.length ? linhas[linhas.length - 1].saldo : 0;
-  const pendentes = useMemo(
-    () => lancamentos.filter((l) => String(l.grupoCompensacao ?? '').trim() === '').length,
-    [lancamentos],
-  );
+  const somaSelecao = useMemo(() => {
+    let soma = 0;
+    for (const l of selecao.values()) soma += valorAssinadoAcerto(l);
+    return Math.round(soma * 100) / 100;
+  }, [selecao]);
 
-  const selecionarVinculo = useCallback((v) => setVinculoSel(v), []);
+  const selecaoZerada = selecao.size >= 2 && Math.abs(somaSelecao) < 0.005;
+  const selectedIds = useMemo(() => new Set(selecao.keys()), [selecao]);
+
+  const compensarSelecao = async () => {
+    if (!selecaoZerada) return;
+    setCompensando(true);
+    try {
+      const r = await parearGrupoCompensacaoApi({ lancamentoIds: [...selecao.keys()] });
+      toast.success(`Seleção compensada no grupo ${r?.grupoCompensacao ?? ''} (${selecao.size} lançamentos).`);
+      setSelecao(new Map());
+      refresh();
+    } catch (e) {
+      toast.error(e?.message || 'Falha ao compensar a seleção.');
+    } finally {
+      setCompensando(false);
+    }
+  };
 
   if (!featureFlags.useApiFinanceiro) {
     return <div className="p-6 text-sm text-slate-600 dark:text-slate-400">API financeiro desativada.</div>;
@@ -135,14 +110,16 @@ export function AcertoContaZeroPage() {
   const vinculos = resumo?.vinculos ?? [];
   const nomeConta =
     contasAcerto.find((c) => Number(c.numeroBanco) === Number(numeroBanco))?.bancoNome || 'CONTA ZERO';
+  const clienteId = vinculoSel?.clienteId != null ? Number(vinculoSel.clienteId) : null;
 
   return (
-    <div className="flex flex-col min-h-0 h-full overflow-auto p-4 space-y-4">
-      <header className="flex flex-wrap items-center justify-between gap-3 print:hidden">
+    <div className="relative flex flex-col min-h-0 h-full overflow-auto p-4 space-y-4">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-bold text-slate-900 dark:text-white">Acerto do Cliente</h1>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            {nomeConta} (conta {numeroBanco ?? '—'}) — extrato de acerto por cliente, com saldo acumulado.
+            {nomeConta} (conta {numeroBanco ?? '—'}) — tela de trabalho: conferência por processo,
+            compensação e fechamento do acerto.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -151,7 +128,7 @@ export function AcertoContaZeroPage() {
               value={numeroBanco ?? ''}
               onChange={(e) => {
                 setNumeroBanco(Number(e.target.value));
-                setVinculoSel(null);
+                selecionarVinculo(null);
               }}
               className="text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5"
             >
@@ -164,20 +141,7 @@ export function AcertoContaZeroPage() {
           ) : null}
           <button
             type="button"
-            onClick={() => setVisaoCliente((v) => !v)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800"
-            title={
-              visaoCliente
-                ? 'Visão do cliente: oculta lançamentos internos e usa o valor para o cliente'
-                : 'Visão interna: todos os lançamentos com valores reais'
-            }
-          >
-            {visaoCliente ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-            {visaoCliente ? 'Visão do cliente' : 'Visão interna'}
-          </button>
-          <button
-            type="button"
-            onClick={() => setRefreshKey((n) => n + 1)}
+            onClick={refresh}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800"
           >
             <RefreshCw className="w-4 h-4" />
@@ -185,24 +149,29 @@ export function AcertoContaZeroPage() {
           </button>
           <button
             type="button"
-            disabled={!vinculoSel || linhas.length === 0}
-            onClick={() => window.print()}
+            disabled={!clienteId}
+            onClick={() => setImprimindo({ visaoCliente: true })}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+            title="Extrato do cliente (visível ao cliente, com saldo acumulado)"
           >
             <Printer className="w-4 h-4" />
-            Imprimir / PDF
+            Imprimir (cliente)
+          </button>
+          <button
+            type="button"
+            disabled={!clienteId}
+            onClick={() => setImprimindo({ visaoCliente: false })}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
+            title="Extrato interno completo, com valores reais"
+          >
+            <Printer className="w-4 h-4" />
+            Imprimir (interno)
           </button>
         </div>
       </header>
 
-      {erro ? (
-        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200 print:hidden">
-          {erro}
-        </p>
-      ) : null}
-
       <div className="flex flex-col lg:flex-row gap-4 min-h-0">
-        <aside className="lg:w-80 shrink-0 print:hidden">
+        <aside className="lg:w-80 shrink-0">
           <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden">
             <p className="px-3 py-2 text-xs font-medium text-slate-500 border-b border-slate-100 dark:border-slate-800">
               Clientes com movimento na conta
@@ -251,122 +220,133 @@ export function AcertoContaZeroPage() {
           </div>
         </aside>
 
-        <main className="flex-1 min-w-0">
-          {!vinculoSel ? (
+        <main className="flex-1 min-w-0 space-y-3">
+          {!clienteId ? (
             <p className="text-sm text-slate-500 py-8 text-center">
-              Selecione um cliente para gerar o acerto.
-            </p>
-          ) : carregando ? (
-            <p className="flex items-center gap-2 text-sm text-slate-500 py-8 justify-center">
-              <Loader2 className="w-4 h-4 animate-spin" /> Carregando lançamentos…
+              Selecione um cliente para trabalhar o acerto.
             </p>
           ) : (
-            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden print:border-0 print:rounded-none">
-              <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700">
-                <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Acerto — {vinculoSel.nome}
-                  {vinculoSel.codigoCliente ? ` (${vinculoSel.codigoCliente})` : ''}
-                </h2>
-                <p className="text-[11px] text-slate-500">
-                  {nomeConta} · {visaoCliente ? 'visão do cliente' : 'visão interna'} ·{' '}
-                  {linhas.length.toLocaleString('pt-BR')} lançamentos
-                  {pendentes > 0 ? ` · ${pendentes.toLocaleString('pt-BR')} pendentes de compensação` : ''}
-                </p>
+            <>
+              <AcertoFichaPanel
+                clienteId={clienteId}
+                numeroBanco={numeroBanco}
+                refreshKey={refreshKey}
+                onAcertoFechado={refresh}
+              />
+
+              <div className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-700">
+                {[
+                  { id: 'processos', label: 'Por processo' },
+                  { id: 'lancamentos', label: 'Lançamentos' },
+                ].map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setAba(t.id)}
+                    className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${
+                      aba === t.id
+                        ? 'border-blue-600 text-blue-700 dark:text-blue-300'
+                        : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead className="bg-slate-50 dark:bg-slate-800/80 text-left">
-                    <tr>
-                      <th className="px-2 py-1.5">Nº</th>
-                      <th className="px-2 py-1.5">Data</th>
-                      <th className="px-2 py-1.5">Ref</th>
-                      <th className="px-2 py-1.5">Descrição</th>
-                      {!visaoCliente ? <th className="px-2 py-1.5">Grupo</th> : null}
-                      {!visaoCliente ? <th className="px-2 py-1.5 text-center">Cliente vê</th> : null}
-                      <th className="px-2 py-1.5 text-right">Valor</th>
-                      <th className="px-2 py-1.5 text-right">Saldo</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {linhas.map(({ l, valor, saldo }) => (
-                      <tr key={l.id} className="border-t border-slate-100 dark:border-slate-800">
-                        <td className="px-2 py-1 font-mono text-[10px] whitespace-nowrap">
-                          {l.numeroLancamento || l.id}
-                        </td>
-                        <td className="px-2 py-1 whitespace-nowrap">{fmtData(l.dataLancamento)}</td>
-                        <td className="px-2 py-1 whitespace-nowrap">{refExibicao(l)}</td>
-                        <td className="px-2 py-1 max-w-[320px]">
-                          <span className="block truncate" title={l.descricao}>
-                            {l.descricao}
-                          </span>
-                          {String(l.descricaoDetalhada ?? '').trim() ? (
-                            <span
-                              className="block truncate text-[10px] text-slate-400"
-                              title={l.descricaoDetalhada}
-                            >
-                              {l.descricaoDetalhada}
-                            </span>
-                          ) : null}
-                        </td>
-                        {!visaoCliente ? (
-                          <td className="px-2 py-1 font-mono text-[10px]">
-                            {String(l.grupoCompensacao ?? '').trim() || (
-                              <span className="text-amber-700 dark:text-amber-300">pendente</span>
-                            )}
-                          </td>
-                        ) : null}
-                        {!visaoCliente ? (
-                          <td className="px-2 py-1 text-center">
-                            {l.visivelCliente === false
-                              ? 'não'
-                              : l.valorCliente != null
-                                ? `sim (${formatMoeda(Number(l.valorCliente))})`
-                                : 'sim'}
-                          </td>
-                        ) : null}
-                        <td
-                          className={`px-2 py-1 text-right tabular-nums font-medium ${
-                            valor < 0 ? 'text-red-700 dark:text-red-300' : 'text-emerald-700 dark:text-emerald-300'
-                          }`}
-                        >
-                          {formatMoeda(valor)}
-                        </td>
-                        <td className="px-2 py-1 text-right tabular-nums">{formatMoeda(saldo)}</td>
-                      </tr>
-                    ))}
-                    {linhas.length === 0 ? (
-                      <tr>
-                        <td colSpan={visaoCliente ? 6 : 8} className="px-4 py-8 text-center text-slate-500">
-                          Nenhum lançamento nesta visão.
-                        </td>
-                      </tr>
-                    ) : null}
-                  </tbody>
-                  {linhas.length > 0 ? (
-                    <tfoot>
-                      <tr className="border-t-2 border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/60 font-semibold">
-                        <td colSpan={visaoCliente ? 4 : 6} className="px-2 py-2 text-right">
-                          Saldo final do acerto
-                        </td>
-                        <td colSpan={2} className="px-2 py-2 text-right tabular-nums">
-                          {formatMoeda(saldoFinal)}
-                          <span className="block text-[10px] font-normal text-slate-500">
-                            {Math.abs(saldoFinal) < 0.005
-                              ? 'acerto zerado'
-                              : saldoFinal > 0
-                                ? 'a favor do escritório'
-                                : 'a favor do cliente'}
-                          </span>
-                        </td>
-                      </tr>
-                    </tfoot>
-                  ) : null}
-                </table>
-              </div>
-            </div>
+
+              {aba === 'processos' ? (
+                <AcertoProcessosView
+                  numeroBanco={numeroBanco}
+                  clienteId={clienteId}
+                  refreshKey={refreshKey}
+                  onRefresh={refresh}
+                  selectedIds={selectedIds}
+                  onToggleSelect={toggleSelecao}
+                  onAbrirLancamento={setDetailItem}
+                  versaoLancamentos={versaoLancamentos}
+                />
+              ) : (
+                <AcertoLancamentosView
+                  numeroBanco={numeroBanco}
+                  clienteId={clienteId}
+                  refreshKey={refreshKey}
+                  onRefresh={refresh}
+                  selectedIds={selectedIds}
+                  onToggleSelect={toggleSelecao}
+                  onAbrirLancamento={setDetailItem}
+                  versaoLancamentos={versaoLancamentos}
+                />
+              )}
+            </>
           )}
         </main>
       </div>
+
+      {selecao.size > 0 ? (
+        <div className="sticky bottom-2 z-20 mx-auto flex flex-wrap items-center gap-3 rounded-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-lg px-4 py-2 text-sm">
+          <span>
+            <strong>{selecao.size}</strong> selecionado(s) · soma{' '}
+            <strong className={Math.abs(somaSelecao) < 0.005 ? 'text-emerald-600' : 'text-amber-700 dark:text-amber-300'}>
+              {formatMoeda(somaSelecao)}
+            </strong>
+          </span>
+          <button
+            type="button"
+            disabled={!selecaoZerada || compensando}
+            onClick={() => void compensarSelecao()}
+            title={
+              selecaoZerada
+                ? 'Compensa os lançamentos selecionados em um grupo de soma zero'
+                : 'A seleção precisa ter 2+ lançamentos somando zero'
+            }
+            className="inline-flex items-center gap-1.5 px-3 py-1 text-sm font-medium rounded-full bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+          >
+            <Link2 className="w-3.5 h-3.5" />
+            {compensando ? 'Compensando…' : 'Compensar seleção'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelecao(new Map())}
+            className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800"
+          >
+            <X className="w-3 h-3" /> Limpar
+          </button>
+        </div>
+      ) : null}
+
+      {detailItem ? (
+        <>
+          <button
+            type="button"
+            className="absolute inset-0 z-10 bg-black/20"
+            aria-label="Fechar painel"
+            onClick={() => setDetailItem(null)}
+          />
+          <ExtratoDetailPanel
+            item={detailItem}
+            onClose={() => setDetailItem(null)}
+            onSaved={(updated) => {
+              setDetailItem(updated);
+              setVersaoLancamentos((n) => n + 1);
+            }}
+            onDeleted={() => {
+              setDetailItem(null);
+              refresh();
+            }}
+          />
+        </>
+      ) : null}
+
+      {imprimindo && clienteId ? (
+        <AcertoImpressaoModal
+          numeroBanco={numeroBanco}
+          clienteId={clienteId}
+          nomeCliente={`${vinculoSel?.nome ?? ''}${vinculoSel?.codigoCliente ? ` (${vinculoSel.codigoCliente})` : ''}`}
+          nomeConta={nomeConta}
+          visaoCliente={imprimindo.visaoCliente}
+          onClose={() => setImprimindo(null)}
+        />
+      ) : null}
     </div>
   );
 }

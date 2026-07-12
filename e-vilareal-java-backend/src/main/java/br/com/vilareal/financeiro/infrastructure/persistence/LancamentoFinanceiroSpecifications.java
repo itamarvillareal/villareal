@@ -512,6 +512,38 @@ public final class LancamentoFinanceiroSpecifications {
                 cb.equal(root.get("grupoCompensacao"), ""));
     }
 
+    /** Lançamentos sem processo (grupo "mensalidades e avulsos" da visão do acerto). */
+    public static Specification<LancamentoFinanceiroEntity> semProcesso(Boolean semProcesso) {
+        return (root, query, cb) -> Boolean.TRUE.equals(semProcesso)
+                ? cb.isNull(root.get("processo"))
+                : null;
+    }
+
+    /** Visão do cliente (CONTA ZERO): TRUE = só visíveis; FALSE = só ocultos do relatório. */
+    public static Specification<LancamentoFinanceiroEntity> comVisivelCliente(Boolean visivelCliente) {
+        return (root, query, cb) -> visivelCliente == null
+                ? null
+                : cb.equal(root.get("visivelCliente"), visivelCliente);
+    }
+
+    /** Conferência do acerto (V205): TRUE = só conferidos; FALSE = só pendentes de conferência. */
+    public static Specification<LancamentoFinanceiroEntity> comConferido(Boolean conferido) {
+        return (root, query, cb) -> {
+            if (conferido == null) {
+                return null;
+            }
+            return Boolean.TRUE.equals(conferido)
+                    ? cb.isNotNull(root.get("conferidoEm"))
+                    : cb.isNull(root.get("conferidoEm"));
+        };
+    }
+
+    /** Natureza do lançamento (CREDITO/DEBITO). */
+    public static Specification<LancamentoFinanceiroEntity> comNatureza(
+            br.com.vilareal.financeiro.domain.NaturezaLancamento natureza) {
+        return (root, query, cb) -> natureza == null ? null : cb.equal(root.get("natureza"), natureza);
+    }
+
     public static Specification<LancamentoFinanceiroEntity> comMes(Integer ano, Integer mes) {
         return (root, query, cb) -> {
             if (ano == null || mes == null) {

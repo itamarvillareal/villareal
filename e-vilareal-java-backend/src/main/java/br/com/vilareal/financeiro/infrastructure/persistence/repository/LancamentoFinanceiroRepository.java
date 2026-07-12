@@ -64,7 +64,7 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
     @Override
     List<LancamentoFinanceiroEntity> findAll(Specification<LancamentoFinanceiroEntity> spec, Sort sort);
 
-    @EntityGraph(attributePaths = {"contaContabil", "pessoaRef", "clienteEntidade", "processo"})
+    @EntityGraph(attributePaths = {"contaContabil", "pessoaRef", "clienteEntidade", "processo", "conferidoPorUsuario"})
     @Override
     Page<LancamentoFinanceiroEntity> findAll(Specification<LancamentoFinanceiroEntity> spec, Pageable pageable);
 
@@ -973,6 +973,111 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
             WHERE l.grupoCompensacao = :grupo AND l.status = 'ATIVO'
             """)
     List<LancamentoFinanceiroEntity> findAtivosByGrupoCompensacao(@Param("grupo") String grupo);
+
+    /**
+     * Visão do acerto agrupada por processo (Etapa 5): somas, pendências e progresso de conferência
+     * por proc do recorte cliente/pessoa na conta de acerto. Proc NULL agrupa mensalidades e avulsos.
+     * A busca aplica-se ao lançamento (nome do devedor na descrição) ou ao número interno do proc.
+     */
+    @Query(value = """
+            SELECT
+                fl.processo_id AS processo_id,
+                p.numero_interno AS numero_interno,
+                (SELECT GROUP_CONCAT(COALESCE(NULLIF(TRIM(pp.nome_livre), ''), pe.nome)
+                        ORDER BY pp.ordem, pp.id SEPARATOR ' x ')
+                 FROM processo_parte pp
+                 LEFT JOIN pessoa pe ON pe.id = pp.pessoa_id
+                 WHERE pp.processo_id = fl.processo_id) AS partes,
+                COUNT(*) AS qtd,
+                COALESCE(SUM(CASE WHEN fl.natureza = 'CREDITO' THEN fl.valor ELSE 0 END), 0) AS creditos,
+                COALESCE(SUM(CASE WHEN fl.natureza = 'DEBITO' THEN fl.valor ELSE 0 END), 0) AS debitos,
+                COALESCE(SUM(CASE WHEN fl.natureza = 'CREDITO' THEN fl.valor ELSE -fl.valor END), 0) AS saldo,
+                SUM(CASE WHEN fl.grupo_compensacao IS NULL OR fl.grupo_compensacao = '' THEN 1 ELSE 0 END) AS pendentes,
+                SUM(CASE WHEN fl.conferido_em IS NULL THEN 1 ELSE 0 END) AS nao_conferidos,
+                MAX(fl.conferido_em) AS ultima_conferencia,
+                MIN(fl.data_lancamento) AS primeira_data,
+                MAX(fl.data_lancamento) AS ultima_data
+            FROM financeiro_lancamento fl
+            LEFT JOIN processo p ON p.id = fl.processo_id
+            WHERE fl.numero_banco = :numeroBanco
+              AND fl.status = 'ATIVO'
+              AND (:clienteId IS NULL OR fl.cliente_id = :clienteId)
+              AND (:pessoaRefId IS NULL OR (fl.pessoa_ref_id = :pessoaRefId AND fl.cliente_id IS NULL))
+              AND (:dataInicio IS NULL OR fl.data_lancamento >= :dataInicio)
+              AND (:dataFim IS NULL OR fl.data_lancamento <= :dataFim)
+              AND (:buscaLike IS NULL
+                   OR UPPER(fl.descricao) LIKE :buscaLike
+                   OR UPPER(fl.descricao_detalhada) LIKE :buscaLike
+                   OR (:buscaNumero IS NOT NULL AND p.numero_interno = :buscaNumero))
+            GROUP BY fl.processo_id, p.numero_interno
+            ORDER BY (fl.processo_id IS NULL) DESC, p.numero_interno ASC
+            """, nativeQuery = true)
+    List<Object[]> resumoAcertoPorProcesso(
+            @Param("numeroBanco") Integer numeroBanco,
+            @Param("clienteId") Long clienteId,
+            @Param("pessoaRefId") Long pessoaRefId,
+            @Param("dataInicio") LocalDate dataInicio,
+            @Param("dataFim") LocalDate dataFim,
+            @Param("buscaLike") String buscaLike,
+            @Param("buscaNumero") Integer buscaNumero);
+
+    /** Conferência do acerto (V205): marca/desmarca lançamentos por id. */
+    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = """
+            UPDATE financeiro_lancamento
+            SET conferido_em = :quando, conferido_por_usuario_id = :usuarioId
+            WHERE id IN (:ids) AND status = 'ATIVO'
+            """, nativeQuery = true)
+    int atualizarConferenciaPorIds(
+            @Param("ids") Collection<Long> ids,
+            @Param("quando") java.time.Instant quando,
+            @Param("usuarioId") Long usuarioId);
+
+    /**
+     * Conferência do acerto em cascata por processo (V205): marca/desmarca todos os lançamentos do
+     * proc (ou dos sem proc, quando {@code processoId} nulo) no recorte cliente/pessoa da conta.
+     */
+    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = """
+            UPDATE financeiro_lancamento
+            SET conferido_em = :quando, conferido_por_usuario_id = :usuarioId
+            WHERE numero_banco = :numeroBanco
+              AND status = 'ATIVO'
+              AND (:clienteId IS NULL OR cliente_id = :clienteId)
+              AND (:pessoaRefId IS NULL OR (pessoa_ref_id = :pessoaRefId AND cliente_id IS NULL))
+              AND ((:processoId IS NULL AND processo_id IS NULL) OR processo_id = :processoId)
+            """, nativeQuery = true)
+    int atualizarConferenciaPorProcesso(
+            @Param("numeroBanco") Integer numeroBanco,
+            @Param("clienteId") Long clienteId,
+            @Param("pessoaRefId") Long pessoaRefId,
+            @Param("processoId") Long processoId,
+            @Param("quando") java.time.Instant quando,
+            @Param("usuarioId") Long usuarioId);
+
+    /** Grupos de compensação distintos do cliente na conta de acerto (para vincular ao fechamento). */
+    @Query(value = """
+            SELECT DISTINCT grupo_compensacao
+            FROM financeiro_lancamento
+            WHERE numero_banco = :numeroBanco
+              AND cliente_id = :clienteId
+              AND status = 'ATIVO'
+              AND grupo_compensacao IS NOT NULL AND grupo_compensacao <> ''
+            """, nativeQuery = true)
+    List<String> findGruposCompensacaoPorClienteEConta(
+            @Param("numeroBanco") Integer numeroBanco, @Param("clienteId") Long clienteId);
+
+    /** Saldo pendente (sem grupo) assinado do cliente na conta de acerto. */
+    @Query(value = """
+            SELECT COALESCE(SUM(CASE WHEN natureza = 'CREDITO' THEN valor ELSE -valor END), 0)
+            FROM financeiro_lancamento
+            WHERE numero_banco = :numeroBanco
+              AND cliente_id = :clienteId
+              AND status = 'ATIVO'
+              AND (grupo_compensacao IS NULL OR grupo_compensacao = '')
+            """, nativeQuery = true)
+    BigDecimal sumSaldoPendentePorClienteEConta(
+            @Param("numeroBanco") Integer numeroBanco, @Param("clienteId") Long clienteId);
 
     @Query(
             """
