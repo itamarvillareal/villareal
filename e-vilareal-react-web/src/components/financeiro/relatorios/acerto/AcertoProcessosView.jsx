@@ -33,6 +33,9 @@ export function AcertoProcessosView({
   onToggleSelect,
   onAbrirLancamento,
   versaoLancamentos,
+  periodoDataInicio,
+  periodoDataFim,
+  somenteLeitura = false,
 }) {
   const toast = useFinanceiroToast();
   const [dados, setDados] = useState(null);
@@ -45,6 +48,13 @@ export function AcertoProcessosView({
   const [dataFim, setDataFim] = useState('');
   const [soPendentes, setSoPendentes] = useState(false);
   const [soNaoConferidos, setSoNaoConferidos] = useState(false);
+
+  useEffect(() => {
+    if (periodoDataInicio) setDataInicio(periodoDataInicio);
+    else setDataInicio('');
+    if (periodoDataFim) setDataFim(periodoDataFim);
+    else setDataFim('');
+  }, [periodoDataInicio, periodoDataFim]);
 
   const [expandido, setExpandido] = useState(() => new Set());
   const [lancamentosPorProc, setLancamentosPorProc] = useState({});
@@ -91,6 +101,8 @@ export function AcertoProcessosView({
           clienteId,
           processoId: proc.processoId ?? undefined,
           semProcesso: proc.processoId == null,
+          dataInicio: dataInicio || undefined,
+          dataFim: dataFim || undefined,
           size: 500,
           page: 0,
           sort: 'dataLancamento,asc',
@@ -106,7 +118,7 @@ export function AcertoProcessosView({
         });
       }
     },
-    [numeroBanco, clienteId, toast],
+    [numeroBanco, clienteId, dataInicio, dataFim, toast],
   );
 
   // Recarrega os procs expandidos quando um lançamento é editado/compensado fora daqui.
@@ -189,6 +201,7 @@ export function AcertoProcessosView({
             type="date"
             value={dataInicio}
             onChange={(e) => setDataInicio(e.target.value)}
+            disabled={Boolean(periodoDataInicio)}
             className="rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5"
           />
         </label>
@@ -198,6 +211,7 @@ export function AcertoProcessosView({
             type="date"
             value={dataFim}
             onChange={(e) => setDataFim(e.target.value)}
+            disabled={Boolean(periodoDataFim)}
             className="rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5"
           />
         </label>
@@ -303,6 +317,13 @@ export function AcertoProcessosView({
                         )}
                       </td>
                       <td className="px-2 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+                        {somenteLeitura ? (
+                          conferido ? (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600 inline" />
+                          ) : (
+                            <Circle className="w-4 h-4 text-slate-300 inline" />
+                          )
+                        ) : (
                         <button
                           type="button"
                           disabled={conferindoProc === chave}
@@ -322,6 +343,7 @@ export function AcertoProcessosView({
                             <Circle className="w-4 h-4 text-slate-300 dark:text-slate-600" />
                           )}
                         </button>
+                        )}
                       </td>
                     </tr>,
                     aberto ? (
@@ -346,11 +368,13 @@ export function AcertoProcessosView({
                                       onClick={() => onAbrirLancamento?.(l)}
                                     >
                                       <td className="px-1 py-1 w-6" onClick={(e) => e.stopPropagation()}>
+                                        {!somenteLeitura ? (
                                         <input
                                           type="checkbox"
                                           checked={selectedIds.has(Number(l.id))}
                                           onChange={() => onToggleSelect?.(Number(l.id), l)}
                                         />
+                                        ) : null}
                                       </td>
                                       <td className="px-1 py-1 whitespace-nowrap">{fmtDataAcerto(l.dataLancamento)}</td>
                                       <td className="px-1 py-1 font-mono text-[10px] whitespace-nowrap">

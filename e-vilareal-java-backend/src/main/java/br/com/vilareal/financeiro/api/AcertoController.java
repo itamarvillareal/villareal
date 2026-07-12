@@ -7,6 +7,7 @@ import br.com.vilareal.financeiro.api.dto.AcertoConferirProcessoRequest;
 import br.com.vilareal.financeiro.api.dto.AcertoConferirRequest;
 import br.com.vilareal.financeiro.api.dto.AcertoFechamentoResponse;
 import br.com.vilareal.financeiro.api.dto.AcertoFechamentoWriteRequest;
+import br.com.vilareal.financeiro.api.dto.AcertoResumoPeriodosResponse;
 import br.com.vilareal.financeiro.api.dto.AcertoResumoProcessosResponse;
 import br.com.vilareal.financeiro.application.AcertoFechamentoApplicationService;
 import br.com.vilareal.financeiro.application.AcertoTrabalhoApplicationService;
@@ -42,6 +43,16 @@ public class AcertoController {
             AcertoFechamentoApplicationService acertoFechamentoService) {
         this.acertoTrabalhoService = acertoTrabalhoService;
         this.acertoFechamentoService = acertoFechamentoService;
+    }
+
+    @GetMapping("/resumo-periodos")
+    @Operation(
+            description =
+                    "Timeline de períodos do acerto (Etapa 5c): fechados (manual/auto/formal) + período "
+                            + "aberto; retorna periodoAbertoIndice e ultimoCorteData.")
+    public AcertoResumoPeriodosResponse resumoPeriodos(
+            @RequestParam("numeroBanco") Integer numeroBanco, @RequestParam("clienteId") Long clienteId) {
+        return acertoTrabalhoService.resumoPeriodos(numeroBanco, clienteId);
     }
 
     @GetMapping("/resumo-processos")

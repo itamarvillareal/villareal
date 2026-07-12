@@ -40,7 +40,7 @@ function baixarBlob(blob, nome) {
  * referenciada do cadastro mensalista, último fechamento e o fluxo do acerto
  * (Iniciar → conferir/ajustar → Fechar, com PDF arquivado).
  */
-export function AcertoFichaPanel({ clienteId, numeroBanco, refreshKey, onAcertoFechado }) {
+export function AcertoFichaPanel({ clienteId, numeroBanco, refreshKey, onAcertoFechado, onConfigSalva }) {
   const toast = useFinanceiroToast();
   const [aberto, setAberto] = useState(true);
   const [config, setConfig] = useState(null);
@@ -50,6 +50,7 @@ export function AcertoFichaPanel({ clienteId, numeroBanco, refreshKey, onAcertoF
   const [editando, setEditando] = useState(false);
   const [percentual, setPercentual] = useState('');
   const [observacoes, setObservacoes] = useState('');
+  const [dataUltimoAcerto, setDataUltimoAcerto] = useState('');
   const [salvando, setSalvando] = useState(false);
 
   const [iniciando, setIniciando] = useState(false);
@@ -92,6 +93,9 @@ export function AcertoFichaPanel({ clienteId, numeroBanco, refreshKey, onAcertoF
   const iniciarEdicao = () => {
     setPercentual(config?.percentualRepasse != null ? String(config.percentualRepasse) : '');
     setObservacoes(config?.observacoes ?? '');
+    setDataUltimoAcerto(
+      config?.dataUltimoAcertoConhecido ? String(config.dataUltimoAcertoConhecido).slice(0, 10) : '',
+    );
     setEditando(true);
   };
 
@@ -102,11 +106,13 @@ export function AcertoFichaPanel({ clienteId, numeroBanco, refreshKey, onAcertoF
         clienteId: Number(clienteId),
         percentualRepasse: percentual.trim() !== '' ? Number(percentual.replace(',', '.')) : null,
         observacoes: observacoes.trim() || null,
+        dataUltimoAcertoConhecido: dataUltimoAcerto.trim() || null,
       };
       await salvarAcertoConfigApi(body);
       toast.success('Ficha do Acerto salva.');
       setEditando(false);
       carregar();
+      onConfigSalva?.();
     } catch (e) {
       toast.error(e?.message || 'Falha ao salvar a Ficha.');
     } finally {
@@ -237,6 +243,24 @@ export function AcertoFichaPanel({ clienteId, numeroBanco, refreshKey, onAcertoF
                 <p className="font-medium text-slate-800 dark:text-slate-100">
                   {config?.percentualRepasse != null
                     ? `${Number(config.percentualRepasse).toLocaleString('pt-BR')}% cliente / ${(100 - Number(config.percentualRepasse)).toLocaleString('pt-BR')}% escritório`
+                    : 'não definido'}
+                </p>
+              )}
+            </div>
+            <div>
+              <p className="text-[11px] text-slate-500">Último acerto conhecido (corte manual)</p>
+              {editando ? (
+                <input
+                  type="date"
+                  value={dataUltimoAcerto}
+                  onChange={(e) => setDataUltimoAcerto(e.target.value)}
+                  title="Lançamentos até esta data formam um bloco fechado; a mesa de trabalho abre a partir do dia seguinte."
+                  className="text-sm rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1"
+                />
+              ) : (
+                <p className="font-medium text-slate-800 dark:text-slate-100">
+                  {config?.dataUltimoAcertoConhecido
+                    ? fmtDataAcerto(config.dataUltimoAcertoConhecido)
                     : 'não definido'}
                 </p>
               )}

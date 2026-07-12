@@ -31,4 +31,7 @@ public class AcertoClienteConfigResponse {
     private Instant ultimoFechamentoData;
     private BigDecimal ultimoFechamentoSaldo;
     private LocalDate ultimoFechamentoPeriodoFim;
+
+    /** Corte manual: último acerto conhecido antes do sistema (Etapa 5c). */
+    private LocalDate dataUltimoAcertoConhecido;
 }

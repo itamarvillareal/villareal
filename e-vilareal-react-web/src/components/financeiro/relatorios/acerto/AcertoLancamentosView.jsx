@@ -33,6 +33,9 @@ export function AcertoLancamentosView({
   onToggleSelect,
   onAbrirLancamento,
   versaoLancamentos,
+  periodoDataInicio,
+  periodoDataFim,
+  somenteLeitura = false,
 }) {
   const toast = useFinanceiroToast();
   const [busca, setBusca] = useState('');
@@ -43,6 +46,13 @@ export function AcertoLancamentosView({
   const [soPendentes, setSoPendentes] = useState(false);
   const [soOcultos, setSoOcultos] = useState(false);
   const [soNaoConferidos, setSoNaoConferidos] = useState(false);
+
+  useEffect(() => {
+    if (periodoDataInicio) setDataInicio(periodoDataInicio);
+    else setDataInicio('');
+    if (periodoDataFim) setDataFim(periodoDataFim);
+    else setDataFim('');
+  }, [periodoDataInicio, periodoDataFim]);
 
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(50);
@@ -170,6 +180,7 @@ export function AcertoLancamentosView({
             type="date"
             value={dataInicio}
             onChange={(e) => setDataInicio(e.target.value)}
+            disabled={Boolean(periodoDataInicio)}
             className="rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5"
           />
         </label>
@@ -179,6 +190,7 @@ export function AcertoLancamentosView({
             type="date"
             value={dataFim}
             onChange={(e) => setDataFim(e.target.value)}
+            disabled={Boolean(periodoDataFim)}
             className="rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5"
           />
         </label>
@@ -255,11 +267,13 @@ export function AcertoLancamentosView({
                     onClick={() => onAbrirLancamento?.(l)}
                   >
                     <td className="px-2 py-1" onClick={(e) => e.stopPropagation()}>
+                      {!somenteLeitura ? (
                       <input
                         type="checkbox"
                         checked={selectedIds.has(Number(l.id))}
                         onChange={() => onToggleSelect?.(Number(l.id), l)}
                       />
+                      ) : null}
                     </td>
                     <td className="px-2 py-1 whitespace-nowrap">{fmtDataAcerto(l.dataLancamento)}</td>
                     <td className="px-2 py-1 font-mono text-[10px] whitespace-nowrap">
@@ -282,6 +296,7 @@ export function AcertoLancamentosView({
                       ) : (
                         <span className="inline-flex items-center gap-1">
                           {l.grupoCompensacao}
+                          {!somenteLeitura ? (
                           <button
                             type="button"
                             title="Desparear este grupo"
@@ -290,6 +305,7 @@ export function AcertoLancamentosView({
                           >
                             <Link2Off className="w-3 h-3" />
                           </button>
+                          ) : null}
                         </span>
                       )}
                     </td>
@@ -301,6 +317,13 @@ export function AcertoLancamentosView({
                           : 'sim'}
                     </td>
                     <td className="px-2 py-1 text-center" onClick={(e) => e.stopPropagation()}>
+                      {somenteLeitura ? (
+                        l.conferidoEm ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 inline" />
+                        ) : (
+                          <Circle className="w-4 h-4 text-slate-300 inline" />
+                        )
+                      ) : (
                       <button
                         type="button"
                         disabled={conferindoId === l.id}
@@ -320,6 +343,7 @@ export function AcertoLancamentosView({
                           <Circle className="w-4 h-4 text-slate-300 dark:text-slate-600" />
                         )}
                       </button>
+                      )}
                     </td>
                     <td
                       className={`px-2 py-1 text-right tabular-nums font-medium whitespace-nowrap ${

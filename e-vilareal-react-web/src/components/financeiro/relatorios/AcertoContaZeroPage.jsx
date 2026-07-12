@@ -10,6 +10,7 @@ import { formatMoeda } from '../shared/financeiroFormat.js';
 import { useFinanceiroToast } from '../shared/Toast.jsx';
 import { ExtratoDetailPanel } from '../extrato/ExtratoDetailPanel.jsx';
 import { AcertoFichaPanel } from './acerto/AcertoFichaPanel.jsx';
+import { AcertoPeriodosView } from './acerto/AcertoPeriodosView.jsx';
 import { AcertoProcessosView } from './acerto/AcertoProcessosView.jsx';
 import { AcertoLancamentosView } from './acerto/AcertoLancamentosView.jsx';
 import { AcertoImpressaoModal } from './acerto/AcertoImpressaoModal.jsx';
@@ -34,6 +35,8 @@ export function AcertoContaZeroPage() {
   const [compensando, setCompensando] = useState(false);
   const [detailItem, setDetailItem] = useState(null);
   const [imprimindo, setImprimindo] = useState(null);
+  const [periodoSel, setPeriodoSel] = useState(null);
+  const [periodosResumo, setPeriodosResumo] = useState(null);
 
   useEffect(() => {
     if (!featureFlags.useApiFinanceiro) return undefined;
@@ -68,6 +71,8 @@ export function AcertoContaZeroPage() {
     setVinculoSel(v);
     setSelecao(new Map());
     setDetailItem(null);
+    setPeriodoSel(null);
+    setPeriodosResumo(null);
   }, []);
 
   const toggleSelecao = useCallback((id, lancamento) => {
@@ -87,6 +92,10 @@ export function AcertoContaZeroPage() {
 
   const selecaoZerada = selecao.size >= 2 && Math.abs(somaSelecao) < 0.005;
   const selectedIds = useMemo(() => new Set(selecao.keys()), [selecao]);
+
+  useEffect(() => {
+    setSelecao(new Map());
+  }, [periodoSel]);
 
   const compensarSelecao = async () => {
     if (!selecaoZerada) return;
@@ -111,6 +120,21 @@ export function AcertoContaZeroPage() {
   const nomeConta =
     contasAcerto.find((c) => Number(c.numeroBanco) === Number(numeroBanco))?.bancoNome || 'CONTA ZERO';
   const clienteId = vinculoSel?.clienteId != null ? Number(vinculoSel.clienteId) : null;
+
+  const periodoAtivo = useMemo(() => {
+    const lista = periodosResumo?.periodos;
+    if (!Array.isArray(lista) || periodoSel == null) return null;
+    return lista.find((p) => p.indice === periodoSel) ?? null;
+  }, [periodosResumo, periodoSel]);
+
+  const periodoFiltro = useMemo(() => {
+    if (!periodoAtivo) return { dataInicio: undefined, dataFim: undefined, somenteLeitura: false };
+    return {
+      dataInicio: periodoAtivo.dataInicio ? String(periodoAtivo.dataInicio).slice(0, 10) : undefined,
+      dataFim: periodoAtivo.dataFim ? String(periodoAtivo.dataFim).slice(0, 10) : undefined,
+      somenteLeitura: periodoAtivo.status !== 'ABERTO',
+    };
+  }, [periodoAtivo]);
 
   return (
     <div className="relative flex flex-col min-h-0 h-full overflow-auto p-4 space-y-4">
@@ -232,6 +256,16 @@ export function AcertoContaZeroPage() {
                 numeroBanco={numeroBanco}
                 refreshKey={refreshKey}
                 onAcertoFechado={refresh}
+                onConfigSalva={refresh}
+              />
+
+              <AcertoPeriodosView
+                numeroBanco={numeroBanco}
+                clienteId={clienteId}
+                refreshKey={refreshKey}
+                periodoSel={periodoSel}
+                onSelecionarPeriodo={setPeriodoSel}
+                onResumoCarregado={setPeriodosResumo}
               />
 
               <div className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-700">
@@ -264,6 +298,9 @@ export function AcertoContaZeroPage() {
                   onToggleSelect={toggleSelecao}
                   onAbrirLancamento={setDetailItem}
                   versaoLancamentos={versaoLancamentos}
+                  periodoDataInicio={periodoFiltro.dataInicio}
+                  periodoDataFim={periodoFiltro.dataFim}
+                  somenteLeitura={periodoFiltro.somenteLeitura}
                 />
               ) : (
                 <AcertoLancamentosView
@@ -275,6 +312,9 @@ export function AcertoContaZeroPage() {
                   onToggleSelect={toggleSelecao}
                   onAbrirLancamento={setDetailItem}
                   versaoLancamentos={versaoLancamentos}
+                  periodoDataInicio={periodoFiltro.dataInicio}
+                  periodoDataFim={periodoFiltro.dataFim}
+                  somenteLeitura={periodoFiltro.somenteLeitura}
                 />
               )}
             </>
@@ -282,7 +322,7 @@ export function AcertoContaZeroPage() {
         </main>
       </div>
 
-      {selecao.size > 0 ? (
+      {selecao.size > 0 && !periodoFiltro.somenteLeitura ? (
         <div className="sticky bottom-2 z-20 mx-auto flex flex-wrap items-center gap-3 rounded-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-lg px-4 py-2 text-sm">
           <span>
             <strong>{selecao.size}</strong> selecionado(s) · soma{' '}

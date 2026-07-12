@@ -1565,6 +1565,15 @@ export async function obterTotaisExtratoApi(filtros = {}, opts = {}) {
   return request('/api/financeiro/lancamentos/extrato/totais', { query, signal: opts.signal });
 }
 
+/** Timeline de períodos do acerto (Etapa 5c). */
+export async function obterAcertoResumoPeriodosApi({ numeroBanco, clienteId }, opts = {}) {
+  if (!featureFlags.useApiFinanceiro) return null;
+  return request('/api/financeiro/acerto/resumo-periodos', {
+    query: { numeroBanco: Number(numeroBanco), clienteId: Number(clienteId) },
+    signal: opts.signal,
+  });
+}
+
 /** Visão do acerto agrupada por processo: somas, pendências e progresso de conferência. */
 export async function obterAcertoResumoProcessosApi(filtros = {}, opts = {}) {
   if (!featureFlags.useApiFinanceiro) return null;

@@ -1079,6 +1079,24 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
     BigDecimal sumSaldoPendentePorClienteEConta(
             @Param("numeroBanco") Integer numeroBanco, @Param("clienteId") Long clienteId);
 
+    /**
+     * Lançamentos leves do cliente na conta de acerto, em ordem cronológica (Etapa 5c).
+     * Colunas: id, data_lancamento, natureza, valor, pendente (1/0), nao_conferido (1/0), processo_id.
+     */
+    @Query(value = """
+            SELECT fl.id, fl.data_lancamento, fl.natureza, fl.valor,
+                   CASE WHEN fl.grupo_compensacao IS NULL OR fl.grupo_compensacao = '' THEN 1 ELSE 0 END,
+                   CASE WHEN fl.conferido_em IS NULL THEN 1 ELSE 0 END,
+                   fl.processo_id
+            FROM financeiro_lancamento fl
+            WHERE fl.numero_banco = :numeroBanco
+              AND fl.status = 'ATIVO'
+              AND fl.cliente_id = :clienteId
+            ORDER BY fl.data_lancamento ASC, fl.id ASC
+            """, nativeQuery = true)
+    List<Object[]> findLancamentosLevesAcertoPorCliente(
+            @Param("numeroBanco") Integer numeroBanco, @Param("clienteId") Long clienteId);
+
     @Query(
             """
             SELECT l FROM LancamentoFinanceiroEntity l

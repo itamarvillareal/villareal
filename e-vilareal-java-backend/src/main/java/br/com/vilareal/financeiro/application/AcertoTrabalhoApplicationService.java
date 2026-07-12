@@ -8,6 +8,8 @@ import br.com.vilareal.financeiro.api.dto.AcertoClienteConfigWriteRequest;
 import br.com.vilareal.financeiro.api.dto.AcertoConferenciaResponse;
 import br.com.vilareal.financeiro.api.dto.AcertoConferirProcessoRequest;
 import br.com.vilareal.financeiro.api.dto.AcertoConferirRequest;
+import br.com.vilareal.financeiro.api.dto.AcertoResumoPeriodoResponse;
+import br.com.vilareal.financeiro.api.dto.AcertoResumoPeriodosResponse;
 import br.com.vilareal.financeiro.api.dto.AcertoResumoProcessoResponse;
 import br.com.vilareal.financeiro.api.dto.AcertoResumoProcessosResponse;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.AcertoClienteConfigEntity;
@@ -29,6 +31,7 @@ import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -172,6 +175,7 @@ public class AcertoTrabalhoApplicationService {
         configRepository.findByCliente_Id(clienteId).ifPresent(cfg -> {
             r.setPercentualRepasse(cfg.getPercentualRepasse());
             r.setObservacoes(Utf8MojibakeUtil.corrigir(cfg.getObservacoes()));
+            r.setDataUltimoAcertoConhecido(cfg.getDataUltimoAcertoConhecido());
         });
 
         mensalistaRepository.findByCliente_IdWithDetalhes(clienteId).ifPresent(m -> {
@@ -215,8 +219,52 @@ public class AcertoTrabalhoApplicationService {
                 request.getObservacoes() != null && !request.getObservacoes().isBlank()
                         ? request.getObservacoes().trim()
                         : null);
+        cfg.setDataUltimoAcertoConhecido(request.getDataUltimoAcertoConhecido());
         configRepository.save(cfg);
         return obterConfig(cliente.getId(), null);
+    }
+
+    @Transactional(readOnly = true)
+    public AcertoResumoPeriodosResponse resumoPeriodos(Integer numeroBanco, Long clienteId) {
+        validarContaAcerto(numeroBanco);
+        if (clienteId == null) {
+            throw new BusinessRuleException("Informe clienteId.");
+        }
+        clienteRepository.findById(clienteId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cliente não encontrado: " + clienteId));
+
+        LocalDate corteManual = configRepository.findByCliente_Id(clienteId)
+                .map(AcertoClienteConfigEntity::getDataUltimoAcertoConhecido)
+                .orElse(null);
+
+        List<AcertoPeriodosDetector.LancamentoLeve> lancamentos = new ArrayList<>();
+        for (Object[] row : lancamentoRepository.findLancamentosLevesAcertoPorCliente(numeroBanco, clienteId)) {
+            lancamentos.add(toLancamentoLeve(row));
+        }
+
+        List<AcertoPeriodosDetector.FechamentoFormal> formais = fechamentoRepository
+                .findByCliente_IdAndNumeroBancoOrderByIdDesc(clienteId, numeroBanco)
+                .stream()
+                .filter(f -> AcertoFechamentoEntity.STATUS_FECHADO.equals(f.getStatus()))
+                .map(f -> new AcertoPeriodosDetector.FechamentoFormal(
+                        f.getId(),
+                        f.getPeriodoInicio(),
+                        f.getPeriodoFim(),
+                        f.getArquivoPdfPath() != null && !f.getArquivoPdfPath().isBlank()))
+                .toList();
+
+        return AcertoPeriodosDetector.montarResumo(lancamentos, corteManual, formais);
+    }
+
+    private static AcertoPeriodosDetector.LancamentoLeve toLancamentoLeve(Object[] row) {
+        return new AcertoPeriodosDetector.LancamentoLeve(
+                row[0] != null ? ((Number) row[0]).longValue() : null,
+                toLocalDate(row[1]),
+                row[2] != null ? row[2].toString() : null,
+                row[3] != null ? new BigDecimal(row[3].toString()) : BigDecimal.ZERO,
+                row[4] != null && ((Number) row[4]).intValue() == 1,
+                row[5] != null && ((Number) row[5]).intValue() == 1,
+                row[6] != null ? ((Number) row[6]).longValue() : null);
     }
 
     void validarContaAcerto(Integer numeroBanco) {

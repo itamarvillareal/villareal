@@ -7,6 +7,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 
 /**
  * Ficha do Acerto por cliente (V205): regras do acordo que antes só existiam na planilha —
@@ -34,6 +35,13 @@ public class AcertoClienteConfigEntity {
 
     @Column(columnDefinition = "TEXT")
     private String observacoes;
+
+    /**
+     * Corte manual do histórico pré-sistema (Etapa 5c): lançamentos até esta data formam bloco
+     * {@code FECHADO_MANUAL}; auto-detecção só depois.
+     */
+    @Column(name = "data_ultimo_acerto_conhecido")
+    private LocalDate dataUltimoAcertoConhecido;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
