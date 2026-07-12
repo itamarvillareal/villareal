@@ -30,6 +30,7 @@ import {
   obterSyncProjudi,
   processarEmailsProjudiAgora,
 } from '../api/manifestacoesProjudiApi.js';
+import { ordenarPorEntradaEmail } from '../data/publicacoesEmailOrdenacao.js';
 import {
   formatarPartesLinha,
   parseProjudiMeta,
@@ -156,31 +157,6 @@ function fmtDataBr(isoDate) {
     return `${d}/${m}/${y}`;
   }
   return s;
-}
-
-function parseDataPublicacaoMs(isoDate) {
-  if (!isoDate) return Number.NEGATIVE_INFINITY;
-  const s = String(isoDate).trim();
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
-    const t = new Date(s.slice(0, 10)).getTime();
-    return Number.isNaN(t) ? Number.NEGATIVE_INFINITY : t;
-  }
-  const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
-  if (br) {
-    const t = new Date(`${br[3]}-${br[2]}-${br[1]}`).getTime();
-    return Number.isNaN(t) ? Number.NEGATIVE_INFINITY : t;
-  }
-  return Number.NEGATIVE_INFINITY;
-}
-
-/** Ordenação: recebimento do email (se houver), senão data de publicação. */
-function parseLinhaTempoMs(row) {
-  const recebido = row?.emailRecebidoEm;
-  if (recebido) {
-    const t = new Date(recebido).getTime();
-    if (!Number.isNaN(t)) return t;
-  }
-  return parseDataPublicacaoMs(row?.dataPublicacao);
 }
 
 function fmtInstant(iso) {
@@ -611,12 +587,7 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
   }, [carregarSyncGmail]);
 
   const rowsExibidas = useMemo(() => {
-    return [...rows].sort((a, b) => {
-      const da = parseLinhaTempoMs(a);
-      const db = parseLinhaTempoMs(b);
-      if (da !== db) return ordemDataAsc ? da - db : db - da;
-      return Number(b.id ?? 0) - Number(a.id ?? 0);
-    });
+    return ordenarPorEntradaEmail(rows, ordemDataAsc);
   }, [rows, ordemDataAsc]);
 
   const totalLabel = useMemo(() => {

@@ -139,9 +139,9 @@ export function TabelaManifestacoesProjudi({
         type="button"
         className="cursor-pointer select-none text-left hover:text-slate-900 dark:hover:text-white"
         onDoubleClick={onToggleOrdemData}
-        title="Duplo clique para inverter ordem"
+        title="Duplo clique para inverter ordem (por entrada do email)"
       >
-        Data
+        Entrada
         <span className="ml-0.5 text-[10px] opacity-70">{ordemDataAsc ? '↑' : '↓'}</span>
       </button>
       <span>Tipo</span>

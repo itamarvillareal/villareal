@@ -85,7 +85,26 @@ export function fmtRecebidoCurto(iso) {
     if (Number.isNaN(d.getTime())) return null;
     const dd = String(d.getDate()).padStart(2, '0');
     const mm = String(d.getMonth() + 1).padStart(2, '0');
-    return `recebido ${dd}/${mm}`;
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `recebido ${dd}/${mm} ${hh}:${min}`;
+  } catch {
+    return null;
+  }
+}
+
+/** Data/hora de entrada do email (coluna principal quando há recebimento Gmail). */
+export function fmtEntradaEmailPrincipal(iso) {
+  if (!iso) return null;
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
   } catch {
     return null;
   }
@@ -314,21 +333,22 @@ export function AcoesLinhaCompacta({
 }
 
 export function CelulaDataCompacta({ row, onAbrirDetalhe }) {
-  const recebido = fmtRecebidoCurto(row.emailRecebidoEm);
+  const entrada = fmtEntradaEmailPrincipal(row.emailRecebidoEm);
+  const movimento = fmtDataBr(row.dataPublicacao);
   return (
     <button
       type="button"
       role="cell"
       className="min-w-0 cursor-pointer text-left"
       onClick={onAbrirDetalhe}
-      title="Ver detalhes"
+      title={entrada ? `Email recebido: ${entrada}` : 'Ver detalhes'}
     >
       <div className="truncate text-xs font-medium text-slate-900 dark:text-slate-100">
-        {fmtDataBr(row.dataPublicacao)}
+        {entrada || movimento}
       </div>
-      {recebido ? (
-        <div className="truncate text-[10px] text-slate-500 dark:text-slate-400">{recebido}</div>
-      ) : (
+      {entrada && movimento && movimento !== '—' ? (
+        <div className="truncate text-[10px] text-slate-500 dark:text-slate-400">mov. {movimento}</div>
+      ) : entrada ? null : (
         <div className="text-[10px] text-slate-400">—</div>
       )}
     </button>
