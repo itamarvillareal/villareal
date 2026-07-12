@@ -15,7 +15,6 @@ import com.google.api.services.gmail.model.Message;
 import com.google.api.services.gmail.model.ModifyMessageRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -42,7 +41,7 @@ public class GmailMovimentacaoEmailEngine {
 
     private static final Logger log = LoggerFactory.getLogger(GmailMovimentacaoEmailEngine.class);
 
-    private final Gmail gmail;
+    private final GmailApiProvider gmailApiProvider;
     private final PublicacaoEmailImportacaoTransacionalService importacaoTransacional;
     private final PublicacaoRepository publicacaoRepository;
     private final ProcessoRepository processoRepository;
@@ -55,7 +54,7 @@ public class GmailMovimentacaoEmailEngine {
     private final String gmailUser;
 
     public GmailMovimentacaoEmailEngine(
-            @Autowired(required = false) Gmail gmail,
+            GmailApiProvider gmailApiProvider,
             PublicacaoEmailImportacaoTransacionalService importacaoTransacional,
             PublicacaoRepository publicacaoRepository,
             ProcessoRepository processoRepository,
@@ -66,7 +65,7 @@ public class GmailMovimentacaoEmailEngine {
             ProjudiMovimentacoesEmailPipelineProperties pipelineProperties,
             ProcessoTramitacaoService processoTramitacaoService,
             @Value("${gmail.user:me}") String gmailUser) {
-        this.gmail = gmail;
+        this.gmailApiProvider = gmailApiProvider;
         this.importacaoTransacional = importacaoTransacional;
         this.publicacaoRepository = publicacaoRepository;
         this.processoRepository = processoRepository;
@@ -80,7 +79,7 @@ public class GmailMovimentacaoEmailEngine {
     }
 
     public boolean isDisponivel() {
-        return gmail != null;
+        return gmailApiProvider.isDisponivel();
     }
 
     /** Busca incremental (desde o último cursor; primeira execução usa janela de 30 dias). */
@@ -108,6 +107,7 @@ public class GmailMovimentacaoEmailEngine {
             boolean sincronizacaoIncremental)
             throws IOException {
         PublicacaoEmailProcessamentoResumo resumo = new PublicacaoEmailProcessamentoResumo();
+        Gmail gmail = gmailApiProvider.resolver().orElse(null);
         if (gmail == null) {
             resumo.getErros().add("Gmail API não configurada.");
             return resumo;
@@ -125,7 +125,7 @@ public class GmailMovimentacaoEmailEngine {
                 query,
                 reprocessarEmailsExistentes,
                 sincronizacaoIncremental);
-        List<Message> mensagens = listarMensagens(query);
+        List<Message> mensagens = listarMensagens(gmail, query);
         log.info("Emails {} encontrados: {}", fonte.rotulo(), mensagens.size());
 
         Set<String> processosUnicosLote = new LinkedHashSet<>();
@@ -157,7 +157,7 @@ public class GmailMovimentacaoEmailEngine {
                 String conteudoEmail = GmailMimeUtil.extrairConteudoTextoCompleto(completa.getPayload());
                 if (conteudoEmail.isBlank()) {
                     log.warn("Email {} {} sem corpo utilizável (assunto={})", fonte.rotulo(), messageId, assunto);
-                    marcarComoLido(messageId);
+                    marcarComoLido(gmail, messageId);
                     resumo.setEmailsLidos(resumo.getEmailsLidos() + 1);
                     continue;
                 }
@@ -248,7 +248,7 @@ public class GmailMovimentacaoEmailEngine {
                         resumo.getPublicacoesDuplicadasIgnoradas() + duplicadas);
                 resumo.setVinculosAutomaticos(resumo.getVinculosAutomaticos() + vinculosAutomaticos);
 
-                marcarComoLido(messageId);
+                marcarComoLido(gmail, messageId);
                 resumo.setEmailsLidos(resumo.getEmailsLidos() + 1);
                 log.info(
                         "Email {} {} processado: gravadas={}, vinculosAutomaticos={}, duplicadasIgnoradas={}",
@@ -309,7 +309,7 @@ public class GmailMovimentacaoEmailEngine {
         return publicacaoRepository.existsByArquivoOrigemNomeContaining("[" + messageId + "]");
     }
 
-    private List<Message> listarMensagens(String query) throws IOException {
+    private List<Message> listarMensagens(Gmail gmail, String query) throws IOException {
         List<Message> out = new ArrayList<>();
         String pageToken = null;
         do {
@@ -329,7 +329,7 @@ public class GmailMovimentacaoEmailEngine {
         return out;
     }
 
-    private void marcarComoLido(String messageId) throws IOException {
+    private void marcarComoLido(Gmail gmail, String messageId) throws IOException {
         ModifyMessageRequest body = new ModifyMessageRequest().setRemoveLabelIds(List.of("UNREAD"));
         gmail.users().messages().modify(gmailUser, messageId, body).execute();
     }
