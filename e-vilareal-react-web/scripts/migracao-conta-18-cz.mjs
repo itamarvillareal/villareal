@@ -22,6 +22,15 @@
  *                      (13 lançamentos já migrados na etapa resto-conta18)
  *   pares-estritos   — parear-grupo dos pares 1 crédito × 1 débito (mesmo cliente, mesmo valor)
  *                      remanescentes na conta 19 sem grupo
+ *   planilha-grupos  — item 5 da FASE 2: fecha o restante da conta 18 pelos blocos de soma zero da
+ *                      aba "LANÇ MANUAIS (2)" da planilha (delimitados pela soma acumulada voltar a
+ *                      zero; chave de cruzamento = id da linha no início da descricao_detalhada +
+ *                      valor assinado). Migra os lançamentos da 18, agrupa com os pendentes da 19,
+ *                      cria espelhos das linhas ausentes do sistema (CZ-P18-{rowId}) e espelhos de
+ *                      fechamento (CZ-P18F-{id}) para membros já presos em grupos CZ18-*.
+ *                      Vínculo do bloco: cliente existente nos membros > REF. INTERNA 01 numérica
+ *                      (codigo_cliente) > pessoa escritório. Os 5 lançamentos MARESSA x BEATRIZ
+ *                      (linhas 11819–11826) ficam na 18 como pendentes legítimos.
  *   resumo           — GET /conta-acerto/resumo (saldos por vínculo na conta 19)
  *
  * Migrar = PUT no lançamento trocando numeroBanco para 19 (id, número, datas, vínculos e valor
@@ -37,6 +46,9 @@
 
 import './lib/load-vilareal-import-env.mjs';
 import mysql from 'mysql2/promise';
+import XLSX from 'xlsx';
+import { requireExtratoBancosPlanilhaXlsPath } from './lib/resolve-extrato-bancos-planilha-xls.mjs';
+import { excelSerialParaISO } from './lib/extrato-bancos-planilha-parse.mjs';
 
 const NUMERO_BANCO_CZ = 19;
 const BANCO_NOME_CZ = 'CONTA ZERO';
@@ -47,8 +59,21 @@ const CONTA_CONTABIL_D = 4; // Conta Veredas
 const MARCA_MIGRACAO = 'migrado da conta 18';
 const ORIGEM_ESPELHO = 'CARGA-CZ-VEREDAS';
 const ORIGEM_ESPELHO_M18 = 'MIGRACAO-CZ-18';
+const ORIGEM_ESPELHO_PLANILHA = 'MIGRACAO-CZ-18-PLANILHA';
 const PESSOA_ESCRITORIO_NOME = 'ESCRITORIO - CONCILIACOES INTERNAS (CONTA ZERO)';
 const CLIENTES_ZERADOS = [317, 642, 882];
+const ABA_PLANILHA_18 = 'LANÇ MANUAIS (2)';
+// Auditoria do item 5 (validada em 11/07 contra planilha + banco local). As 15 linhas fora de
+// bloco são o caso MARESSA x BEATRIZ; os 5 sem match na conta 18 são os mesmos lançamentos.
+const AUDIT_PLANILHA = {
+  blocos: 1237,
+  linhasForaBloco: 15,
+  conta18SemMatch: 5,
+  migracoes18: 1590, // 1.559 em blocos fecháveis + 31 em blocos de clientes mistos
+  espelhosAusentes: 36,
+  espelhosFechamento: 316, // só blocos fecháveis (blocos mistos não criam espelhos)
+  blocosPendentes: 841, // 833 fecháveis + 8 com clientes mistos (migram sem grupo)
+};
 // Corte do caso Veredas: último crédito por proc do 493 na conta 18 (07/11/2023).
 const CORTE_KARLA = '2023-11-07';
 // Conferências da auditoria do plano (aborta a etapa se divergir).
@@ -640,6 +665,308 @@ async function etapaParesEstritos(ctx) {
   console.log(`  ${ctx.executar ? 'Agrupados' : '[dry-run] agruparia'}: ${pares.length} pares (${brl(somaPares)}).`);
 }
 
+/** Lê a aba LANÇ MANUAIS (2) e delimita os blocos de soma zero (soma acumulada em centavos). */
+function lerBlocosPlanilha() {
+  const caminho = requireExtratoBancosPlanilhaXlsPath(null);
+  const wb = XLSX.readFile(caminho, { cellDates: false });
+  const nomeAba = wb.SheetNames.find(
+    (n) => n.trim().toUpperCase() === ABA_PLANILHA_18.toUpperCase(),
+  );
+  if (!nomeAba) throw new Error(`Aba "${ABA_PLANILHA_18}" não encontrada em ${caminho}`);
+  const ws = wb.Sheets[nomeAba];
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  const cell = (r, c) => ws[XLSX.utils.encode_cell({ r, c })]?.v;
+  const linhas = [];
+  for (let r = 6; r <= range.e.r; r += 1) {
+    const valor = cell(r, 7); // col H — valor assinado
+    const rowId = cell(r, 4); // col E — id da linha (prefixo da descricao_detalhada)
+    if (typeof valor !== 'number' || !Number.isFinite(valor)) continue;
+    if (typeof rowId !== 'number') continue;
+    linhas.push({
+      rowId,
+      cents: Math.round(valor * 100),
+      letra: String(cell(r, 1) ?? '').trim().toUpperCase(),
+      dataIso: excelSerialParaISO(cell(r, 3)),
+      descricao: String(cell(r, 6) ?? '').trim(),
+      comentario: String(cell(r, 9) ?? '').trim(),
+      ref01: cell(r, 11), // REFERÊNCIA INTERNA 01 — numérica = codigo_cliente
+    });
+  }
+  const blocos = [];
+  let atual = [];
+  let soma = 0;
+  for (const l of linhas) {
+    atual.push(l);
+    soma += l.cents;
+    if (soma === 0) {
+      blocos.push(atual);
+      atual = [];
+    }
+  }
+  return { caminho, blocos, foraDeBloco: atual, totalLinhas: linhas.length };
+}
+
+async function etapaPlanilhaGrupos(ctx) {
+  console.log('\n== planilha-grupos — fechar o restante da conta 18 pelos blocos da planilha ==');
+  const { caminho, blocos, foraDeBloco } = lerBlocosPlanilha();
+  console.log(`  Planilha: ${caminho}`);
+  console.log(`  ${blocos.length} blocos de soma zero · ${foraDeBloco.length} linhas fora de bloco (MARESSA x BEATRIZ).`);
+  if (blocos.length !== AUDIT_PLANILHA.blocos || foraDeBloco.length !== AUDIT_PLANILHA.linhasForaBloco) {
+    throw new Error(
+      `Delimitação divergiu da auditoria (${AUDIT_PLANILHA.blocos} blocos / ${AUDIT_PLANILHA.linhasForaBloco} fora) — planilha mudou? Abortado.`,
+    );
+  }
+  for (const b of blocos) {
+    if (b.reduce((s, l) => s + l.cents, 0) !== 0) {
+      throw new Error(`Bloco iniciado na linha ${b[0].rowId} não soma zero — abortado.`);
+    }
+  }
+
+  // Lançamentos das contas 18/19 com o id da linha no início da descricao_detalhada
+  const [rows] = await ctx.db.query(
+    `SELECT fl.id, cb.numero_banco nb, fl.grupo_compensacao grupo, fl.cliente_id, fl.pessoa_ref_id,
+            fl.natureza, fl.valor, fl.conta_contabil_id, fl.data_lancamento, fl.data_competencia,
+            fl.descricao, CAST(fl.descricao_detalhada AS CHAR) det
+     FROM financeiro_lancamento fl JOIN conta_bancaria cb ON cb.id = fl.conta_bancaria_id
+     WHERE fl.status = 'ATIVO' AND cb.numero_banco IN (?, ?)
+       AND fl.descricao_detalhada REGEXP '^[0-9]+'`,
+    [CONTA_18, NUMERO_BANCO_CZ],
+  );
+  const porChave = new Map();
+  for (const r of rows) {
+    const m = String(r.det).match(/^(\d+)/);
+    if (!m) continue;
+    const signed = (r.natureza === 'CREDITO' ? 1 : -1) * Math.round(Number(r.valor) * 100);
+    const k = `${Number(m[1])}|${signed}`;
+    if (!porChave.has(k)) porChave.set(k, []);
+    porChave.get(k).push(r);
+  }
+  const consumidos = new Set();
+  const matchLinha = (l) => {
+    const cands = (porChave.get(`${l.rowId}|${l.cents}`) ?? []).filter((c) => !consumidos.has(c.id));
+    if (!cands.length) return null;
+    const c = cands.find((x) => x.nb === CONTA_18) ?? cands[0];
+    consumidos.add(c.id);
+    return c;
+  };
+
+  // contas contábeis (letra → id) e clientes (codigo_cliente → id)
+  const [ccRows] = await ctx.db.query(`SELECT id, codigo FROM financeiro_conta_contabil`);
+  const contaPorLetra = new Map(ccRows.map((r) => [r.codigo, r.id]));
+  const [cliRows] = await ctx.db.query(`SELECT id, codigo_cliente FROM cliente`);
+  const clientePorCodigo = new Map(
+    cliRows.map((r) => [Number(String(r.codigo_cliente).replace(/\D/g, '')), r.id]),
+  );
+
+  // espelhos já criados (retomada) — espelho sem grupo indica bloco parcialmente processado
+  const [espelhosExistentes] = await ctx.db.query(
+    `SELECT numero_lancamento, id, grupo_compensacao grupo FROM financeiro_lancamento
+     WHERE (numero_lancamento LIKE 'CZ-P18-%' OR numero_lancamento LIKE 'CZ-P18F-%') AND status='ATIVO'`,
+  );
+  const espelhoId = new Map(espelhosExistentes.map((r) => [r.numero_lancamento, r.id]));
+  const espelhosSemGrupo = new Set(
+    espelhosExistentes.filter((r) => !r.grupo).map((r) => r.numero_lancamento),
+  );
+
+  // classifica os blocos
+  const pendentes = [];
+  const mistos = [];
+  let semPendencia = 0;
+  for (const b of blocos) {
+    const membros = b.map((l) => ({ l, r: matchLinha(l) }));
+    const na18 = membros.filter((m) => m.r?.nb === CONTA_18);
+    const pend19 = membros.filter((m) => m.r?.nb === NUMERO_BANCO_CZ && !m.r.grupo);
+    const presos19 = membros.filter((m) => m.r?.nb === NUMERO_BANCO_CZ && m.r.grupo);
+    const ausentes = membros.filter((m) => !m.r);
+    // Bloco parcialmente processado numa execução anterior (espelho criado, grupo não formado):
+    // os antigos "na18" já estarão na 19 como pend19 — retomar e fechar.
+    const temEspelhoOrfao =
+      ausentes.some((m) => espelhosSemGrupo.has(`CZ-P18-${m.l.rowId}`)) ||
+      presos19.some((m) => espelhosSemGrupo.has(`CZ-P18F-${m.r.id}`)) ||
+      pend19.some((m) => String(m.r.det ?? '').includes('espelho de fechamento'));
+    if (!na18.length && !ausentes.length && !temEspelhoOrfao) {
+      semPendencia += 1;
+      continue;
+    }
+    // vínculo do bloco: cliente único existente > REF. INTERNA 01 numérica > pessoa escritório
+    const clientes = new Set(membros.map((m) => m.r?.cliente_id).filter(Boolean));
+    let vinculo = null;
+    if (clientes.size > 1) {
+      mistos.push({ b, na18, clientes: [...clientes] });
+      continue;
+    }
+    if (clientes.size === 1) {
+      vinculo = { clienteId: [...clientes][0] };
+    } else {
+      const refs = new Set(
+        b.map((l) => (typeof l.ref01 === 'number' && Number.isFinite(l.ref01) ? Math.trunc(l.ref01) : null))
+          .filter((x) => x != null),
+      );
+      const clienteRef = refs.size === 1 ? clientePorCodigo.get([...refs][0]) : null;
+      vinculo = clienteRef ? { clienteId: clienteRef } : { pessoaRefId: null }; // escritório, resolvido adiante
+    }
+    pendentes.push({ b, membros, na18, pend19, presos19, ausentes, vinculo });
+  }
+
+  const totais = {
+    mig18: pendentes.reduce((s, x) => s + x.na18.length, 0),
+    mig18ComGrupo: pendentes.reduce((s, x) => s + x.na18.filter((m) => m.r.grupo).length, 0),
+    reagrupa19: pendentes.reduce((s, x) => s + x.pend19.length, 0),
+    espAusentes: pendentes.reduce((s, x) => s + x.ausentes.length, 0),
+    espFechamento: pendentes.reduce((s, x) => s + x.presos19.length, 0),
+    mistos18: mistos.reduce((s, x) => s + x.na18.length, 0),
+  };
+  console.log(
+    `  Blocos: ${pendentes.length} a fechar · ${semPendencia} sem pendência · ${mistos.length} com clientes mistos (só migram, sem grupo).`,
+  );
+  console.log(
+    `  Ações: ${totais.mig18} migrações da 18 (${totais.mig18ComGrupo} limpam grupo legado) + ${totais.mistos18} migrações de blocos mistos · ${totais.reagrupa19} pendentes da 19 reagrupam · ${totais.espAusentes} espelhos de linhas ausentes · ${totais.espFechamento} espelhos de fechamento.`,
+  );
+
+  const [gruposCz] = await ctx.db.query(
+    `SELECT DISTINCT grupo_compensacao g FROM financeiro_lancamento WHERE grupo_compensacao LIKE 'CZ18B-%'`,
+  );
+  const gruposFeitos = new Set(gruposCz.map((r) => r.g));
+  if (gruposFeitos.size === 0) {
+    conferir('blocos pendentes', pendentes.length + mistos.length, AUDIT_PLANILHA.blocosPendentes, 0, 0);
+    conferir('migrações da 18', totais.mig18 + totais.mistos18, AUDIT_PLANILHA.migracoes18, 0, 0);
+    conferir('espelhos ausentes', totais.espAusentes, AUDIT_PLANILHA.espelhosAusentes, 0, 0);
+    conferir('espelhos fechamento', totais.espFechamento, AUDIT_PLANILHA.espelhosFechamento, 0, 0);
+  } else {
+    console.log(`  Retomada: ${gruposFeitos.size} blocos CZ18B-* já pareados; conferência estrita da 1ª passada pulada.`);
+  }
+
+  // relatório dos espelhos (Categoria C do plano — conferência manual)
+  console.log('\n  Espelhos de linhas ausentes do sistema:');
+  for (const p of pendentes) {
+    for (const m of p.ausentes) {
+      console.log(
+        `    linha ${m.l.rowId} [${m.l.letra || '?'}] ${m.l.dataIso ?? 's/ data'} ${brl(m.l.cents / 100)} — ${(m.l.descricao || m.l.comentario).slice(0, 60)}`,
+      );
+    }
+  }
+  const fechAltos = pendentes
+    .flatMap((p) => p.presos19.map((m) => ({ m, p })))
+    .filter(({ m }) => Math.abs(m.l.cents) >= 100000);
+  console.log(`  Espelhos de fechamento com |valor| ≥ R$ 1.000 (${fechAltos.length} de ${totais.espFechamento}):`);
+  for (const { m } of fechAltos.slice(0, 40)) {
+    console.log(
+      `    linha ${m.l.rowId} ${brl(m.l.cents / 100)} — ${String(m.r.descricao ?? '').slice(0, 50)} (preso em ${m.r.grupo})`,
+    );
+  }
+  if (fechAltos.length > 40) console.log(`    … +${fechAltos.length - 40}`);
+  if (mistos.length) {
+    console.log('  Blocos com clientes mistos (membros migram sem grupo, ficam pendentes):');
+    for (const x of mistos) {
+      console.log(`    linhas ${x.b[0].rowId}–${x.b.at(-1).rowId}: clientes ${x.clientes.join(', ')}`);
+    }
+  }
+
+  const escritorioId = await garantirPessoaEscritorio(ctx);
+
+  const criarEspelho = async (numero, body) => {
+    if (espelhoId.has(numero)) {
+      ctx.stats.pulados += 1;
+      return espelhoId.get(numero);
+    }
+    const criado = await apiSend(ctx, 'POST', '/api/financeiro/lancamentos', { ...body, numeroLancamento: numero });
+    espelhoId.set(numero, criado.id);
+    ctx.stats.criados += 1;
+    return criado.id;
+  };
+
+  // Concorrência 1: um grupo legado (letra E) pode ter membros em blocos diferentes; o PUT que
+  // limpa o grupo recalcula a etapa de TODOS os membros do grupo legado no backend e, em paralelo,
+  // sobrescreve a migração de outro worker (lost update observado no lançamento 165174).
+  const ctxSerial = { ...ctx, concurrency: 1 };
+  await processarEmLote(ctxSerial, pendentes, 'planilha-grupos', async (p) => {
+    const alvo = `CZ18B-${p.b[0].rowId}`;
+    if (gruposFeitos.has(alvo)) {
+      ctx.stats.pulados += p.membros.length;
+      return;
+    }
+    if (!ctx.executar) {
+      ctx.stats.criariam += p.na18.length + p.ausentes.length + p.presos19.length + 1;
+      return;
+    }
+    const vinc = p.vinculo.clienteId
+      ? { clienteId: p.vinculo.clienteId, pessoaRefId: null }
+      : { clienteId: null, pessoaRefId: escritorioId };
+    const idsGrupo = [];
+    // 1. migra o lado conta 18 (aplica o vínculo do bloco; limpa grupo legado se houver)
+    for (const m of p.na18) {
+      await migrarLancamento(ctx, m.r.id, { ...vinc, limparGrupo: Boolean(m.r.grupo) });
+      idsGrupo.push(m.r.id);
+    }
+    // 2. pendentes da 19 entram no grupo como estão (já têm o vínculo do bloco)
+    for (const m of p.pend19) idsGrupo.push(m.r.id);
+    // 3. espelhos das linhas que só existem na planilha
+    for (const m of p.ausentes) {
+      const id = await criarEspelho(`CZ-P18-${m.l.rowId}`, {
+        contaContabilId: contaPorLetra.get(m.l.letra) ?? contaPorLetra.get('N'),
+        ...vinc,
+        processoId: null,
+        bancoNome: BANCO_NOME_CZ,
+        numeroBanco: NUMERO_BANCO_CZ,
+        dataLancamento: m.l.dataIso ?? p.b.find((l) => l.dataIso)?.dataIso ?? '2017-01-01',
+        dataCompetencia: m.l.dataIso ?? p.b.find((l) => l.dataIso)?.dataIso ?? '2017-01-01',
+        descricao: (m.l.descricao || m.l.comentario || `Linha ${m.l.rowId} da planilha`).slice(0, 500),
+        descricaoDetalhada: `${m.l.rowId} · espelho da linha ${m.l.rowId} da planilha LANÇ MANUAIS (2) — membro ausente do sistema${m.l.comentario ? ` · ${m.l.comentario}` : ''}`.slice(0, 2000),
+        valor: round2(Math.abs(m.l.cents) / 100),
+        natureza: m.l.cents >= 0 ? 'CREDITO' : 'DEBITO',
+        refTipo: 'N',
+        origem: ORIGEM_ESPELHO_PLANILHA,
+        status: 'ATIVO',
+      });
+      idsGrupo.push(id);
+    }
+    // 4. espelhos de fechamento: o membro já está compensado num grupo CZ18-* (lançamento-ponte
+    //    participa de duas conciliações); o espelho fecha o bloco sem tocar no grupo existente
+    for (const m of p.presos19) {
+      const id = await criarEspelho(`CZ-P18F-${m.r.id}`, {
+        contaContabilId: m.r.conta_contabil_id,
+        ...vinc,
+        processoId: null,
+        bancoNome: BANCO_NOME_CZ,
+        numeroBanco: NUMERO_BANCO_CZ,
+        dataLancamento: String(m.r.data_lancamento).slice(0, 10),
+        dataCompetencia: String(m.r.data_competencia ?? m.r.data_lancamento).slice(0, 10),
+        descricao: String(m.r.descricao ?? '').slice(0, 500) || `Fechamento linha ${m.l.rowId}`,
+        descricaoDetalhada: `${m.l.rowId} · espelho de fechamento do lançamento ${m.r.id} (já conciliado em ${m.r.grupo}) — bloco da planilha`,
+        valor: round2(Math.abs(m.l.cents) / 100),
+        natureza: m.l.cents >= 0 ? 'CREDITO' : 'DEBITO',
+        refTipo: 'N',
+        origem: ORIGEM_ESPELHO_PLANILHA,
+        status: 'ATIVO',
+      });
+      idsGrupo.push(id);
+    }
+    // 5. pareia o bloco (backend valida soma zero exata e mesmo vínculo)
+    if (idsGrupo.length >= 2) {
+      await apiSend(ctx, 'POST', '/api/financeiro/lancamentos/parear-grupo', {
+        lancamentoIds: idsGrupo,
+        grupoCompensacao: alvo,
+      });
+      ctx.stats.criados += 1;
+    } else {
+      console.log(`  Bloco ${alvo} com ${idsGrupo.length} lançamento(s) — migrado sem parear.`);
+    }
+    gruposFeitos.add(alvo);
+  });
+
+  // blocos mistos: migram sem grupo e sem mudar vínculo (sem cliente → escritório)
+  await processarEmLote(ctx, mistos.flatMap((x) => x.na18), 'planilha-mistos', async (m) => {
+    await migrarLancamento(ctx, m.r.id, {
+      ...(m.r.cliente_id ? {} : { pessoaRefId: escritorioId }),
+      limparGrupo: Boolean(m.r.grupo),
+    });
+  });
+
+  console.log(
+    `  ${ctx.executar ? 'Processados' : '[dry-run] processaria'}: ${pendentes.length} blocos + ${totais.mistos18} lançamentos de blocos mistos.`,
+  );
+}
+
 async function etapaResumo(ctx) {
   console.log('\n== resumo — conta-acerto/resumo (conta 19) ==');
   const r = await apiGet(ctx, `/api/financeiro/conta-acerto/resumo?numeroBanco=${NUMERO_BANCO_CZ}`);
@@ -667,6 +994,7 @@ const ETAPAS = {
   'grupos-zerados': etapaGruposZerados,
   'clientes-zerados': etapaClientesZerados,
   'pares-estritos': etapaParesEstritos,
+  'planilha-grupos': etapaPlanilhaGrupos,
   resumo: etapaResumo,
 };
 
