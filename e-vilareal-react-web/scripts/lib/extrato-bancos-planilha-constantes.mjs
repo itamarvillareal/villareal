@@ -43,6 +43,15 @@ export const NUMERO_PARA_BANCO = {
   29: 'Sicoob VRV',
 };
 
+/**
+ * Contas com extrato/elos na API ausentes da aba Conta Compensação da planilha legada.
+ * BB (3) existe no consolidado mas não na Comp; 99 Pay (30) só na API.
+ */
+export const BANCOS_API_SEM_PLANILHA_COMP = {
+  3: 'BB',
+  30: '99 Pay',
+};
+
 /** Nº no consolidado → cartão de crédito (extrato fatura). */
 export const NUMERO_PARA_CARTAO = {
   7: 'Mastercard',

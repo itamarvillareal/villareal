@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, Download, Loader2, Search } from 'lucide-react';
+import { ChevronDown, ChevronRight, Download, Info, Loader2, Search } from 'lucide-react';
 import {
   baixarPdfAcertoFechamentoApi,
   obterAcertoResumoPeriodosApi,
 } from '../../../../repositories/financeiroRepository.js';
 import { formatMoeda } from '../../shared/financeiroFormat.js';
 import { useFinanceiroToast } from '../../shared/Toast.jsx';
-import { fmtDataAcerto } from './acertoUtils.js';
+import { fmtDataAcerto, isCardAcerto } from './acertoUtils.js';
 
 const ROTULO_STATUS = {
   FECHADO_MANUAL: 'Histórico (corte manual)',
@@ -28,7 +28,7 @@ function baixarBlob(blob, nome) {
 }
 
 function isCard(p) {
-  return p.status === 'FECHADO_GRUPO' || p.tipoPeriodo === 'CARD';
+  return isCardAcerto(p);
 }
 
 function isHistorico(p) {
@@ -59,6 +59,7 @@ function PeriodoItem({
   expandido,
   onAlternar,
   onSelecionar,
+  onAbrirCard,
   onBaixarPdf,
   destaqueAberto = false,
 }) {
@@ -85,7 +86,12 @@ function PeriodoItem({
         >
           {abertoUi ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         </button>
-        <button type="button" onClick={() => onSelecionar(p.indice)} className="flex-1 text-left py-2.5 pr-4">
+        <button
+          type="button"
+          onClick={() => (card ? onAbrirCard?.(p) : onSelecionar(p.indice))}
+          className="flex-1 text-left py-2.5 pr-4"
+          title={card ? 'Abrir card em modal' : undefined}
+        >
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
               {p.titulo
@@ -131,6 +137,11 @@ function PeriodoItem({
               <> · saldo {formatMoeda(Number(p.saldoFinal ?? 0))}</>
             )}
           </p>
+          {p.status === 'ABERTO' ? (
+            <p className="text-[11px] text-emerald-800 dark:text-emerald-300 mt-1 font-medium">
+              Fila de trabalho — não é um card fechável. Confira proc a proc na tabela abaixo.
+            </p>
+          ) : null}
         </button>
         {p.fechamentoId && p.temPdf ? (
           <button
@@ -155,6 +166,7 @@ export function AcertoPeriodosView({
   refreshKey,
   periodoSel,
   onSelecionarPeriodo,
+  onAbrirCard,
   onResumoCarregado,
 }) {
   const toast = useFinanceiroToast();
@@ -227,7 +239,8 @@ export function AcertoPeriodosView({
       else n.add(idx);
       return n;
     });
-    onSelecionarPeriodo?.(idx);
+    const p = periodos.find((x) => x.indice === idx);
+    if (p && !isCard(p)) onSelecionarPeriodo?.(idx);
   };
 
   if (!clienteId) return null;
@@ -242,6 +255,7 @@ export function AcertoPeriodosView({
           expandido={expandidos.has(p.indice)}
           onAlternar={alternar}
           onSelecionar={onSelecionarPeriodo}
+          onAbrirCard={onAbrirCard}
           onBaixarPdf={baixarPdf}
           destaqueAberto={destaqueAberto && p.status === 'ABERTO'}
         />
@@ -305,8 +319,13 @@ export function AcertoPeriodosView({
           </div>
 
           <div>
-            <h3 className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wide text-emerald-800 dark:text-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/20">
+            <h3
+              className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wide text-emerald-800 dark:text-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/20 flex items-center gap-1.5"
+              title="Todo lançamento sem card desde o corte manual. Não fecha com um clique — é onde você trabalha."
+            >
               Período aberto
+              <Info className="w-3 h-3 opacity-70" aria-hidden />
+              <span className="normal-case font-normal opacity-80">— fila de trabalho, não card fechável</span>
             </h3>
             {aberto ? renderLista([aberto], { destaqueAberto: true }) : (
               <p className="px-4 py-3 text-xs text-slate-500">Sem período aberto.</p>
@@ -332,11 +351,9 @@ export function AcertoPeriodosView({
         </div>
       )}
 
-      {periodoAtivo && periodoAtivo.status !== 'ABERTO' ? (
+      {periodoAtivo && periodoAtivo.status !== 'ABERTO' && !isCard(periodoAtivo) ? (
         <p className="px-4 py-2 text-[11px] text-amber-800 dark:text-amber-200 border-t border-slate-100 dark:border-slate-800 bg-amber-50/50 dark:bg-amber-950/20">
-          {isCard(periodoAtivo)
-            ? 'Card fechado — somente leitura. Lançamentos filtrados pelo grupo de compensação.'
-            : 'Período fechado — somente leitura.'}
+          Período fechado — somente leitura.
         </p>
       ) : null}
     </section>

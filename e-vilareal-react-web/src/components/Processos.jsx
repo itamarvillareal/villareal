@@ -7,6 +7,7 @@ import { CampoDataBr } from './ui/CampoDataBr.jsx';
 import {
   getLancamentosContaCorrente,
   getTransacoesContaCorrenteCompleto,
+  filtrarLinhasContaCorrenteCliente,
   mapLinhasFinanceiroParaContaCorrenteModal,
   mergeContaCorrenteComLinhaOrigem,
 } from '../data/financeiroData';
@@ -5773,12 +5774,13 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
           codigoCliente,
           processoContaCorrenteEfetivo
         );
-        const transacoesFonte =
+        const transacoesFonteRaw =
           featureFlags.useApiFinanceiro &&
           contaCorrenteListaApi.phase === 'ok' &&
           contaCorrenteTransacoesUi.length > 0
             ? contaCorrenteTransacoesUi
             : getTransacoesContaCorrenteCompleto(codigoCliente, processoContaCorrenteEfetivo);
+        const transacoesFonte = filtrarLinhasContaCorrenteCliente(transacoesFonteRaw);
         void ccVinculoTick;
         const painelCc = montarPainelResultadoContaCorrenteProcesso(
           transacoesFonte,

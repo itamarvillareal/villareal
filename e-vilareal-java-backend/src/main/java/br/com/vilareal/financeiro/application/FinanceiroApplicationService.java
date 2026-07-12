@@ -48,6 +48,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -676,9 +677,39 @@ public class FinanceiroApplicationService {
         if (grupoCompensacao == null || grupoCompensacao.isBlank()) {
             return List.of();
         }
-        return lancamentoRepository.findAllByGrupoCompensacao(grupoCompensacao.trim()).stream()
+        List<LancamentoFinanceiroResponse> lancamentos = lancamentoRepository
+                .findAllByGrupoCompensacao(grupoCompensacao.trim())
+                .stream()
                 .map(this::toLancamentoResponse)
                 .toList();
+        return CompensacaoEloCanonicoSupport.canonizarResposta(lancamentos, contaBancariaApplicationService);
+    }
+
+    /**
+     * Localiza elos numéricos (col. M / Conta Compensação) associados a rowIds da planilha
+     * (prefixo da descricao_detalhada) e retorna os lançamentos ATIVO de cada elo.
+     */
+    @Transactional(readOnly = true)
+    public List<EloCompensacaoResponse> listarCompensacaoPorRowIds(List<Integer> rowIds) {
+        if (rowIds == null || rowIds.isEmpty()) {
+            return List.of();
+        }
+        String pattern =
+                rowIds.stream().filter(Objects::nonNull).map(String::valueOf).collect(Collectors.joining("|"));
+        if (pattern.isBlank()) {
+            return List.of();
+        }
+        List<EloCompensacaoResponse> out = new ArrayList<>();
+        for (String elo : lancamentoRepository.findElosNumericosPorRowIdPattern(pattern)) {
+            if (elo == null || elo.isBlank()) {
+                continue;
+            }
+            EloCompensacaoResponse item = new EloCompensacaoResponse();
+            item.setElo(elo.trim());
+            item.setLancamentos(listarLancamentosPorGrupoCompensacao(elo.trim()));
+            out.add(item);
+        }
+        return out;
     }
 
     @Transactional

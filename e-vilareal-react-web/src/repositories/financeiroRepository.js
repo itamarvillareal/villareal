@@ -618,6 +618,18 @@ export async function listarLancamentosPorGrupoCompensacaoApi(grupoCompensacao, 
   });
 }
 
+/** Elos numéricos (Conta Compensação) ligados a rowIds da planilha + lançamentos ATIVO do elo. */
+export async function listarCompensacaoPorRowIdsApi(rowIds, opts = {}) {
+  const ids = (Array.isArray(rowIds) ? rowIds : [])
+    .map((n) => Number(n))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  if (!featureFlags.useApiFinanceiro || ids.length === 0) return [];
+  return request('/api/financeiro/lancamentos/compensacao-por-row-ids', {
+    query: { rowIds: ids.join(',') },
+    signal: opts.signal,
+  });
+}
+
 function mapApiLancamentoCartaoToUi(l, contaToLetra) {
   const letra = contaToLetra[l.contaContabilNome] || 'N';
   const valorNum = Number(l.valor ?? 0);
