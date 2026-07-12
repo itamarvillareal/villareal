@@ -49,6 +49,7 @@ public class ProjudiMovimentacoesEmailPipelineService {
     private final ProjudiMovimentacoesEmailPipelineProperties properties;
     private final ProjudiMovimentacoesEmailSchedulePolicy schedulePolicy;
     private final GmailProjudiManifestacaoService gmailProjudiManifestacaoService;
+    private final GmailTrtPushManifestacaoService gmailTrtPushManifestacaoService;
     private final PublicacaoRepository publicacaoRepository;
     private final ProcessoRepository processoRepository;
     private final ProjudiOrquestradorGate orquestradorGate;
@@ -65,6 +66,7 @@ public class ProjudiMovimentacoesEmailPipelineService {
             ProjudiMovimentacoesEmailPipelineProperties properties,
             ProjudiMovimentacoesEmailSchedulePolicy schedulePolicy,
             @Autowired(required = false) GmailProjudiManifestacaoService gmailProjudiManifestacaoService,
+            @Autowired(required = false) GmailTrtPushManifestacaoService gmailTrtPushManifestacaoService,
             PublicacaoRepository publicacaoRepository,
             ProcessoRepository processoRepository,
             ProjudiOrquestradorGate orquestradorGate,
@@ -77,6 +79,7 @@ public class ProjudiMovimentacoesEmailPipelineService {
         this.properties = properties;
         this.schedulePolicy = schedulePolicy;
         this.gmailProjudiManifestacaoService = gmailProjudiManifestacaoService;
+        this.gmailTrtPushManifestacaoService = gmailTrtPushManifestacaoService;
         this.publicacaoRepository = publicacaoRepository;
         this.processoRepository = processoRepository;
         this.orquestradorGate = orquestradorGate;
@@ -168,6 +171,25 @@ public class ProjudiMovimentacoesEmailPipelineService {
             }
         } else {
             resumo.put("gmail", "indisponivel");
+        }
+
+        if (gmailTrtPushManifestacaoService != null && gmailTrtPushManifestacaoService.isDisponivel()) {
+            try {
+                PublicacaoEmailProcessamentoResumo trtResumo;
+                try {
+                    trtResumo = gmailTrtPushManifestacaoService.buscarEProcessarManifestacoes();
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+                resumo.put("gmailTrtEmailsLidos", trtResumo.getEmailsLidos());
+                resumo.put("gmailTrtPublicacoesGravadas", trtResumo.getPublicacoesProcessadas());
+                resumo.put("gmailTrtErros", trtResumo.getErros().size());
+            } catch (Exception e) {
+                log.warn("Pipeline PROJUDI: falha na sincronização Gmail TRT: {}", e.getMessage());
+                resumo.put("gmailTrtErro", e.getMessage());
+            }
+        } else {
+            resumo.put("gmailTrt", "indisponivel");
         }
 
         Instant desde = calcularInstanteJanela();

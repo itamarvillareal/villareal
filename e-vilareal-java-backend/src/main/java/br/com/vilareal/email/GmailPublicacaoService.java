@@ -10,7 +10,6 @@ import com.google.api.services.gmail.model.Message;
 import com.google.api.services.gmail.model.ModifyMessageRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -29,7 +28,7 @@ public class GmailPublicacaoService {
     private static final Logger log = LoggerFactory.getLogger(GmailPublicacaoService.class);
     private static final String QUERY_BASE = "from:publicacoes-diarios@jusbrasil.com.br";
 
-    private final Gmail gmail;
+    private final GmailApiProvider gmailApiProvider;
     private final PublicacaoEmailImportacaoTransacionalService importacaoTransacional;
     private final PublicacaoRepository publicacaoRepository;
     private final EmailImportacaoSyncService syncService;
@@ -38,14 +37,14 @@ public class GmailPublicacaoService {
     private final String gmailUser;
 
     public GmailPublicacaoService(
-            @Autowired(required = false) Gmail gmail,
+            GmailApiProvider gmailApiProvider,
             PublicacaoEmailImportacaoTransacionalService importacaoTransacional,
             PublicacaoRepository publicacaoRepository,
             EmailImportacaoSyncService syncService,
             ProcessoTramitacaoService processoTramitacaoService,
             ProcessoTramitacaoProperties processoTramitacaoProperties,
             @Value("${gmail.user:me}") String gmailUser) {
-        this.gmail = gmail;
+        this.gmailApiProvider = gmailApiProvider;
         this.importacaoTransacional = importacaoTransacional;
         this.publicacaoRepository = publicacaoRepository;
         this.syncService = syncService;
@@ -55,7 +54,7 @@ public class GmailPublicacaoService {
     }
 
     public boolean isDisponivel() {
-        return gmail != null;
+        return gmailApiProvider.isDisponivel();
     }
 
     public PublicacaoEmailProcessamentoResumo buscarEProcessarPublicacoes() throws IOException {
@@ -82,6 +81,7 @@ public class GmailPublicacaoService {
             boolean sincronizacaoIncremental)
             throws IOException {
         PublicacaoEmailProcessamentoResumo resumo = new PublicacaoEmailProcessamentoResumo();
+        Gmail gmail = gmailApiProvider.resolver().orElse(null);
         if (gmail == null) {
             resumo.getErros().add("Gmail API não configurada.");
             return resumo;
@@ -99,7 +99,7 @@ public class GmailPublicacaoService {
                 query,
                 reprocessarEmailsExistentes,
                 sincronizacaoIncremental);
-        List<Message> mensagens = listarMensagens(query);
+        List<Message> mensagens = listarMensagens(gmail, query);
         log.info("Emails Jusbrasil encontrados: {}", mensagens.size());
 
         Set<String> processosUnicosLote = new LinkedHashSet<>();
@@ -129,7 +129,7 @@ public class GmailPublicacaoService {
                 String html = GmailMimeUtil.extrairHtml(completa.getPayload());
                 if (html == null || html.isBlank()) {
                     log.warn("Email {} sem corpo HTML utilizável (assunto={})", messageId, assunto);
-                    marcarComoLido(messageId);
+                    marcarComoLido(gmail, messageId);
                     resumo.setEmailsLidos(resumo.getEmailsLidos() + 1);
                     continue;
                 }
@@ -214,7 +214,7 @@ public class GmailPublicacaoService {
                         resumo.getPublicacoesDuplicadasIgnoradas() + duplicadas);
                 resumo.setVinculosAutomaticos(resumo.getVinculosAutomaticos() + vinculosAutomaticos);
 
-                marcarComoLido(messageId);
+                marcarComoLido(gmail, messageId);
                 resumo.setEmailsLidos(resumo.getEmailsLidos() + 1);
                 log.info(
                         "Email {} processado: gravadas={}, vinculosAutomaticosPorCnj={}, duplicadasIgnoradas={}, marcado como lido",
@@ -267,7 +267,7 @@ public class GmailPublicacaoService {
         return publicacaoRepository.existsByArquivoOrigemNomeContaining("[" + messageId + "]");
     }
 
-    private List<Message> listarMensagens(String query) throws IOException {
+    private List<Message> listarMensagens(Gmail gmail, String query) throws IOException {
         List<Message> out = new ArrayList<>();
         String pageToken = null;
         do {
@@ -287,7 +287,7 @@ public class GmailPublicacaoService {
         return out;
     }
 
-    private void marcarComoLido(String messageId) throws IOException {
+    private void marcarComoLido(Gmail gmail, String messageId) throws IOException {
         ModifyMessageRequest body = new ModifyMessageRequest().setRemoveLabelIds(List.of("UNREAD"));
         gmail.users().messages().modify(gmailUser, messageId, body).execute();
     }
