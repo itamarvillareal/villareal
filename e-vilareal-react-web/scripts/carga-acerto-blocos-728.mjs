@@ -182,7 +182,49 @@ async function conectarDb() {
   return mysql.createConnection({ host, port, user, password, database });
 }
 
-async function carregarLancamentosPorRowId(db) {
+function isLocalBackend(baseUrl) {
+  try {
+    const h = new URL(baseUrl).hostname;
+    return h === 'localhost' || h === '127.0.0.1';
+  } catch {
+    return false;
+  }
+}
+
+async function carregarLancamentosPorRowIdApi(ctx) {
+  const porRowId = new Map();
+  let page = 0;
+  for (;;) {
+    const res = await apiGet(
+      ctx,
+      `/api/financeiro/lancamentos/extrato/paginada?numeroBanco=${NUMERO_BANCO_CZ}&page=${page}&size=500&sort=dataLancamento,asc`,
+    );
+    const content = Array.isArray(res?.content) ? res.content : [];
+    for (const l of content) {
+      const det = String(l.descricaoDetalhada ?? '');
+      const m = det.match(/^(\d+)/);
+      if (!m) continue;
+      const rowId = Number(m[1]);
+      const row = {
+        id: l.id,
+        grupo_compensacao: l.grupoCompensacao ?? null,
+        processo_id: l.processoId ?? null,
+        cliente_id: l.clienteId ?? null,
+        natureza: l.natureza,
+        valor: l.valor,
+        det,
+      };
+      if (!porRowId.has(rowId)) porRowId.set(rowId, []);
+      porRowId.get(rowId).push(row);
+    }
+    if (content.length < 500) break;
+    page += 1;
+    if (page > 50) break;
+  }
+  return porRowId;
+}
+
+async function carregarLancamentosPorRowIdDb(db) {
   const [rows] = await db.query(
     `SELECT fl.id, fl.grupo_compensacao, fl.processo_id, fl.cliente_id, fl.pessoa_ref_id,
             fl.ref_tipo, fl.natureza, fl.valor,
@@ -204,8 +246,16 @@ async function carregarLancamentosPorRowId(db) {
   return porRowId;
 }
 
+async function carregarLancamentosPorRowId(ctx, db) {
+  if (isLocalBackend(ctx.baseUrl) && db) {
+    return carregarLancamentosPorRowIdDb(db);
+  }
+  console.log('Carregando lançamentos via API (destino remoto)…');
+  return carregarLancamentosPorRowIdApi(ctx);
+}
+
 async function resolverProcessoId(db, numeroInterno) {
-  if (!numeroInterno) return null;
+  if (!db || !numeroInterno) return null;
   const [rows] = await db.query(
     `SELECT p.id FROM processo p
      JOIN cliente c ON c.pessoa_id = p.pessoa_id
@@ -275,14 +325,14 @@ async function main() {
   console.log(`Planilha: ${caminho}`);
   console.log(`${blocos.length} blocos zerados com cliente ${COD_CLIENTE}`);
 
-  const db = await conectarDb();
-  const porRowId = await carregarLancamentosPorRowId(db);
+  const db = isLocalBackend(args.baseUrl) ? await conectarDb() : null;
   const token = await login(args.baseUrl);
   const ctx = {
     ...args,
     token,
     stats: { refs: 0, pareados: 0, pulados: 0, erros: 0, ok: 0, espelho: 0, misto: 0 },
   };
+  const porRowId = await carregarLancamentosPorRowId(ctx, db);
 
   for (const bloco of blocos) {
     const info = classificarBloco(bloco);
@@ -345,8 +395,18 @@ async function main() {
 
     const jaGrupo = ids.every((id) => {
       const r = [...porRowId.values()].flat().find((x) => x.id === id);
-      return r?.grupo_compensacao === grupo;
+      return String(r?.grupo_compensacao ?? '') === grupo;
     });
+    const emOutroGrupo = ids
+      .map((id) => [...porRowId.values()].flat().find((x) => x.id === id))
+      .filter((r) => r?.grupo_compensacao && String(r.grupo_compensacao) !== grupo);
+    if (emOutroGrupo.length > 0) {
+      console.warn(
+        `  ! ${emOutroGrupo.length} lanç. já em outro grupo (ex.: ${emOutroGrupo[0].grupo_compensacao}) — pulado`,
+      );
+      ctx.stats.erros += 1;
+      continue;
+    }
     if (jaGrupo) {
       console.log(`  — já pareado em ${grupo}`);
       ctx.stats.pulados += 1;
@@ -368,7 +428,7 @@ async function main() {
     console.log(`  ✓ pareado ${grupo} (${ids.length} lanç.)`);
   }
 
-  await db.end();
+  if (db) await db.end();
   console.log('\nResumo:', ctx.stats);
   if (!ctx.executar) console.log('Use --executar para aplicar.');
 }
