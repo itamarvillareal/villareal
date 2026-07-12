@@ -1,0 +1,4 @@
+{
+  "install": "bash scripts/cloud-agent-setup-ssh.sh && npm ci --prefix e-vilareal-react-web && ./e-vilareal-java-backend/mvnw -q install -pl e-vilareal-assinatura-core,e-vilareal-java-backend -am -DskipTests",
+  "update": "bash scripts/cloud-agent-setup-ssh.sh"
+}

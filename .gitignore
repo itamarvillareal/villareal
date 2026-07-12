@@ -11,7 +11,8 @@ docker-compose.override.yml
 e-vilareal-java-backend/scripts/.vilareal-import-token
 
 # Cursor (regras e estado locais; não versionar)
-.cursor/
+.cursor/*
+!.cursor/environment.json
 
 # Planilha de trabalho do generate_pessoas_inserts_from_xls.py (cópia temporária)
 scripts/.cadastro_pessoas_import_work.xls
