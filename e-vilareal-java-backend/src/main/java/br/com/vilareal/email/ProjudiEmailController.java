@@ -6,6 +6,7 @@ import br.com.vilareal.jobrun.application.JobRunTracker;
 import br.com.vilareal.jobrun.domain.JobNames;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.time.Instant;
 import java.util.Map;
 
 @RestController
@@ -49,7 +51,9 @@ public class ProjudiEmailController {
     @PostMapping("/processar")
     @Operation(summary = "Processar emails Projudi e importar manifestações")
     public ResponseEntity<?> processar(
-            @RequestParam(name = "forcar", defaultValue = "false") boolean forcarAtualizacaoCompleta) {
+            @RequestParam(name = "forcar", defaultValue = "false") boolean forcarAtualizacaoCompleta,
+            @RequestParam(name = "desde", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+                    Instant desdeOverride) {
         if (gmailProjudiManifestacaoService == null || !gmailProjudiManifestacaoService.isDisponivel()) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                     .body(Map.of(
@@ -63,7 +67,8 @@ public class ProjudiEmailController {
                 ctx.putMetadata("trigger", "manual");
                 PublicacaoEmailProcessamentoResumo r;
                 try {
-                    r = gmailProjudiManifestacaoService.buscarEProcessarManifestacoesManual(forcarAtualizacaoCompleta);
+                    r = gmailProjudiManifestacaoService.buscarEProcessarManifestacoesManual(
+                            forcarAtualizacaoCompleta, desdeOverride);
                 } catch (IOException e) {
                     throw new UncheckedIOException(e);
                 }

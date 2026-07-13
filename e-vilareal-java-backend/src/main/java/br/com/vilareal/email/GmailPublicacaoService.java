@@ -111,6 +111,7 @@ public class GmailPublicacaoService {
 
             if (!reprocessarEmailsExistentes && jaImportado) {
                 log.debug("Email {} já importado anteriormente; ignorado.", messageId);
+                emailMaisRecente = maisRecente(emailMaisRecente, obterDataRecebimentoMensagem(messageId));
                 continue;
             }
 
@@ -232,13 +233,11 @@ public class GmailPublicacaoService {
         resumo.setProcessosUnicos(processosUnicosLote.size());
 
         if (atualizarCursor) {
-            Instant cursorGravar = emailMaisRecente != null ? emailMaisRecente : Instant.now();
-            if (!mensagens.isEmpty()
-                    && (cursorAnterior == null || !cursorGravar.isAfter(cursorAnterior))) {
-                cursorGravar = Instant.now();
+            if (emailMaisRecente != null
+                    && (cursorAnterior == null || emailMaisRecente.isAfter(cursorAnterior))) {
+                Instant gravado = syncService.registrarSincronizacao(EmailImportacaoSyncTipo.JUSBRASIL, emailMaisRecente);
+                resumo.setUltimaSincronizacaoGravada(gravado);
             }
-            Instant gravado = syncService.registrarSincronizacao(EmailImportacaoSyncTipo.JUSBRASIL, cursorGravar);
-            resumo.setUltimaSincronizacaoGravada(gravado);
         }
 
         log.info(
@@ -332,5 +331,10 @@ public class GmailPublicacaoService {
             }
         }
         return last;
+    }
+
+    private Instant obterDataRecebimentoMensagem(String messageId) throws IOException {
+        Message meta = gmail.users().messages().get(gmailUser, messageId).setFormat("minimal").execute();
+        return extrairDataRecebimentoEmail(meta);
     }
 }
