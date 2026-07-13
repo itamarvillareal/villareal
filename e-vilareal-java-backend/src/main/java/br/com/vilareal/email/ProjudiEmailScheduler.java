@@ -28,12 +28,15 @@ public class ProjudiEmailScheduler {
     private static final Logger log = LoggerFactory.getLogger(ProjudiEmailScheduler.class);
 
     private final GmailProjudiManifestacaoService gmailProjudiManifestacaoService;
+    private final GmailCaixaOrdemService gmailCaixaOrdemService;
     private final JobRunTracker jobRunTracker;
 
     public ProjudiEmailScheduler(
             @Autowired(required = false) GmailProjudiManifestacaoService gmailProjudiManifestacaoService,
+            @Autowired(required = false) GmailCaixaOrdemService gmailCaixaOrdemService,
             JobRunTracker jobRunTracker) {
         this.gmailProjudiManifestacaoService = gmailProjudiManifestacaoService;
+        this.gmailCaixaOrdemService = gmailCaixaOrdemService;
         this.jobRunTracker = jobRunTracker;
     }
 
@@ -54,11 +57,24 @@ public class ProjudiEmailScheduler {
             }
             JobRunEmailResumoUtil.aplicarResumo(ctx, resumo);
             ctx.putMetadata("trigger", "scheduler");
+            atualizarOrdemCaixa();
             log.info(
                     "Scheduler Gmail Projudi: fim — emailsLidos={}, manifestacoesProcessadas={}, erros={}",
                     resumo.getEmailsLidos(),
                     resumo.getPublicacoesProcessadas(),
                     resumo.getErros().size());
         });
+    }
+
+    /** Sem ordem da caixa a tela oculta publicações recém-importadas. */
+    private void atualizarOrdemCaixa() {
+        if (gmailCaixaOrdemService == null) {
+            return;
+        }
+        try {
+            gmailCaixaOrdemService.atualizarOrdemCaixaInbox();
+        } catch (Exception e) {
+            log.warn("Scheduler Gmail Projudi: falha ao atualizar ordem da caixa: {}", e.getMessage());
+        }
     }
 }

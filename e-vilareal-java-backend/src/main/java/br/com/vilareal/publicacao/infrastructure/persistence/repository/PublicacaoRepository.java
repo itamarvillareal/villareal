@@ -36,11 +36,20 @@ public interface PublicacaoRepository extends JpaRepository<PublicacaoEntity, Lo
             @Param("ordem") int ordem,
             @Param("origens") Collection<String> origens);
 
+    /**
+     * {@code emailRecebidoEm} nunca regride: PUSH TRT em thread antiga tem Date/internalDate
+     * defasados no Gmail; a entrada já corrigida (ex.: importação em 12/07) deve prevalecer.
+     */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(
             """
             UPDATE PublicacaoEntity p
-            SET p.gmailCaixaOrdem = :ordem, p.emailRecebidoEm = :emailRecebidoEm
+            SET p.gmailCaixaOrdem = :ordem,
+                p.emailRecebidoEm = CASE
+                    WHEN p.emailRecebidoEm IS NULL OR p.emailRecebidoEm < :emailRecebidoEm
+                        THEN :emailRecebidoEm
+                    ELSE p.emailRecebidoEm
+                END
             WHERE p.arquivoOrigemNome LIKE CONCAT('%[', :messageId, ']%')
               AND p.origemImportacao IN :origens
             """)

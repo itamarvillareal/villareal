@@ -19,12 +19,15 @@ public class TrtPushEmailScheduler {
     private static final Logger log = LoggerFactory.getLogger(TrtPushEmailScheduler.class);
 
     private final GmailTrtPushManifestacaoService gmailTrtPushManifestacaoService;
+    private final GmailCaixaOrdemService gmailCaixaOrdemService;
     private final JobRunTracker jobRunTracker;
 
     public TrtPushEmailScheduler(
             @Autowired(required = false) GmailTrtPushManifestacaoService gmailTrtPushManifestacaoService,
+            @Autowired(required = false) GmailCaixaOrdemService gmailCaixaOrdemService,
             JobRunTracker jobRunTracker) {
         this.gmailTrtPushManifestacaoService = gmailTrtPushManifestacaoService;
+        this.gmailCaixaOrdemService = gmailCaixaOrdemService;
         this.jobRunTracker = jobRunTracker;
     }
 
@@ -45,11 +48,24 @@ public class TrtPushEmailScheduler {
             }
             JobRunEmailResumoUtil.aplicarResumo(ctx, resumo);
             ctx.putMetadata("trigger", "scheduler");
+            atualizarOrdemCaixa();
             log.info(
                     "Scheduler Gmail TRT: fim — emailsLidos={}, movimentacoesProcessadas={}, erros={}",
                     resumo.getEmailsLidos(),
                     resumo.getPublicacoesProcessadas(),
                     resumo.getErros().size());
         });
+    }
+
+    /** Sem ordem da caixa a tela oculta publicações recém-importadas. */
+    private void atualizarOrdemCaixa() {
+        if (gmailCaixaOrdemService == null) {
+            return;
+        }
+        try {
+            gmailCaixaOrdemService.atualizarOrdemCaixaInbox();
+        } catch (Exception e) {
+            log.warn("Scheduler Gmail TRT: falha ao atualizar ordem da caixa: {}", e.getMessage());
+        }
     }
 }
