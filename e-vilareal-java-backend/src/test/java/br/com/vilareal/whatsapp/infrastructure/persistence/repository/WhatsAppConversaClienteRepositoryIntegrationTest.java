@@ -90,9 +90,10 @@ class WhatsAppConversaClienteRepositoryIntegrationTest extends AbstractIntegrati
                 linha(phoneB, "00000010", "Zeta", agora)));
 
         List<WhatsAppConversaClienteRepository.ClienteDistinctRow> distintos = repository.findDistinctClientes();
+        // prefixo de 6 zeros: "00000010" tem '1' na 7ª posição e não casaria com "0000000"
         List<String> codigos = distintos.stream()
                 .map(WhatsAppConversaClienteRepository.ClienteDistinctRow::getClienteCodigo)
-                .filter(c -> c.startsWith("0000000"))
+                .filter(c -> c.equals("00000005") || c.equals("00000010"))
                 .toList();
 
         assertThat(codigos).containsExactly("00000005", "00000010");

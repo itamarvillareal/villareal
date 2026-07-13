@@ -10,7 +10,9 @@ import java.time.Instant;
 
 public interface WhatsAppConversationPinRepository extends JpaRepository<WhatsAppConversationPinEntity, String> {
 
-    @Modifying
+    // clearAutomatically: o upsert nativo não passa pela sessão Hibernate; sem limpar o contexto,
+    // um findById subsequente na mesma transação devolveria a entidade obsoleta em cache.
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(
             value =
                     """
@@ -23,7 +25,7 @@ public interface WhatsAppConversationPinRepository extends JpaRepository<WhatsAp
             nativeQuery = true)
     void upsertPinnedAt(@Param("phoneNumber") String phoneNumber, @Param("pinnedAt") Instant pinnedAt);
 
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(value = "DELETE FROM whatsapp_conversation_pin WHERE phone_number = :phoneNumber", nativeQuery = true)
     int deleteByPhoneNumber(@Param("phoneNumber") String phoneNumber);
 }
