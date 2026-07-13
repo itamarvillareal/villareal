@@ -22,7 +22,7 @@ public final class ProcessoDiagnosticoNumeroBuscaUtil {
         if (raw == null) {
             return false;
         }
-        return raw.trim().matches("(?i)\\d{4,9}\\.\\d{1,2}");
+        return raw.trim().matches("(?i)\\d{1,9}\\.\\d{1,2}");
     }
 
     /**
@@ -47,9 +47,61 @@ public final class ProcessoDiagnosticoNumeroBuscaUtil {
         if (ehNumeroProjudiInternoEmail(numeroBruto)) {
             // Só prefixo exato (9 dígitos = sequencial + DV). Sem fallback «contém» nem fuzzy —
             // ex.: 5500622.97 ≠ 5505622-97 (Vânia vs Asfarol).
-            return processoRepository.findIdsByNumeroCnjDigitosIniciandoCom(norm);
+            // Sequencial com zero à esquerda (ex.: 133057.9 → 0133057.9); DV incompleto → prefixo de 7 dígitos.
+            String normPadded = normalizarNumeroProjudiInternoParaDigitos(numeroBruto);
+            return buscarIdsPorPrefixoProjudiInterno(normPadded, processoRepository);
         }
         return processoRepository.findIdsByNumeroCnjDigitosContendo(norm);
+    }
+
+    /**
+     * Formato de exibição/gravação: sequencial com 7 dígitos (zero à esquerda).
+     * Ex.: {@code 133057.9} → {@code 0133057.9}
+     */
+    public static String formatarNumeroProjudiInternoEmail(String raw) {
+        if (!ehNumeroProjudiInternoEmail(raw)) {
+            return raw == null ? "" : raw.trim();
+        }
+        String trimmed = raw.trim();
+        int dot = trimmed.indexOf('.');
+        String seq = trimmed.substring(0, dot);
+        String dv = trimmed.substring(dot + 1);
+        return padSequencialProjudiInterno7(seq) + "." + dv;
+    }
+
+    /** Sequencial (7) + DV para prefixo de busca. */
+    public static String normalizarNumeroProjudiInternoParaDigitos(String raw) {
+        if (!ehNumeroProjudiInternoEmail(raw)) {
+            return normalizarSomenteDigitos(raw);
+        }
+        String trimmed = raw.trim();
+        int dot = trimmed.indexOf('.');
+        String seq = padSequencialProjudiInterno7(trimmed.substring(0, dot));
+        String dv = trimmed.substring(dot + 1).replaceAll("\\D", "");
+        return seq + dv;
+    }
+
+    public static String padSequencialProjudiInterno7(String seq) {
+        if (seq == null || seq.isBlank()) {
+            return "0000000";
+        }
+        String d = seq.replaceAll("\\D", "");
+        if (d.length() >= 7) {
+            return d;
+        }
+        return "0".repeat(7 - d.length()) + d;
+    }
+
+    private static List<BigInteger> buscarIdsPorPrefixoProjudiInterno(
+            String normPadded, ProcessoRepository processoRepository) {
+        List<BigInteger> ids = processoRepository.findIdsByNumeroCnjDigitosIniciandoCom(normPadded);
+        if (!ids.isEmpty()) {
+            return ids;
+        }
+        if (normPadded.length() >= 7 && normPadded.length() < 9) {
+            return processoRepository.findIdsByNumeroCnjDigitosIniciandoCom(normPadded.substring(0, 7));
+        }
+        return List.of();
     }
 
     public static String normalizarSomenteDigitos(String raw) {

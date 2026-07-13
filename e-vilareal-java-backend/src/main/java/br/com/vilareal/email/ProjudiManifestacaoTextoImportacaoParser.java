@@ -1,5 +1,6 @@
 package br.com.vilareal.email;
 
+import br.com.vilareal.processo.application.ProcessoDiagnosticoNumeroBuscaUtil;
 import br.com.vilareal.publicacao.api.dto.PublicacaoWriteRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -253,7 +254,8 @@ final class ProjudiManifestacaoTextoImportacaoParser {
         }
         Matcher m = RE_NUMERO_PROJUDI_INTERNO.matcher(texto);
         if (m.find()) {
-            return m.group(1) + "." + m.group(2);
+            return ProcessoDiagnosticoNumeroBuscaUtil.formatarNumeroProjudiInternoEmail(
+                    m.group(1) + "." + m.group(2));
         }
         return null;
     }
@@ -362,7 +364,8 @@ final class ProjudiManifestacaoTextoImportacaoParser {
         Set<String> out = new LinkedHashSet<>(coletarCnjsEmTexto(texto));
         Matcher m = RE_NUMERO_PROJUDI_INTERNO.matcher(String.valueOf(texto));
         while (m.find()) {
-            out.add(m.group(1) + "." + m.group(2));
+            out.add(ProcessoDiagnosticoNumeroBuscaUtil.formatarNumeroProjudiInternoEmail(
+                    m.group(1) + "." + m.group(2)));
         }
         return out;
     }

@@ -21,6 +21,11 @@ describe('chaveNumeroProcessoBuscaDiagnostico', () => {
 
 describe('chaveSugestaoVinculoPublicacao', () => {
   it('usa só dígitos para número interno Projudi parcial', () => {
-    expect(chaveSugestaoVinculoPublicacao('175134.85')).toBe('17513485');
+    expect(chaveSugestaoVinculoPublicacao('175134.85')).toBe('0175134.85');
+  });
+
+  it('preenche zero à esquerda no sequencial Projudi', () => {
+    expect(chaveSugestaoVinculoPublicacao('133057.9')).toBe('0133057.9');
+    expect(chaveNumeroProcessoBuscaDiagnostico('133057.9')).toBe('01330579');
   });
 });

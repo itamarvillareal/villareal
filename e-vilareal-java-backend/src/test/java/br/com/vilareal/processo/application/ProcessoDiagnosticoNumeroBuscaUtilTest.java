@@ -60,6 +60,27 @@ class ProcessoDiagnosticoNumeroBuscaUtilTest {
     }
 
     @Test
+    void buscarIdsProcessoPorNumero_projudiInternoComZeroEsquerdaNoSequencial() {
+        when(processoRepository.findIdsByNumeroCnjDigitosIniciandoCom("01330579")).thenReturn(List.of());
+        when(processoRepository.findIdsByNumeroCnjDigitosIniciandoCom("0133057"))
+                .thenReturn(List.of(BigInteger.valueOf(8801L)));
+
+        List<BigInteger> ids =
+                ProcessoDiagnosticoNumeroBuscaUtil.buscarIdsProcessoPorNumero("133057.9", processoRepository);
+
+        assertEquals(List.of(BigInteger.valueOf(8801L)), ids);
+        verify(processoRepository).findIdsByNumeroCnjDigitosIniciandoCom("01330579");
+        verify(processoRepository).findIdsByNumeroCnjDigitosIniciandoCom("0133057");
+    }
+
+    @Test
+    void formatarNumeroProjudiInternoEmail_preencheZeroEsquerda() {
+        assertEquals("0133057.9", ProcessoDiagnosticoNumeroBuscaUtil.formatarNumeroProjudiInternoEmail("133057.9"));
+        assertEquals("5780425.64", ProcessoDiagnosticoNumeroBuscaUtil.formatarNumeroProjudiInternoEmail("5780425.64"));
+        assertEquals("0175134.85", ProcessoDiagnosticoNumeroBuscaUtil.formatarNumeroProjudiInternoEmail("175134.85"));
+    }
+
+    @Test
     void buscarIdsProcessoPorNumero_cnjCompletoUsaIgualdade() {
         String cnj20 = "57804256420248090007";
         when(processoRepository.findIdsByNumeroCnjNormalizadoDiagnostico(cnj20))

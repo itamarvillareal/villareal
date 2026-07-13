@@ -10,6 +10,33 @@ export function padCnjDigitos19para20(digits) {
   return d;
 }
 
+/** Número interno Projudi em email de intimação (ex.: {@code 5500622.97}, {@code 5829123.7}). */
+export function ehNumeroProjudiInternoEmail(raw) {
+  return /^\d{1,9}\.\d{1,2}$/i.test(String(raw ?? '').trim());
+}
+
+export function padSequencialProjudiInterno7(seq) {
+  const d = String(seq ?? '').replace(/\D/g, '');
+  if (d.length >= 7) return d;
+  return d.padStart(7, '0');
+}
+
+/** Ex.: {@code 133057.9} → {@code 0133057.9} */
+export function formatarNumeroProjudiInternoEmail(raw) {
+  const s = String(raw ?? '').trim();
+  const m = /^(\d{1,9})\.(\d{1,2})$/i.exec(s);
+  if (!m) return s;
+  return `${padSequencialProjudiInterno7(m[1])}.${m[2]}`;
+}
+
+/** Sequencial (7) + DV para prefixo de busca. */
+export function digitosNumeroProjudiInternoEmail(raw) {
+  const s = String(raw ?? '').trim();
+  const m = /^(\d{1,9})\.(\d{1,2})$/i.exec(s);
+  if (!m) return '';
+  return padSequencialProjudiInterno7(m[1]) + m[2];
+}
+
 /**
  * Chave estável para comparar número de processo (CNJ / nº novo) ignorando pontos, traços e espaços.
  * Aceita entrada só com dígitos ou no formato CNJ com `.` e `-`.
@@ -20,6 +47,9 @@ export function padCnjDigitos19para20(digits) {
 export function chaveNumeroProcessoBuscaDiagnostico(raw) {
   const s = String(raw ?? '').trim();
   if (!s) return '';
+  if (ehNumeroProjudiInternoEmail(s)) {
+    return digitosNumeroProjudiInternoEmail(s);
+  }
   const cnjFmt = normalizarCnjParaChave(s);
   if (cnjFmt) {
     return padCnjDigitos19para20(cnjFmt.replace(/\D/g, ''));
@@ -35,5 +65,8 @@ export function chaveNumeroProcessoBuscaDiagnostico(raw) {
 export function chaveSugestaoVinculoPublicacao(raw) {
   const s = String(raw ?? '').trim();
   if (!s) return '';
+  if (ehNumeroProjudiInternoEmail(s)) {
+    return formatarNumeroProjudiInternoEmail(s);
+  }
   return normalizarCnjParaChave(s) || chaveNumeroProcessoBuscaDiagnostico(s);
 }

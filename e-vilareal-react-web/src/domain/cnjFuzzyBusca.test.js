@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cnjEhTrt18, levenshtein, termoDigitosCorrespondeCnjCampo } from './cnjFuzzyBusca.js';
+import { cnjEhTrt18, digitosCnjNormalizados, levenshtein, termoDigitosCorrespondeCnjCampo } from './cnjFuzzyBusca.js';
 
 describe('levenshtein', () => {
   it('distância 1 entre 5482633 e 5402633', () => {
@@ -35,6 +35,14 @@ describe('termoDigitosCorrespondeCnjCampo', () => {
     expect(termoDigitosCorrespondeCnjCampo('550062297', vania)).toBe(true); // fuzzy legado (busca manual)
     expect(termoDigitosCorrespondeCnjCampo('550062297', vania, { projudiInternoExato: true })).toBe(false);
     expect(termoDigitosCorrespondeCnjCampo('550562297', vania, { projudiInternoExato: true })).toBe(true);
+  });
+
+  it('Projudi interno sem zero à esquerda casa com CNJ cadastrado', () => {
+    const cnj = '0133057-12.2019.8.09.0000';
+    expect(termoDigitosCorrespondeCnjCampo(digitosCnjNormalizados('133057.9'), cnj, { projudiInternoExato: true })).toBe(
+      true,
+    );
+    expect(termoDigitosCorrespondeCnjCampo('01330579', cnj, { projudiInternoExato: true })).toBe(true);
   });
 });
 
