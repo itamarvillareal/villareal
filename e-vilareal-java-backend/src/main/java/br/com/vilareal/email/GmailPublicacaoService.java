@@ -111,7 +111,7 @@ public class GmailPublicacaoService {
 
             if (!reprocessarEmailsExistentes && jaImportado) {
                 log.debug("Email {} já importado anteriormente; ignorado.", messageId);
-                emailMaisRecente = maisRecente(emailMaisRecente, obterDataRecebimentoMensagem(messageId));
+                emailMaisRecente = maisRecente(emailMaisRecente, obterDataRecebimentoMensagem(gmail, messageId));
                 continue;
             }
 
@@ -333,7 +333,7 @@ public class GmailPublicacaoService {
         return last;
     }
 
-    private Instant obterDataRecebimentoMensagem(String messageId) throws IOException {
+    private Instant obterDataRecebimentoMensagem(Gmail gmail, String messageId) throws IOException {
         Message meta = gmail.users().messages().get(gmailUser, messageId).setFormat("minimal").execute();
         return extrairDataRecebimentoEmail(meta);
     }

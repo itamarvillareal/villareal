@@ -151,7 +151,7 @@ public class GmailMovimentacaoEmailEngine {
             boolean jaImportado = emailJaImportado(messageId);
 
             if (!reprocessarEmailsExistentes && jaImportado) {
-                emailMaisRecente = maisRecente(emailMaisRecente, obterDataRecebimentoMensagem(messageId));
+                emailMaisRecente = maisRecente(emailMaisRecente, obterDataRecebimentoMensagem(gmail, messageId));
                 continue;
             }
 
@@ -189,7 +189,7 @@ public class GmailMovimentacaoEmailEngine {
                             messageId,
                             assunto,
                             snippet);
-                    marcarComoLido(messageId);
+                    marcarComoLido(gmail, messageId);
                     resumo.setEmailsLidos(resumo.getEmailsLidos() + 1);
                     continue;
                 }
@@ -329,7 +329,7 @@ public class GmailMovimentacaoEmailEngine {
         return Optional.empty();
     }
 
-    private Instant obterDataRecebimentoMensagem(String messageId) throws IOException {
+    private Instant obterDataRecebimentoMensagem(Gmail gmail, String messageId) throws IOException {
         Message meta = gmail.users().messages().get(gmailUser, messageId).setFormat("minimal").execute();
         return extrairDataRecebimentoEmail(meta);
     }
