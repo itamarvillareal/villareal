@@ -14,7 +14,6 @@ import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoPa
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.publicacao.api.dto.*;
 import br.com.vilareal.publicacao.application.event.PublicacaoVinculadaEvent;
-import br.com.vilareal.email.GmailCaixaOrdemService;
 import br.com.vilareal.publicacao.infrastructure.persistence.PublicacaoSpecifications;
 import br.com.vilareal.publicacao.infrastructure.persistence.entity.PublicacaoEntity;
 import br.com.vilareal.publicacao.infrastructure.persistence.repository.PublicacaoRepository;
@@ -52,7 +51,6 @@ public class PublicacaoApplicationService {
     private final ProcessoApplicationService processoApplicationService;
     private final ClienteResolverService clienteResolverService;
     private final ApplicationEventPublisher applicationEventPublisher;
-    private final GmailCaixaOrdemService gmailCaixaOrdemService;
 
     public PublicacaoApplicationService(
             PublicacaoRepository publicacaoRepository,
@@ -61,8 +59,7 @@ public class PublicacaoApplicationService {
             ClienteCodigoPessoaResolver clienteCodigoPessoaResolver,
             ProcessoApplicationService processoApplicationService,
             ClienteResolverService clienteResolverService,
-            ApplicationEventPublisher applicationEventPublisher,
-            GmailCaixaOrdemService gmailCaixaOrdemService) {
+            ApplicationEventPublisher applicationEventPublisher) {
         this.publicacaoRepository = publicacaoRepository;
         this.processoRepository = processoRepository;
         this.processoParteRepository = processoParteRepository;
@@ -70,7 +67,6 @@ public class PublicacaoApplicationService {
         this.processoApplicationService = processoApplicationService;
         this.clienteResolverService = clienteResolverService;
         this.applicationEventPublisher = applicationEventPublisher;
-        this.gmailCaixaOrdemService = gmailCaixaOrdemService;
     }
 
     @Transactional(readOnly = true)
@@ -89,13 +85,6 @@ public class PublicacaoApplicationService {
             clientePk = clienteResolverService.buscarPorId(clienteId).getId();
         }
         boolean movimentacaoEmail = isOrigemMovimentacaoEmail(origemImportacao);
-        if (movimentacaoEmail) {
-            try {
-                gmailCaixaOrdemService.atualizarOrdemCaixaInbox();
-            } catch (Exception ex) {
-                // Lista segue com ordem já gravada; não bloqueia a tela.
-            }
-        }
         var spec = PublicacaoSpecifications.comFiltros(
                 dataInicio,
                 dataFim,

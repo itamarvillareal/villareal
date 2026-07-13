@@ -8,8 +8,9 @@ import com.google.api.services.gmail.model.Thread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -25,6 +26,9 @@ import java.util.Set;
  * Atualiza {@code gmail_caixa_ordem} e {@code email_recebido_em} percorrendo threads da inbox
  * ({@code threads.list in:inbox}) — mesma ordem da visualização por conversa do Gmail (print
  * 21:14 → 20:53 → 20:30).
+ *
+ * <p>Chamadas Gmail ficam fora de transação; gravações no banco usam transação curta
+ * ({@code REQUIRES_NEW}) para evitar lock wait timeout com importação/listagem concorrente.
  */
 @Service
 public class GmailCaixaOrdemService {
@@ -41,32 +45,58 @@ public class GmailCaixaOrdemService {
 
     private final GmailApiProvider gmailApiProvider;
     private final PublicacaoRepository publicacaoRepository;
+    private final TransactionTemplate ordemTx;
 
+    private final Object lockAtualizacao = new Object();
     private volatile long ultimaAtualizacaoOrdemMs = 0L;
 
     public GmailCaixaOrdemService(
-            GmailApiProvider gmailApiProvider, PublicacaoRepository publicacaoRepository) {
+            GmailApiProvider gmailApiProvider,
+            PublicacaoRepository publicacaoRepository,
+            PlatformTransactionManager transactionManager) {
         this.gmailApiProvider = gmailApiProvider;
         this.publicacaoRepository = publicacaoRepository;
+        this.ordemTx = new TransactionTemplate(transactionManager);
+        this.ordemTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public int atualizarOrdemCaixaInbox() throws IOException {
-        long agora = System.currentTimeMillis();
-        if (agora - ultimaAtualizacaoOrdemMs < INTERVALO_MIN_MS) {
-            log.debug("Ordem caixa Gmail: atualização ignorada (intervalo mínimo).");
-            return 0;
-        }
+        synchronized (lockAtualizacao) {
+            long agora = System.currentTimeMillis();
+            if (agora - ultimaAtualizacaoOrdemMs < INTERVALO_MIN_MS) {
+                log.debug("Ordem caixa Gmail: atualização ignorada (intervalo mínimo).");
+                return 0;
+            }
 
+            ColetaOrdemCaixa coleta = coletarAtualizacoesInbox();
+            if (coleta.atualizacoes().isEmpty()) {
+                ultimaAtualizacaoOrdemMs = agora;
+                return 0;
+            }
+
+            Integer atualizados =
+                    ordemTx.execute(status -> aplicarAtualizacoes(coleta.atualizacoes()));
+            ultimaAtualizacaoOrdemMs = agora;
+            log.info(
+                    "Ordem caixa Gmail (threads in:inbox): {} thread(s), {} publicação(ões) atualizada(s). Topo: {}",
+                    coleta.threadsPercorridas(),
+                    atualizados != null ? atualizados : 0,
+                    coleta.topoLog());
+            return atualizados != null ? atualizados : 0;
+        }
+    }
+
+    /** Gmail + leituras leves — sem transação aberta no banco. */
+    private ColetaOrdemCaixa coletarAtualizacoesInbox() throws IOException {
         Gmail gmail = gmailApiProvider.resolver().orElse(null);
         if (gmail == null) {
             log.warn("Gmail indisponível — ordem da caixa não atualizada.");
-            return 0;
+            return ColetaOrdemCaixa.vazia();
         }
 
         List<Thread> refs = listarThreadsInbox(gmail);
         int ordem = 0;
-        int atualizados = 0;
+        List<AtualizacaoOrdemCaixa> atualizacoes = new ArrayList<>();
         List<String> topoLog = new ArrayList<>();
         for (Thread ref : refs) {
             String threadId = ref.getId();
@@ -109,14 +139,8 @@ public class GmailCaixaOrdemService {
                 if (entrada == null) {
                     entrada = inboxEm;
                 }
-                int n = entrada != null
-                        ? publicacaoRepository.updateGmailCaixaOrdemAndEmailRecebidoForMessage(
-                                messageId, ordem, entrada, ORIGENS)
-                        : publicacaoRepository.updateGmailCaixaOrdemForMessage(messageId, ordem, ORIGENS);
-                if (n > 0) {
-                    atualizados += n;
-                    gravouNaThread = true;
-                }
+                atualizacoes.add(new AtualizacaoOrdemCaixa(messageId, ordem, entrada));
+                gravouNaThread = true;
             }
             if (gravouNaThread && topoLog.size() < 12) {
                 String hora = inboxEm != null
@@ -126,12 +150,18 @@ public class GmailCaixaOrdemService {
             }
             ordem++;
         }
-        ultimaAtualizacaoOrdemMs = agora;
-        log.info(
-                "Ordem caixa Gmail (threads in:inbox): {} thread(s), {} publicação(ões) atualizada(s). Topo: {}",
-                refs.size(),
-                atualizados,
-                topoLog);
+        return new ColetaOrdemCaixa(refs.size(), atualizacoes, topoLog);
+    }
+
+    private int aplicarAtualizacoes(List<AtualizacaoOrdemCaixa> atualizacoes) {
+        int atualizados = 0;
+        for (AtualizacaoOrdemCaixa u : atualizacoes) {
+            int n = u.emailRecebidoEm() != null
+                    ? publicacaoRepository.updateGmailCaixaOrdemAndEmailRecebidoForMessage(
+                            u.messageId(), u.ordem(), u.emailRecebidoEm(), ORIGENS)
+                    : publicacaoRepository.updateGmailCaixaOrdemForMessage(u.messageId(), u.ordem(), ORIGENS);
+            atualizados += n;
+        }
         return atualizados;
     }
 
@@ -205,5 +235,13 @@ public class GmailCaixaOrdemService {
                 .map(h -> h.getValue() == null ? "" : h.getValue())
                 .findFirst()
                 .orElse("");
+    }
+
+    private record AtualizacaoOrdemCaixa(String messageId, int ordem, Instant emailRecebidoEm) {}
+
+    private record ColetaOrdemCaixa(int threadsPercorridas, List<AtualizacaoOrdemCaixa> atualizacoes, List<String> topoLog) {
+        static ColetaOrdemCaixa vazia() {
+            return new ColetaOrdemCaixa(0, List.of(), List.of());
+        }
     }
 }

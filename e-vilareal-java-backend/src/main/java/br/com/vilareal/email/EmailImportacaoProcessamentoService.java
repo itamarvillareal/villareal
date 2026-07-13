@@ -4,6 +4,8 @@ import br.com.vilareal.email.dto.EmailProcessamentoIniciadoResponse;
 import br.com.vilareal.jobrun.application.JobRunEmailResumoUtil;
 import br.com.vilareal.jobrun.application.JobRunTracker;
 import br.com.vilareal.jobrun.domain.JobNames;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -12,6 +14,8 @@ import java.time.Instant;
 
 @Service
 public class EmailImportacaoProcessamentoService {
+
+    private static final Logger log = LoggerFactory.getLogger(EmailImportacaoProcessamentoService.class);
 
     private final GmailProjudiManifestacaoService gmailProjudiManifestacaoService;
     private final GmailTrtPushManifestacaoService gmailTrtPushManifestacaoService;
@@ -34,6 +38,9 @@ public class EmailImportacaoProcessamentoService {
             gmailCaixaOrdemService.atualizarOrdemCaixaInbox();
         } catch (IOException e) {
             throw new UncheckedIOException(e);
+        } catch (RuntimeException e) {
+            // Importação já concluída; ordem da caixa pode ser atualizada depois sem falhar o job.
+            log.warn("Ordem caixa Gmail não atualizada após sync: {}", e.getMessage());
         }
     }
 
