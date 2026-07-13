@@ -32,6 +32,15 @@ public final class AssinaturaTokenConstantes {
         return SIGNER_THUMBPRINT_SHA1;
     }
 
+    /**
+     * Lê {@link #ENV_SIGNER_THUMBPRINT} ou retorna vazio (sem filtro) quando não configurado.
+     * Para keystores A1 (.p12/.pfx) o default do token de hardware não se aplica — o arquivo
+     * normalmente tem uma única chave, selecionada por {@code resolverUnicoAliasChave}.
+     */
+    public static String resolverSignerThumbprintSha1SemDefault() {
+        return normalizarThumbprintSha1(System.getenv(ENV_SIGNER_THUMBPRINT));
+    }
+
     /** Remove espaços e normaliza para maiúsculas (comparação case-insensitive). */
     public static String normalizarThumbprintSha1(String raw) {
         if (raw == null || raw.isBlank()) {

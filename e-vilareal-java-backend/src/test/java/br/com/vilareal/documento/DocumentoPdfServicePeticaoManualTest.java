@@ -1,6 +1,7 @@
 package br.com.vilareal.documento;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
@@ -9,7 +10,12 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Manual (requer banco local para subir o contexto — não roda no CI):
+ * {@code ./mvnw test -Dtest=DocumentoPdfServicePeticaoManualTest -Dvilareal.documento.manual=true}
+ */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
+@EnabledIfSystemProperty(named = "vilareal.documento.manual", matches = "true")
 class DocumentoPdfServicePeticaoManualTest {
 
     @Autowired

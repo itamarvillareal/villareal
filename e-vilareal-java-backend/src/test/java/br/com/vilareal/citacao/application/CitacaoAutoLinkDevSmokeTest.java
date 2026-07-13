@@ -15,6 +15,7 @@ import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoPa
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.tarefa.infrastructure.persistence.repository.TarefaOperacionalRepository;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.test.context.support.WithMockUser;
@@ -32,10 +33,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Smoke contra banco dev local (docker vilareal-db :3307). Requer processo 8697 com partes réu e endereços da pessoa 1.
+ * Rodar com {@code -Dcitacao.dev.smoke=true} (não roda no CI — precisa do banco dev).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @ActiveProfiles("dev")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@EnabledIfSystemProperty(named = "citacao.dev.smoke", matches = "true")
 class CitacaoAutoLinkDevSmokeTest {
 
     private static final long PROCESSO_ID = 8697L;
@@ -74,13 +77,6 @@ class CitacaoAutoLinkDevSmokeTest {
     private static Long movIdempotenteId;
     private static Long tentativaFelizId;
     private static Long andamentoAutoDeleteId;
-
-    @BeforeAll
-    static void assumirDadosDev() {
-        Assumptions.assumeTrue(
-                Boolean.parseBoolean(System.getProperty("citacao.dev.smoke", "true")),
-                "Defina -Dcitacao.dev.smoke=true para rodar contra banco dev");
-    }
 
     @BeforeEach
     void limparTarefasAutoLink() {

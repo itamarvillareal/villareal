@@ -25,6 +25,9 @@ class FinanceiroApplicationServiceSaldoMensalTest {
     @Mock
     private SaldoInicialBancoRepository saldoInicialRepository;
 
+    @Mock
+    private FinanceiroExtratoAcessoService extratoAcessoService;
+
     @InjectMocks
     private FinanceiroApplicationService service;
 

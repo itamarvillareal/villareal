@@ -14,8 +14,16 @@ class RegraInicioCobrancaDiasValidatorTest {
     @Test
     void parse_valoresPermitidos() {
         assertThat(RegraInicioCobrancaDiasValidator.parse(objectMapper.valueToTree(1))).isEqualTo(1);
-        assertThat(RegraInicioCobrancaDiasValidator.parse(objectMapper.valueToTree(30))).isEqualTo(30);
-        assertThat(RegraInicioCobrancaDiasValidator.parse(objectMapper.valueToTree(60))).isEqualTo(60);
+        assertThat(RegraInicioCobrancaDiasValidator.parse(objectMapper.valueToTree(61)))
+                .isEqualTo(RegraInicioCobrancaDiasValidator.REGRA_CONDICIONAL_60_MAIS_1);
+    }
+
+    @Test
+    void parse_migraLegado30e60ParaRegraCondicional61() {
+        assertThat(RegraInicioCobrancaDiasValidator.parse(objectMapper.valueToTree(30)))
+                .isEqualTo(RegraInicioCobrancaDiasValidator.REGRA_CONDICIONAL_60_MAIS_1);
+        assertThat(RegraInicioCobrancaDiasValidator.parse(objectMapper.valueToTree(60)))
+                .isEqualTo(RegraInicioCobrancaDiasValidator.REGRA_CONDICIONAL_60_MAIS_1);
     }
 
     @Test

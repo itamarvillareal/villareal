@@ -9,9 +9,6 @@ on:
 jobs:
   test-backend:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: e-vilareal-java-backend
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -19,7 +16,10 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
+      # Reactor a partir da raiz: o backend depende do módulo irmão assinatura-core
+      # (br.com.vilareal:assinatura-core:1.0.0-SNAPSHOT), que não existe em repositório
+      # remoto — rodar só dentro de e-vilareal-java-backend falha na resolução.
       - name: mvn test
-        run: ./mvnw -B test
+        run: e-vilareal-java-backend/mvnw -B -pl e-vilareal-java-backend -am test
         env:
           CI: true

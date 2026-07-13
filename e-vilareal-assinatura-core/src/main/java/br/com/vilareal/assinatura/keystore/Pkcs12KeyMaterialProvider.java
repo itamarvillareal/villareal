@@ -30,8 +30,11 @@ public final class Pkcs12KeyMaterialProvider implements AssinaturaKeyMaterialPro
         }
         this.keystorePath = keystorePath;
         this.keystorePassword = keystorePassword != null ? keystorePassword : new char[0];
+        // Sem thumbprint explícito: honra o env, mas NÃO herda o default do token de hardware —
+        // um .p12/.pfx A1 raramente contém o certificado do token e tem chave única, resolvida
+        // por CertificadoSelecaoUtil.resolverUnicoAliasChave.
         this.signerCertThumbprintSha1 = signerCertThumbprintSha1 == null
-                ? AssinaturaTokenConstantes.resolverSignerThumbprintSha1()
+                ? AssinaturaTokenConstantes.resolverSignerThumbprintSha1SemDefault()
                 : AssinaturaTokenConstantes.normalizarThumbprintSha1(signerCertThumbprintSha1);
     }
 

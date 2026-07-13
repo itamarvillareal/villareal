@@ -42,6 +42,8 @@ class FinanceiroApplicationServiceLimparExtratoTest {
     private ClienteResolverService clienteResolverService;
     @Mock
     private FinanceiroSaudeService financeiroSaudeService;
+    @Mock
+    private FinanceiroExtratoAcessoService extratoAcessoService;
 
     @InjectMocks
     private FinanceiroApplicationService service;
