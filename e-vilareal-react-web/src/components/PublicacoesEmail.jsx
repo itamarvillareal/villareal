@@ -113,6 +113,9 @@ const VARIANT_CONFIG = {
     resumoTipo: 'manifestação',
     placeholderBusca: 'Buscar movimento, CNJ, partes, código…',
     autoAplicarSugestoes: true,
+    // Só Projudi/TRT têm gmail_caixa_ordem gravado (GmailCaixaOrdemService);
+    // Jusbrasil (MONITORAMENTO) ficaria com a lista vazia se filtrado pela caixa.
+    ordenarPelaCaixaGmail: true,
   },
 };
 
@@ -592,12 +595,15 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
   }, [carregarSyncGmail]);
 
   const rowsExibidas = useMemo(() => {
+    if (!cfg.ordenarPelaCaixaGmail) {
+      return ordenarPorEntradaEmail(rows, ordemDataAsc);
+    }
     const naCaixa = rows.filter(temOrdemCaixaGmail);
     if (ordenarPorEntrada) {
       return ordenarPorEntradaEmail(naCaixa, ordemDataAsc);
     }
     return ordenarPorOrdemCaixaGmail(naCaixa, false);
-  }, [rows, ordemDataAsc, ordenarPorEntrada]);
+  }, [rows, ordemDataAsc, ordenarPorEntrada, cfg.ordenarPelaCaixaGmail]);
 
   const totalLabel = useMemo(() => {
     const n = rows.length;
@@ -941,7 +947,7 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
 
   const toggleOrdemDataPublicacao = (e) => {
     e.preventDefault();
-    if (!ordenarPorEntrada) {
+    if (cfg.ordenarPelaCaixaGmail && !ordenarPorEntrada) {
       setOrdenarPorEntrada(true);
       setOrdemDataAsc(false);
       return;
