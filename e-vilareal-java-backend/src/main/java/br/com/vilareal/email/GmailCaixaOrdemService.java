@@ -2,8 +2,9 @@ package br.com.vilareal.email;
 
 import br.com.vilareal.publicacao.infrastructure.persistence.repository.PublicacaoRepository;
 import com.google.api.services.gmail.Gmail;
-import com.google.api.services.gmail.model.ListMessagesResponse;
+import com.google.api.services.gmail.model.ListThreadsResponse;
 import com.google.api.services.gmail.model.Message;
+import com.google.api.services.gmail.model.Thread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -15,14 +16,15 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
 /**
- * Atualiza {@code gmail_caixa_ordem} e {@code email_recebido_em} (internalDate) das publicações
- * PROJUDI/TRT percorrendo a caixa de entrada ({@code in:inbox}) de cima para baixo — fiel ao
- * print da inbox Gmail (horários 21:14, 20:53, 20:30…).
+ * Atualiza {@code gmail_caixa_ordem} e {@code email_recebido_em} percorrendo threads da inbox
+ * ({@code threads.list in:inbox}) — mesma ordem da visualização por conversa do Gmail (print
+ * 21:14 → 20:53 → 20:30).
  */
 @Service
 public class GmailCaixaOrdemService {
@@ -34,7 +36,7 @@ public class GmailCaixaOrdemService {
     public static final String QUERY_INBOX = "in:inbox";
 
     private static final Set<String> ORIGENS = Set.of("PROJUDI", "TRT");
-    private static final int LIMITE_MENSAGENS = 500;
+    private static final int LIMITE_THREADS = 500;
     private static final long INTERVALO_MIN_MS = 45_000L;
 
     private final GmailApiProvider gmailApiProvider;
@@ -62,55 +64,85 @@ public class GmailCaixaOrdemService {
             return 0;
         }
 
-        List<Message> refs = listarMensagensInbox(gmail);
+        List<Thread> refs = listarThreadsInbox(gmail);
         int ordem = 0;
         int atualizados = 0;
         List<String> topoLog = new ArrayList<>();
-        for (Message ref : refs) {
-            String messageId = ref.getId();
-            if (messageId == null || messageId.isBlank()) {
+        for (Thread ref : refs) {
+            String threadId = ref.getId();
+            if (threadId == null || threadId.isBlank()) {
                 continue;
             }
-            Message meta = gmail.users()
-                    .messages()
-                    .get("me", messageId)
+            Thread thread = gmail.users()
+                    .threads()
+                    .get("me", threadId)
                     .setFormat("metadata")
                     .setMetadataHeaders(List.of("Subject", "From"))
                     .execute();
-            String assunto = extrairCabecalho(meta, "Subject");
-            String from = extrairCabecalho(meta, "From");
+            if (thread.getMessages() == null || thread.getMessages().isEmpty()) {
+                continue;
+            }
+            Message representante = mensagemRepresentanteThread(thread);
+            if (representante == null) {
+                continue;
+            }
+            String assunto = extrairCabecalho(representante, "Subject");
+            String from = extrairCabecalho(representante, "From");
             if (!ehNotificacaoMovimentacao(assunto, from)) {
                 continue;
             }
             if (emailIgnoradoNaCaixa(assunto)) {
                 continue;
             }
-            Instant inboxEm = GmailEmailRecebimentoUtil.extrairDataRecebimento(meta);
-            if (publicacaoRepository.existsByArquivoOrigemNomeContainingAndOrigemImportacaoIn(
-                    "[" + messageId + "]", ORIGENS)) {
-                int n = inboxEm != null
+            Instant inboxEm = GmailEmailRecebimentoUtil.extrairDataRecebimento(representante);
+            boolean gravouNaThread = false;
+            for (Message msg : thread.getMessages()) {
+                String messageId = msg.getId();
+                if (messageId == null || messageId.isBlank()) {
+                    continue;
+                }
+                if (!publicacaoRepository.existsByArquivoOrigemNomeContainingAndOrigemImportacaoIn(
+                        "[" + messageId + "]", ORIGENS)) {
+                    continue;
+                }
+                Instant msgEm = GmailEmailRecebimentoUtil.extrairDataRecebimento(msg);
+                Instant entrada = msgEm != null ? msgEm : inboxEm;
+                int n = entrada != null
                         ? publicacaoRepository.updateGmailCaixaOrdemAndEmailRecebidoForMessage(
-                                messageId, ordem, inboxEm, ORIGENS)
+                                messageId, ordem, entrada, ORIGENS)
                         : publicacaoRepository.updateGmailCaixaOrdemForMessage(messageId, ordem, ORIGENS);
                 if (n > 0) {
                     atualizados += n;
+                    gravouNaThread = true;
                 }
-                if (topoLog.size() < 12) {
-                    String hora = inboxEm != null
-                            ? HORA_BR.format(inboxEm.atZone(FUSO_BR))
-                            : "?";
-                    topoLog.add(ordem + ":" + hora + " " + messageId + " " + resumirAssunto(assunto));
-                }
+            }
+            if (gravouNaThread && topoLog.size() < 12) {
+                String hora = inboxEm != null
+                        ? HORA_BR.format(inboxEm.atZone(FUSO_BR))
+                        : "?";
+                topoLog.add(ordem + ":" + hora + " " + resumirAssunto(assunto));
             }
             ordem++;
         }
         ultimaAtualizacaoOrdemMs = agora;
         log.info(
-                "Ordem caixa Gmail (in:inbox): {} mensagem(ns) na inbox, {} publicação(ões) atualizada(s). Topo: {}",
+                "Ordem caixa Gmail (threads in:inbox): {} thread(s), {} publicação(ões) atualizada(s). Topo: {}",
                 refs.size(),
                 atualizados,
                 topoLog);
         return atualizados;
+    }
+
+    /** Mensagem mais recente da thread — horário exibido pelo Gmail na inbox. */
+    static Message mensagemRepresentanteThread(Thread thread) {
+        if (thread == null || thread.getMessages() == null) {
+            return null;
+        }
+        return thread.getMessages().stream()
+                .max(Comparator.comparing(
+                        GmailEmailRecebimentoUtil::extrairDataRecebimento,
+                        Comparator.nullsFirst(Comparator.naturalOrder())))
+                .orElse(null);
     }
 
     static boolean ehNotificacaoMovimentacao(String assunto, String from) {
@@ -143,22 +175,22 @@ public class GmailCaixaOrdemService {
         return s.length() <= 55 ? s : s.substring(0, 52) + "...";
     }
 
-    private List<Message> listarMensagensInbox(Gmail gmail) throws IOException {
-        List<Message> out = new ArrayList<>();
+    private List<Thread> listarThreadsInbox(Gmail gmail) throws IOException {
+        List<Thread> out = new ArrayList<>();
         String pageToken = null;
         do {
-            ListMessagesResponse resp = gmail.users()
-                    .messages()
+            ListThreadsResponse resp = gmail.users()
+                    .threads()
                     .list("me")
                     .setQ(QUERY_INBOX)
                     .setMaxResults(100L)
                     .setPageToken(pageToken)
                     .execute();
-            if (resp.getMessages() != null) {
-                out.addAll(resp.getMessages());
+            if (resp.getThreads() != null) {
+                out.addAll(resp.getThreads());
             }
             pageToken = resp.getNextPageToken();
-        } while (pageToken != null && out.size() < LIMITE_MENSAGENS);
+        } while (pageToken != null && out.size() < LIMITE_THREADS);
         return out;
     }
 
