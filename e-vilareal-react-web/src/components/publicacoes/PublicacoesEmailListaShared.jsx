@@ -10,8 +10,10 @@ import {
 } from 'lucide-react';
 import { resolverSugestaoVinculoLinha } from '../../data/publicacoesVinculoProcessos.js';
 
+const FUSO_ENTRADA_EMAIL = 'America/Sao_Paulo';
+
 export const GRID_COLS_PUBLICACOES_EMAIL =
-  'grid-cols-[84px_96px_minmax(0,1fr)_96px_76px_92px]';
+  'grid-cols-[104px_96px_minmax(0,1fr)_96px_76px_92px]';
 
 const STATUS_TRATAMENTO_LABEL = {
   PENDENTE: 'Não',
@@ -93,18 +95,25 @@ export function fmtRecebidoCurto(iso) {
   }
 }
 
-/** Data/hora de entrada do email (coluna principal quando há recebimento Gmail). */
+/** Data/hora de entrada do email na caixa Gmail (fuso Brasília, como no Gmail). */
 export function fmtEntradaEmailPrincipal(iso) {
   if (!iso) return null;
   try {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return null;
-    const dd = String(d.getDate()).padStart(2, '0');
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const yyyy = d.getFullYear();
-    const hh = String(d.getHours()).padStart(2, '0');
-    const min = String(d.getMinutes()).padStart(2, '0');
-    return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
+    const hora = d.toLocaleTimeString('pt-BR', {
+      timeZone: FUSO_ENTRADA_EMAIL,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    const data = d.toLocaleDateString('pt-BR', {
+      timeZone: FUSO_ENTRADA_EMAIL,
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+    return { hora, data, completo: `${data} ${hora}` };
   } catch {
     return null;
   }
@@ -341,11 +350,22 @@ export function CelulaDataCompacta({ row, onAbrirDetalhe }) {
       role="cell"
       className="min-w-0 cursor-pointer text-left"
       onClick={onAbrirDetalhe}
-      title={entrada ? `Email recebido: ${entrada}` : 'Ver detalhes'}
+      title={entrada ? `Email recebido: ${entrada.completo}` : 'Ver detalhes'}
     >
-      <div className="truncate text-xs font-medium text-slate-900 dark:text-slate-100">
-        {entrada || movimento}
-      </div>
+      {entrada ? (
+        <>
+          <div className="truncate text-xs font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+            {entrada.hora}
+          </div>
+          <div className="truncate text-[10px] tabular-nums text-slate-600 dark:text-slate-400">
+            {entrada.data}
+          </div>
+        </>
+      ) : (
+        <div className="truncate text-xs font-medium text-slate-900 dark:text-slate-100">
+          {movimento}
+        </div>
+      )}
       {entrada && movimento && movimento !== '—' ? (
         <div className="truncate text-[10px] text-slate-500 dark:text-slate-400">mov. {movimento}</div>
       ) : entrada ? null : (

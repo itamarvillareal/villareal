@@ -12,6 +12,20 @@ describe('publicacoesEmailOrdenacao', () => {
     expect(sorted.map((r) => r.id)).toEqual([2, 1, 3]);
   });
 
+  it('desempata pelo id Gmail quando emailRecebidoEm é igual', () => {
+    const a = {
+      id: 1,
+      emailRecebidoEm: '2026-07-12T18:50:01.000Z',
+      arquivoOrigem: 'Assunto [aaa111]',
+    };
+    const b = {
+      id: 2,
+      emailRecebidoEm: '2026-07-12T18:50:01.000Z',
+      arquivoOrigem: 'Assunto [bbb222]',
+    };
+    expect(compararPorEntradaEmail(a, b, false)).toBeGreaterThan(0);
+  });
+
   it('ignora dataPublicacao quando emailRecebidoEm existe', () => {
     const a = { id: 1, emailRecebidoEm: '2026-07-12T19:00:00.000Z', dataPublicacao: '01/01/2020' };
     const b = { id: 2, emailRecebidoEm: '2026-07-12T20:00:00.000Z', dataPublicacao: '01/01/2025' };

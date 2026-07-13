@@ -98,6 +98,9 @@ public class PublicacaoApplicationService {
                                 PublicacaoEntity::getEmailRecebidoEm,
                                 Comparator.nullsLast(Comparator.reverseOrder()))
                         .thenComparing(
+                                PublicacaoApplicationService::extrairGmailMessageId,
+                                Comparator.reverseOrder())
+                        .thenComparing(
                                 PublicacaoEntity::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())));
         Set<Long> procIds = new LinkedHashSet<>();
         for (PublicacaoEntity e : lista) {
@@ -134,6 +137,23 @@ public class PublicacaoApplicationService {
         } catch (EntityNotFoundException ex) {
             return null;
         }
+    }
+
+    /** ID Gmail em {@code arquivo_origem_nome}, ex.: {@code assunto [19f58aab90524773]}. */
+    static String extrairGmailMessageId(PublicacaoEntity e) {
+        if (e == null) {
+            return "";
+        }
+        String nome = e.getArquivoOrigemNome();
+        if (!StringUtils.hasText(nome)) {
+            return "";
+        }
+        int abre = nome.lastIndexOf('[');
+        int fecha = nome.lastIndexOf(']');
+        if (abre < 0 || fecha <= abre) {
+            return "";
+        }
+        return nome.substring(abre + 1, fecha).trim().toLowerCase();
     }
 
     private ProcessoEntity carregarProcessoParaPublicacao(PublicacaoEntity e) {

@@ -3,6 +3,8 @@
  * não pela data da movimentação processual.
  */
 
+const FUSO_ENTRADA_EMAIL = 'America/Sao_Paulo';
+
 function msDataPublicacaoFallback(row) {
   const raw = row?.dataPublicacao;
   if (!raw) return Number.NEGATIVE_INFINITY;
@@ -27,9 +29,16 @@ export function msEntradaEmail(row) {
   return Number.isNaN(t) ? null : t;
 }
 
+/** ID da mensagem Gmail em `arquivoOrigem` / `arquivoOrigemNome` (ex.: `[19f58aab90524773]`). */
+export function gmailMessageIdLinha(row) {
+  const s = String(row?.arquivoOrigem || row?.arquivoOrigemNome || '').trim();
+  const m = /\[([a-f0-9]{10,})\]\s*$/i.exec(s);
+  return m ? m[1].toLowerCase() : '';
+}
+
 /**
- * Comparador: entrada do email (desc por padrão), depois id (mais recente no banco).
- * Sem emailRecebidoEm, cai na data da movimentação.
+ * Comparador: entrada do email (desc por padrão), depois id Gmail (mais recente no inbox),
+ * depois id do banco. Sem emailRecebidoEm, cai na data da movimentação.
  */
 export function compararPorEntradaEmail(a, b, asc = false) {
   const da = msEntradaEmail(a);
@@ -45,6 +54,12 @@ export function compararPorEntradaEmail(a, b, asc = false) {
     return -1;
   } else if (da !== db) {
     return asc ? da - db : db - da;
+  }
+
+  const ga = gmailMessageIdLinha(a);
+  const gb = gmailMessageIdLinha(b);
+  if (ga !== gb) {
+    return asc ? ga.localeCompare(gb) : gb.localeCompare(ga);
   }
 
   return Number(b.id ?? 0) - Number(a.id ?? 0);
