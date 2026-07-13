@@ -23,7 +23,7 @@ function msDataPublicacaoFallback(row) {
 
 /** Epoch ms da entrada efetiva: o mais recente entre recebimento Gmail e importação no sistema. */
 export function msEntradaEmail(row) {
-  const candidatos = [row?.emailRecebidoEm, row?.createdAt]
+  const candidatos = [row?.emailRecebidoEm, row?.createdAt, row?.importacaoConfirmadaEm, row?.dataImportacao]
     .map((iso) => {
       if (!iso) return null;
       const t = new Date(iso).getTime();

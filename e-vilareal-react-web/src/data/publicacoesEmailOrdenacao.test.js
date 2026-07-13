@@ -44,4 +44,22 @@ describe('publicacoesEmailOrdenacao', () => {
     const sorted = ordenarPorEntradaEmail(rows, false);
     expect(sorted.map((r) => r.id)).toEqual([1, 2]);
   });
+
+  it('usa importacaoConfirmadaEm quando createdAt não veio do mapper legado', () => {
+    const rows = [
+      {
+        id: 1,
+        emailRecebidoEm: '2026-07-11T15:07:16.000Z',
+        importacaoConfirmadaEm: '2026-07-13T01:44:57.988Z',
+        arquivoOrigem: 'TRT [19f58986]',
+      },
+      {
+        id: 2,
+        emailRecebidoEm: '2026-07-12T23:30:02.000Z',
+        arquivoOrigem: 'PROJUDI [19f58aab]',
+      },
+    ];
+    const sorted = ordenarPorEntradaEmail(rows, false);
+    expect(sorted.map((r) => r.id)).toEqual([1, 2]);
+  });
 });
