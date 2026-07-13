@@ -85,7 +85,27 @@ public record WhatsAppWebhookPayload(
             @JsonProperty("location") LocationContent location,
             @JsonProperty("interactive") InteractiveContent interactive,
             @JsonProperty("button") ButtonContent button,
-            @JsonProperty("reaction") ReactionContent reaction) {}
+            @JsonProperty("reaction") ReactionContent reaction,
+            @JsonProperty("errors") List<WebhookError> errors,
+            @JsonProperty("unsupported") UnsupportedContent unsupported) {}
+
+    /** Erro reportado pela Meta na própria mensagem (ex.: tipo não suportado — 131051/131060). */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record WebhookError(
+            @JsonProperty("code") Integer code,
+            @JsonProperty("title") String title,
+            @JsonProperty("message") String message,
+            @JsonProperty("error_data") WebhookErrorData errorData) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record WebhookErrorData(@JsonProperty("details") String details) {}
+
+    /** Tipo original da mensagem não suportada pela Cloud API (ex.: poll_creation, gif, edit). */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record UnsupportedContent(@JsonProperty("type") String type) {}
 
     /** Reação (emoji) a uma mensagem existente na conversa. */
     @JsonIgnoreProperties(ignoreUnknown = true)

@@ -722,12 +722,14 @@ export function ChatBubble({
   const isContact = type === 'CONTACT';
   const isLocation = type === 'LOCATION';
   const isInteractive = type === 'INTERACTIVE' || type === 'BUTTON';
+  const isUnsupported = type === 'UNSUPPORTED';
   const parsedLocation = isLocation ? parseLocationContent(message.content) : null;
   const parsedInteractive = isInteractive ? parseInteractiveReplyContent(message.content) : null;
   const isMedia =
     !isContact &&
     !isLocation &&
     !isInteractive &&
+    !isUnsupported &&
     (MEDIA_TYPES.includes(type) ||
       Boolean(message.mediaId) ||
       Boolean(message.localPreviewUrl) ||
@@ -741,6 +743,19 @@ export function ChatBubble({
       highlightTerm={highlightTerm}
       activeHighlight={isActiveSearchMatch}
     />
+  ) : null;
+  const unsupportedContent = isUnsupported ? (
+    <p className="text-sm whitespace-pre-wrap break-words flex items-start gap-1.5">
+      <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-500 dark:text-amber-400" aria-hidden />
+      <BubbleText
+        text={
+          message.content ||
+          '🚫 Conteúdo não suportado pelo WhatsApp Business — peça ao contato para reenviar como mensagem comum.'
+        }
+        highlightTerm={highlightTerm}
+        active={isActiveSearchMatch}
+      />
+    </p>
   ) : null;
   const contactContent = isContact ? <ContactBubbleContent message={message} isOutbound={isOutbound} /> : null;
   const locationContent =
@@ -790,7 +805,7 @@ export function ChatBubble({
             Template: {message.templateName}
           </span>
         ) : null}
-        {contactContent ?? locationContent ?? interactiveContent ?? mediaContent ?? (
+        {unsupportedContent ?? contactContent ?? locationContent ?? interactiveContent ?? mediaContent ?? (
           <p className="text-sm whitespace-pre-wrap break-words">
             <BubbleText
               text={formatTemplateContent(message)}

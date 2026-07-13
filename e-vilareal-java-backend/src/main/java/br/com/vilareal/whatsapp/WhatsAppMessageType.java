@@ -15,5 +15,7 @@ public enum WhatsAppMessageType {
     INTERACTIVE,
     BUTTON,
     REACTION,
+    /** Conteúdo que a Cloud API não entrega (visualização única, enquete, GIF etc.). */
+    UNSUPPORTED,
     UNKNOWN
 }
