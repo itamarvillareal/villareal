@@ -30,7 +30,7 @@ import {
   obterSyncProjudi,
   processarEmailsProjudiAgora,
 } from '../api/manifestacoesProjudiApi.js';
-import { ordenarPorEntradaEmail } from '../data/publicacoesEmailOrdenacao.js';
+import { ordenarPorEntradaEmail, entradaEmailEfetivaIso } from '../data/publicacoesEmailOrdenacao.js';
 import {
   formatarPartesLinha,
   parseProjudiMeta,
@@ -308,7 +308,7 @@ function ModalTeor({ publicacao, onClose, onAbrirProcesso, isProjudi = false }) 
             </p>
             <p>
               <span className="font-medium text-slate-600 dark:text-slate-400">Email recebido:</span>{' '}
-              {fmtInstant(publicacao.emailRecebidoEm)}
+              {fmtInstant(entradaEmailEfetivaIso(publicacao))}
             </p>
             <p className="sm:col-span-2">
               <span className="font-medium text-slate-600 dark:text-slate-400">Origem:</span>{' '}
@@ -368,7 +368,8 @@ function montarResumoVinculoPublicacao(row, isProjudi) {
     const tipo = tipoMovimentoLinha(row);
     if (tipo) partes.push(tipo);
   }
-  if (row.emailRecebidoEm) partes.push(fmtInstant(row.emailRecebidoEm));
+  const entrada = entradaEmailEfetivaIso(row);
+  if (entrada) partes.push(fmtInstant(entrada));
   return partes.join(' · ') || 'Movimentação por email';
 }
 

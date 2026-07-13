@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.math.BigInteger;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
@@ -95,7 +96,7 @@ public class PublicacaoApplicationService {
         List<PublicacaoEntity> lista = publicacaoRepository.findAll(spec, Sort.by(Sort.Direction.DESC, "createdAt"));
         lista.sort(
                 Comparator.comparing(
-                                PublicacaoEntity::getEmailRecebidoEm,
+                                PublicacaoApplicationService::entradaEmailEfetiva,
                                 Comparator.nullsLast(Comparator.reverseOrder()))
                         .thenComparing(
                                 PublicacaoApplicationService::extrairGmailMessageId,
@@ -137,6 +138,22 @@ public class PublicacaoApplicationService {
         } catch (EntityNotFoundException ex) {
             return null;
         }
+    }
+
+    /** Entrada na lista: o mais recente entre Gmail e importação (PUSH TRT em thread antiga). */
+    static Instant entradaEmailEfetiva(PublicacaoEntity e) {
+        if (e == null) {
+            return null;
+        }
+        Instant recebido = e.getEmailRecebidoEm();
+        Instant criado = e.getCreatedAt();
+        if (recebido == null) {
+            return criado;
+        }
+        if (criado == null) {
+            return recebido;
+        }
+        return recebido.isAfter(criado) ? recebido : criado;
     }
 
     /** ID Gmail em {@code arquivo_origem_nome}, ex.: {@code assunto [19f58aab90524773]}. */

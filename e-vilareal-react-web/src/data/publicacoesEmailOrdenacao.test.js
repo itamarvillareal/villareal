@@ -26,9 +26,22 @@ describe('publicacoesEmailOrdenacao', () => {
     expect(compararPorEntradaEmail(a, b, false)).toBeGreaterThan(0);
   });
 
-  it('ignora dataPublicacao quando emailRecebidoEm existe', () => {
-    const a = { id: 1, emailRecebidoEm: '2026-07-12T19:00:00.000Z', dataPublicacao: '01/01/2020' };
-    const b = { id: 2, emailRecebidoEm: '2026-07-12T20:00:00.000Z', dataPublicacao: '01/01/2025' };
-    expect(compararPorEntradaEmail(a, b, false)).toBeGreaterThan(0);
+  it('prioriza createdAt quando emailRecebidoEm do Gmail está defasado (thread TRT)', () => {
+    const rows = [
+      {
+        id: 1,
+        emailRecebidoEm: '2026-07-11T15:07:16.000Z',
+        createdAt: '2026-07-13T01:38:34.166Z',
+        arquivoOrigem: 'TRT [19f58d33]',
+      },
+      {
+        id: 2,
+        emailRecebidoEm: '2026-07-12T07:36:10.000Z',
+        createdAt: '2026-07-13T01:29:45.762Z',
+        arquivoOrigem: 'TRT [19f57e99]',
+      },
+    ];
+    const sorted = ordenarPorEntradaEmail(rows, false);
+    expect(sorted.map((r) => r.id)).toEqual([1, 2]);
   });
 });

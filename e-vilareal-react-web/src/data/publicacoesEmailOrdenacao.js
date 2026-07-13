@@ -21,12 +21,24 @@ function msDataPublicacaoFallback(row) {
   return Number.NEGATIVE_INFINITY;
 }
 
-/** Epoch ms do recebimento do email; null se ausente. */
+/** Epoch ms da entrada efetiva: o mais recente entre recebimento Gmail e importação no sistema. */
 export function msEntradaEmail(row) {
-  const iso = row?.emailRecebidoEm;
-  if (!iso) return null;
-  const t = new Date(iso).getTime();
-  return Number.isNaN(t) ? null : t;
+  const candidatos = [row?.emailRecebidoEm, row?.createdAt]
+    .map((iso) => {
+      if (!iso) return null;
+      const t = new Date(iso).getTime();
+      return Number.isNaN(t) ? null : t;
+    })
+    .filter((t) => t != null);
+  if (!candidatos.length) return null;
+  return Math.max(...candidatos);
+}
+
+/** ISO da coluna Entrada (PUSH TRT em thread antiga pode ter emailRecebidoEm defasado). */
+export function entradaEmailEfetivaIso(row) {
+  const ms = msEntradaEmail(row);
+  if (ms == null) return null;
+  return new Date(ms).toISOString();
 }
 
 /** ID da mensagem Gmail em `arquivoOrigem` / `arquivoOrigemNome` (ex.: `[19f58aab90524773]`). */

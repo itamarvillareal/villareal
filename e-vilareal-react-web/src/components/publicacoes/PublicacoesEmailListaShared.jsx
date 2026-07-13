@@ -8,7 +8,7 @@ import {
   MoreVertical,
   RotateCcw,
 } from 'lucide-react';
-import { resolverSugestaoVinculoLinha } from '../../data/publicacoesVinculoProcessos.js';
+import { entradaEmailEfetivaIso } from '../../data/publicacoesEmailOrdenacao.js';
 
 const FUSO_ENTRADA_EMAIL = 'America/Sao_Paulo';
 
@@ -342,7 +342,7 @@ export function AcoesLinhaCompacta({
 }
 
 export function CelulaDataCompacta({ row, onAbrirDetalhe }) {
-  const entrada = fmtEntradaEmailPrincipal(row.emailRecebidoEm);
+  const entrada = fmtEntradaEmailPrincipal(entradaEmailEfetivaIso(row));
   const movimento = fmtDataBr(row.dataPublicacao);
   return (
     <button
