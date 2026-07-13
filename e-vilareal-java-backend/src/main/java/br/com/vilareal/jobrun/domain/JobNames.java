@@ -9,6 +9,7 @@ public final class JobNames {
     public static final String GMAIL_PROJUDI_COMPLETO = "atualizar_emails_projudi";
     public static final String GMAIL_PUBLICACOES = "buscar_emails_publicacoes";
     public static final String GMAIL_TRT = "buscar_emails_trt";
+    public static final String GMAIL_TRT_COMPLETO = "atualizar_emails_trt";
     public static final String PIPELINE_PROJUDI = "pipeline_projudi_movimentacoes";
     public static final String PAGAMENTO_ROTINA_DIARIA = "pagamento_rotina_diaria";
     public static final String PAGAMENTO_RECORRENCIA = "pagamento_recorrencia";
@@ -29,6 +30,7 @@ public final class JobNames {
             GMAIL_PROJUDI_COMPLETO,
             GMAIL_PUBLICACOES,
             GMAIL_TRT,
+            GMAIL_TRT_COMPLETO,
             PIPELINE_PROJUDI,
             PAGAMENTO_ROTINA_DIARIA,
             PAGAMENTO_RECORRENCIA,

@@ -56,6 +56,27 @@ public class JobRunTracker {
         }
     }
 
+    /** Inicia o job em thread separada e devolve o id para acompanhamento (evita timeout HTTP). */
+    public Long submitAsyncJob(String jobName, Consumer<JobRunContext> fn) {
+        Long runId = iniciarRun(jobName);
+        JobRunContext ctx = new JobRunContext(runId, this);
+        Thread worker =
+                new Thread(
+                        () -> {
+                            Instant started = Instant.now();
+                            try {
+                                fn.accept(ctx);
+                                finalizarSucesso(runId, started, ctx);
+                            } catch (Exception ex) {
+                                finalizarErro(runId, started, ctx, ex);
+                            }
+                        },
+                        "job-run-async-" + runId);
+        worker.setDaemon(true);
+        worker.start();
+        return runId;
+    }
+
     @FunctionalInterface
     public interface FunctionWithContext<T> {
         T apply(JobRunContext ctx);

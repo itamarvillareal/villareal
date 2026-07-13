@@ -1,6 +1,7 @@
 package br.com.vilareal.email;
 
 import br.com.vilareal.email.dto.EmailImportacaoSyncStatusResponse;
+import br.com.vilareal.email.dto.EmailProcessamentoIniciadoResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -22,12 +23,15 @@ public class TrtPushEmailController {
 
     private final GmailTrtPushManifestacaoService gmailTrtPushManifestacaoService;
     private final EmailImportacaoSyncService emailImportacaoSyncService;
+    private final EmailImportacaoProcessamentoService processamentoService;
 
     public TrtPushEmailController(
             GmailTrtPushManifestacaoService gmailTrtPushManifestacaoService,
-            EmailImportacaoSyncService emailImportacaoSyncService) {
+            EmailImportacaoSyncService emailImportacaoSyncService,
+            EmailImportacaoProcessamentoService processamentoService) {
         this.gmailTrtPushManifestacaoService = gmailTrtPushManifestacaoService;
         this.emailImportacaoSyncService = emailImportacaoSyncService;
+        this.processamentoService = processamentoService;
     }
 
     @GetMapping("/sync")
@@ -53,9 +57,13 @@ public class TrtPushEmailController {
                             "Gmail API não configurada. Verifique credentials.json e tokens OAuth em gmail.tokens.directory."));
         }
         try {
+            if (forcarAtualizacaoCompleta) {
+                EmailProcessamentoIniciadoResponse iniciado =
+                        processamentoService.enfileirarTrt(forcarAtualizacaoCompleta, desdeOverride);
+                return ResponseEntity.status(HttpStatus.ACCEPTED).body(iniciado);
+            }
             PublicacaoEmailProcessamentoResumo resumo =
-                    gmailTrtPushManifestacaoService.buscarEProcessarManifestacoesManual(
-                            forcarAtualizacaoCompleta, desdeOverride);
+                    processamentoService.processarTrt(forcarAtualizacaoCompleta, desdeOverride);
             return ResponseEntity.ok(resumo);
         } catch (Exception ex) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

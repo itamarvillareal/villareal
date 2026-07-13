@@ -468,6 +468,7 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
   );
   const [buscaDebounced, setBuscaDebounced] = useState(() => (filtrosIniciais?.buscaTexto ?? '').trim());
   const [resultadoProcessamento, setResultadoProcessamento] = useState(null);
+  const [progressoProcessamento, setProgressoProcessamento] = useState('');
   const [ultimaSyncGmail, setUltimaSyncGmail] = useState(null);
   const [processandoCompleto, setProcessandoCompleto] = useState(false);
   const [expandidoId, setExpandidoId] = useState(null);
@@ -623,9 +624,23 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
     setErr('');
     setMsgOk('');
     setResultadoProcessamento(null);
+    setProgressoProcessamento('');
     try {
-      const res = await cfg.processar({ forcar: forcarAtualizacaoCompleta });
+      const res = await cfg.processar({
+        forcar: forcarAtualizacaoCompleta,
+        onProgress: (run, fonte) => {
+          if (!run) return;
+          const status =
+            run.status === 'RUNNING'
+              ? 'processando em segundo plano…'
+              : run.status === 'SUCCESS'
+                ? 'concluído'
+                : run.status;
+          setProgressoProcessamento(`${fonte}: ${status}`);
+        },
+      });
       setResultadoProcessamento(res);
+      setProgressoProcessamento('');
       if (res?.ultimaSincronizacaoGravada) {
         setUltimaSyncGmail(res.ultimaSincronizacaoGravada);
       } else {
@@ -633,6 +648,7 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
       }
       await carregar();
     } catch (e) {
+      setProgressoProcessamento('');
       setErr(mensagemErroAmigavel(e, 'processar os emails'));
     } finally {
       setProcessando(false);
@@ -994,10 +1010,44 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
           </p>
         </div>
 
+        {progressoProcessamento ? (
+          <div className="rounded-xl border border-sky-200 bg-sky-50/80 p-4 text-sm dark:border-sky-900/50 dark:bg-sky-950/30">
+            <p className="inline-flex items-center gap-2 font-medium text-sky-900 dark:text-sky-100">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {progressoProcessamento}
+            </p>
+            <p className="mt-1 text-sky-800 dark:text-sky-200">
+              A atualização completa roda no servidor; você pode aguardar nesta tela.
+            </p>
+          </div>
+        ) : null}
+
         {resultadoProcessamento ? (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-4 text-sm dark:border-emerald-900/50 dark:bg-emerald-950/30">
-            <p className="font-medium text-emerald-900 dark:text-emerald-100">Processamento concluído</p>
-            <ul className="mt-2 space-y-1 text-emerald-800 dark:text-emerald-200">
+          <div
+            className={`rounded-xl border p-4 text-sm ${
+              (resultadoProcessamento.erros || []).length > 0
+                ? 'border-amber-200 bg-amber-50/80 dark:border-amber-900/50 dark:bg-amber-950/30'
+                : 'border-emerald-200 bg-emerald-50/80 dark:border-emerald-900/50 dark:bg-emerald-950/30'
+            }`}
+          >
+            <p
+              className={`font-medium ${
+                (resultadoProcessamento.erros || []).length > 0
+                  ? 'text-amber-900 dark:text-amber-100'
+                  : 'text-emerald-900 dark:text-emerald-100'
+              }`}
+            >
+              {(resultadoProcessamento.erros || []).length > 0
+                ? 'Processamento concluído com avisos'
+                : 'Processamento concluído'}
+            </p>
+            <ul
+              className={`mt-2 space-y-1 ${
+                (resultadoProcessamento.erros || []).length > 0
+                  ? 'text-amber-900 dark:text-amber-100'
+                  : 'text-emerald-800 dark:text-emerald-200'
+              }`}
+            >
               <li>
                 Modo:{' '}
                 {resultadoProcessamento.forcarAtualizacao
@@ -1017,6 +1067,15 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
               <li>Vínculos automáticos (CNJ): {resultadoProcessamento.vinculosAutomaticos ?? 0}</li>
               <li>Erros: {(resultadoProcessamento.erros || []).length}</li>
             </ul>
+            {(resultadoProcessamento.erros || []).length > 0 ? (
+              <ul className="mt-3 list-disc space-y-1 pl-5 text-amber-950 dark:text-amber-50">
+                {(resultadoProcessamento.erros || []).map((msg, idx) => (
+                  <li key={`${idx}-${msg}`} className="break-words">
+                    {msg}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </div>
         ) : null}
 

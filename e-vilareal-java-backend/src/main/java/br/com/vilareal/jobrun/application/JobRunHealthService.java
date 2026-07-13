@@ -64,6 +64,14 @@ public class JobRunHealthService {
         return pageResult.map(JobRunItemResponse::from);
     }
 
+    public java.util.Optional<JobRunItemResponse> obterRun(Long id) {
+        if (id == null || id < 1) {
+            return java.util.Optional.empty();
+        }
+        limparRunsOrfaos();
+        return repository.findById(id).map(JobRunItemResponse::from);
+    }
+
     @Transactional
     @Scheduled(fixedRate = 300_000)
     public void limparRunsOrfaos() {

@@ -1,9 +1,7 @@
 package br.com.vilareal.email;
 
 import br.com.vilareal.email.dto.EmailImportacaoSyncStatusResponse;
-import br.com.vilareal.jobrun.application.JobRunEmailResumoUtil;
-import br.com.vilareal.jobrun.application.JobRunTracker;
-import br.com.vilareal.jobrun.domain.JobNames;
+import br.com.vilareal.email.dto.EmailProcessamentoIniciadoResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -15,8 +13,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.time.Instant;
 import java.util.Map;
 
@@ -27,15 +23,15 @@ public class ProjudiEmailController {
 
     private final GmailProjudiManifestacaoService gmailProjudiManifestacaoService;
     private final EmailImportacaoSyncService emailImportacaoSyncService;
-    private final JobRunTracker jobRunTracker;
+    private final EmailImportacaoProcessamentoService processamentoService;
 
     public ProjudiEmailController(
             GmailProjudiManifestacaoService gmailProjudiManifestacaoService,
             EmailImportacaoSyncService emailImportacaoSyncService,
-            JobRunTracker jobRunTracker) {
+            EmailImportacaoProcessamentoService processamentoService) {
         this.gmailProjudiManifestacaoService = gmailProjudiManifestacaoService;
         this.emailImportacaoSyncService = emailImportacaoSyncService;
-        this.jobRunTracker = jobRunTracker;
+        this.processamentoService = processamentoService;
     }
 
     @GetMapping("/sync")
@@ -61,20 +57,13 @@ public class ProjudiEmailController {
                             "Gmail API não configurada. Verifique credentials.json e tokens OAuth em gmail.tokens.directory."));
         }
         try {
-            String jobName =
-                    forcarAtualizacaoCompleta ? JobNames.GMAIL_PROJUDI_COMPLETO : JobNames.GMAIL_PROJUDI;
-            PublicacaoEmailProcessamentoResumo resumo = jobRunTracker.runTrackedJob(jobName, ctx -> {
-                ctx.putMetadata("trigger", "manual");
-                PublicacaoEmailProcessamentoResumo r;
-                try {
-                    r = gmailProjudiManifestacaoService.buscarEProcessarManifestacoesManual(
-                            forcarAtualizacaoCompleta, desdeOverride);
-                } catch (IOException e) {
-                    throw new UncheckedIOException(e);
-                }
-                JobRunEmailResumoUtil.aplicarResumo(ctx, r);
-                return r;
-            });
+            if (forcarAtualizacaoCompleta) {
+                EmailProcessamentoIniciadoResponse iniciado =
+                        processamentoService.enfileirarProjudi(forcarAtualizacaoCompleta, desdeOverride);
+                return ResponseEntity.status(HttpStatus.ACCEPTED).body(iniciado);
+            }
+            PublicacaoEmailProcessamentoResumo resumo =
+                    processamentoService.processarProjudi(forcarAtualizacaoCompleta, desdeOverride);
             return ResponseEntity.ok(resumo);
         } catch (Exception ex) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
