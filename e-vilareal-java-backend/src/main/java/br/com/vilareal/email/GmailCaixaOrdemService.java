@@ -105,8 +105,9 @@ public class GmailCaixaOrdemService {
                         "[" + messageId + "]", ORIGENS)) {
                     continue;
                 }
-                Instant msgEm = GmailEmailRecebimentoUtil.extrairDataRecebimento(msg);
-                Instant entrada = msgEm != null ? msgEm : inboxEm;
+                Instant entrada = inboxEm != null
+                        ? inboxEm
+                        : GmailEmailRecebimentoUtil.extrairDataRecebimento(msg);
                 int n = entrada != null
                         ? publicacaoRepository.updateGmailCaixaOrdemAndEmailRecebidoForMessage(
                                 messageId, ordem, entrada, ORIGENS)
