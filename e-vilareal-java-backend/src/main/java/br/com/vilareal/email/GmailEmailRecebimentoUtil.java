@@ -11,9 +11,9 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Data de recebimento do email no Gmail. O {@code internalDate} pode refletir a data da thread
- * (comum em PUSH TRT reutilizando conversa), não o horário real de chegada na caixa.
- * Usa o cabeçalho {@code Date} quando for mais recente que o {@code internalDate}.
+ * Data de recebimento do email no Gmail. A coluna Entrada e a ordem da inbox seguem o
+ * {@code internalDate} (o mesmo horário que o Gmail exibe na lista). O cabeçalho {@code Date}
+ * costuma refletir a thread antiga em PUSH TRT e não deve prevalecer sobre o {@code internalDate}.
  */
 final class GmailEmailRecebimentoUtil {
 
@@ -28,19 +28,16 @@ final class GmailEmailRecebimentoUtil {
 
     private GmailEmailRecebimentoUtil() {}
 
+    /** Horário exibido na lista da caixa de entrada do Gmail. */
     static Instant extrairDataRecebimento(Message message) {
         Instant internal = extrairInternalDate(message);
-        Instant header = extrairDateHeader(message);
-        if (internal == null) {
-            return header;
-        }
-        if (header == null) {
+        if (internal != null) {
             return internal;
         }
-        return header.isAfter(internal) ? header : internal;
+        return extrairDateHeader(message);
     }
 
-    private static Instant extrairInternalDate(Message message) {
+    static Instant extrairInternalDate(Message message) {
         if (message == null) {
             return null;
         }

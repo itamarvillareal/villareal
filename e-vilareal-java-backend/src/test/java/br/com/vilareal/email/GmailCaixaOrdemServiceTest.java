@@ -23,6 +23,8 @@ class GmailCaixaOrdemServiceTest {
                 "Fwd: [TRT18] [PUSH] Atualizações", "eu@gmail.com"));
         assertTrue(GmailCaixaOrdemService.ehNotificacaoMovimentacao(
                 "Atualização", "nao-responda@trt18.jus.br"));
+        assertTrue(GmailCaixaOrdemService.ehNotificacaoMovimentacao(
+                "[TRT18] [PUSH] Atualizações", "Processo Judicial Eletrônico <sistema@tjgo.jus.br>"));
         assertFalse(GmailCaixaOrdemService.ehNotificacaoMovimentacao(
                 "Fatura cartão", "banco@itau.com.br"));
     }

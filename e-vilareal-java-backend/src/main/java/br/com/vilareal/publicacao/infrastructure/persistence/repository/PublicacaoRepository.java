@@ -37,6 +37,20 @@ public interface PublicacaoRepository extends JpaRepository<PublicacaoEntity, Lo
             @Param("origens") Collection<String> origens);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(
+            """
+            UPDATE PublicacaoEntity p
+            SET p.gmailCaixaOrdem = :ordem, p.emailRecebidoEm = :emailRecebidoEm
+            WHERE p.arquivoOrigemNome LIKE CONCAT('%[', :messageId, ']%')
+              AND p.origemImportacao IN :origens
+            """)
+    int updateGmailCaixaOrdemAndEmailRecebidoForMessage(
+            @Param("messageId") String messageId,
+            @Param("ordem") int ordem,
+            @Param("emailRecebidoEm") Instant emailRecebidoEm,
+            @Param("origens") Collection<String> origens);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM PublicacaoEntity p WHERE p.arquivoOrigemNome LIKE CONCAT('%', :fragment, '%')")
     int deleteByArquivoOrigemNomeContaining(@Param("fragment") String fragment);
 
