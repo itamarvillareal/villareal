@@ -7,6 +7,7 @@ import com.google.api.services.gmail.model.Message;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
@@ -40,7 +41,7 @@ public class GmailCaixaOrdemService {
         this.publicacaoRepository = publicacaoRepository;
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public int atualizarOrdemCaixaInbox() throws IOException {
         Gmail gmail = gmailApiProvider.resolver().orElse(null);
         if (gmail == null) {
