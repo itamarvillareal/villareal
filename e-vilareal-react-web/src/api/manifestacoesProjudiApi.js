@@ -9,7 +9,7 @@ import { request } from './httpClient.js';
 const ORIGENS = ['PROJUDI', 'TRT'];
 
 export async function buscarManifestacoesProjudi({ texto, status, filtroVinculo, recebimentoInicio, recebimentoFim } = {}) {
-  const listas = await Promise.all(
+  const resultados = await Promise.allSettled(
     ORIGENS.map((origemImportacao) =>
       listarPublicacoesModulo({
         origemImportacao,
@@ -18,13 +18,29 @@ export async function buscarManifestacoesProjudi({ texto, status, filtroVinculo,
         filtroVinculo: filtroVinculo || 'todos',
         recebimentoInicio: recebimentoInicio || undefined,
         recebimentoFim: recebimentoFim || undefined,
-      }).catch(() => [])
+      })
     )
   );
+
+  const erros = resultados
+    .map((resultado, idx) =>
+      resultado.status === 'rejected'
+        ? `${ORIGENS[idx]}: ${resultado.reason?.message || 'falha ao listar na API'}`
+        : null
+    )
+    .filter(Boolean);
+  if (erros.length === ORIGENS.length) {
+    throw new Error(erros.join(' · '));
+  }
+  if (erros.length > 0) {
+    console.warn('[Movimentações Email] listagem parcial:', erros.join(' · '));
+  }
+
   const vistos = new Set();
   const out = [];
-  for (const lista of listas) {
-    for (const row of lista) {
+  for (const resultado of resultados) {
+    if (resultado.status !== 'fulfilled') continue;
+    for (const row of resultado.value) {
       const id = String(row?.id ?? '');
       if (id && vistos.has(id)) continue;
       if (id) vistos.add(id);

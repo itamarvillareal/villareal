@@ -3,6 +3,7 @@ package br.com.vilareal.publicacao.application;
 import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
 import br.com.vilareal.pessoa.application.ClienteResolverService;
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.processo.application.ClienteCodigoPessoaResolver;
 import br.com.vilareal.processo.application.ProcessoApplicationService;
 import br.com.vilareal.processo.application.ProcessoDiagnosticoNumeroBuscaUtil;
@@ -124,6 +125,36 @@ public class PublicacaoApplicationService {
         try {
             return ref.getId();
         } catch (EntityNotFoundException ex) {
+            return null;
+        }
+    }
+
+    private static Long extrairClienteIdSeguro(PublicacaoEntity e) {
+        ClienteEntity ref = e.getCliente();
+        if (ref == null) {
+            return null;
+        }
+        try {
+            return ref.getId();
+        } catch (EntityNotFoundException ex) {
+            return null;
+        }
+    }
+
+    private static String codigoClienteExibicaoProcessoSeguro(ProcessoEntity proc, ClienteCodigoPessoaResolver resolver) {
+        if (proc == null) {
+            return null;
+        }
+        try {
+            return trimToNull(resolver.codigoClienteExibicaoParaProcesso(proc));
+        } catch (EntityNotFoundException ex) {
+            if (proc.getPessoa() != null) {
+                try {
+                    return trimToNull(resolver.codigoClienteExibicaoParaPessoaId(proc.getPessoa().getId()));
+                } catch (EntityNotFoundException ignored) {
+                    return null;
+                }
+            }
             return null;
         }
     }
@@ -468,12 +499,16 @@ public class PublicacaoApplicationService {
         if (proc != null) {
             r.setProcessoId(proc.getId());
             r.setNumeroInternoProcesso(proc.getNumeroInterno());
-            r.setCodigoClienteProcesso(trimToNull(clienteCodigoPessoaResolver.codigoClienteExibicaoParaProcesso(proc)));
+            r.setCodigoClienteProcesso(codigoClienteExibicaoProcessoSeguro(proc, clienteCodigoPessoaResolver));
             if (proc.getPessoa() != null) {
-                long pessoaId = proc.getPessoa().getId();
-                String titularNome = Utf8MojibakeUtil.corrigir(proc.getPessoa().getNome());
-                r.setTitularNome(trimToNull(titularNome));
-                r.setPessoaRefId(pessoaId);
+                try {
+                    long pessoaId = proc.getPessoa().getId();
+                    String titularNome = Utf8MojibakeUtil.corrigir(proc.getPessoa().getNome());
+                    r.setTitularNome(trimToNull(titularNome));
+                    r.setPessoaRefId(pessoaId);
+                } catch (EntityNotFoundException ex) {
+                    r.setTitularNome(null);
+                }
             } else {
                 r.setTitularNome(null);
             }
@@ -495,8 +530,9 @@ public class PublicacaoApplicationService {
             r.setParteCliente(null);
             r.setParteOposta(null);
         }
-        if (e.getCliente() != null) {
-            r.setClienteId(e.getCliente().getId());
+        Long clienteId = extrairClienteIdSeguro(e);
+        if (clienteId != null) {
+            r.setClienteId(clienteId);
         }
         r.setDataDisponibilizacao(e.getDataDisponibilizacao());
         r.setDataPublicacao(e.getDataPublicacao());

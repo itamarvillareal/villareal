@@ -619,6 +619,34 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
     });
   }, [rows, ordemDataAsc]);
 
+  const temFiltroAtivo = useMemo(
+    () =>
+      Boolean(
+        buscaDebounced ||
+          filtroStatus ||
+          filtroVinculo !== 'todos' ||
+          filtroRecebimentoInicio ||
+          filtroRecebimentoFim
+      ),
+    [
+      buscaDebounced,
+      filtroStatus,
+      filtroVinculo,
+      filtroRecebimentoInicio,
+      filtroRecebimentoFim,
+    ]
+  );
+
+  const limparFiltros = useCallback(() => {
+    setBuscaTexto('');
+    setBuscaDebounced('');
+    setFiltroStatus('');
+    setFiltroVinculo('todos');
+    setFiltroRecebimentoInicio('');
+    setFiltroRecebimentoFim('');
+    clearPublicacoesEmailFiltrosSession(variant);
+  }, [variant]);
+
   const totalLabel = useMemo(() => {
     const n = rows.length;
     const processosUnicos = new Set(
@@ -627,7 +655,7 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
     const comSugestao = rows.filter(
       (r) => r.statusVinculo !== 'vinculado' && resolverSugestaoVinculoLinha(r, indiceCnj, sugestoesApi)
     ).length;
-    const temFiltro = Boolean(buscaDebounced || filtroStatus || filtroVinculo !== 'todos');
+    const temFiltro = temFiltroAtivo;
     const sugestaoTxt =
       comSugestao > 0
         ? ` · ${comSugestao} com sugestão de vínculo${carregandoSugestoes ? ' (carregando…)' : ''}`
@@ -640,7 +668,7 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
       return `${n} ${tipoPlural} · ${processosUnicos} processo${processosUnicos === 1 ? '' : 's'} único${processosUnicos === 1 ? '' : 's'} (filtro ativo)${sugestaoTxt}`;
     }
     return `${n} ${tipoPlural} · ${processosUnicos} processo${processosUnicos === 1 ? '' : 's'} único${processosUnicos === 1 ? '' : 's'} por email${sugestaoTxt}`;
-  }, [rows, buscaDebounced, filtroStatus, filtroVinculo, indiceCnj, sugestoesApi, carregandoSugestoes, cfg]);
+  }, [rows, temFiltroAtivo, indiceCnj, sugestoesApi, carregandoSugestoes, cfg]);
 
   const handleProcessar = async (forcarAtualizacaoCompleta = false) => {
     if (forcarAtualizacaoCompleta) {
@@ -1111,6 +1139,15 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
               className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-white/15 dark:bg-white/5"
             />
           </label>
+          {temFiltroAtivo ? (
+            <button
+              type="button"
+              onClick={limparFiltros}
+              className="self-end rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-white/15 dark:bg-white/5 dark:text-slate-200"
+            >
+              Limpar filtros
+            </button>
+          ) : null}
         </div>
 
         {loading ? (
@@ -1120,7 +1157,22 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
           </div>
         ) : rows.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-300 bg-white/60 px-6 py-16 text-center text-sm text-slate-500 dark:border-white/15 dark:bg-white/5">
-            {cfg.vazio}
+            <p>{cfg.vazio}</p>
+            {temFiltroAtivo ? (
+              <p className="mt-2 text-xs">
+                Há filtros ativos —{' '}
+                <button type="button" onClick={limparFiltros} className="font-medium text-sky-700 underline dark:text-sky-300">
+                  limpar filtros
+                </button>{' '}
+                para ver tudo.
+              </p>
+            ) : isProjudi ? (
+              <p className="mt-2 text-xs">
+                A lista vem do banco (não do Gmail). Se havia movimentações antes, use{' '}
+                <strong>Forçar atualização completa</strong> para reimportar da caixa de entrada.
+                «Buscar emails novos» só traz mensagens recebidas após o cursor Gmail.
+              </p>
+            ) : null}
           </div>
         ) : (
           <>
