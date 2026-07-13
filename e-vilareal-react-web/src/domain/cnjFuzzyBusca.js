@@ -25,9 +25,9 @@ export function digitosCnjNormalizados(cnjRaw) {
   return chaveNumeroProcessoBuscaDiagnostico(cnjRaw);
 }
 
-/** Número interno Projudi em email de intimação (ex.: {@code 5500622.97}). */
+/** Número interno Projudi em email de intimação (ex.: {@code 5500622.97}, {@code 5829123.7}). */
 export function ehNumeroProjudiInternoEmail(raw) {
-  return /^\d{4,9}\.\d{2}$/i.test(String(raw ?? '').trim());
+  return /^\d{4,9}\.\d{1,2}$/i.test(String(raw ?? '').trim());
 }
 
 /**

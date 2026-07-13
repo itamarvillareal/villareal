@@ -56,11 +56,11 @@ final class ProjudiManifestacaoTextoImportacaoParser {
             "(?i)(?:processo|numero|numeroProcesso|idProcesso|codProcesso)[^=]{0,20}=\\s*(\\d{20})");
 
     /**
-     * Número interno Projudi (ex.: {@code 5868881.58}) — formato usual em emails de intimação/citação
-     * sem CNJ completo no corpo.
+     * Número interno Projudi (ex.: {@code 5868881.58}, {@code 5829123.7}) — formato usual em emails
+     * de intimação/citação sem CNJ completo no corpo; o dígito verificador pode ter 1 ou 2 dígitos.
      */
     private static final Pattern RE_NUMERO_PROJUDI_INTERNO = Pattern.compile(
-            "(?i)(?:referente\\s+ao\\s+)?processo\\s+n[ºo°]\\.?\\s*(\\d{4,9})\\.(\\d{2})\\b");
+            "(?i)(?:referente\\s+ao\\s+)?processo\\s+n[ºo°]\\.?\\s*(\\d{4,9})\\.(\\d{1,2})\\b");
 
     private static final Pattern RE_DATA_GERADA_EMAIL = Pattern.compile(
             "(?i)gerad[ao]\\s+(?:às|as)\\s+(\\d{1,2}/\\d{1,2}/\\d{2,4}(?:\\s+\\d{1,2}:\\d{2}:\\d{2})?)");
@@ -695,7 +695,7 @@ final class ProjudiManifestacaoTextoImportacaoParser {
     }
 
     private static boolean ehNumeroProjudiInterno(String numero) {
-        return numero != null && numero.matches("\\d{4,9}\\.\\d{2}");
+        return numero != null && numero.matches("\\d{4,9}\\.\\d{1,2}");
     }
 
     private static String escapeJson(String s) {

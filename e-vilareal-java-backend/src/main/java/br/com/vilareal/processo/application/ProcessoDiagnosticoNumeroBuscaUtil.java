@@ -17,12 +17,12 @@ public final class ProcessoDiagnosticoNumeroBuscaUtil {
 
     private ProcessoDiagnosticoNumeroBuscaUtil() {}
 
-    /** Número interno Projudi nos emails de intimação (ex.: {@code 5780425.64}). */
+    /** Número interno Projudi nos emails de intimação (ex.: {@code 5780425.64}, {@code 5829123.7}). */
     public static boolean ehNumeroProjudiInternoEmail(String raw) {
         if (raw == null) {
             return false;
         }
-        return raw.trim().matches("(?i)\\d{4,9}\\.\\d{2}");
+        return raw.trim().matches("(?i)\\d{4,9}\\.\\d{1,2}");
     }
 
     /**

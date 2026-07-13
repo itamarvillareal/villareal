@@ -215,6 +215,26 @@ class ProjudiManifestacaoTextoImportacaoParserTest {
     }
 
     @Test
+    void parseTextoBruto_numeroProjudiInternoComDvDeUmDigito_5829123_7() {
+        String texto =
+                """
+                Sr(a). ITAMAR ALEXANDRE FELIX VILLA REAL JUNIOR,
+
+                O Poder Judiciário do Estado de Goiás informa que está disponível uma intimação/citação
+                referente ao processo nº. 5829123.7 em sua caixa de entrada no Sistema PROJUDI.
+                """;
+
+        List<PublicacaoWriteRequest> itens =
+                ProjudiManifestacaoTextoImportacaoParser.parseTextoBruto(
+                        texto, "[PROJUDI]Informação de intimação/citação", "teste [msg-5829123]");
+
+        assertEquals(1, itens.size());
+        assertEquals("5829123.7", itens.get(0).getNumeroProcessoEncontrado());
+        assertEquals("Informação de intimação/citação", itens.get(0).getTipoPublicacao());
+        assertTrue(itens.get(0).getJsonReferencia().contains("PROJUDI_INTERNO"));
+    }
+
+    @Test
     void parseHtmlProjudi_naoMultiplicaBlocoRepetidoComQuebrasSimples() {
         String bloco =
                 "Sr(a). ITAMAR ALEXANDRE FELIX VILLA REAL JUNIOR,\n"
