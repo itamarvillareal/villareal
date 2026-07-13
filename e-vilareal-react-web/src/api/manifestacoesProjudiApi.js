@@ -1,5 +1,5 @@
 import { listarPublicacoesModulo } from '../repositories/publicacoesRepository.js';
-import { ordenarPorEntradaEmail } from '../data/publicacoesEmailOrdenacao.js';
+import { ordenarPorOrdemCaixaGmail } from '../data/publicacoesEmailOrdenacao.js';
 import { request } from './httpClient.js';
 
 /**
@@ -13,6 +13,7 @@ const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 45 * 60 * 1000;
 
 export async function buscarManifestacoesProjudi({ texto, status, filtroVinculo, recebimentoInicio, recebimentoFim } = {}) {
+  await request('/api/email/caixa-ordem/atualizar', { method: 'POST' }).catch(() => null);
   const erros = [];
   const listas = await Promise.all(
     ORIGENS.map((origemImportacao) =>
@@ -42,7 +43,7 @@ export async function buscarManifestacoesProjudi({ texto, status, filtroVinculo,
       out.push(row);
     }
   }
-  return ordenarPorEntradaEmail(out, false);
+  return ordenarPorOrdemCaixaGmail(out, false);
 }
 
 /** Status da última busca incremental no Gmail (a mais recente entre Projudi e TRT). */

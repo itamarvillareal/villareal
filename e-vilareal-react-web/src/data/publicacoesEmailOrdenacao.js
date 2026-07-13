@@ -34,11 +34,21 @@ export function msEntradaEmail(row) {
   return Math.max(...candidatos);
 }
 
-/** ISO da coluna Entrada (PUSH TRT em thread antiga pode ter emailRecebidoEm defasado). */
+/** ISO da coluna Entrada — fiel ao cabeçalho Date do email Gmail. */
+export function entradaEmailExibicaoIso(row) {
+  const raw = row?.emailRecebidoEm;
+  if (!raw) return null;
+  const t = new Date(raw).getTime();
+  return Number.isNaN(t) ? null : new Date(t).toISOString();
+}
+
+/** @deprecated Preferir {@link entradaEmailExibicaoIso} para exibição fiel ao email. */
 export function entradaEmailEfetivaIso(row) {
-  const ms = msEntradaEmail(row);
-  if (ms == null) return null;
-  return new Date(ms).toISOString();
+  return entradaEmailExibicaoIso(row) ?? (() => {
+    const ms = msEntradaEmail(row);
+    if (ms == null) return null;
+    return new Date(ms).toISOString();
+  })();
 }
 
 /** ID da mensagem Gmail em `arquivoOrigem` / `arquivoOrigemNome` (ex.: `[19f58aab90524773]`). */
@@ -46,6 +56,29 @@ export function gmailMessageIdLinha(row) {
   const s = String(row?.arquivoOrigem || row?.arquivoOrigemNome || '').trim();
   const m = /\[([a-f0-9]{10,})\]\s*$/i.exec(s);
   return m ? m[1].toLowerCase() : '';
+}
+
+function ordemCaixaNum(row) {
+  const n = Number(row?.gmailCaixaOrdem);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Comparador fiel à caixa Gmail: `gmailCaixaOrdem` asc (0 = topo), depois fallbacks.
+ */
+export function compararPorOrdemCaixaGmail(a, b, asc = false) {
+  const oa = ordemCaixaNum(a);
+  const ob = ordemCaixaNum(b);
+  if (oa != null && ob != null && oa !== ob) {
+    return asc ? ob - oa : oa - ob;
+  }
+  if (oa != null && ob == null) return -1;
+  if (oa == null && ob != null) return 1;
+  return compararPorEntradaEmail(a, b, asc);
+}
+
+export function ordenarPorOrdemCaixaGmail(rows, asc = false) {
+  return [...rows].sort((a, b) => compararPorOrdemCaixaGmail(a, b, asc));
 }
 
 /**
@@ -78,5 +111,5 @@ export function compararPorEntradaEmail(a, b, asc = false) {
 }
 
 export function ordenarPorEntradaEmail(rows, asc = false) {
-  return [...rows].sort((a, b) => compararPorEntradaEmail(a, b, asc));
+  return ordenarPorOrdemCaixaGmail(rows, asc);
 }

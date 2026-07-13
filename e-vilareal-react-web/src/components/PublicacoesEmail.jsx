@@ -30,7 +30,7 @@ import {
   obterSyncProjudi,
   processarEmailsProjudiAgora,
 } from '../api/manifestacoesProjudiApi.js';
-import { ordenarPorEntradaEmail, entradaEmailEfetivaIso } from '../data/publicacoesEmailOrdenacao.js';
+import { ordenarPorOrdemCaixaGmail, entradaEmailExibicaoIso } from '../data/publicacoesEmailOrdenacao.js';
 import {
   formatarPartesLinha,
   parseProjudiMeta,
@@ -308,7 +308,7 @@ function ModalTeor({ publicacao, onClose, onAbrirProcesso, isProjudi = false }) 
             </p>
             <p>
               <span className="font-medium text-slate-600 dark:text-slate-400">Email recebido:</span>{' '}
-              {fmtInstant(entradaEmailEfetivaIso(publicacao))}
+              {fmtInstant(entradaEmailExibicaoIso(publicacao))}
             </p>
             <p className="sm:col-span-2">
               <span className="font-medium text-slate-600 dark:text-slate-400">Origem:</span>{' '}
@@ -368,7 +368,7 @@ function montarResumoVinculoPublicacao(row, isProjudi) {
     const tipo = tipoMovimentoLinha(row);
     if (tipo) partes.push(tipo);
   }
-  const entrada = entradaEmailEfetivaIso(row);
+  const entrada = entradaEmailExibicaoIso(row);
   if (entrada) partes.push(fmtInstant(entrada));
   return partes.join(' · ') || 'Movimentação por email';
 }
@@ -589,7 +589,7 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
   }, [carregarSyncGmail]);
 
   const rowsExibidas = useMemo(() => {
-    return ordenarPorEntradaEmail(rows, ordemDataAsc);
+    return ordenarPorOrdemCaixaGmail(rows, ordemDataAsc);
   }, [rows, ordemDataAsc]);
 
   const totalLabel = useMemo(() => {

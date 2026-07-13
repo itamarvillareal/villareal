@@ -79,6 +79,10 @@ public class PublicacaoEntity {
     @Column(name = "email_recebido_em")
     private Instant emailRecebidoEm;
 
+    /** Posição na caixa Gmail (query Projudi+TRT); menor = mais recente no topo. */
+    @Column(name = "gmail_caixa_ordem")
+    private Integer gmailCaixaOrdem;
+
     @Column(name = "json_referencia", columnDefinition = "LONGTEXT")
     private String jsonReferencia;
 

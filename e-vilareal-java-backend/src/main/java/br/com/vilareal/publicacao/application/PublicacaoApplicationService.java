@@ -96,6 +96,9 @@ public class PublicacaoApplicationService {
         List<PublicacaoEntity> lista = publicacaoRepository.findAll(spec, Sort.by(Sort.Direction.DESC, "createdAt"));
         lista.sort(
                 Comparator.comparing(
+                                PublicacaoEntity::getGmailCaixaOrdem,
+                                Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(
                                 PublicacaoApplicationService::entradaEmailEfetiva,
                                 Comparator.nullsLast(Comparator.reverseOrder()))
                         .thenComparing(
@@ -220,6 +223,7 @@ public class PublicacaoApplicationService {
         e.setArquivoOrigemNome(trimToNull(req.getArquivoOrigemNome()));
         e.setArquivoOrigemHash(trimToNull(req.getArquivoOrigemHash()));
         e.setEmailRecebidoEm(req.getEmailRecebidoEm());
+        e.setGmailCaixaOrdem(req.getGmailCaixaOrdem());
         e.setJsonReferencia(trimToNull(req.getJsonReferencia()));
         e.setStatusTratamento(normalizarStatus(req.getStatusTratamento()));
         e.setLida(Boolean.TRUE.equals(req.getLida()));
@@ -559,6 +563,7 @@ public class PublicacaoApplicationService {
         r.setArquivoOrigemNome(e.getArquivoOrigemNome());
         r.setArquivoOrigemHash(e.getArquivoOrigemHash());
         r.setEmailRecebidoEm(e.getEmailRecebidoEm());
+        r.setGmailCaixaOrdem(e.getGmailCaixaOrdem());
         r.setJsonReferencia(e.getJsonReferencia());
         r.setStatusTratamento(e.getStatusTratamento());
         r.setLida(e.isLida());

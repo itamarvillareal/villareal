@@ -20,6 +20,22 @@ public interface PublicacaoRepository extends JpaRepository<PublicacaoEntity, Lo
     /** Detecta email Gmail já importado ({@code arquivo_origem_nome} termina com {@code [messageId]}). */
     boolean existsByArquivoOrigemNomeContaining(String fragment);
 
+    boolean existsByArquivoOrigemNomeContainingAndOrigemImportacaoIn(
+            String fragment, Collection<String> origensImportacao);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(
+            """
+            UPDATE PublicacaoEntity p
+            SET p.gmailCaixaOrdem = :ordem
+            WHERE p.arquivoOrigemNome LIKE CONCAT('%[', :messageId, ']%')
+              AND p.origemImportacao IN :origens
+            """)
+    int updateGmailCaixaOrdemForMessage(
+            @Param("messageId") String messageId,
+            @Param("ordem") int ordem,
+            @Param("origens") Collection<String> origens);
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM PublicacaoEntity p WHERE p.arquivoOrigemNome LIKE CONCAT('%', :fragment, '%')")
     int deleteByArquivoOrigemNomeContaining(@Param("fragment") String fragment);

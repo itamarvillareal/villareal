@@ -15,15 +15,26 @@ public class EmailImportacaoProcessamentoService {
 
     private final GmailProjudiManifestacaoService gmailProjudiManifestacaoService;
     private final GmailTrtPushManifestacaoService gmailTrtPushManifestacaoService;
+    private final GmailCaixaOrdemService gmailCaixaOrdemService;
     private final JobRunTracker jobRunTracker;
 
     public EmailImportacaoProcessamentoService(
             GmailProjudiManifestacaoService gmailProjudiManifestacaoService,
             GmailTrtPushManifestacaoService gmailTrtPushManifestacaoService,
+            GmailCaixaOrdemService gmailCaixaOrdemService,
             JobRunTracker jobRunTracker) {
         this.gmailProjudiManifestacaoService = gmailProjudiManifestacaoService;
         this.gmailTrtPushManifestacaoService = gmailTrtPushManifestacaoService;
+        this.gmailCaixaOrdemService = gmailCaixaOrdemService;
         this.jobRunTracker = jobRunTracker;
+    }
+
+    private void atualizarOrdemCaixaAposSync() {
+        try {
+            gmailCaixaOrdemService.atualizarOrdemCaixaInbox();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     public PublicacaoEmailProcessamentoResumo processarProjudi(
@@ -36,6 +47,7 @@ public class EmailImportacaoProcessamentoService {
                         gmailProjudiManifestacaoService.buscarEProcessarManifestacoesManual(
                                 forcarAtualizacaoCompleta, desdeOverride);
                 JobRunEmailResumoUtil.aplicarResumo(ctx, resumo);
+                atualizarOrdemCaixaAposSync();
                 return resumo;
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
@@ -54,6 +66,7 @@ public class EmailImportacaoProcessamentoService {
                                 gmailProjudiManifestacaoService.buscarEProcessarManifestacoesManual(
                                         forcarAtualizacaoCompleta, desdeOverride);
                         JobRunEmailResumoUtil.aplicarResumo(ctx, resumo);
+                        atualizarOrdemCaixaAposSync();
                     } catch (IOException e) {
                         throw new UncheckedIOException(e);
                     }
@@ -71,6 +84,7 @@ public class EmailImportacaoProcessamentoService {
                         gmailTrtPushManifestacaoService.buscarEProcessarManifestacoesManual(
                                 forcarAtualizacaoCompleta, desdeOverride);
                 JobRunEmailResumoUtil.aplicarResumo(ctx, resumo);
+                atualizarOrdemCaixaAposSync();
                 return resumo;
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
@@ -89,6 +103,7 @@ public class EmailImportacaoProcessamentoService {
                                 gmailTrtPushManifestacaoService.buscarEProcessarManifestacoesManual(
                                         forcarAtualizacaoCompleta, desdeOverride);
                         JobRunEmailResumoUtil.aplicarResumo(ctx, resumo);
+                        atualizarOrdemCaixaAposSync();
                     } catch (IOException e) {
                         throw new UncheckedIOException(e);
                     }
