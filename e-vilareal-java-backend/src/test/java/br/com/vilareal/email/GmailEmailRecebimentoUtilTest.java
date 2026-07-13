@@ -10,6 +10,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GmailEmailRecebimentoUtilTest {
 
@@ -21,16 +22,17 @@ class GmailEmailRecebimentoUtilTest {
     }
 
     @Test
-    void extrairDataRecebimento_usaInternalDateComoGmailInbox() {
+    void extrairDataRecebimento_prefereDateHeaderQuandoMaisRecenteQueInternalDate() {
         Message message = new Message();
-        message.setInternalDate(Instant.parse("2026-07-13T00:14:05Z").toEpochMilli());
+        message.setInternalDate(Instant.parse("2026-07-11T15:07:16Z").toEpochMilli());
         MessagePart payload = new MessagePart();
         payload.setHeaders(List.of(new MessagePartHeader()
                 .setName("Date")
-                .setValue("Fri, 11 Jul 2026 12:07:16 -0300")));
+                .setValue("Sun, 12 Jul 2026 21:14:05 -0300")));
         message.setPayload(payload);
 
         Instant recebido = GmailEmailRecebimentoUtil.extrairDataRecebimento(message);
         assertEquals(Instant.parse("2026-07-13T00:14:05Z"), recebido);
+        assertTrue(recebido.isAfter(Instant.parse("2026-07-11T15:07:16Z")));
     }
 }

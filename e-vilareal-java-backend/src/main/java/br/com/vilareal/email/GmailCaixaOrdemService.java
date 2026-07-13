@@ -77,7 +77,7 @@ public class GmailCaixaOrdemService {
                     .threads()
                     .get("me", threadId)
                     .setFormat("metadata")
-                    .setMetadataHeaders(List.of("Subject", "From"))
+                    .setMetadataHeaders(List.of("Subject", "From", "Date"))
                     .execute();
             if (thread.getMessages() == null || thread.getMessages().isEmpty()) {
                 continue;
@@ -105,9 +105,10 @@ public class GmailCaixaOrdemService {
                         "[" + messageId + "]", ORIGENS)) {
                     continue;
                 }
-                Instant entrada = inboxEm != null
-                        ? inboxEm
-                        : GmailEmailRecebimentoUtil.extrairDataRecebimento(msg);
+                Instant entrada = GmailEmailRecebimentoUtil.extrairDataRecebimento(msg);
+                if (entrada == null) {
+                    entrada = inboxEm;
+                }
                 int n = entrada != null
                         ? publicacaoRepository.updateGmailCaixaOrdemAndEmailRecebidoForMessage(
                                 messageId, ordem, entrada, ORIGENS)
