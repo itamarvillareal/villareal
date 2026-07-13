@@ -14,6 +14,7 @@ import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoPa
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.publicacao.api.dto.*;
 import br.com.vilareal.publicacao.application.event.PublicacaoVinculadaEvent;
+import br.com.vilareal.email.GmailCaixaOrdemService;
 import br.com.vilareal.publicacao.infrastructure.persistence.PublicacaoSpecifications;
 import br.com.vilareal.publicacao.infrastructure.persistence.entity.PublicacaoEntity;
 import br.com.vilareal.publicacao.infrastructure.persistence.repository.PublicacaoRepository;
@@ -41,6 +42,7 @@ import java.util.stream.Collectors;
 public class PublicacaoApplicationService {
 
     private static final Set<String> STATUS_TRATAMENTO = Set.of("PENDENTE", "VINCULADA", "TRATADA", "IGNORADA");
+    private static final Set<String> ORIGENS_MOVIMENTACAO_EMAIL = Set.of("PROJUDI", "TRT");
 
     private final PublicacaoRepository publicacaoRepository;
     private final ProcessoRepository processoRepository;
@@ -49,6 +51,7 @@ public class PublicacaoApplicationService {
     private final ProcessoApplicationService processoApplicationService;
     private final ClienteResolverService clienteResolverService;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final GmailCaixaOrdemService gmailCaixaOrdemService;
 
     public PublicacaoApplicationService(
             PublicacaoRepository publicacaoRepository,
@@ -57,7 +60,8 @@ public class PublicacaoApplicationService {
             ClienteCodigoPessoaResolver clienteCodigoPessoaResolver,
             ProcessoApplicationService processoApplicationService,
             ClienteResolverService clienteResolverService,
-            ApplicationEventPublisher applicationEventPublisher) {
+            ApplicationEventPublisher applicationEventPublisher,
+            GmailCaixaOrdemService gmailCaixaOrdemService) {
         this.publicacaoRepository = publicacaoRepository;
         this.processoRepository = processoRepository;
         this.processoParteRepository = processoParteRepository;
@@ -65,6 +69,7 @@ public class PublicacaoApplicationService {
         this.processoApplicationService = processoApplicationService;
         this.clienteResolverService = clienteResolverService;
         this.applicationEventPublisher = applicationEventPublisher;
+        this.gmailCaixaOrdemService = gmailCaixaOrdemService;
     }
 
     @Transactional(readOnly = true)
@@ -82,6 +87,14 @@ public class PublicacaoApplicationService {
         if (clienteId != null && clienteId > 0) {
             clientePk = clienteResolverService.buscarPorId(clienteId).getId();
         }
+        boolean movimentacaoEmail = isOrigemMovimentacaoEmail(origemImportacao);
+        if (movimentacaoEmail) {
+            try {
+                gmailCaixaOrdemService.atualizarOrdemCaixaInbox();
+            } catch (Exception ex) {
+                // Lista segue com ordem já gravada; não bloqueia a tela.
+            }
+        }
         var spec = PublicacaoSpecifications.comFiltros(
                 dataInicio,
                 dataFim,
@@ -91,7 +104,8 @@ public class PublicacaoApplicationService {
                 processoId,
                 clientePk,
                 texto,
-                origemImportacao);
+                origemImportacao,
+                movimentacaoEmail);
         // Ordenação por emailRecebidoEm em memória: Hibernate Criteria não suporta nullsLast no Sort.
         List<PublicacaoEntity> lista = publicacaoRepository.findAll(spec, Sort.by(Sort.Direction.DESC, "createdAt"));
         lista.sort(
@@ -99,7 +113,7 @@ public class PublicacaoApplicationService {
                                 PublicacaoEntity::getGmailCaixaOrdem,
                                 Comparator.nullsLast(Comparator.naturalOrder()))
                         .thenComparing(
-                                PublicacaoApplicationService::entradaEmailEfetiva,
+                                PublicacaoEntity::getEmailRecebidoEm,
                                 Comparator.nullsLast(Comparator.reverseOrder()))
                         .thenComparing(
                                 PublicacaoApplicationService::extrairGmailMessageId,
@@ -143,23 +157,6 @@ public class PublicacaoApplicationService {
         }
     }
 
-    /** Entrada na lista: o mais recente entre Gmail e importação (PUSH TRT em thread antiga). */
-    static Instant entradaEmailEfetiva(PublicacaoEntity e) {
-        if (e == null) {
-            return null;
-        }
-        Instant recebido = e.getEmailRecebidoEm();
-        Instant criado = e.getCreatedAt();
-        if (recebido == null) {
-            return criado;
-        }
-        if (criado == null) {
-            return recebido;
-        }
-        return recebido.isAfter(criado) ? recebido : criado;
-    }
-
-    /** ID Gmail em {@code arquivo_origem_nome}, ex.: {@code assunto [19f58aab90524773]}. */
     static String extrairGmailMessageId(PublicacaoEntity e) {
         if (e == null) {
             return "";
@@ -174,6 +171,13 @@ public class PublicacaoApplicationService {
             return "";
         }
         return nome.substring(abre + 1, fecha).trim().toLowerCase();
+    }
+
+    private static boolean isOrigemMovimentacaoEmail(String origemImportacao) {
+        if (!StringUtils.hasText(origemImportacao)) {
+            return false;
+        }
+        return ORIGENS_MOVIMENTACAO_EMAIL.contains(origemImportacao.trim().toUpperCase(Locale.ROOT));
     }
 
     private ProcessoEntity carregarProcessoParaPublicacao(PublicacaoEntity e) {

@@ -21,17 +21,12 @@ function msDataPublicacaoFallback(row) {
   return Number.NEGATIVE_INFINITY;
 }
 
-/** Epoch ms da entrada efetiva: o mais recente entre recebimento Gmail e importação no sistema. */
+/** Epoch ms da entrada do email (cabeçalho Date do Gmail). */
 export function msEntradaEmail(row) {
-  const candidatos = [row?.emailRecebidoEm, row?.createdAt, row?.importacaoConfirmadaEm, row?.dataImportacao]
-    .map((iso) => {
-      if (!iso) return null;
-      const t = new Date(iso).getTime();
-      return Number.isNaN(t) ? null : t;
-    })
-    .filter((t) => t != null);
-  if (!candidatos.length) return null;
-  return Math.max(...candidatos);
+  const raw = row?.emailRecebidoEm;
+  if (!raw) return null;
+  const t = new Date(raw).getTime();
+  return Number.isNaN(t) ? null : t;
 }
 
 /** ISO da coluna Entrada — fiel ao cabeçalho Date do email Gmail. */
@@ -59,8 +54,12 @@ export function gmailMessageIdLinha(row) {
 }
 
 function ordemCaixaNum(row) {
-  const n = Number(row?.gmailCaixaOrdem);
+  const n = Number(row?.gmailCaixaOrdem ?? row?.gmail_caixa_ordem);
   return Number.isFinite(n) ? n : null;
+}
+
+export function temOrdemCaixaGmail(row) {
+  return ordemCaixaNum(row) != null;
 }
 
 /**
@@ -74,6 +73,7 @@ export function compararPorOrdemCaixaGmail(a, b, asc = false) {
   }
   if (oa != null && ob == null) return -1;
   if (oa == null && ob != null) return 1;
+  if (oa == null && ob == null) return Number(b.id ?? 0) - Number(a.id ?? 0);
   return compararPorEntradaEmail(a, b, asc);
 }
 
@@ -111,5 +111,5 @@ export function compararPorEntradaEmail(a, b, asc = false) {
 }
 
 export function ordenarPorEntradaEmail(rows, asc = false) {
-  return ordenarPorOrdemCaixaGmail(rows, asc);
+  return [...rows].sort((a, b) => compararPorEntradaEmail(a, b, asc));
 }

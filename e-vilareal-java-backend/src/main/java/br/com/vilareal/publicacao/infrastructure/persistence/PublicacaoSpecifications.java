@@ -32,6 +32,30 @@ public final class PublicacaoSpecifications {
             Long clientePk,
             String texto,
             String origemImportacao) {
+        return comFiltros(
+                dataInicio,
+                dataFim,
+                recebimentoInicio,
+                recebimentoFim,
+                statusTratamento,
+                processoId,
+                clientePk,
+                texto,
+                origemImportacao,
+                false);
+    }
+
+    public static Specification<PublicacaoEntity> comFiltros(
+            LocalDate dataInicio,
+            LocalDate dataFim,
+            LocalDate recebimentoInicio,
+            LocalDate recebimentoFim,
+            String statusTratamento,
+            Long processoId,
+            Long clientePk,
+            String texto,
+            String origemImportacao,
+            boolean apenasComOrdemCaixaGmail) {
         return (root, query, cb) -> {
             List<Predicate> preds = new ArrayList<>();
             if (dataInicio != null) {
@@ -74,6 +98,9 @@ public final class PublicacaoSpecifications {
             }
             if (StringUtils.hasText(origemImportacao)) {
                 preds.add(cb.equal(root.get("origemImportacao"), origemImportacao.trim()));
+            }
+            if (apenasComOrdemCaixaGmail) {
+                preds.add(cb.isNotNull(root.get("gmailCaixaOrdem")));
             }
             if (StringUtils.hasText(texto)) {
                 String q = "%" + texto.trim().toLowerCase(Locale.ROOT) + "%";

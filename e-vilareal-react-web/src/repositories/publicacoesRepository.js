@@ -173,7 +173,7 @@ export function mapApiPublicacaoToUi(r) {
     _clienteId: r.clienteId ?? null,
     _pessoaRefId: r.pessoaRefId ?? null,
     emailRecebidoEm: r.emailRecebidoEm || null,
-    gmailCaixaOrdem: r.gmailCaixaOrdem ?? null,
+    gmailCaixaOrdem: r.gmailCaixaOrdem ?? r.gmail_caixa_ordem ?? null,
     createdAt: r.createdAt || null,
     andamentosNoDrive: Boolean(r.andamentosNoDrive),
     driveFolderUrl: r.driveFolderUrl || null,

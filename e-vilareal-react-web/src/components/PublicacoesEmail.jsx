@@ -30,7 +30,7 @@ import {
   obterSyncProjudi,
   processarEmailsProjudiAgora,
 } from '../api/manifestacoesProjudiApi.js';
-import { ordenarPorOrdemCaixaGmail, entradaEmailExibicaoIso } from '../data/publicacoesEmailOrdenacao.js';
+import { ordenarPorOrdemCaixaGmail, ordenarPorEntradaEmail, entradaEmailExibicaoIso, temOrdemCaixaGmail } from '../data/publicacoesEmailOrdenacao.js';
 import {
   formatarPartesLinha,
   parseProjudiMeta,
@@ -480,6 +480,7 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
   const [carregandoSugestoes, setCarregandoSugestoes] = useState(false);
   const [vinculoModal, setVinculoModal] = useState(null);
   const [ordemDataAsc, setOrdemDataAsc] = useState(() => filtrosIniciais?.ordemDataAsc ?? false);
+  const [ordenarPorEntrada, setOrdenarPorEntrada] = useState(() => filtrosIniciais?.ordenarPorEntrada ?? false);
   const [aplicandoSugestoes, setAplicandoSugestoes] = useState(false);
   const sugestoesAutoTentadasRef = useRef(new Set());
 
@@ -491,6 +492,7 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
       filtroRecebimentoInicio,
       filtroRecebimentoFim,
       ordemDataAsc,
+      ordenarPorEntrada,
     });
   }, [
     variant,
@@ -500,6 +502,7 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
     filtroRecebimentoInicio,
     filtroRecebimentoFim,
     ordemDataAsc,
+    ordenarPorEntrada,
   ]);
 
   useEffect(() => {
@@ -589,8 +592,12 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
   }, [carregarSyncGmail]);
 
   const rowsExibidas = useMemo(() => {
-    return ordenarPorOrdemCaixaGmail(rows, ordemDataAsc);
-  }, [rows, ordemDataAsc]);
+    const naCaixa = rows.filter(temOrdemCaixaGmail);
+    if (ordenarPorEntrada) {
+      return ordenarPorEntradaEmail(naCaixa, ordemDataAsc);
+    }
+    return ordenarPorOrdemCaixaGmail(naCaixa, false);
+  }, [rows, ordemDataAsc, ordenarPorEntrada]);
 
   const totalLabel = useMemo(() => {
     const n = rows.length;
@@ -934,6 +941,11 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
 
   const toggleOrdemDataPublicacao = (e) => {
     e.preventDefault();
+    if (!ordenarPorEntrada) {
+      setOrdenarPorEntrada(true);
+      setOrdemDataAsc(false);
+      return;
+    }
     setOrdemDataAsc((v) => !v);
   };
 

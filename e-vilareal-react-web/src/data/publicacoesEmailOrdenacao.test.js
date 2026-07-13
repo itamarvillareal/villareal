@@ -54,4 +54,20 @@ describe('publicacoesEmailOrdenacao', () => {
     };
     expect(compararPorOrdemCaixaGmail(a, b, false)).toBeLessThan(0);
   });
+
+  it('não promove reimport sem ordem caixa (createdAt recente, email antigo)', () => {
+    const recenteImport = {
+      id: 99,
+      gmailCaixaOrdem: null,
+      emailRecebidoEm: '2015-03-15T22:56:00.000Z',
+      createdAt: '2026-07-13T01:35:00.000Z',
+    };
+    const naCaixa = {
+      id: 1,
+      gmailCaixaOrdem: 0,
+      emailRecebidoEm: '2026-07-12T23:30:02.000Z',
+    };
+    const sorted = ordenarPorOrdemCaixaGmail([recenteImport, naCaixa], false);
+    expect(sorted[0].id).toBe(1);
+  });
 });
