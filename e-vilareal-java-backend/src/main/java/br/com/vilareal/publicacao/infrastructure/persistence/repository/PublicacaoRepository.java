@@ -59,6 +59,24 @@ public interface PublicacaoRepository extends JpaRepository<PublicacaoEntity, Lo
             @Param("emailRecebidoEm") Instant emailRecebidoEm,
             @Param("origens") Collection<String> origens);
 
+    /** Pares (id, arquivoOrigemNome) para montar o índice messageId → publicações. */
+    @Query(
+            """
+            SELECT p.id, p.arquivoOrigemNome
+            FROM PublicacaoEntity p
+            WHERE p.origemImportacao IN :origens
+              AND p.arquivoOrigemNome IS NOT NULL
+            """)
+    List<Object[]> findIdAndArquivoOrigemNomeByOrigemImportacaoIn(@Param("origens") Collection<String> origens);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE PublicacaoEntity p SET p.gmailCaixaOrdem = NULL WHERE p.origemImportacao IN :origens")
+    int clearGmailCaixaOrdem(@Param("origens") Collection<String> origens);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE PublicacaoEntity p SET p.gmailCaixaOrdem = :ordem WHERE p.id IN :ids")
+    int updateGmailCaixaOrdemForIds(@Param("ids") Collection<Long> ids, @Param("ordem") int ordem);
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM PublicacaoEntity p WHERE p.arquivoOrigemNome LIKE CONCAT('%', :fragment, '%')")
     int deleteByArquivoOrigemNomeContaining(@Param("fragment") String fragment);

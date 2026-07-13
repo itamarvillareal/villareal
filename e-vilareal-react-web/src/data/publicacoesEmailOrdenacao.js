@@ -29,17 +29,12 @@ export function msEntradaEmail(row) {
   return Number.isNaN(t) ? null : t;
 }
 
-/** ISO da coluna Entrada — horário de chegada na caixa (Gmail ou importação recente). */
+/** ISO da coluna Entrada — horário do email no Gmail; sem ele, a data de importação. */
 export function entradaEmailExibicaoIso(row) {
   const recebido = row?.emailRecebidoEm;
   const criado = row?.createdAt;
   const msR = recebido ? new Date(recebido).getTime() : null;
   const msC = criado ? new Date(criado).getTime() : null;
-  const umDia = 24 * 60 * 60 * 1000;
-  // PUSH TRT em thread antiga: importação recente reflete chegada na inbox (ex. 12/07 21:14).
-  if (msC != null && !Number.isNaN(msC) && msR != null && !Number.isNaN(msR) && msC - msR > umDia) {
-    return new Date(msC).toISOString();
-  }
   if (msR != null && !Number.isNaN(msR)) return new Date(msR).toISOString();
   if (msC != null && !Number.isNaN(msC)) return new Date(msC).toISOString();
   return null;

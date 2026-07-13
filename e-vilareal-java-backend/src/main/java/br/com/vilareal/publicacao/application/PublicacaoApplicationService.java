@@ -25,7 +25,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.math.BigInteger;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Comparator;
@@ -170,23 +169,13 @@ public class PublicacaoApplicationService {
         return ORIGENS_MOVIMENTACAO_EMAIL.contains(origemImportacao.trim().toUpperCase(Locale.ROOT));
     }
 
-    /** Entrada exibida: importação recente em thread antiga usa {@code createdAt}. */
+    /** Entrada exibida: horário do email (cabeçalho Date/internalDate); sem ele, a importação. */
     static Instant entradaEmailExibicao(PublicacaoEntity e) {
         if (e == null) {
             return null;
         }
         Instant recebido = e.getEmailRecebidoEm();
-        Instant criado = e.getCreatedAt();
-        if (recebido == null) {
-            return criado;
-        }
-        if (criado == null) {
-            return recebido;
-        }
-        if (criado.isAfter(recebido.plus(Duration.ofDays(1)))) {
-            return criado;
-        }
-        return recebido;
+        return recebido != null ? recebido : e.getCreatedAt();
     }
 
     private ProcessoEntity carregarProcessoParaPublicacao(PublicacaoEntity e) {

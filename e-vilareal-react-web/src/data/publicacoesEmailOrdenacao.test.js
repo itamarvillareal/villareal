@@ -72,11 +72,16 @@ describe('publicacoesEmailOrdenacao', () => {
     expect(sorted[0].id).toBe(1);
   });
 
-  it('entradaEmailExibicaoIso usa createdAt quando importação é bem mais recente', () => {
+  it('entradaEmailExibicaoIso usa o horário do email (não a importação)', () => {
     const iso = entradaEmailExibicaoIso({
       emailRecebidoEm: '2026-07-11T15:07:16.000Z',
       createdAt: '2026-07-13T01:38:34.000Z',
     });
+    expect(iso).toBe('2026-07-11T15:07:16.000Z');
+  });
+
+  it('entradaEmailExibicaoIso cai no createdAt quando não há emailRecebidoEm', () => {
+    const iso = entradaEmailExibicaoIso({ createdAt: '2026-07-13T01:38:34.000Z' });
     expect(iso).toBe('2026-07-13T01:38:34.000Z');
   });
 });
