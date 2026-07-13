@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   compararPorEntradaEmail,
   compararPorOrdemCaixaGmail,
+  entradaEmailExibicaoIso,
   ordenarPorEntradaEmail,
   ordenarPorOrdemCaixaGmail,
 } from './publicacoesEmailOrdenacao.js';
@@ -69,5 +70,13 @@ describe('publicacoesEmailOrdenacao', () => {
     };
     const sorted = ordenarPorOrdemCaixaGmail([recenteImport, naCaixa], false);
     expect(sorted[0].id).toBe(1);
+  });
+
+  it('entradaEmailExibicaoIso usa createdAt quando importação é bem mais recente', () => {
+    const iso = entradaEmailExibicaoIso({
+      emailRecebidoEm: '2026-07-11T15:07:16.000Z',
+      createdAt: '2026-07-13T01:38:34.000Z',
+    });
+    expect(iso).toBe('2026-07-13T01:38:34.000Z');
   });
 });
