@@ -2319,9 +2319,12 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         parteOpostaEntradas,
         pessoasPorId,
       });
-      if (!dadosDistribuicaoInicial.pessoaAutor?.id || !dadosDistribuicaoInicial.pessoaReu?.id) {
+      if (
+        !dadosDistribuicaoInicial.pessoaAutor?.id ||
+        !(dadosDistribuicaoInicial.pessoasReu?.length || dadosDistribuicaoInicial.pessoaReu?.id)
+      ) {
         setApiError(
-          'Informe autor e réu com pessoa cadastrada (partes do processo) antes de distribuir a inicial.',
+          'Informe autor e ao menos um réu com pessoa cadastrada (partes do processo) antes de distribuir a inicial.',
         );
         return;
       }

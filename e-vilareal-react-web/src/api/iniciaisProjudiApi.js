@@ -53,7 +53,7 @@ import { postFormData, request } from './httpClient.js';
  * @property {string[]} bloqueios
  * @property {PendenciaParte[]} pendenciasPartes
  * @property {ParteProjudiResolvida|null} [autor]
- * @property {ParteProjudiResolvida|null} [reu]
+ * @property {ParteProjudiResolvida[]} [reus]
  */
 
 /**
@@ -144,7 +144,8 @@ export async function sugerirModalidadeProjudi(naturezaAcao) {
  * @param {string} [params.valorCausa]
  * @param {string} [params.idAssuntos]
  * @param {number|null|undefined} [params.pessoaIdAutor]
- * @param {number|null|undefined} [params.pessoaIdReu]
+ * @param {number[]|string} [params.pessoaIdsReu]
+ * @param {number|null|undefined} [params.pessoaIdReu] legado — usa só o 1º réu
  * @param {number} [params.quantidadeAnexos]
  * @returns {Promise<ValidacaoProntidaoInicial>}
  */
@@ -153,19 +154,40 @@ export async function validarProntidaoInicial({
   valorCausa = '',
   idAssuntos = '',
   pessoaIdAutor,
+  pessoaIdsReu,
   pessoaIdReu,
   quantidadeAnexos = 0,
 }) {
+  const idsReu = normalizarPessoaIdsReu(pessoaIdsReu, pessoaIdReu);
   return request('/api/projudi/iniciais/validar-prontidao', {
     query: {
       credencialId,
       valorCausa,
       idAssuntos,
       pessoaIdAutor: pessoaIdAutor ?? '',
-      pessoaIdReu: pessoaIdReu ?? '',
+      pessoaIdsReu: idsReu.join(','),
       quantidadeAnexos,
     },
   });
+}
+
+/** @param {number[]|string|undefined} pessoaIdsReu @param {number|null|undefined} pessoaIdReu */
+function normalizarPessoaIdsReu(pessoaIdsReu, pessoaIdReu) {
+  if (Array.isArray(pessoaIdsReu)) {
+    return [...new Set(pessoaIdsReu.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))];
+  }
+  if (typeof pessoaIdsReu === 'string' && pessoaIdsReu.trim()) {
+    return [
+      ...new Set(
+        pessoaIdsReu
+          .split(/[,;\s]+/)
+          .map((parte) => Number(parte.trim()))
+          .filter((id) => Number.isFinite(id) && id > 0),
+      ),
+    ];
+  }
+  const legado = Number(pessoaIdReu);
+  return Number.isFinite(legado) && legado > 0 ? [legado] : [];
 }
 
 /** @param {FormData} formData */

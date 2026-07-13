@@ -64,7 +64,7 @@ public class ProjudiDistribuicaoService {
             String valorCausa,
             List<Integer> idAssuntos,
             Long pessoaIdAutor,
-            Long pessoaIdReu,
+            List<Long> pessoaIdsReu,
             List<ArquivoPeticao> arquivos,
             ProjudiClasseProcessoInicial classe) {
 
@@ -109,7 +109,7 @@ public class ProjudiDistribuicaoService {
             List<String> bloqueios,
             List<PendenciaParte> pendenciasPartes,
             ParteProjudiResolvida autor,
-            ParteProjudiResolvida reu) {}
+            List<ParteProjudiResolvida> reus) {}
 
     private static final class HtmlRevisaoHolder {
         String html;
@@ -178,10 +178,11 @@ public class ProjudiDistribuicaoService {
             String valorCausa,
             List<Integer> idAssuntos,
             Long pessoaIdAutor,
-            Long pessoaIdReu,
+            List<Long> pessoaIdsReu,
             int quantidadeAnexos) {
         List<String> bloqueios = new ArrayList<>();
         List<PendenciaParte> pendenciasPartes = new ArrayList<>();
+        List<Long> idsReu = pessoaIdsReu != null ? pessoaIdsReu : List.of();
 
         if (credencialId == null) {
             bloqueios.add("Credencial PROJUDI não informada.");
@@ -195,24 +196,37 @@ public class ProjudiDistribuicaoService {
         if (pessoaIdAutor == null) {
             bloqueios.add("Autor não selecionado.");
         }
-        if (pessoaIdReu == null) {
-            bloqueios.add("Réu não selecionado.");
+        if (idsReu.isEmpty()) {
+            bloqueios.add("Ao menos um réu deve ser selecionado.");
         }
         if (quantidadeAnexos <= 0) {
             bloqueios.add("Nenhum anexo .p7s adicionado.");
         }
 
         ParteProjudiResolvida autor = null;
-        ParteProjudiResolvida reu = null;
+        List<ParteProjudiResolvida> reus = new ArrayList<>();
         if (credencialId != null && pessoaIdAutor != null) {
             autor = resolverParteComBloqueios(bloqueios, pendenciasPartes, "AUTOR", pessoaIdAutor, credencialId);
         }
-        if (credencialId != null && pessoaIdReu != null) {
-            reu = resolverParteComBloqueios(bloqueios, pendenciasPartes, "REU", pessoaIdReu, credencialId);
+        if (credencialId != null && !idsReu.isEmpty()) {
+            int totalReus = idsReu.size();
+            for (int i = 0; i < idsReu.size(); i++) {
+                Long pessoaIdReu = idsReu.get(i);
+                if (pessoaIdReu == null) {
+                    bloqueios.add(rotuloReu(i, totalReus) + ": pessoa não informada.");
+                    continue;
+                }
+                ParteProjudiResolvida reu =
+                        resolverParteComBloqueios(
+                                bloqueios, pendenciasPartes, papelReu(i, totalReus), pessoaIdReu, credencialId);
+                if (reu != null) {
+                    reus.add(reu);
+                }
+            }
         }
 
         return new ValidacaoProntidaoInicial(
-                bloqueios.isEmpty(), List.copyOf(bloqueios), List.copyOf(pendenciasPartes), autor, reu);
+                bloqueios.isEmpty(), List.copyOf(bloqueios), List.copyOf(pendenciasPartes), autor, List.copyOf(reus));
     }
 
     private ParteProjudiResolvida resolverParteComBloqueios(
@@ -247,10 +261,26 @@ public class ProjudiDistribuicaoService {
         if ("AUTOR".equalsIgnoreCase(papel)) {
             return "Autor";
         }
-        if ("REU".equalsIgnoreCase(papel)) {
+        if ("REU".equalsIgnoreCase(papel) || papel.startsWith("REU_")) {
+            if (papel.startsWith("REU_")) {
+                try {
+                    int indice = Integer.parseInt(papel.substring(4)) - 1;
+                    return rotuloReu(indice, indice + 2);
+                } catch (NumberFormatException ignored) {
+                    // fallthrough
+                }
+            }
             return "Réu";
         }
         return papel;
+    }
+
+    private static String rotuloReu(int indice, int total) {
+        return total <= 1 ? "Réu" : "Réu " + (indice + 1);
+    }
+
+    private static String papelReu(int indice, int total) {
+        return total <= 1 ? "REU" : "REU_" + (indice + 1);
     }
 
     /**
@@ -411,10 +441,11 @@ public class ProjudiDistribuicaoService {
         if (request.idAssuntos() == null || request.idAssuntos().isEmpty()) {
             return falha("VALIDACAO", "idAssuntos é obrigatório (ao menos um).", null, List.of(), trilha, "Validação", null);
         }
-        if (request.pessoaIdAutor() == null || request.pessoaIdReu() == null) {
+        List<Long> idsReu = request.pessoaIdsReu() != null ? request.pessoaIdsReu() : List.of();
+        if (request.pessoaIdAutor() == null || idsReu.isEmpty()) {
             return falha(
                     "VALIDACAO",
-                    "pessoaIdAutor e pessoaIdReu são obrigatórios.",
+                    "pessoaIdAutor e ao menos um pessoaIdsReu são obrigatórios.",
                     null,
                     List.of(),
                     trilha,
@@ -437,9 +468,19 @@ public class ProjudiDistribuicaoService {
         if (!autor.prontaParaInserir()) {
             pendenciasPartes.add(new PendenciaParte("AUTOR", request.pessoaIdAutor(), autor.pendencias()));
         }
-        ParteProjudiResolvida reu = parteResolverService.resolver(request.pessoaIdReu(), credencialId);
-        if (!reu.prontaParaInserir()) {
-            pendenciasPartes.add(new PendenciaParte("REU", request.pessoaIdReu(), reu.pendencias()));
+        List<ParteProjudiResolvida> reusResolvidos = new ArrayList<>();
+        int totalReus = idsReu.size();
+        for (int i = 0; i < idsReu.size(); i++) {
+            Long pessoaIdReu = idsReu.get(i);
+            if (pessoaIdReu == null) {
+                pendenciasPartes.add(new PendenciaParte(papelReu(i, totalReus), null, List.of("Pessoa não informada.")));
+                continue;
+            }
+            ParteProjudiResolvida reu = parteResolverService.resolver(pessoaIdReu, credencialId);
+            if (!reu.prontaParaInserir()) {
+                pendenciasPartes.add(new PendenciaParte(papelReu(i, totalReus), pessoaIdReu, reu.pendencias()));
+            }
+            reusResolvidos.add(reu);
         }
         if (!pendenciasPartes.isEmpty()) {
             trilha.falhaSemResposta(
@@ -584,15 +625,20 @@ public class ProjudiDistribuicaoService {
                         trilha.passos());
             }
 
-            tokens = inserirParte(credencialId, request.valorCausa(), request.classeEfetiva(), tokens, 0, reu, "REU", trilha);
-            if (tokens == null) {
-                return new ResultadoPreparacaoInicial(
-                        false,
-                        "PARTE_REU",
-                        null,
-                        List.of(),
-                        sanitizarDetalhe("Falha ao inserir parte réu."),
-                        trilha.passos());
+            for (int i = 0; i < reusResolvidos.size(); i++) {
+                ParteProjudiResolvida reu = reusResolvidos.get(i);
+                String papel = papelReu(i, totalReus);
+                tokens = inserirParte(
+                        credencialId, request.valorCausa(), request.classeEfetiva(), tokens, 0, reu, papel, trilha);
+                if (tokens == null) {
+                    return new ResultadoPreparacaoInicial(
+                            false,
+                            totalReus <= 1 ? "PARTE_REU" : "PARTE_REU_" + (i + 1),
+                            null,
+                            List.of(),
+                            sanitizarDetalhe("Falha ao inserir " + rotuloReu(i, totalReus).toLowerCase() + "."),
+                            trilha.passos());
+                }
             }
 
             HttpResponse<String> pAnexos = postProcessoCivelComTrilha(

@@ -85,13 +85,15 @@ public class ProjudiInicialController {
             @RequestParam(required = false) String idAssuntos,
             @RequestParam(required = false) Long pessoaIdAutor,
             @RequestParam(required = false) Long pessoaIdReu,
+            @RequestParam(required = false) String pessoaIdsReu,
+            @RequestParam(required = false) List<Long> pessoaIdsReuList,
             @RequestParam(defaultValue = "0") int quantidadeAnexos) {
         return distribuicaoService.validarProntidao(
                 credencialId,
                 valorCausa,
                 parseIdAssuntosCsv(idAssuntos),
                 pessoaIdAutor,
-                pessoaIdReu,
+                normalizarPessoaIdsReu(pessoaIdReu, pessoaIdsReu, pessoaIdsReuList),
                 quantidadeAnexos);
     }
 
@@ -108,27 +110,29 @@ public class ProjudiInicialController {
             @RequestParam String valorCausa,
             @RequestParam String idAssuntos,
             @RequestParam Long pessoaIdAutor,
-            @RequestParam Long pessoaIdReu,
+            @RequestParam(required = false) Long pessoaIdReu,
+            @RequestParam(required = false) List<Long> pessoaIdsReu,
             @RequestParam("pdfs") List<MultipartFile> pdfs,
             @RequestParam(value = "idArquivoTipos", required = false) List<Integer> idArquivoTipos,
             @RequestParam(required = false) Integer idProcessoTipo,
             @RequestParam(required = false) Integer processoTipoCodigo)
             throws IOException {
+        List<Long> idsReu = normalizarPessoaIdsReu(pessoaIdReu, null, pessoaIdsReu);
         InicialRequest request = montarInicialRequest(
                 valorCausa,
                 idAssuntos,
                 pessoaIdAutor,
-                pessoaIdReu,
+                idsReu,
                 pdfs,
                 idArquivoTipos,
                 idProcessoTipo,
                 processoTipoCodigo);
         log.info(
-                "preparar-inicial credencialId={} assuntos={} autor={} reu={} arquivos={}",
+                "preparar-inicial credencialId={} assuntos={} autor={} reus={} arquivos={}",
                 credencialId,
                 request.idAssuntos(),
                 pessoaIdAutor,
-                pessoaIdReu,
+                idsReu,
                 request.arquivos().size());
         return distribuicaoService.prepararInicial(credencialId, request);
     }
@@ -146,7 +150,8 @@ public class ProjudiInicialController {
             @RequestParam String valorCausa,
             @RequestParam String idAssuntos,
             @RequestParam Long pessoaIdAutor,
-            @RequestParam Long pessoaIdReu,
+            @RequestParam(required = false) Long pessoaIdReu,
+            @RequestParam(required = false) List<Long> pessoaIdsReu,
             @RequestParam("pdfs") List<MultipartFile> pdfs,
             @RequestParam(value = "idArquivoTipos", required = false) List<Integer> idArquivoTipos,
             @RequestParam(defaultValue = "false") boolean confirmar,
@@ -154,21 +159,23 @@ public class ProjudiInicialController {
             @RequestParam(required = false) Integer idProcessoTipo,
             @RequestParam(required = false) Integer processoTipoCodigo)
             throws IOException {
+        List<Long> idsReu = normalizarPessoaIdsReu(pessoaIdReu, null, pessoaIdsReu);
         InicialRequest request = montarInicialRequest(
                 valorCausa,
                 idAssuntos,
                 pessoaIdAutor,
-                pessoaIdReu,
+                idsReu,
                 pdfs,
                 idArquivoTipos,
                 idProcessoTipo,
                 processoTipoCodigo);
         log.info(
-                "distribuir-inicial credencialId={} confirmar={} processoIdOrigem={} assuntos={} arquivos={}",
+                "distribuir-inicial credencialId={} confirmar={} processoIdOrigem={} assuntos={} reus={} arquivos={}",
                 credencialId,
                 confirmar,
                 processoIdOrigem,
                 request.idAssuntos(),
+                idsReu,
                 request.arquivos().size());
         return distribuicaoService.distribuirInicial(credencialId, request, confirmar, processoIdOrigem);
     }
@@ -177,12 +184,15 @@ public class ProjudiInicialController {
             String valorCausa,
             String idAssuntos,
             Long pessoaIdAutor,
-            Long pessoaIdReu,
+            List<Long> pessoaIdsReu,
             List<MultipartFile> pdfs,
             List<Integer> idArquivoTipos,
             Integer idProcessoTipo,
             Integer processoTipoCodigo)
             throws IOException {
+        if (pessoaIdsReu == null || pessoaIdsReu.isEmpty()) {
+            throw new IllegalArgumentException("pessoaIdsReu é obrigatório (ao menos um réu).");
+        }
         if (pdfs == null || pdfs.isEmpty()) {
             throw new IllegalArgumentException("pdfs é obrigatório (ao menos um arquivo .p7s).");
         }
@@ -201,7 +211,34 @@ public class ProjudiInicialController {
                     pdfs.get(i).getBytes(), idTipo, pdfs.get(i).getOriginalFilename()));
         }
         ProjudiClasseProcessoInicial classe = assuntoCatalogoService.resolverClasse(idProcessoTipo, processoTipoCodigo);
-        return new InicialRequest(valorCausa, assuntos, pessoaIdAutor, pessoaIdReu, arquivos, classe);
+        return new InicialRequest(valorCausa, assuntos, pessoaIdAutor, List.copyOf(pessoaIdsReu), arquivos, classe);
+    }
+
+    private static List<Long> normalizarPessoaIdsReu(
+            Long pessoaIdReuLegado, String pessoaIdsReuCsv, List<Long> pessoaIdsReuList) {
+        List<Long> out = new ArrayList<>();
+        if (pessoaIdsReuList != null) {
+            for (Long id : pessoaIdsReuList) {
+                if (id != null && id > 0 && !out.contains(id)) {
+                    out.add(id);
+                }
+            }
+        }
+        if (out.isEmpty() && StringUtils.hasText(pessoaIdsReuCsv)) {
+            for (String parte : pessoaIdsReuCsv.split("[,;\\s]+")) {
+                if (!StringUtils.hasText(parte)) {
+                    continue;
+                }
+                long id = Long.parseLong(parte.trim());
+                if (id > 0 && !out.contains(id)) {
+                    out.add(id);
+                }
+            }
+        }
+        if (out.isEmpty() && pessoaIdReuLegado != null && pessoaIdReuLegado > 0) {
+            out.add(pessoaIdReuLegado);
+        }
+        return List.copyOf(out);
     }
 
     private static List<Integer> parseIdAssuntosCsv(String csv) {
