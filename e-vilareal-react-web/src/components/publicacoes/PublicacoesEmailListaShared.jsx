@@ -9,6 +9,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { entradaEmailEfetivaIso } from '../../data/publicacoesEmailOrdenacao.js';
+import { resolverSugestaoVinculoLinha } from '../../data/publicacoesVinculoProcessos.js';
 
 const FUSO_ENTRADA_EMAIL = 'America/Sao_Paulo';
 
