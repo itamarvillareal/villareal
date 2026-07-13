@@ -26,6 +26,7 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigInteger;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -90,9 +91,14 @@ public class PublicacaoApplicationService {
                 clientePk,
                 texto,
                 origemImportacao);
-        List<PublicacaoEntity> lista = publicacaoRepository.findAll(
-                spec,
-                Sort.by(Sort.Order.desc("emailRecebidoEm").nullsLast(), Sort.Order.desc("createdAt")));
+        // Ordenação por emailRecebidoEm em memória: Hibernate Criteria não suporta nullsLast no Sort.
+        List<PublicacaoEntity> lista = publicacaoRepository.findAll(spec, Sort.by(Sort.Direction.DESC, "createdAt"));
+        lista.sort(
+                Comparator.comparing(
+                                PublicacaoEntity::getEmailRecebidoEm,
+                                Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(
+                                PublicacaoEntity::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())));
         Set<Long> procIds = new LinkedHashSet<>();
         for (PublicacaoEntity e : lista) {
             Long pid = extrairProcessoIdSeguro(e);

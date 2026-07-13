@@ -10,6 +10,7 @@ import { request } from './httpClient.js';
 const ORIGENS = ['PROJUDI', 'TRT'];
 
 export async function buscarManifestacoesProjudi({ texto, status, filtroVinculo, recebimentoInicio, recebimentoFim } = {}) {
+  const erros = [];
   const listas = await Promise.all(
     ORIGENS.map((origemImportacao) =>
       listarPublicacoesModulo({
@@ -19,9 +20,15 @@ export async function buscarManifestacoesProjudi({ texto, status, filtroVinculo,
         filtroVinculo: filtroVinculo || 'todos',
         recebimentoInicio: recebimentoInicio || undefined,
         recebimentoFim: recebimentoFim || undefined,
-      }).catch(() => [])
+      }).catch((e) => {
+        erros.push(e);
+        return [];
+      })
     )
   );
+  if (erros.length === ORIGENS.length) {
+    throw erros[0];
+  }
   const vistos = new Set();
   const out = [];
   for (const lista of listas) {
