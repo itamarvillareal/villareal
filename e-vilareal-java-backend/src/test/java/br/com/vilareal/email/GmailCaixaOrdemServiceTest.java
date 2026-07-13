@@ -14,4 +14,16 @@ class GmailCaixaOrdemServiceTest {
         assertFalse(GmailCaixaOrdemService.emailIgnoradoNaCaixa("[PROJUDI]Informação de intimação/citação"));
         assertFalse(GmailCaixaOrdemService.emailIgnoradoNaCaixa("[TRT18] [PUSH] Atualizações"));
     }
+
+    @Test
+    void reconheceNotificacaoProjudiOuTrt() {
+        assertTrue(GmailCaixaOrdemService.ehNotificacaoMovimentacao(
+                "[PROJUDI]Informação de intimação/citação", "encaminhado <eu@gmail.com>"));
+        assertTrue(GmailCaixaOrdemService.ehNotificacaoMovimentacao(
+                "Fwd: [TRT18] [PUSH] Atualizações", "eu@gmail.com"));
+        assertTrue(GmailCaixaOrdemService.ehNotificacaoMovimentacao(
+                "Atualização", "nao-responda@trt18.jus.br"));
+        assertFalse(GmailCaixaOrdemService.ehNotificacaoMovimentacao(
+                "Fatura cartão", "banco@itau.com.br"));
+    }
 }

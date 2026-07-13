@@ -17,17 +17,17 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * Atualiza {@code gmail_caixa_ordem} das publicações PROJUDI/TRT conforme a ordem retornada
- * pela API {@code messages.list} do Gmail (fiel à caixa de entrada, excluindo OTP).
+ * Atualiza {@code gmail_caixa_ordem} das publicações PROJUDI/TRT percorrendo a caixa de entrada
+ * do Gmail ({@code in:inbox}) de cima para baixo — mesma ordem visual da inbox, ignorando outros
+ * e-mails e OTP Projudi.
  */
 @Service
 public class GmailCaixaOrdemService {
 
     private static final Logger log = LoggerFactory.getLogger(GmailCaixaOrdemService.class);
 
-    /** Mesma query combinada da tela Movimentações Email. */
-    public static final String QUERY_CAIXA_MOVIMENTACOES =
-            "(from:trt18.jus.br OR subject:[TRT18] OR subject:[PROJUDI])";
+    /** Inbox completa (ordem visual), não busca filtrada. */
+    public static final String QUERY_INBOX = "in:inbox";
 
     private static final Set<String> ORIGENS = Set.of("PROJUDI", "TRT");
     private static final int LIMITE_MENSAGENS = 2000;
@@ -49,35 +49,53 @@ public class GmailCaixaOrdemService {
             return 0;
         }
 
-        List<Message> refs = listarMensagens(gmail, QUERY_CAIXA_MOVIMENTACOES);
+        List<Message> refs = listarMensagensInbox(gmail);
         int ordem = 0;
         int atualizados = 0;
+        List<String> topoLog = new ArrayList<>();
         for (Message ref : refs) {
             String messageId = ref.getId();
             if (messageId == null || messageId.isBlank()) {
                 continue;
             }
-            if (!publicacaoRepository.existsByArquivoOrigemNomeContainingAndOrigemImportacaoIn(
-                    "[" + messageId + "]", ORIGENS)) {
-                continue;
-            }
             Message meta =
                     gmail.users().messages().get("me", messageId).setFormat("metadata").execute();
             String assunto = extrairCabecalho(meta, "Subject");
+            String from = extrairCabecalho(meta, "From");
+            if (!ehNotificacaoMovimentacao(assunto, from)) {
+                continue;
+            }
             if (emailIgnoradoNaCaixa(assunto)) {
                 continue;
             }
-            int n = publicacaoRepository.updateGmailCaixaOrdemForMessage(messageId, ordem, ORIGENS);
-            if (n > 0) {
-                atualizados += n;
+            if (publicacaoRepository.existsByArquivoOrigemNomeContainingAndOrigemImportacaoIn(
+                    "[" + messageId + "]", ORIGENS)) {
+                int n = publicacaoRepository.updateGmailCaixaOrdemForMessage(messageId, ordem, ORIGENS);
+                if (n > 0) {
+                    atualizados += n;
+                }
+                if (topoLog.size() < 8) {
+                    topoLog.add(ordem + ":" + messageId + " " + resumirAssunto(assunto));
+                }
             }
             ordem++;
         }
         log.info(
-                "Ordem caixa Gmail atualizada: {} mensagem(ns) na query, {} publicação(ões) com ordem",
+                "Ordem caixa Gmail (in:inbox): {} mensagem(ns) na inbox, {} publicação(ões) com ordem. Topo: {}",
                 refs.size(),
-                atualizados);
+                atualizados,
+                topoLog);
         return atualizados;
+    }
+
+    /** Projudi por assunto; TRT por domínio ou marcador no assunto (emails reencaminhados). */
+    static boolean ehNotificacaoMovimentacao(String assunto, String from) {
+        String a = assunto == null ? "" : assunto.toLowerCase(Locale.ROOT);
+        String f = from == null ? "" : from.toLowerCase(Locale.ROOT);
+        if (a.contains("[projudi]")) {
+            return true;
+        }
+        return f.contains("trt18.jus.br") || a.contains("[trt18]");
     }
 
     static boolean emailIgnoradoNaCaixa(String assunto) {
@@ -91,15 +109,22 @@ public class GmailCaixaOrdemService {
                 || (a.contains("[projudi]") && a.contains("seguranca"));
     }
 
-    private List<Message> listarMensagens(Gmail gmail, String query) throws IOException {
+    private static String resumirAssunto(String assunto) {
+        if (assunto == null) {
+            return "";
+        }
+        String s = assunto.trim();
+        return s.length() <= 55 ? s : s.substring(0, 52) + "...";
+    }
+
+    private List<Message> listarMensagensInbox(Gmail gmail) throws IOException {
         List<Message> out = new ArrayList<>();
         String pageToken = null;
         do {
             ListMessagesResponse resp = gmail.users()
                     .messages()
                     .list("me")
-                    .setQ(query)
-                    .setIncludeSpamTrash(true)
+                    .setQ(QUERY_INBOX)
                     .setMaxResults(100L)
                     .setPageToken(pageToken)
                     .execute();
