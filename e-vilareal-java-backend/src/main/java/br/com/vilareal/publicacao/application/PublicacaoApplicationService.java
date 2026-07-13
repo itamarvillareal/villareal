@@ -146,6 +146,21 @@ public class PublicacaoApplicationService {
 
     @Transactional
     public PublicacaoResponse criar(PublicacaoWriteRequest req) {
+        PublicacaoResponse criada = criarSeNaoDuplicada(req);
+        if (criada == null) {
+            throw new BusinessRuleException("Publicação já existe (conteúdo duplicado).");
+        }
+        return criada;
+    }
+
+    /**
+     * Variante para importações em lote: devolve {@code null} quando o conteúdo é duplicado,
+     * sem lançar exceção — uma {@link BusinessRuleException} atravessando o proxy transacional
+     * marcaria a transação como rollback-only e o commit do lote falharia com
+     * "Transaction silently rolled back".
+     */
+    @Transactional
+    public PublicacaoResponse criarSeNaoDuplicada(PublicacaoWriteRequest req) {
         String teor = req.getTeor() != null ? req.getTeor() : "";
         String hashConteudo;
         if (StringUtils.hasText(req.getHashConteudo())) {
@@ -154,7 +169,7 @@ public class PublicacaoApplicationService {
             hashConteudo = PublicacaoHashing.sha256Hex(teor);
         }
         if (publicacaoRepository.existsByHashConteudo(hashConteudo)) {
-            throw new BusinessRuleException("Publicação já existe (conteúdo duplicado).");
+            return null;
         }
         String origem = normalizarOrigem(req.getOrigemImportacao());
         PublicacaoEntity e = new PublicacaoEntity();

@@ -1,6 +1,5 @@
 package br.com.vilareal.email;
 
-import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.publicacao.api.dto.PublicacaoWriteRequest;
 import br.com.vilareal.publicacao.application.PublicacaoApplicationService;
 import br.com.vilareal.publicacao.infrastructure.persistence.repository.PublicacaoRepository;
@@ -33,19 +32,17 @@ public class PublicacaoEmailImportacaoTransacionalService {
     }
 
     /**
-     * @return id da publicação gravada, ou {@code null} se duplicada (regra de negócio)
+     * @return id da publicação gravada, ou {@code null} se duplicada (regra de negócio).
+     *
+     * <p>Usa {@code criarSeNaoDuplicada} em vez de capturar {@code BusinessRuleException}: a
+     * exceção atravessando o proxy transacional de {@code criar} marcava esta transação
+     * REQUIRES_NEW como rollback-only e o commit falhava com "Transaction silently rolled back
+     * because it has been marked as rollback-only".
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
     public Long criarPublicacaoEmail(PublicacaoWriteRequest req) {
-        try {
-            return publicacaoApplicationService.criar(req).getId();
-        } catch (BusinessRuleException ex) {
-            String msg = String.valueOf(ex.getMessage()).toLowerCase();
-            if (msg.contains("duplicad")) {
-                return null;
-            }
-            throw ex;
-        }
+        var criada = publicacaoApplicationService.criarSeNaoDuplicada(req);
+        return criada != null ? criada.getId() : null;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
