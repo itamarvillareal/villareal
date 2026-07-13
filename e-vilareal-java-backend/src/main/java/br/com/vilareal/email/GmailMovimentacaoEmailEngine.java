@@ -177,7 +177,7 @@ public class GmailMovimentacaoEmailEngine {
                 }
 
                 String arquivoOrigem = montarArquivoOrigem(assunto, messageId, fonte.arquivoFallbackPrefix());
-                Instant emailRecebidoEm = extrairDataRecebimentoEmail(completa);
+                Instant emailRecebidoEm = GmailEmailRecebimentoUtil.extrairDataRecebimento(completa);
 
                 String snippet = completa.getSnippet();
                 List<PublicacaoWriteRequest> manifestacoes =
@@ -331,7 +331,7 @@ public class GmailMovimentacaoEmailEngine {
 
     private Instant obterDataRecebimentoMensagem(Gmail gmail, String messageId) throws IOException {
         Message meta = gmail.users().messages().get(gmailUser, messageId).setFormat("minimal").execute();
-        return extrairDataRecebimentoEmail(meta);
+        return GmailEmailRecebimentoUtil.extrairDataRecebimento(meta);
     }
 
     private boolean emailJaImportado(String messageId) {
@@ -375,11 +375,7 @@ public class GmailMovimentacaoEmailEngine {
     }
 
     private static Instant extrairDataRecebimentoEmail(Message message) {
-        Long ms = message.getInternalDate();
-        if (ms == null || ms <= 0L) {
-            return null;
-        }
-        return Instant.ofEpochMilli(ms);
+        return GmailEmailRecebimentoUtil.extrairDataRecebimento(message);
     }
 
     private static String montarArquivoOrigem(String assunto, String messageId, String fallbackPrefix) {

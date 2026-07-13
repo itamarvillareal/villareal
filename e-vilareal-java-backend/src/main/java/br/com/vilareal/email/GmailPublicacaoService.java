@@ -136,7 +136,7 @@ public class GmailPublicacaoService {
                 }
 
                 String arquivoOrigem = montarArquivoOrigem(assunto, messageId);
-                Instant emailRecebidoEm = extrairDataRecebimentoEmail(completa);
+                Instant emailRecebidoEm = GmailEmailRecebimentoUtil.extrairDataRecebimento(completa);
                 emailMaisRecente = maisRecente(emailMaisRecente, emailRecebidoEm);
 
                 log.info(
@@ -303,11 +303,7 @@ public class GmailPublicacaoService {
     }
 
     private static Instant extrairDataRecebimentoEmail(Message message) {
-        Long ms = message.getInternalDate();
-        if (ms == null || ms <= 0L) {
-            return null;
-        }
-        return Instant.ofEpochMilli(ms);
+        return GmailEmailRecebimentoUtil.extrairDataRecebimento(message);
     }
 
     private static String montarArquivoOrigem(String assunto, String messageId) {
@@ -335,6 +331,6 @@ public class GmailPublicacaoService {
 
     private Instant obterDataRecebimentoMensagem(Gmail gmail, String messageId) throws IOException {
         Message meta = gmail.users().messages().get(gmailUser, messageId).setFormat("minimal").execute();
-        return extrairDataRecebimentoEmail(meta);
+        return GmailEmailRecebimentoUtil.extrairDataRecebimento(meta);
     }
 }
