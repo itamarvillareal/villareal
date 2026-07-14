@@ -44,7 +44,7 @@ class ProjudiMovimentacoesEmailSchedulePolicyTest {
     @Test
     void resolverPerfilAtual_usaConfigComercial() {
         ProjudiMovimentacoesEmailPipelineProperties props = new ProjudiMovimentacoesEmailPipelineProperties();
-        props.getComercial().setIntervaloMinutos(30);
+        props.getComercial().setIntervaloMinutos(15);
         props.getComercial().setDelaySegundosEntreProcessos(60);
         props.getComercial().setMaxProcessosPorCiclo(20);
 
@@ -53,7 +53,7 @@ class ProjudiMovimentacoesEmailSchedulePolicyTest {
 
         ProjudiMovimentacoesEmailSchedulePolicy.PerfilAtivo perfil = policy.resolverPerfilAtual();
         assertThat(perfil.nome()).isEqualTo(ProjudiMovimentacoesEmailSchedulePolicy.PerfilNome.COMERCIAL);
-        assertThat(perfil.intervaloMinutos()).isEqualTo(30);
+        assertThat(perfil.intervaloMinutos()).isEqualTo(15);
         assertThat(perfil.delaySegundosEntreProcessos()).isEqualTo(60);
         assertThat(perfil.maxProcessosPorCiclo()).isEqualTo(20);
     }
