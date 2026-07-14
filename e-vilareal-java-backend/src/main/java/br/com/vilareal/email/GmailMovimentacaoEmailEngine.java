@@ -24,6 +24,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -155,13 +156,16 @@ public class GmailMovimentacaoEmailEngine {
                 continue;
             }
 
+            Map<String, String> statusPreservados = Map.of();
             if (reprocessarEmailsExistentes && jaImportado) {
+                statusPreservados = importacaoTransacional.capturarStatusPreservaveisDoEmail(messageId);
                 int removidos = importacaoTransacional.removerPublicacoesDoEmail(messageId);
                 log.info(
-                        "Reprocessamento email {} {}: removidas {} movimentação(ões) anteriores",
+                        "Reprocessamento email {} {}: removidas {} movimentação(ões) anteriores (status preservados: {})",
                         fonte.rotulo(),
                         messageId,
-                        removidos);
+                        removidos,
+                        statusPreservados.size());
             }
 
             try {
@@ -217,6 +221,9 @@ public class GmailMovimentacaoEmailEngine {
                         if (pubId == null) {
                             duplicadas++;
                             continue;
+                        }
+                        if (!statusPreservados.isEmpty()) {
+                            importacaoTransacional.reaplicarStatusPreservados(pubId, statusPreservados);
                         }
                         gravadas++;
                         resumo.setPublicacoesProcessadas(resumo.getPublicacoesProcessadas() + 1);

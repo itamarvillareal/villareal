@@ -81,6 +81,20 @@ public interface PublicacaoRepository extends JpaRepository<PublicacaoEntity, Lo
     @Query("DELETE FROM PublicacaoEntity p WHERE p.arquivoOrigemNome LIKE CONCAT('%', :fragment, '%')")
     int deleteByArquivoOrigemNomeContaining(@Param("fragment") String fragment);
 
+    /**
+     * Antes de apagar publicações de um email no reprocessamento Gmail, captura
+     * {@code hash_conteudo → status_tratamento} para reaplicar após reimportação.
+     */
+    @Query(
+            """
+            SELECT p.hashConteudo, p.statusTratamento
+            FROM PublicacaoEntity p
+            WHERE p.arquivoOrigemNome LIKE CONCAT('%', :fragment, '%')
+              AND p.hashConteudo IS NOT NULL
+              AND p.statusTratamento IN ('TRATADA', 'IGNORADA')
+            """)
+    List<Object[]> findHashStatusPreservaveisByArquivoOrigemNomeContaining(@Param("fragment") String fragment);
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(
             """
