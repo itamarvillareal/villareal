@@ -20,6 +20,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 /**
@@ -130,6 +131,27 @@ public class ProjudiInicialAssinaturaService {
             throw new BusinessRuleException("codigoCliente e numeroInterno são obrigatórios.");
         }
         return PREFIXO_CHAVE_INICIAL + cod + "-" + numeroInterno;
+    }
+
+    /** Chave interna {@code INICIAL-…} — não é CNJ; não deve ir para Peticionamento PROJUDI. */
+    public static boolean ehChaveInicialDistribuicao(String numeroProcesso) {
+        if (!StringUtils.hasText(numeroProcesso)) {
+            return false;
+        }
+        return numeroProcesso.trim().toUpperCase(Locale.ROOT).startsWith(PREFIXO_CHAVE_INICIAL);
+    }
+
+    public static void exigirNaoEhInicialDistribuicao(String numeroProcesso, Long peticaoId) {
+        if (!ehChaveInicialDistribuicao(numeroProcesso)) {
+            return;
+        }
+        String rotulo = numeroProcesso != null ? numeroProcesso.trim() : "?";
+        throw new BusinessRuleException(
+                "Petição #"
+                        + peticaoId
+                        + " é de distribuição de inicial ("
+                        + rotulo
+                        + "). Use Processos → Distribuir Inicial PROJUDI — não Peticionamento PROJUDI.");
     }
 
     private static void validarProcesso(String codigoCliente, Integer numeroInterno) {

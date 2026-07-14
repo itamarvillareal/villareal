@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   CheckCircle2,
   ChevronDown,
   Clock,
+  ExternalLink,
   FileSignature,
   History,
   Loader2,
@@ -36,6 +37,13 @@ import {
   registrarAssinados,
 } from '../../api/peticoesProjudiApi.js';
 import { isArquivoP7s, separarArquivosP7s } from '../../domain/peticaoArquivo.js';
+import {
+  isChavePeticaoInicialDistribuicao,
+  MSG_INICIAL_USE_DISTRIBUIR,
+  parseChavePeticaoInicial,
+  rotuloProcessoInternoInicial,
+} from '../../domain/peticaoInicialProjudi.js';
+import { montarDadosDistribuicaoInicialFromProcesso } from '../../helpers/distribuicaoInicialProjudiHelper.js';
 import { downloadPdfBlob } from '../../repositories/documentosRepository.js';
 import {
   buscarProcessoPorChaveNatural,
@@ -347,6 +355,7 @@ function classeResultadoProtocolo(resultado) {
 
 export function PeticionamentoProjudi() {
   const location = useLocation();
+  const navigate = useNavigate();
   const numeroProcessoOrigem = useMemo(
     () => resolverNumeroProcessoOrigem(location.state),
     [location.state],
@@ -490,20 +499,48 @@ export function PeticionamentoProjudi() {
     );
   }, [pendentesAssinatura, processoFiltro]);
 
+  const pendentesInterlocutorias = useMemo(
+    () => pendentesFiltradas.filter((p) => !isChavePeticaoInicialDistribuicao(p.numeroProcesso)),
+    [pendentesFiltradas],
+  );
+
+  const iniciaisPendentes = useMemo(
+    () => pendentesFiltradas.filter((p) => isChavePeticaoInicialDistribuicao(p.numeroProcesso)),
+    [pendentesFiltradas],
+  );
+
   const assinadas = useMemo(
     () => peticoesFiltradas.filter((p) => p.status === 'ASSINADA'),
     [peticoesFiltradas],
   );
 
-  const assinadasAgendadas = useMemo(
-    () => assinadas.filter((p) => podeCancelarAgendamentoProtocolo(p)),
+  const iniciaisAssinadas = useMemo(
+    () => assinadas.filter((p) => isChavePeticaoInicialDistribuicao(p.numeroProcesso)),
     [assinadas],
   );
 
-  const assinadasProtocolar = useMemo(
-    () => assinadas.filter((p) => !podeCancelarAgendamentoProtocolo(p)),
+  const assinadasInterlocutorias = useMemo(
+    () => assinadas.filter((p) => !isChavePeticaoInicialDistribuicao(p.numeroProcesso)),
     [assinadas],
   );
+
+  const assinadasAgendadas = useMemo(
+    () => assinadasInterlocutorias.filter((p) => podeCancelarAgendamentoProtocolo(p)),
+    [assinadasInterlocutorias],
+  );
+
+  const assinadasProtocolar = useMemo(
+    () => assinadasInterlocutorias.filter((p) => !podeCancelarAgendamentoProtocolo(p)),
+    [assinadasInterlocutorias],
+  );
+
+  const iniciaisFila = useMemo(() => {
+    const porId = new Map();
+    for (const p of [...iniciaisPendentes, ...iniciaisAssinadas]) {
+      if (p?.id != null) porId.set(p.id, p);
+    }
+    return [...porId.values()];
+  }, [iniciaisPendentes, iniciaisAssinadas]);
 
   const idsSelecionadosProtocolar = useMemo(
     () => [...selecionadas].filter((id) => assinadasProtocolar.some((p) => p.id === id)),
@@ -858,6 +895,37 @@ export function PeticionamentoProjudi() {
     }
   };
 
+  const irParaDistribuirInicial = async (peticao) => {
+    const parsed = parseChavePeticaoInicial(peticao?.numeroProcesso);
+    if (!parsed) return;
+    setOperacao(`inicial-${peticao.id}`);
+    setApiError('');
+    try {
+      const processo = await buscarProcessoPorChaveNatural(parsed.codigoCliente, parsed.numeroInterno);
+      if (!processo?.id) {
+        throw new Error(
+          `Processo ${rotuloProcessoInternoInicial(peticao.numeroProcesso)} não encontrado no cadastro.`,
+        );
+      }
+      const dadosDistribuicaoInicial = await montarDadosDistribuicaoInicialFromProcesso({
+        codigoCliente: parsed.codigoCliente,
+        processo: String(parsed.numeroInterno),
+        numeroInterno: parsed.numeroInterno,
+        processoApiId: processo.id,
+        valorCausa: processo.valorCausa,
+        naturezaAcao: processo.naturezaAcao,
+        papelParte: processo.papelCliente,
+        parteCliente: processo.parteCliente,
+        parteOposta: processo.parteOposta,
+      });
+      navigate('/processos/distribuicao-inicial-projudi', { state: { dadosDistribuicaoInicial } });
+    } catch (err) {
+      setApiError(err?.message || 'Falha ao abrir a tela de distribuição de inicial.');
+    } finally {
+      setOperacao(null);
+    }
+  };
+
   const baixarLote = async () => {
     setOperacao('zip');
     try {
@@ -1181,24 +1249,96 @@ export function PeticionamentoProjudi() {
                   <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
                   Carregando…
                 </div>
-              ) : assinadas.length === 0 && pendentesFiltradas.length === 0 ? (
+              ) : assinadasInterlocutorias.length === 0 &&
+                pendentesInterlocutorias.length === 0 &&
+                iniciaisFila.length === 0 ? (
                 <p className="text-sm text-slate-600">
                   Nenhuma petição assinada na fila
                   {processoFiltro ? ' para este processo' : ''}. Registre .p7s acima.
                 </p>
               ) : (
                 <>
-                  {pendentesFiltradas.length > 0 ? (
+                  {iniciaisFila.length > 0 ? (
+                    <div className="space-y-2 rounded-lg border border-sky-400 bg-sky-50/90 p-3 mb-3">
+                      <h3 className="text-xs font-semibold text-sky-950 flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                        Iniciais — usar Distribuir Inicial PROJUDI ({iniciaisFila.length})
+                      </h3>
+                      <p className="text-xs text-sky-900/90">{MSG_INICIAL_USE_DISTRIBUIR}</p>
+                      <ul className="rounded-lg border border-sky-200 bg-white divide-y divide-sky-100">
+                        {iniciaisFila.map((p) => (
+                          <li key={p.id} className="flex items-start gap-2 px-3 py-2 text-sm">
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <div className="font-medium text-slate-900">
+                                #{p.id} · processo interno{' '}
+                                <span className="font-mono text-xs">
+                                  {rotuloProcessoInternoInicial(p.numeroProcesso)}
+                                </span>
+                                {p.status === 'ASSINADA' ? (
+                                  <span className="ml-2 text-xs font-normal text-emerald-700">(assinada)</span>
+                                ) : (
+                                  <span className="ml-2 text-xs font-normal text-amber-800">(pendente)</span>
+                                )}
+                              </div>
+                              {(p.arquivos || []).slice(0, 4).map((a) => (
+                                <PeticaoArquivoLinhaExcluir
+                                  key={a.id ?? a.ordem}
+                                  peticao={p}
+                                  arquivo={a}
+                                  operacao={operacao}
+                                  onExcluir={onExcluirArquivo}
+                                />
+                              ))}
+                              {(p.arquivos || []).length > 4 ? (
+                                <div className="text-xs text-slate-500">
+                                  + {(p.arquivos || []).length - 4} arquivo(s)
+                                </div>
+                              ) : null}
+                              <button
+                                type="button"
+                                className={`${processosBtnPrimary} bg-sky-800 hover:bg-sky-900 text-xs py-1.5 px-2.5`}
+                                disabled={operacao === `inicial-${p.id}`}
+                                onClick={() => void irParaDistribuirInicial(p)}
+                              >
+                                {operacao === `inicial-${p.id}` ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin inline mr-1" aria-hidden />
+                                ) : (
+                                  <ExternalLink className="w-3.5 h-3.5 inline mr-1" aria-hidden />
+                                )}
+                                Abrir Distribuir Inicial PROJUDI
+                              </button>
+                            </div>
+                            <button
+                              type="button"
+                              className="shrink-0 p-1 text-rose-600 hover:text-rose-800 disabled:opacity-50"
+                              disabled={operacao === `excluir-${p.id}`}
+                              onClick={() => void onExcluirPeticao(p.id)}
+                              title="Excluir petição da fila"
+                              aria-label={`Excluir petição ${p.id}`}
+                            >
+                              {operacao === `excluir-${p.id}` ? (
+                                <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+                              ) : (
+                                <Trash2 className="w-4 h-4" aria-hidden />
+                              )}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  {pendentesInterlocutorias.length > 0 ? (
                     <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50/80 p-3 mb-3">
                       <h3 className="text-xs font-semibold text-amber-900">
-                        Pendentes de assinatura ({pendentesFiltradas.length})
+                        Pendentes de assinatura ({pendentesInterlocutorias.length})
                       </h3>
                       <p className="text-xs text-amber-800/90">
                         Estas petições ainda <strong>não entram em «Prontas para protocolar»</strong> — falta
                         assinar os PDFs (.p7s). Depois da assinatura, elas aparecem abaixo para protocolo.
                       </p>
                       <ul className="rounded-lg border border-amber-200 bg-white divide-y divide-amber-100">
-                        {pendentesFiltradas.map((p) => (
+                        {pendentesInterlocutorias.map((p) => (
                           <li key={p.id} className="px-3 py-2 text-sm space-y-1">
                             <div className="font-medium text-slate-900">
                               #{p.id} · <span className="font-mono text-xs">{p.numeroProcesso}</span>
@@ -1492,9 +1632,13 @@ export function PeticionamentoProjudi() {
                     <p className="text-xs text-slate-600">
                       Nenhuma petição pronta para protocolo imediato — apenas agendamentos ativos acima.
                     </p>
-                  ) : pendentesFiltradas.length > 0 ? (
+                  ) : pendentesInterlocutorias.length > 0 ? (
                     <p className="text-xs text-slate-600">
                       Assine os PDFs pendentes acima; depois eles aparecem aqui em «Prontas para protocolar».
+                    </p>
+                  ) : iniciaisFila.length > 0 ? (
+                    <p className="text-xs text-slate-600">
+                      Petições de inicial listadas acima — use Distribuir Inicial PROJUDI para protocolar.
                     </p>
                   ) : null}
                 </>
