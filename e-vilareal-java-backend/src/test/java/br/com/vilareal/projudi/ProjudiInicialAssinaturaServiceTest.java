@@ -1,7 +1,7 @@
 package br.com.vilareal.projudi;
 
 import br.com.vilareal.projudi.application.ProjudiInicialAssinaturaService;
-import br.com.vilareal.shared.exception.BusinessRuleException;
+import br.com.vilareal.common.exception.BusinessRuleException;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
