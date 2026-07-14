@@ -5,17 +5,18 @@ import {
   baixarP7sAssinadoInicial,
   cancelarLoteAssinaturaInicial,
   consultarLoteAssinaturaInicial,
+  excluirArquivoFilaInicial,
+  excluirPeticaoFilaInicial,
   listarArquivosAssinadosInicial,
   reliberarLoteAssinaturaInicial,
 } from '../../api/iniciaisProjudiApi.js';
-import { excluirArquivo, excluirPeticao, listarPorProcesso } from '../../api/peticoesProjudiApi.js';
+import { listarPorProcesso } from '../../api/peticoesProjudiApi.js';
 import { chavePeticaoInicialDistribuicao } from '../../domain/peticaoInicialProjudi.js';
 import { mensagemErroAmigavel } from '../../utils/mensagemErroAmigavel.js';
 import { processosBtnPrimary } from '../processos/ProcessosAdminLayout.jsx';
 import {
   PeticaoArquivoLinhaExcluir,
-  podeExcluirArquivoPeticao,
-  podeExcluirPeticao,
+  podeExcluirPeticaoFilaInicial,
 } from './PeticaoArquivosTabela.jsx';
 
 const POLL_MS = 2500;
@@ -72,18 +73,6 @@ export function AssinaturaAutomaticaInicialPanel({
     () => chavePeticaoInicialDistribuicao(codigoCliente, numeroInterno),
     [codigoCliente, numeroInterno],
   );
-
-  const arquivosExcluiveisFila = useMemo(() => {
-    const out = [];
-    for (const p of filaPeticoes) {
-      for (const a of p.arquivos || []) {
-        if (podeExcluirArquivoPeticao(p, a)) {
-          out.push({ peticao: p, arquivo: a });
-        }
-      }
-    }
-    return out;
-  }, [filaPeticoes]);
 
   const pararPoll = () => {
     if (pollRef.current) {
@@ -325,7 +314,7 @@ export function AssinaturaAutomaticaInicialPanel({
     }
     setOperacaoFila(`excluir-arq-${peticaoId}-${arquivoId}`);
     try {
-      await excluirArquivo(peticaoId, arquivoId);
+      await excluirArquivoFilaInicial({ peticaoId, arquivoId, codigoCliente, numeroInterno });
       onToast?.(`Arquivo «${nomeArquivo}» removido da fila.`);
       await carregarFila();
     } catch (e) {
@@ -335,29 +324,52 @@ export function AssinaturaAutomaticaInicialPanel({
     }
   };
 
-  const excluirTodosDaFila = async () => {
-    if (arquivosExcluiveisFila.length === 0) return;
+  const onExcluirPeticaoFila = async (peticao) => {
+    const qtd = (peticao?.arquivos || []).length;
     if (
       !window.confirm(
-        `Excluir ${arquivosExcluiveisFila.length} arquivo(s) da fila PROJUDI? Depois você poderá assinar novamente.`,
+        `Excluir a petição #${peticao.id} inteira (${qtd} arquivo(s))? Libera nova assinatura automática.`,
+      )
+    ) {
+      return;
+    }
+    setOperacaoFila(`excluir-pet-${peticao.id}`);
+    try {
+      await excluirPeticaoFilaInicial({
+        peticaoId: peticao.id,
+        codigoCliente,
+        numeroInterno,
+      });
+      onToast?.(`Petição #${peticao.id} removida da fila.`);
+      await carregarFila();
+    } catch (e) {
+      setErro(mensagemErroAmigavel(e, 'excluir a petição da fila'));
+    } finally {
+      setOperacaoFila(null);
+    }
+  };
+
+  const excluirTodosDaFila = async () => {
+    const peticoesExcluiveis = filaPeticoes.filter((p) => podeExcluirPeticaoFilaInicial(p));
+    if (peticoesExcluiveis.length === 0) return;
+    const totalArquivos = peticoesExcluiveis.reduce((n, p) => n + (p.arquivos || []).length, 0);
+    if (
+      !window.confirm(
+        `Excluir ${peticoesExcluiveis.length} petição(ões) (${totalArquivos} arquivo(s)) da fila PROJUDI? Depois você poderá assinar novamente.`,
       )
     ) {
       return;
     }
     setOperacaoFila('excluir-todos');
     try {
-      for (const p of filaPeticoes) {
-        if (podeExcluirPeticao(p)) {
-          await excluirPeticao(p.id);
-          continue;
-        }
-        for (const a of p.arquivos || []) {
-          if (podeExcluirArquivoPeticao(p, a)) {
-            await excluirArquivo(p.id, a.id);
-          }
-        }
+      for (const p of peticoesExcluiveis) {
+        await excluirPeticaoFilaInicial({
+          peticaoId: p.id,
+          codigoCliente,
+          numeroInterno,
+        });
       }
-      onToast?.('Arquivos removidos da fila PROJUDI.');
+      onToast?.('Fila PROJUDI limpa para este processo.');
       await carregarFila();
     } catch (e) {
       setErro(mensagemErroAmigavel(e, 'excluir os arquivos da fila'));
@@ -569,9 +581,32 @@ export function AssinaturaAutomaticaInicialPanel({
                     <ul className="rounded border border-amber-200 bg-white divide-y divide-amber-100">
                       {filaPeticoes.map((p) => (
                         <li key={p.id} className="px-2 py-2 space-y-1">
-                          <div className="text-xs font-medium text-slate-800">
-                            Petição #{p.id}
-                            <span className="ml-2 font-normal text-slate-500">({p.status})</span>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="text-xs font-medium text-slate-800 min-w-0">
+                              Petição #{p.id}
+                              <span className="ml-2 font-normal text-slate-500">({p.status})</span>
+                              {p.status === 'PROTOCOLADA' ? (
+                                <p className="mt-0.5 text-[11px] font-normal text-amber-900">
+                                  Protocolada pelo fluxo errado — pode excluir para assinar de novo.
+                                </p>
+                              ) : null}
+                            </div>
+                            {podeExcluirPeticaoFilaInicial(p) ? (
+                              <button
+                                type="button"
+                                className="shrink-0 inline-flex items-center gap-1 rounded border border-rose-300 bg-white px-2 py-0.5 text-[11px] font-medium text-rose-800 hover:bg-rose-50 disabled:opacity-50"
+                                disabled={!!operacaoFila}
+                                onClick={() => void onExcluirPeticaoFila(p)}
+                                title="Excluir petição inteira da fila"
+                              >
+                                {operacaoFila === `excluir-pet-${p.id}` ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" aria-hidden />
+                                ) : (
+                                  <Trash2 className="w-3 h-3" aria-hidden />
+                                )}
+                                Excluir petição
+                              </button>
+                            ) : null}
                           </div>
                           {(p.arquivos || []).map((a) => (
                             <PeticaoArquivoLinhaExcluir
@@ -583,16 +618,11 @@ export function AssinaturaAutomaticaInicialPanel({
                               onExcluir={onExcluirArquivoFila}
                             />
                           ))}
-                          {!podeExcluirPeticao(p) && p.status === 'PROTOCOLADA' ? (
-                            <p className="text-[11px] text-rose-800">
-                              Petição já protocolada — não pode ser excluída da fila.
-                            </p>
-                          ) : null}
                         </li>
                       ))}
                     </ul>
                   )}
-                  {arquivosExcluiveisFila.length > 0 ? (
+                  {filaPeticoes.some((p) => podeExcluirPeticaoFilaInicial(p)) ? (
                     <button
                       type="button"
                       className="inline-flex items-center gap-1.5 rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-xs font-medium text-rose-800 hover:bg-rose-50 disabled:opacity-50"
@@ -604,7 +634,7 @@ export function AssinaturaAutomaticaInicialPanel({
                       ) : (
                         <Trash2 className="w-3.5 h-3.5" aria-hidden />
                       )}
-                      Excluir todos ({arquivosExcluiveisFila.length})
+                      Excluir todas as petições da fila
                     </button>
                   ) : null}
                 </div>

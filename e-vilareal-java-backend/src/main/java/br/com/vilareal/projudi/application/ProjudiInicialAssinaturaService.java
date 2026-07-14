@@ -37,16 +37,19 @@ public class ProjudiInicialAssinaturaService {
     private final DiagnosticoAssinaturaAutomaticaService assinaturaAutomaticaService;
     private final ProjudiPeticaoRepository peticaoRepository;
     private final ProjudiPeticaoArquivoRepository arquivoRepository;
+    private final ProjudiPeticaoRegistroService peticaoRegistroService;
     private final Path storeDir;
 
     public ProjudiInicialAssinaturaService(
             DiagnosticoAssinaturaAutomaticaService assinaturaAutomaticaService,
             ProjudiPeticaoRepository peticaoRepository,
             ProjudiPeticaoArquivoRepository arquivoRepository,
+            ProjudiPeticaoRegistroService peticaoRegistroService,
             @Value("${projudi.peticao.store-dir:/Users/itamar/projudi-peticoes}") String storeDirConfig) {
         this.assinaturaAutomaticaService = assinaturaAutomaticaService;
         this.peticaoRepository = peticaoRepository;
         this.arquivoRepository = arquivoRepository;
+        this.peticaoRegistroService = peticaoRegistroService;
         this.storeDir = Path.of(storeDirConfig.trim());
     }
 
@@ -122,6 +125,33 @@ public class ProjudiInicialAssinaturaService {
             throw e;
         } catch (Exception e) {
             throw new BusinessRuleException("Falha ao ler .p7s: " + e.getMessage());
+        }
+    }
+
+    @Transactional
+    public void excluirPeticaoFila(Long peticaoId, String codigoCliente, Integer numeroInterno) {
+        validarProcesso(codigoCliente, numeroInterno);
+        exigirPeticaoPertenceInicial(peticaoId, codigoCliente, numeroInterno);
+        peticaoRegistroService.excluirPeticaoInicialDistribuicao(peticaoId);
+    }
+
+    @Transactional
+    public void excluirArquivoFila(Long peticaoId, Long arquivoId, String codigoCliente, Integer numeroInterno) {
+        validarProcesso(codigoCliente, numeroInterno);
+        exigirPeticaoPertenceInicial(peticaoId, codigoCliente, numeroInterno);
+        peticaoRegistroService.excluirArquivoInicialDistribuicao(peticaoId, arquivoId);
+    }
+
+    private void exigirPeticaoPertenceInicial(Long peticaoId, String codigoCliente, Integer numeroInterno) {
+        String chave = chaveNumeroProcessoInicial(codigoCliente, numeroInterno);
+        ProjudiPeticaoEntity peticao = peticaoRepository
+                .findById(peticaoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Petição não encontrada: " + peticaoId));
+        if (!chave.equals(peticao.getNumeroProcesso())) {
+            throw new BusinessRuleException("Petição #" + peticaoId + " não pertence à inicial deste processo.");
+        }
+        if (!ehChaveInicialDistribuicao(peticao.getNumeroProcesso())) {
+            throw new BusinessRuleException("Petição #" + peticaoId + " não é de distribuição de inicial.");
         }
     }
 

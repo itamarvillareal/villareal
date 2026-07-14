@@ -1,4 +1,5 @@
 import { FileText, Loader2, Trash2 } from 'lucide-react';
+import { isChavePeticaoInicialDistribuicao } from '../../domain/peticaoInicialProjudi.js';
 
 const TIPOS_ARQUIVO = [
   { id: 16, label: 'Petição' },
@@ -23,9 +24,16 @@ function statusPeticaoExcluivel(status) {
 }
 
 export function podeExcluirArquivoPeticao(peticao, arquivo) {
-  if (!statusPeticaoExcluivel(peticao?.status)) return false;
+  if (!statusPeticaoExcluivel(peticao?.status) && !isChavePeticaoInicialDistribuicao(peticao?.numeroProcesso)) {
+    return false;
+  }
   if (arquivo?.id == null) return false;
+  if (isChavePeticaoInicialDistribuicao(peticao?.numeroProcesso)) return true;
   return arquivo.status === 'PENDENTE_ASSINATURA' || arquivo.status === 'ASSINADO';
+}
+
+export function podeExcluirPeticaoFilaInicial(peticao) {
+  return isChavePeticaoInicialDistribuicao(peticao?.numeroProcesso) && peticao?.id != null;
 }
 
 function podeExcluirArquivo(peticao, arquivo) {
@@ -33,6 +41,7 @@ function podeExcluirArquivo(peticao, arquivo) {
 }
 
 export function podeExcluirPeticao(peticao) {
+  if (podeExcluirPeticaoFilaInicial(peticao)) return (peticao?.arquivos || []).length > 0;
   if (!statusPeticaoExcluivel(peticao?.status)) return false;
   const arquivos = peticao?.arquivos || [];
   return arquivos.length > 0 && arquivos.every((a) => podeExcluirArquivoPeticao(peticao, a));

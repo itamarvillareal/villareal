@@ -334,10 +334,28 @@ public class ProjudiPeticaoRegistroService {
 
     @Transactional
     public void excluirPeticao(Long peticaoId) {
+        excluirPeticao(peticaoId, false);
+    }
+
+    /** Exclusão de petição {@code INICIAL-…} (qualquer status, inclusive PROTOCOLADA). */
+    @Transactional
+    public void excluirPeticaoInicialDistribuicao(Long peticaoId) {
         ProjudiPeticaoEntity peticao = peticaoRepository
                 .findByIdWithArquivos(peticaoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Petição PROJUDI não encontrada: " + peticaoId));
-        validarPeticaoExcluivel(peticao);
+        if (!ProjudiInicialAssinaturaService.ehChaveInicialDistribuicao(peticao.getNumeroProcesso())) {
+            throw new IllegalArgumentException(
+                    "Exclusão forçada só é permitida para petições INICIAL-* de distribuição de inicial.");
+        }
+        excluirPeticao(peticaoId, true);
+    }
+
+    @Transactional
+    public void excluirPeticao(Long peticaoId, boolean permitirInicialProtocolada) {
+        ProjudiPeticaoEntity peticao = peticaoRepository
+                .findByIdWithArquivos(peticaoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Petição PROJUDI não encontrada: " + peticaoId));
+        validarPeticaoExcluivel(peticao, permitirInicialProtocolada);
         for (ProjudiPeticaoArquivoEntity arquivo : List.copyOf(peticao.getArquivos())) {
             removerArquivoPersistido(arquivo);
         }
@@ -347,17 +365,35 @@ public class ProjudiPeticaoRegistroService {
 
     @Transactional
     public void excluirArquivo(Long peticaoId, Long arquivoId) {
+        excluirArquivo(peticaoId, arquivoId, false);
+    }
+
+    /** Exclusão de arquivo em petição {@code INICIAL-…} (qualquer status da petição/arquivo). */
+    @Transactional
+    public void excluirArquivoInicialDistribuicao(Long peticaoId, Long arquivoId) {
         ProjudiPeticaoEntity peticao = peticaoRepository
                 .findByIdWithArquivos(peticaoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Petição PROJUDI não encontrada: " + peticaoId));
-        validarPeticaoExcluivel(peticao);
+        if (!ProjudiInicialAssinaturaService.ehChaveInicialDistribuicao(peticao.getNumeroProcesso())) {
+            throw new IllegalArgumentException(
+                    "Exclusão forçada só é permitida para petições INICIAL-* de distribuição de inicial.");
+        }
+        excluirArquivo(peticaoId, arquivoId, true);
+    }
+
+    @Transactional
+    public void excluirArquivo(Long peticaoId, Long arquivoId, boolean permitirInicialProtocolada) {
+        ProjudiPeticaoEntity peticao = peticaoRepository
+                .findByIdWithArquivos(peticaoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Petição PROJUDI não encontrada: " + peticaoId));
+        validarPeticaoExcluivel(peticao, permitirInicialProtocolada);
 
         ProjudiPeticaoArquivoEntity arquivo = peticao.getArquivos().stream()
                 .filter(a -> arquivoId.equals(a.getId()))
                 .findFirst()
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Arquivo da petição não encontrado: peticaoId=" + peticaoId + ", arquivoId=" + arquivoId));
-        validarArquivoExclusivel(arquivo);
+        validarArquivoExclusivel(arquivo, permitirInicialProtocolada);
         removerArquivoPersistido(arquivo);
         peticao.getArquivos().remove(arquivo);
 
@@ -382,6 +418,14 @@ public class ProjudiPeticaoRegistroService {
      * (PROTOCOLANDO) ou já protocolada (PROTOCOLADA).
      */
     private static void validarPeticaoExcluivel(ProjudiPeticaoEntity peticao) {
+        validarPeticaoExcluivel(peticao, false);
+    }
+
+    private static void validarPeticaoExcluivel(ProjudiPeticaoEntity peticao, boolean permitirInicialProtocolada) {
+        if (permitirInicialProtocolada
+                && ProjudiInicialAssinaturaService.ehChaveInicialDistribuicao(peticao.getNumeroProcesso())) {
+            return;
+        }
         String status = peticao.getStatus();
         if (STATUS_PETICAO_PROTOCOLANDO.equals(status) || STATUS_PETICAO_PROTOCOLADA.equals(status)) {
             throw new IllegalArgumentException(
@@ -394,6 +438,13 @@ public class ProjudiPeticaoRegistroService {
     }
 
     private static void validarArquivoExclusivel(ProjudiPeticaoArquivoEntity arquivo) {
+        validarArquivoExclusivel(arquivo, false);
+    }
+
+    private static void validarArquivoExclusivel(ProjudiPeticaoArquivoEntity arquivo, boolean permitirInicialProtocolada) {
+        if (permitirInicialProtocolada) {
+            return;
+        }
         String status = arquivo.getStatus();
         if (!STATUS_PENDENTE_ASSINATURA.equals(status) && !STATUS_ARQUIVO_ASSINADO.equals(status)) {
             throw new IllegalArgumentException(

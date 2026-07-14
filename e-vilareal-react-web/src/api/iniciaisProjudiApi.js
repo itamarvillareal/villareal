@@ -260,3 +260,19 @@ export async function baixarP7sAssinadoInicial({ arquivoId, codigoCliente, numer
   );
   return blob;
 }
+
+/** @param {{ peticaoId: number|string, codigoCliente: string, numeroInterno: number|string }} params */
+export async function excluirPeticaoFilaInicial({ peticaoId, codigoCliente, numeroInterno }) {
+  return request(`/api/projudi/iniciais/fila-peticao/${peticaoId}`, {
+    method: 'DELETE',
+    query: { codigoCliente, numeroInterno },
+  });
+}
+
+/** @param {{ peticaoId: number|string, arquivoId: number|string, codigoCliente: string, numeroInterno: number|string }} params */
+export async function excluirArquivoFilaInicial({ peticaoId, arquivoId, codigoCliente, numeroInterno }) {
+  return request(`/api/projudi/iniciais/fila-peticao/${peticaoId}/arquivos/${arquivoId}`, {
+    method: 'DELETE',
+    query: { codigoCliente, numeroInterno },
+  });
+}
