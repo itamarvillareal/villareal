@@ -33,3 +33,12 @@ export function rotuloProcessoInternoInicial(numeroProcesso) {
 
 export const MSG_INICIAL_USE_DISTRIBUIR =
   'Anexos de distribuição de inicial não são protocolados aqui. Use Processos → Distribuir Inicial PROJUDI.';
+
+/** @param {string|number|null|undefined} codigoCliente @param {number|string|null|undefined} numeroInterno */
+export function chavePeticaoInicialDistribuicao(codigoCliente, numeroInterno) {
+  const codRaw = String(codigoCliente ?? '').replace(/\D/g, '');
+  const codNum = Number.parseInt(codRaw, 10);
+  const num = Number(numeroInterno);
+  if (!Number.isFinite(codNum) || !Number.isFinite(num) || num < 1) return '';
+  return `${PREFIXO_CHAVE_INICIAL}${String(codNum).padStart(8, '0')}-${num}`;
+}

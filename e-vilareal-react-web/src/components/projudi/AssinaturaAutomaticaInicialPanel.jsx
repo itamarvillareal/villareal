@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Loader2, PenLine, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Loader2, PenLine, RefreshCw, Trash2, X } from 'lucide-react';
 import {
   assinarAutomaticoInicial,
   baixarP7sAssinadoInicial,
@@ -8,12 +8,23 @@ import {
   listarArquivosAssinadosInicial,
   reliberarLoteAssinaturaInicial,
 } from '../../api/iniciaisProjudiApi.js';
+import { excluirArquivo, excluirPeticao, listarPorProcesso } from '../../api/peticoesProjudiApi.js';
+import { chavePeticaoInicialDistribuicao } from '../../domain/peticaoInicialProjudi.js';
 import { mensagemErroAmigavel } from '../../utils/mensagemErroAmigavel.js';
 import { processosBtnPrimary } from '../processos/ProcessosAdminLayout.jsx';
+import {
+  PeticaoArquivoLinhaExcluir,
+  podeExcluirArquivoPeticao,
+  podeExcluirPeticao,
+} from './PeticaoArquivosTabela.jsx';
 
 const POLL_MS = 2500;
 const MSG_TOKEN_OCUPADO =
   'Token em uso por outro programa. Feche o sai.jar e tente novamente.';
+
+function erroFilaProjudiBloqueada(msg) {
+  return String(msg ?? '').includes('já constam na fila PROJUDI');
+}
 
 function nomeArquivoP7s(nomeOriginal, nomeP7s) {
   const base = String(nomeOriginal ?? '').trim();
@@ -52,7 +63,27 @@ export function AssinaturaAutomaticaInicialPanel({
   const [peticaoCount, setPeticaoCount] = useState(0);
   const [cancelando, setCancelando] = useState(false);
   const [reliberando, setReliberando] = useState(false);
+  const [filaPeticoes, setFilaPeticoes] = useState([]);
+  const [carregandoFila, setCarregandoFila] = useState(false);
+  const [operacaoFila, setOperacaoFila] = useState(null);
   const pollRef = useRef(null);
+
+  const chaveInicial = useMemo(
+    () => chavePeticaoInicialDistribuicao(codigoCliente, numeroInterno),
+    [codigoCliente, numeroInterno],
+  );
+
+  const arquivosExcluiveisFila = useMemo(() => {
+    const out = [];
+    for (const p of filaPeticoes) {
+      for (const a of p.arquivos || []) {
+        if (podeExcluirArquivoPeticao(p, a)) {
+          out.push({ peticao: p, arquivo: a });
+        }
+      }
+    }
+    return out;
+  }, [filaPeticoes]);
 
   const pararPoll = () => {
     if (pollRef.current) {
@@ -62,6 +93,34 @@ export function AssinaturaAutomaticaInicialPanel({
   };
 
   useEffect(() => () => pararPoll(), []);
+
+  const carregarFila = useCallback(async () => {
+    if (!chaveInicial) {
+      setFilaPeticoes([]);
+      return;
+    }
+    setCarregandoFila(true);
+    try {
+      const lista = await listarPorProcesso(chaveInicial);
+      setFilaPeticoes(Array.isArray(lista) ? lista : []);
+    } catch (e) {
+      onErro?.(mensagemErroAmigavel(e, 'carregar a fila PROJUDI'));
+      setFilaPeticoes([]);
+    } finally {
+      setCarregandoFila(false);
+    }
+  }, [chaveInicial, onErro]);
+
+  useEffect(() => {
+    if (modalAberto && fase === 'erro' && erroFilaProjudiBloqueada(erro)) {
+      void carregarFila();
+      return;
+    }
+    if (!modalAberto) {
+      setFilaPeticoes([]);
+      setOperacaoFila(null);
+    }
+  }, [modalAberto, fase, erro, carregarFila]);
 
   const fecharModal = () => {
     if (ativo && fase !== 'concluido' && fase !== 'erro' && fase !== 'cancelado') return;
@@ -256,6 +315,93 @@ export function AssinaturaAutomaticaInicialPanel({
     }
   };
 
+  const onExcluirArquivoFila = async (peticaoId, arquivoId, nomeArquivo) => {
+    if (
+      !window.confirm(
+        `Excluir «${nomeArquivo}» da fila PROJUDI? Será possível assinar novamente após limpar os bloqueios.`,
+      )
+    ) {
+      return;
+    }
+    setOperacaoFila(`excluir-arq-${peticaoId}-${arquivoId}`);
+    try {
+      await excluirArquivo(peticaoId, arquivoId);
+      onToast?.(`Arquivo «${nomeArquivo}» removido da fila.`);
+      await carregarFila();
+    } catch (e) {
+      setErro(mensagemErroAmigavel(e, 'excluir o arquivo da fila'));
+    } finally {
+      setOperacaoFila(null);
+    }
+  };
+
+  const excluirTodosDaFila = async () => {
+    if (arquivosExcluiveisFila.length === 0) return;
+    if (
+      !window.confirm(
+        `Excluir ${arquivosExcluiveisFila.length} arquivo(s) da fila PROJUDI? Depois você poderá assinar novamente.`,
+      )
+    ) {
+      return;
+    }
+    setOperacaoFila('excluir-todos');
+    try {
+      for (const p of filaPeticoes) {
+        if (podeExcluirPeticao(p)) {
+          await excluirPeticao(p.id);
+          continue;
+        }
+        for (const a of p.arquivos || []) {
+          if (podeExcluirArquivoPeticao(p, a)) {
+            await excluirArquivo(p.id, a.id);
+          }
+        }
+      }
+      onToast?.('Arquivos removidos da fila PROJUDI.');
+      await carregarFila();
+    } catch (e) {
+      setErro(mensagemErroAmigavel(e, 'excluir os arquivos da fila'));
+    } finally {
+      setOperacaoFila(null);
+    }
+  };
+
+  const tentarAssinarNovamente = async () => {
+    setErro('');
+    setErroCodigo('');
+    setFase('');
+    setFilaPeticoes([]);
+    setAtivo(true);
+    pararPoll();
+    try {
+      const resp = await assinarAutomaticoInicial({ credencialId, codigoCliente, numeroInterno });
+      const id = resp?.loteId;
+      if (id == null) throw new Error('Resposta sem loteId.');
+      setLoteId(id);
+      if (Array.isArray(resp?.peticaoIds) && resp.peticaoIds.length > 0) {
+        setPeticaoCount(resp.peticaoIds.length);
+      }
+      const status = await consultarLoteAssinaturaInicial(id);
+      await aplicarStatusLote(status);
+      if (String(status?.status ?? '').toUpperCase() !== 'CONCLUIDO') {
+        iniciarPoll(id);
+      }
+    } catch (e) {
+      const msg = mensagemErroAmigavel(e, 'iniciar a assinatura automática');
+      if (msg.includes('já constam na fila PROJUDI')) {
+        try {
+          if (await carregarJaAssinadosSeExistirem()) return;
+        } catch {
+          /* segue */
+        }
+        await carregarFila();
+      }
+      setFase('erro');
+      setErro(msg);
+      setAtivo(false);
+    }
+  };
+
   const tentarNovamente = async () => {
     if (loteId == null || reliberando) return;
     setReliberando(true);
@@ -389,12 +535,92 @@ export function AssinaturaAutomaticaInicialPanel({
                     {erroCodigo === 'TOKEN_OCUPADO' ? MSG_TOKEN_OCUPADO : 'Falha na assinatura'}
                   </p>
                   {erroCodigo !== 'TOKEN_OCUPADO' && erro ? (
-                    <p className="text-xs leading-relaxed text-rose-800">{erro}</p>
+                    <p className="text-xs leading-relaxed text-rose-800">
+                      {erroFilaProjudiBloqueada(erro)
+                        ? 'Os PDFs da pasta «Assinar» já estão registrados na fila PROJUDI. Exclua abaixo os que não precisa mais e tente assinar novamente.'
+                        : erro}
+                    </p>
                   ) : null}
                 </div>
               )}
 
+              {fase === 'erro' && erroFilaProjudiBloqueada(erro) ? (
+                <div className="rounded-lg border border-amber-300 bg-amber-50/90 px-3 py-3 space-y-2 max-h-56 overflow-y-auto">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-amber-950">Arquivos na fila PROJUDI</p>
+                    <button
+                      type="button"
+                      className="text-xs text-amber-900 hover:underline disabled:opacity-50 inline-flex items-center gap-1"
+                      disabled={carregandoFila || !!operacaoFila}
+                      onClick={() => void carregarFila()}
+                    >
+                      <RefreshCw className={`w-3 h-3 ${carregandoFila ? 'animate-spin' : ''}`} aria-hidden />
+                      Atualizar
+                    </button>
+                  </div>
+                  {carregandoFila ? (
+                    <div className="flex items-center gap-2 text-xs text-amber-900 py-2">
+                      <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+                      Carregando fila…
+                    </div>
+                  ) : filaPeticoes.length === 0 ? (
+                    <p className="text-xs text-amber-900/80">Nenhuma petição encontrada para este processo.</p>
+                  ) : (
+                    <ul className="rounded border border-amber-200 bg-white divide-y divide-amber-100">
+                      {filaPeticoes.map((p) => (
+                        <li key={p.id} className="px-2 py-2 space-y-1">
+                          <div className="text-xs font-medium text-slate-800">
+                            Petição #{p.id}
+                            <span className="ml-2 font-normal text-slate-500">({p.status})</span>
+                          </div>
+                          {(p.arquivos || []).map((a) => (
+                            <PeticaoArquivoLinhaExcluir
+                              key={a.id ?? a.ordem}
+                              peticao={p}
+                              arquivo={a}
+                              operacao={operacaoFila}
+                              bloqueado={!!operacaoFila && operacaoFila !== `excluir-arq-${p.id}-${a.id}`}
+                              onExcluir={onExcluirArquivoFila}
+                            />
+                          ))}
+                          {!podeExcluirPeticao(p) && p.status === 'PROTOCOLADA' ? (
+                            <p className="text-[11px] text-rose-800">
+                              Petição já protocolada — não pode ser excluída da fila.
+                            </p>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {arquivosExcluiveisFila.length > 0 ? (
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-xs font-medium text-rose-800 hover:bg-rose-50 disabled:opacity-50"
+                      disabled={!!operacaoFila || carregandoFila}
+                      onClick={() => void excluirTodosDaFila()}
+                    >
+                      {operacaoFila === 'excluir-todos' ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
+                      ) : (
+                        <Trash2 className="w-3.5 h-3.5" aria-hidden />
+                      )}
+                      Excluir todos ({arquivosExcluiveisFila.length})
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+
               <div className="flex flex-wrap justify-end gap-2 pt-1">
+                {fase === 'erro' && erroFilaProjudiBloqueada(erro) ? (
+                  <button
+                    type="button"
+                    onClick={() => void tentarAssinarNovamente()}
+                    disabled={!!operacaoFila || carregandoFila || ativo}
+                    className={`${processosBtnPrimary} text-sm px-4 py-2`}
+                  >
+                    Tentar assinar novamente
+                  </button>
+                ) : null}
                 {fase === 'erro' && erroCodigo === 'TOKEN_OCUPADO' ? (
                   <button
                     type="button"

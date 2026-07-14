@@ -32,7 +32,7 @@ function podeExcluirArquivo(peticao, arquivo) {
   return podeExcluirArquivoPeticao(peticao, arquivo);
 }
 
-function podeExcluirPeticao(peticao) {
+export function podeExcluirPeticao(peticao) {
   if (!statusPeticaoExcluivel(peticao?.status)) return false;
   const arquivos = peticao?.arquivos || [];
   return arquivos.length > 0 && arquivos.every((a) => podeExcluirArquivoPeticao(peticao, a));
