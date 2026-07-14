@@ -350,7 +350,7 @@ public class ProjudiPeticaoRegistroService {
         ProjudiPeticaoEntity peticao = peticaoRepository
                 .findByIdWithArquivos(peticaoId)
                 .orElseThrow(() -> new ResourceNotFoundException("Petição PROJUDI não encontrada: " + peticaoId));
-        validarExclusivel(peticao);
+        validarPeticaoExcluivel(peticao);
 
         ProjudiPeticaoArquivoEntity arquivo = peticao.getArquivos().stream()
                 .filter(a -> arquivoId.equals(a.getId()))
@@ -360,6 +360,12 @@ public class ProjudiPeticaoRegistroService {
         validarArquivoExclusivel(arquivo);
         removerArquivoPersistido(arquivo);
         peticao.getArquivos().remove(arquivo);
+
+        if ("ERRO".equals(peticao.getStatus())) {
+            peticao.setStatus(STATUS_PETICAO_ASSINADA);
+            peticao.setProtocoloMensagem(null);
+            peticao.setProtocoloEtapa(null);
+        }
 
         if (peticao.getArquivos().isEmpty()) {
             peticaoRepository.delete(peticao);
@@ -384,18 +390,14 @@ public class ProjudiPeticaoRegistroService {
     }
 
     private static void validarExclusivel(ProjudiPeticaoEntity peticao) {
-        if (!STATUS_PENDENTE_ASSINATURA.equals(peticao.getStatus())) {
-            throw new IllegalArgumentException(
-                    "Só é possível excluir petições com status PENDENTE_ASSINATURA (atual: "
-                            + peticao.getStatus()
-                            + ").");
-        }
+        validarPeticaoExcluivel(peticao);
     }
 
     private static void validarArquivoExclusivel(ProjudiPeticaoArquivoEntity arquivo) {
-        if (!STATUS_PENDENTE_ASSINATURA.equals(arquivo.getStatus())) {
+        String status = arquivo.getStatus();
+        if (!STATUS_PENDENTE_ASSINATURA.equals(status) && !STATUS_ARQUIVO_ASSINADO.equals(status)) {
             throw new IllegalArgumentException(
-                    "Só é possível excluir arquivos ainda não assinados (atual: " + arquivo.getStatus() + ").");
+                    "Só é possível excluir arquivos pendentes ou já assinados (atual: " + status + ").");
         }
     }
 

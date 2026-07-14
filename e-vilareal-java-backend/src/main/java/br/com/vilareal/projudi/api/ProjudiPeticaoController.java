@@ -296,7 +296,7 @@ public class ProjudiPeticaoController {
     }
 
     @DeleteMapping("/{peticaoId}/arquivos/{arquivoId}")
-    @Operation(summary = "Exclui um arquivo ainda não assinado")
+    @Operation(summary = "Exclui um arquivo da petição (pendente ou assinado, enquanto não protocolada)")
     public ResponseEntity<Void> excluirArquivo(@PathVariable Long peticaoId, @PathVariable Long arquivoId) {
         registroService.excluirArquivo(peticaoId, arquivoId);
         return ResponseEntity.noContent().build();

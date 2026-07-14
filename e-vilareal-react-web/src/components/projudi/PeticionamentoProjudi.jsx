@@ -23,6 +23,7 @@ import {
   minDatetimeLocalAgendamento,
   validarAntecedenciaAgendamento,
   enviarAssinados,
+  excluirArquivo,
   excluirPeticao,
   listar,
   listarHistorico,
@@ -41,7 +42,7 @@ import {
   buscarProcessoPorId,
   listarProcessosPorNumeroProcessoDiagnostico,
 } from '../../repositories/processosRepository.js';
-import { labelTipoArquivoPeticao } from './PeticaoArquivosTabela.jsx';
+import { PeticaoArquivoLinhaExcluir } from './PeticaoArquivosTabela.jsx';
 import { PeticaoHistoricoLista } from './PeticaoHistoricoLista.jsx';
 import { PeticaoProtocoloConfirmModal } from './PeticaoProtocoloConfirmModal.jsx';
 import { ProcessosToast, processosBtnPrimary } from '../processos/ProcessosAdminLayout.jsx';
@@ -836,6 +837,27 @@ export function PeticionamentoProjudi() {
     }
   };
 
+  const onExcluirArquivo = async (peticaoId, arquivoId, nomeArquivo) => {
+    if (
+      !window.confirm(
+        `Excluir o arquivo «${nomeArquivo}» da petição #${peticaoId}? Esta ação não pode ser desfeita.`,
+      )
+    ) {
+      return;
+    }
+    setOperacao(`excluir-arq-${peticaoId}-${arquivoId}`);
+    setApiError('');
+    try {
+      await excluirArquivo(peticaoId, arquivoId);
+      setToast(`Arquivo «${nomeArquivo}» excluído.`);
+      await recarregar();
+    } catch (err) {
+      setApiError(err?.message || 'Falha ao excluir arquivo.');
+    } finally {
+      setOperacao(null);
+    }
+  };
+
   const baixarLote = async () => {
     setOperacao('zip');
     try {
@@ -1182,9 +1204,13 @@ export function PeticionamentoProjudi() {
                               #{p.id} · <span className="font-mono text-xs">{p.numeroProcesso}</span>
                             </div>
                             {(p.arquivos || []).slice(0, 3).map((a) => (
-                              <div key={a.id ?? a.ordem} className="text-xs text-slate-600 truncate">
-                                {a.nomeOriginal} ({labelTipoArquivoPeticao(a.idArquivoTipo)})
-                              </div>
+                              <PeticaoArquivoLinhaExcluir
+                                key={a.id ?? a.ordem}
+                                peticao={p}
+                                arquivo={a}
+                                operacao={operacao}
+                                onExcluir={onExcluirArquivo}
+                              />
                             ))}
                             {(p.arquivos || []).length > 3 ? (
                               <div className="text-xs text-slate-500">
@@ -1247,9 +1273,14 @@ export function PeticionamentoProjudi() {
                                 );
                               })()}
                               {(p.arquivos || []).map((a) => (
-                                <div key={a.id ?? a.ordem} className="text-xs text-slate-600 truncate">
-                                  {a.nomeOriginal} ({labelTipoArquivoPeticao(a.idArquivoTipo)})
-                                </div>
+                                <PeticaoArquivoLinhaExcluir
+                                  key={a.id ?? a.ordem}
+                                  peticao={p}
+                                  arquivo={a}
+                                  operacao={operacao}
+                                  bloqueado={operacao === 'protocolo'}
+                                  onExcluir={onExcluirArquivo}
+                                />
                               ))}
                               <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-violet-900">
                                 <Clock className="w-3.5 h-3.5 shrink-0" aria-hidden />
@@ -1378,9 +1409,14 @@ export function PeticionamentoProjudi() {
                                 );
                               })()}
                               {(p.arquivos || []).map((a) => (
-                                <div key={a.id ?? a.ordem} className="text-xs text-slate-600 truncate">
-                                  {a.nomeOriginal} ({labelTipoArquivoPeticao(a.idArquivoTipo)})
-                                </div>
+                                <PeticaoArquivoLinhaExcluir
+                                  key={a.id ?? a.ordem}
+                                  peticao={p}
+                                  arquivo={a}
+                                  operacao={operacao}
+                                  bloqueado={operacao === 'protocolo'}
+                                  onExcluir={onExcluirArquivo}
+                                />
                               ))}
                               {p.protocoloMensagem ? (
                                 <p className="text-xs text-rose-800 bg-rose-50 border border-rose-200 rounded px-2 py-1 whitespace-pre-wrap break-words">
