@@ -49,7 +49,7 @@ public class ProjudiInicialAssinaturaService {
         this.storeDir = Path.of(storeDirConfig.trim());
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public AssinarAutomaticoResponse assinarAutomatico(
             Long credencialId, String codigoCliente, Integer numeroInterno) {
         validarProcesso(codigoCliente, numeroInterno);
