@@ -23,6 +23,7 @@ import {
   validarProntidaoInicial,
 } from '../../api/iniciaisProjudiApi.js';
 import { listarCredenciais } from '../../api/peticoesProjudiApi.js';
+import { AssinaturaAutomaticaInicialPanel } from './AssinaturaAutomaticaInicialPanel.jsx';
 import { isArquivoP7s } from '../../domain/peticaoArquivo.js';
 import { SeletorPessoaParteImovel } from '../imoveis/SeletorPessoaParteImovel.jsx';
 import { buildLinkDestinoProcesso } from '../../domain/camposProcessoCliente.js';
@@ -933,7 +934,23 @@ export function DistribuicaoInicialProjudi() {
 
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
             <h2 className="text-sm font-semibold text-slate-800">Anexos (.p7s)</h2>
+            <p className="text-xs text-slate-600">
+              Coloque os PDFs na subpasta <strong>«Assinar»</strong> do processo no Google Drive e use
+              assinatura automática, ou envie os <span className="font-mono">.p7s</span> já assinados
+              manualmente.
+            </p>
             <div className="flex flex-wrap items-center gap-2">
+              {dadosProcesso?.codigoCliente && dadosProcesso?.numeroInterno ? (
+                <AssinaturaAutomaticaInicialPanel
+                  credencialId={credencialId}
+                  codigoCliente={dadosProcesso.codigoCliente}
+                  numeroInterno={dadosProcesso.numeroInterno}
+                  disabled={!dadosProcesso || operacao != null}
+                  onArquivosAssinados={(linhas) => setLinhasP7s(linhas)}
+                  onToast={setToast}
+                  onErro={setApiError}
+                />
+              ) : null}
               <input
                 id="inicial-p7s"
                 type="file"

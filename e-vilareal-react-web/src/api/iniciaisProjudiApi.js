@@ -1,4 +1,4 @@
-import { postFormData, request } from './httpClient.js';
+import { postFormData, request, requestBlob } from './httpClient.js';
 
 /**
  * @typedef {'RESOLVIDO' | 'PENDENTE'} NivelResolucao
@@ -198,4 +198,65 @@ export async function prepararInicial(formData) {
 /** @param {FormData} formData */
 export async function distribuirInicial(formData) {
   return postFormData('/api/projudi/iniciais/distribuir', formData);
+}
+
+/**
+ * @typedef {Object} AssinarAutomaticoInicialResponse
+ * @property {number} loteId
+ * @property {number[]} peticaoIds
+ * @property {number} totalArquivos
+ * @property {boolean} [loteReutilizado]
+ */
+
+/**
+ * @typedef {Object} InicialArquivoAssinado
+ * @property {number} arquivoId
+ * @property {number} peticaoId
+ * @property {number} ordem
+ * @property {number} idArquivoTipo
+ * @property {string} nomeOriginal
+ * @property {string} nomeP7s
+ */
+
+/** @param {{ credencialId: number|string, codigoCliente: string, numeroInterno: number|string }} params */
+export async function assinarAutomaticoInicial({ credencialId, codigoCliente, numeroInterno }) {
+  return request('/api/projudi/iniciais/assinar-automatico', {
+    method: 'POST',
+    query: { credencialId, codigoCliente, numeroInterno },
+  });
+}
+
+/** @param {number|string} loteId */
+export async function consultarLoteAssinaturaInicial(loteId) {
+  return request(`/api/projudi/iniciais/lote-assinatura/${loteId}`);
+}
+
+/** @param {number|string} loteId */
+export async function reliberarLoteAssinaturaInicial(loteId) {
+  return request(`/api/projudi/iniciais/lote-assinatura/${loteId}/reliberar`, { method: 'POST' });
+}
+
+/** @param {number|string} loteId */
+export async function cancelarLoteAssinaturaInicial(loteId) {
+  return request(`/api/projudi/iniciais/lote-assinatura/${loteId}/cancelar`, { method: 'POST' });
+}
+
+/** @param {{ codigoCliente: string, numeroInterno: number|string }} params @returns {Promise<InicialArquivoAssinado[]>} */
+export async function listarArquivosAssinadosInicial({ codigoCliente, numeroInterno }) {
+  return request('/api/projudi/iniciais/arquivos-assinados', {
+    query: { codigoCliente, numeroInterno },
+  });
+}
+
+/** @param {{ arquivoId: number, codigoCliente: string, numeroInterno: number|string, nomeFallback?: string }} params */
+export async function baixarP7sAssinadoInicial({ arquivoId, codigoCliente, numeroInterno, nomeFallback }) {
+  const { blob, filename } = await requestBlob(
+    `/api/projudi/iniciais/arquivos-assinados/${arquivoId}/p7s`,
+    {
+      query: { codigoCliente, numeroInterno },
+      accept: 'application/octet-stream',
+      fallbackFilename: nomeFallback || 'documento.p7s',
+    },
+  );
+  return blob;
 }

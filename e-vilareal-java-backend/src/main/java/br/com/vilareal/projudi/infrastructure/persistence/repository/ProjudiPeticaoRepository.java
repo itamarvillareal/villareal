@@ -34,6 +34,14 @@ public interface ProjudiPeticaoRepository extends JpaRepository<ProjudiPeticaoEn
     @Query("SELECT p FROM ProjudiPeticaoEntity p LEFT JOIN FETCH p.arquivos WHERE p.id = :id")
     Optional<ProjudiPeticaoEntity> findByIdWithArquivos(@Param("id") Long id);
 
+    @Query("""
+            SELECT DISTINCT p FROM ProjudiPeticaoEntity p
+            LEFT JOIN FETCH p.arquivos
+            WHERE p.numeroProcesso = :numeroProcesso
+            ORDER BY p.criadoEm DESC
+            """)
+    List<ProjudiPeticaoEntity> findByNumeroProcessoWithArquivos(@Param("numeroProcesso") String numeroProcesso);
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             UPDATE ProjudiPeticaoEntity p

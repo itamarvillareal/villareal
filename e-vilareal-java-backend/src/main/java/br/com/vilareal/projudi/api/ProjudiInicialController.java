@@ -1,7 +1,12 @@
 package br.com.vilareal.projudi.api;
 
-import br.com.vilareal.projudi.ProjudiAssuntoCatalogoService;
+import br.com.vilareal.processo.api.dto.AssinarAutomaticoResponse;
+import br.com.vilareal.processo.api.dto.LoteAssinaturaStatusResponse;
+import br.com.vilareal.processo.application.DiagnosticoAssinaturaAutomaticaService;
+import br.com.vilareal.projudi.api.dto.InicialArquivoAssinadoResponse;
+import br.com.vilareal.projudi.application.ProjudiInicialAssinaturaService;
 import br.com.vilareal.projudi.ProjudiClasseProcessoInicial;
+import br.com.vilareal.projudi.ProjudiAssuntoCatalogoService;
 import br.com.vilareal.projudi.ProjudiAssuntoCatalogoService.ClasseItem;
 import br.com.vilareal.projudi.ProjudiAssuntoCatalogoService.ModalidadeSugeridaResponse;
 import br.com.vilareal.projudi.ProjudiDistribuicaoService;
@@ -16,8 +21,11 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -39,14 +47,20 @@ public class ProjudiInicialController {
     private final ProjudiParteResolverService parteResolverService;
     private final ProjudiDistribuicaoService distribuicaoService;
     private final ProjudiAssuntoCatalogoService assuntoCatalogoService;
+    private final ProjudiInicialAssinaturaService inicialAssinaturaService;
+    private final DiagnosticoAssinaturaAutomaticaService assinaturaAutomaticaService;
 
     public ProjudiInicialController(
             ProjudiParteResolverService parteResolverService,
             ProjudiDistribuicaoService distribuicaoService,
-            ProjudiAssuntoCatalogoService assuntoCatalogoService) {
+            ProjudiAssuntoCatalogoService assuntoCatalogoService,
+            ProjudiInicialAssinaturaService inicialAssinaturaService,
+            DiagnosticoAssinaturaAutomaticaService assinaturaAutomaticaService) {
         this.parteResolverService = parteResolverService;
         this.distribuicaoService = distribuicaoService;
         this.assuntoCatalogoService = assuntoCatalogoService;
+        this.inicialAssinaturaService = inicialAssinaturaService;
+        this.assinaturaAutomaticaService = assinaturaAutomaticaService;
     }
 
     @GetMapping("/resolver-parte")
@@ -178,6 +192,63 @@ public class ProjudiInicialController {
                 idsReu,
                 request.arquivos().size());
         return distribuicaoService.distribuirInicial(credencialId, request, confirmar, processoIdOrigem);
+    }
+
+    @PostMapping("/assinar-automatico")
+    @Operation(
+            summary = "Assina automaticamente PDFs da pasta «Assinar» (inicial)",
+            description =
+                    "Enfileira lote PREPARANDO, busca PDFs no Drive da subpasta «Assinar» do processo "
+                            + "e libera para o assinador Windows. Use GET lote-assinatura/{loteId} para polling.")
+    public AssinarAutomaticoResponse assinarAutomatico(
+            @RequestParam Long credencialId,
+            @RequestParam String codigoCliente,
+            @RequestParam Integer numeroInterno) {
+        log.info(
+                "assinar-automatico-inicial credencialId={} processo={}/{}",
+                credencialId,
+                codigoCliente,
+                numeroInterno);
+        return inicialAssinaturaService.assinarAutomatico(credencialId, codigoCliente, numeroInterno);
+    }
+
+    @GetMapping("/lote-assinatura/{loteId}")
+    @Operation(summary = "Status do lote de assinatura automática (inicial)")
+    public LoteAssinaturaStatusResponse statusLoteAssinatura(@PathVariable Long loteId) {
+        return assinaturaAutomaticaService.consultarStatus(loteId);
+    }
+
+    @PostMapping("/lote-assinatura/{loteId}/reliberar")
+    @Operation(summary = "Re-libera lote após TOKEN_OCUPADO (inicial)")
+    public LoteAssinaturaStatusResponse reliberarLoteAssinatura(@PathVariable Long loteId) {
+        return assinaturaAutomaticaService.reliberar(loteId);
+    }
+
+    @PostMapping("/lote-assinatura/{loteId}/cancelar")
+    @Operation(summary = "Cancela preparo assíncrono do lote (inicial)")
+    public LoteAssinaturaStatusResponse cancelarLoteAssinatura(@PathVariable Long loteId) {
+        return assinaturaAutomaticaService.cancelar(loteId);
+    }
+
+    @GetMapping("/arquivos-assinados")
+    @Operation(
+            summary = "Lista .p7s assinados prontos para anexar na inicial",
+            description = "Retorna arquivos da petição INICIAL-{cod}-{proc} com status ASSINADA.")
+    public List<InicialArquivoAssinadoResponse> listarArquivosAssinados(
+            @RequestParam String codigoCliente, @RequestParam Integer numeroInterno) {
+        return inicialAssinaturaService.listarArquivosAssinados(codigoCliente, numeroInterno);
+    }
+
+    @GetMapping(value = "/arquivos-assinados/{arquivoId}/p7s", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
+    @Operation(summary = "Baixa .p7s assinado para anexar na inicial")
+    public ResponseEntity<byte[]> baixarP7sAssinado(
+            @PathVariable Long arquivoId,
+            @RequestParam String codigoCliente,
+            @RequestParam Integer numeroInterno) {
+        byte[] bytes = inicialAssinaturaService.baixarP7s(arquivoId, codigoCliente, numeroInterno);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"documento.p7s\"")
+                .body(bytes);
     }
 
     private InicialRequest montarInicialRequest(
