@@ -75,6 +75,16 @@ export function AssinaturaAutomaticaInicialPanel({
     setPeticaoCount(0);
   };
 
+  const carregarJaAssinadosSeExistirem = async () => {
+    const arquivos = await listarArquivosAssinadosInicial({ codigoCliente, numeroInterno });
+    if (!Array.isArray(arquivos) || arquivos.length === 0) return false;
+    await carregarP7sAssinados();
+    setFase('concluido');
+    setAtivo(false);
+    pararPoll();
+    return true;
+  };
+
   const carregarP7sAssinados = async () => {
     const arquivos = await listarArquivosAssinadosInicial({ codigoCliente, numeroInterno });
     if (!Array.isArray(arquivos) || arquivos.length === 0) {
@@ -126,6 +136,14 @@ export function AssinaturaAutomaticaInicialPanel({
       return;
     }
     if (st === 'ERRO') {
+      const msg = String(status?.mensagemUsuario || status?.erroMensagem || '').trim();
+      if (msg.includes('já constam na fila PROJUDI')) {
+        try {
+          if (await carregarJaAssinadosSeExistirem()) return;
+        } catch {
+          /* exibe erro abaixo se não houver .p7s prontos */
+        }
+      }
       setFase('erro');
       setErroCodigo(String(status?.erroCodigo ?? '').trim());
       setErro(status?.mensagemUsuario || status?.erroMensagem || 'Falha na assinatura automática.');
@@ -166,6 +184,8 @@ export function AssinaturaAutomaticaInicialPanel({
     setAtivo(true);
     pararPoll();
     try {
+      if (await carregarJaAssinadosSeExistirem()) return;
+
       const resp = await assinarAutomaticoInicial({ credencialId, codigoCliente, numeroInterno });
       const id = resp?.loteId;
       if (id == null) throw new Error('Resposta sem loteId.');
@@ -179,10 +199,42 @@ export function AssinaturaAutomaticaInicialPanel({
         iniciarPoll(id);
       }
     } catch (e) {
+      const msg = mensagemErroAmigavel(e, 'iniciar a assinatura automática');
+      if (msg.includes('já constam na fila PROJUDI')) {
+        try {
+          if (await carregarJaAssinadosSeExistirem()) return;
+        } catch {
+          /* segue para erro */
+        }
+      }
       setFase('erro');
-      setErro(mensagemErroAmigavel(e, 'iniciar a assinatura automática'));
+      setErro(msg);
       setAtivo(false);
-      onErro?.(mensagemErroAmigavel(e, 'iniciar a assinatura automática'));
+      onErro?.(msg);
+    }
+  };
+
+  const carregarAssinadosExistentes = async () => {
+    if (disabled || ativo) return;
+    setModalAberto(true);
+    setFase('');
+    setErro('');
+    setErroCodigo('');
+    setAtivo(true);
+    pararPoll();
+    try {
+      const ok = await carregarJaAssinadosSeExistirem();
+      if (!ok) {
+        setFase('erro');
+        setErro(
+          'Nenhum .p7s assinado encontrado para este processo. Use «Assinar automaticamente» para assinar os PDFs da pasta «Assinar».',
+        );
+        setAtivo(false);
+      }
+    } catch (e) {
+      setFase('erro');
+      setErro(mensagemErroAmigavel(e, 'carregar os .p7s já assinados'));
+      setAtivo(false);
     }
   };
 
@@ -229,6 +281,7 @@ export function AssinaturaAutomaticaInicialPanel({
 
   return (
     <>
+      <div className="flex flex-wrap items-center gap-2">
       <button
         type="button"
         className={`${processosBtnPrimary} inline-flex items-center gap-1.5 text-sm`}
@@ -243,6 +296,16 @@ export function AssinaturaAutomaticaInicialPanel({
         )}
         Assinar automaticamente
       </button>
+      <button
+        type="button"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+        disabled={disabled || !processoOk || ativo}
+        onClick={() => void carregarAssinadosExistentes()}
+        title="Carrega .p7s já assinados deste processo (sem refazer assinatura no token)"
+      >
+        Carregar .p7s já assinados
+      </button>
+      </div>
 
       {modalAberto ? (
         <div className="fixed inset-0 z-[67] flex items-center justify-center bg-black/45 backdrop-blur-[2px] p-4">
