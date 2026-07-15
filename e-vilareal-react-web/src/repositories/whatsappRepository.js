@@ -392,6 +392,33 @@ export async function encaminharMensagemWhatsApp(messageId, { phoneNumbers, capt
 }
 
 /**
+ * Encaminha várias mensagens em sequência (ordem preservada).
+ * @param {Array<number|string>} messageIds
+ * @param {{ phoneNumbers: string[], captionByMessageId?: Record<number, string> }} payload
+ */
+export async function encaminharMensagensWhatsApp(
+  messageIds,
+  { phoneNumbers, captionByMessageId } = {},
+) {
+  const ids = Array.isArray(messageIds)
+    ? messageIds.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+    : [];
+  if (ids.length === 0) throw new Error('Nenhuma mensagem selecionada.');
+
+  const batch = [];
+  for (const id of ids) {
+    try {
+      const caption = captionByMessageId?.[id];
+      const response = await encaminharMensagemWhatsApp(id, { phoneNumbers, caption });
+      batch.push({ messageId: id, response });
+    } catch (err) {
+      batch.push({ messageId: id, error: err?.message || 'Falha ao encaminhar mensagem.' });
+    }
+  }
+  return batch;
+}
+
+/**
  * Apaga mensagem.
  * @param {number|string} messageId
  * @param {{ escopo?: 'inbox' | 'todos' }} [options]

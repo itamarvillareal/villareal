@@ -5,6 +5,9 @@ import { WhatsAppMediaAttachPreview } from './components/WhatsAppMediaAttachPrev
 import { useWhatsAppNotificationContext } from './WhatsAppNotificationProvider.jsx';
 import { ChatBubble } from './components/ChatBubble.jsx';
 import { EncaminharMensagemModal } from './components/EncaminharMensagemModal.jsx';
+import { ForwardSelectionBar } from './components/ForwardSelectionBar.jsx';
+import { useWhatsAppForwardSelection } from './hooks/useWhatsAppForwardSelection.js';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 import { DaySeparator } from './components/DaySeparator.jsx';
 import {
   getWhatsAppMessages,
@@ -169,7 +172,6 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
   const [selectedFile, setSelectedFile] = useState(null);
   const [mediaCaption, setMediaCaption] = useState('');
   const [error, setError] = useState('');
-  const [pendingForwardMessage, setPendingForwardMessage] = useState(null);
   const fileInputRef = useRef(null);
   const bottomRef = useRef(null);
   const phone = conversation.phoneNumber;
@@ -194,15 +196,30 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
     [retryOptimisticMedia],
   );
 
-  const requestForwardMessage = useCallback((message) => {
-    if (!message?.id || message.id <= 0) return;
-    setPendingForwardMessage(message);
-  }, []);
+  const {
+    forwardSelectActive,
+    forwardSelectedMessages,
+    forwardModalOpen,
+    startForwardSelection,
+    toggleForwardSelection,
+    cancelForwardSelection,
+    openForwardModal,
+    closeForwardModal,
+    finishForwardSuccess,
+    isForwardSelected,
+    forwardSelectionCount,
+  } = useWhatsAppForwardSelection(messages);
+
+  useEffect(() => {
+    cancelForwardSelection();
+  }, [phoneApi, cancelForwardSelection]);
+
+  useCloseOnEscape(forwardSelectActive && !forwardModalOpen, cancelForwardSelection);
 
   const handleForwardSuccess = useCallback(() => {
     setError('');
-    setPendingForwardMessage(null);
-  }, []);
+    finishForwardSuccess();
+  }, [finishForwardSuccess]);
 
   useEffect(() => {
     return () => {
@@ -411,7 +428,10 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
                   message={m}
                   onRetryOutboundMedia={handleRetryOutboundMedia}
                   onLocalPreviewConsumed={handleLocalPreviewConsumed}
-                  onForwardMessage={requestForwardMessage}
+                  onForwardMessage={startForwardSelection}
+                  forwardSelectMode={forwardSelectActive}
+                  forwardSelected={isForwardSelected(m)}
+                  onToggleForwardSelect={toggleForwardSelection}
                 />
               </Fragment>
             );
@@ -420,6 +440,13 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
         <div ref={bottomRef} />
       </div>
       {error ? <p className="px-3 text-xs text-red-600 shrink-0">{error}</p> : null}
+      {forwardSelectActive ? (
+        <ForwardSelectionBar
+          count={forwardSelectionCount}
+          onCancel={cancelForwardSelection}
+          onForward={openForwardModal}
+        />
+      ) : null}
       {selectedFile ? (
         <div className="px-3 py-2 border-t border-slate-100 dark:border-slate-800 shrink-0">
           <WhatsAppMediaAttachPreview
@@ -484,10 +511,10 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
         </button>
       </div>
       <EncaminharMensagemModal
-        open={Boolean(pendingForwardMessage)}
-        message={pendingForwardMessage}
+        open={forwardModalOpen}
+        messages={forwardSelectedMessages}
         sourcePhoneNumber={phoneApi}
-        onClose={() => setPendingForwardMessage(null)}
+        onClose={closeForwardModal}
         onSuccess={handleForwardSuccess}
       />
     </>

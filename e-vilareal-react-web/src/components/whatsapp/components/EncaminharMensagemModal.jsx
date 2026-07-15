@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Forward, Loader2, Search, X } from 'lucide-react';
 import { useCloseOnEscape } from '../../../hooks/useCloseOnEscape.js';
 import {
-  encaminharMensagemWhatsApp,
+  encaminharMensagensWhatsApp,
   searchWhatsAppConversations,
 } from '../../../repositories/whatsappRepository.js';
 import { formatPhoneDisplay, normalizePhoneForApi } from '../../../utils/whatsappFormat.js';
@@ -11,7 +11,7 @@ import { processosBtnPrimary, processosInputClass } from '../../processos/Proces
 
 export function EncaminharMensagemModal({
   open,
-  message,
+  messages,
   sourcePhoneNumber,
   onClose,
   onSuccess,
@@ -25,20 +25,35 @@ export function EncaminharMensagemModal({
   const [error, setError] = useState('');
   const debounceRef = useRef(null);
 
+  const lista = useMemo(
+    () => (Array.isArray(messages) ? messages.filter((m) => m?.id > 0) : []),
+    [messages],
+  );
+
   const sourceNormalized = useMemo(
     () => normalizePhoneForApi(sourcePhoneNumber),
     [sourcePhoneNumber],
   );
 
   const preview = useMemo(() => {
-    if (!message) return '';
-    return resumoWhatsAppMessageContent(message.messageType, message.content);
-  }, [message]);
+    if (lista.length === 0) return '';
+    if (lista.length === 1) {
+      const m = lista[0];
+      return resumoWhatsAppMessageContent(m.messageType, m.content);
+    }
+    const amostra = lista.slice(0, 3).map((m) => resumoWhatsAppMessageContent(m.messageType, m.content));
+    const restante = lista.length - amostra.length;
+    if (restante > 0) {
+      return `${amostra.join(' · ')} · e mais ${restante}`;
+    }
+    return amostra.join(' · ');
+  }, [lista]);
 
-  const isMedia = useMemo(() => {
-    const type = String(message?.messageType ?? '').toUpperCase();
+  const singleMedia = useMemo(() => {
+    if (lista.length !== 1) return false;
+    const type = String(lista[0]?.messageType ?? '').toUpperCase();
     return ['IMAGE', 'DOCUMENT', 'AUDIO', 'VIDEO'].includes(type);
-  }, [message]);
+  }, [lista]);
 
   const reset = useCallback(() => {
     setTermo('');
@@ -73,9 +88,9 @@ export function EncaminharMensagemModal({
       const controller = new AbortController();
       searchWhatsAppConversations(q, controller.signal)
         .then((items) => {
-          const lista = Array.isArray(items) ? items : [];
+          const itens = Array.isArray(items) ? items : [];
           setResultados(
-            lista.filter((item) => normalizePhoneForApi(item.phoneNumber) !== sourceNormalized),
+            itens.filter((item) => normalizePhoneForApi(item.phoneNumber) !== sourceNormalized),
           );
         })
         .catch(() => setResultados([]))
@@ -88,30 +103,51 @@ export function EncaminharMensagemModal({
   }, [termo, open, sourceNormalized]);
 
   const handleSubmit = async () => {
-    if (!message?.id || !destino?.phoneNumber) return;
+    if (lista.length === 0 || !destino?.phoneNumber) return;
     setSending(true);
     setError('');
     try {
-      const response = await encaminharMensagemWhatsApp(message.id, {
+      const messageIds = lista.map((m) => m.id);
+      const captionByMessageId =
+        singleMedia && caption.trim() ? { [lista[0].id]: caption.trim() } : undefined;
+
+      const batch = await encaminharMensagensWhatsApp(messageIds, {
         phoneNumbers: [destino.phoneNumber],
-        caption: isMedia ? caption.trim() || undefined : undefined,
+        captionByMessageId,
       });
-      const results = Array.isArray(response?.results) ? response.results : [];
-      const failed = results.filter((r) => !r.success);
+
+      const failed = batch.filter((item) => {
+        const results = Array.isArray(item.response?.results) ? item.response.results : [];
+        return results.some((r) => !r.success) || item.error;
+      });
+
       if (failed.length > 0) {
-        setError(failed[0]?.error || 'Falha ao encaminhar mensagem.');
+        const first = failed[0];
+        const apiError =
+          first.error ||
+          first.response?.results?.find((r) => !r.success)?.error ||
+          'Falha ao encaminhar mensagem.';
+        setError(
+          failed.length === 1
+            ? apiError
+            : `${failed.length} de ${lista.length} mensagens falharam. ${apiError}`,
+        );
         return;
       }
-      onSuccess?.(response, destino);
+
+      onSuccess?.({ batch, destino }, destino);
       onClose?.();
     } catch (err) {
-      setError(err?.message || 'Falha ao encaminhar mensagem.');
+      setError(err?.message || 'Falha ao encaminhar mensagens.');
     } finally {
       setSending(false);
     }
   };
 
-  if (!open || !message) return null;
+  if (!open || lista.length === 0) return null;
+
+  const titulo =
+    lista.length === 1 ? 'Encaminhar mensagem' : `Encaminhar ${lista.length} mensagens`;
 
   return (
     <div
@@ -128,9 +164,9 @@ export function EncaminharMensagemModal({
               className="text-base font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2"
             >
               <Forward className="h-4 w-4" aria-hidden />
-              Encaminhar mensagem
+              {titulo}
             </h3>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400 line-clamp-3">{preview}</p>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400 line-clamp-4">{preview}</p>
           </div>
           <button
             type="button"
@@ -201,7 +237,7 @@ export function EncaminharMensagemModal({
             </ul>
           ) : null}
 
-          {isMedia ? (
+          {singleMedia ? (
             <label className="block">
               <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
                 Legenda (opcional)

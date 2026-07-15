@@ -4,6 +4,7 @@ import { ExternalLink, LayoutTemplate, Link2, Loader2, MessageCircle, MessageSqu
 import { ConfirmDialog } from '../financeiro/shared/ConfirmDialog.jsx';
 import { WhatsAppDeleteMessageDialog } from './components/WhatsAppDeleteMessageDialog.jsx';
 import { EncaminharMensagemModal } from './components/EncaminharMensagemModal.jsx';
+import { ForwardSelectionBar } from './components/ForwardSelectionBar.jsx';
 import { ChatBubble } from './components/ChatBubble.jsx';
 import { DaySeparator } from './components/DaySeparator.jsx';
 import {
@@ -14,6 +15,7 @@ import { IniciarConversaModal } from './components/IniciarConversaModal.jsx';
 import { EnviarTemplateConversaModal } from './components/EnviarTemplateConversaModal.jsx';
 import { ModalVinculosTelefoneConversa } from './components/ModalVinculosTelefoneConversa.jsx';
 import { useWhatsApp } from './hooks/useWhatsApp.js';
+import { useWhatsAppForwardSelection } from './hooks/useWhatsAppForwardSelection.js';
 import { useWhatsAppToast } from './WhatsAppToast.jsx';
 import { useWhatsAppNotificationContext } from './WhatsAppNotificationProvider.jsx';
 import { getWhatsAppConversationContext, fixarConversa, desfixarConversa, arquivarConversa, desarquivarConversa, arquivarConversasLote, fixarConversasLote, marcarLidasLote, apagarMensagem, apagarConversa, getWhatsAppGrupos, definirFotoContato, removerFotoContato } from '../../repositories/whatsappRepository.js';
@@ -25,6 +27,7 @@ import {
   normalizePhoneForApi,
 } from '../../utils/whatsappFormat.js';
 import { dateKeyBR } from '../../utils/whatsappScheduleUtils.js';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 import { FREE_TEXT_DELIVERY_ERROR, FREE_TEXT_WINDOW_HINT } from '../../utils/whatsappTemplateUtils.js';
 import { isWhatsAppMediaPending, mergeMediaReady, consumirLocalPreview, revogarPreviewsLocaisEmLista } from './utils/whatsappMediaUtils.js';
 import { mergeMessageStatusUpdate } from './utils/whatsappMessageStatusUtils.js';
@@ -312,7 +315,6 @@ export function WhatsAppConversas() {
   const [selectedPhones, setSelectedPhones] = useState(() => new Set());
   const [bulkSelectionBusy, setBulkSelectionBusy] = useState(false);
   const [pendingDeleteMessage, setPendingDeleteMessage] = useState(null);
-  const [pendingForwardMessage, setPendingForwardMessage] = useState(null);
   const [pendingDeleteConversationPhone, setPendingDeleteConversationPhone] = useState('');
   const bottomRef = useRef(null);
   const conversationSearchInputRef = useRef(null);
@@ -582,21 +584,6 @@ export function WhatsAppConversas() {
     if (!message?.id || message.id <= 0) return;
     setPendingDeleteMessage(message);
   }, []);
-
-  const requestForwardMessage = useCallback((message) => {
-    if (!message?.id || message.id <= 0) return;
-    setPendingForwardMessage(message);
-  }, []);
-
-  const handleForwardSuccess = useCallback(
-    (_response, destino) => {
-      toast.success(
-        `Mensagem encaminhada para ${destino?.contactName || formatPhoneDisplay(destino?.phoneNumber)}.`,
-      );
-      void loadConversations();
-    },
-    [toast, loadConversations],
-  );
 
   const confirmDeleteMessage = useCallback(
     async (escopo = 'inbox') => {
@@ -1044,6 +1031,42 @@ export function WhatsAppConversas() {
   );
 
   const displayMessages = useMemo(() => enrichMessagesWithReactions(messages), [messages]);
+
+  const {
+    forwardSelectActive,
+    forwardSelectedMessages,
+    forwardModalOpen,
+    startForwardSelection,
+    toggleForwardSelection,
+    cancelForwardSelection,
+    openForwardModal,
+    closeForwardModal,
+    finishForwardSuccess,
+    isForwardSelected,
+    forwardSelectionCount,
+  } = useWhatsAppForwardSelection(messages);
+
+  useEffect(() => {
+    cancelForwardSelection();
+  }, [activePhone, cancelForwardSelection]);
+
+  useCloseOnEscape(forwardSelectActive && !forwardModalOpen, cancelForwardSelection);
+
+  const handleForwardSuccess = useCallback(
+    (_response, destino) => {
+      const n = forwardSelectedMessages.length;
+      const rotulo =
+        n === 1
+          ? 'Mensagem encaminhada'
+          : `${n} mensagens encaminhadas`;
+      toast.success(
+        `${rotulo} para ${destino?.contactName || formatPhoneDisplay(destino?.phoneNumber)}.`,
+      );
+      finishForwardSuccess();
+      void loadConversations();
+    },
+    [toast, loadConversations, finishForwardSuccess, forwardSelectedMessages.length],
+  );
 
   const lastOutboundTemplateMessage = useMemo(
     () => findLastOutboundTemplateMessage(messages),
@@ -1888,13 +1911,23 @@ export function WhatsAppConversas() {
                       highlightTerm={searchMatchIds.has(msg.id) ? searchHighlightTerm : ''}
                       isActiveSearchMatch={msg.id != null && msg.id === activeSearchMessageId}
                       onDeleteMessage={requestDeleteMessage}
-                      onForwardMessage={requestForwardMessage}
+                      onForwardMessage={startForwardSelection}
+                      forwardSelectMode={forwardSelectActive}
+                      forwardSelected={isForwardSelected(msg)}
+                      onToggleForwardSelect={toggleForwardSelection}
                     />
                   </Fragment>
                 );
               })}
               <div ref={bottomRef} />
             </div>
+            {forwardSelectActive ? (
+              <ForwardSelectionBar
+                count={forwardSelectionCount}
+                onCancel={cancelForwardSelection}
+                onForward={openForwardModal}
+              />
+            ) : null}
             <form
               onSubmit={handleSend}
               className="shrink-0 flex flex-col gap-1 p-3 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
@@ -1992,10 +2025,10 @@ export function WhatsAppConversas() {
         onCancel={() => setPendingDeleteMessage(null)}
       />
       <EncaminharMensagemModal
-        open={Boolean(pendingForwardMessage)}
-        message={pendingForwardMessage}
+        open={forwardModalOpen}
+        messages={forwardSelectedMessages}
         sourcePhoneNumber={activePhone}
-        onClose={() => setPendingForwardMessage(null)}
+        onClose={closeForwardModal}
         onSuccess={handleForwardSuccess}
       />
       <ConfirmDialog

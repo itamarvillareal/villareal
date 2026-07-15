@@ -701,6 +701,9 @@ export function ChatBubble({
   isActiveSearchMatch = false,
   onDeleteMessage,
   onForwardMessage,
+  forwardSelectMode = false,
+  forwardSelected = false,
+  onToggleForwardSelect,
 }) {
   const isOutbound = String(message.direction ?? '').toUpperCase() === 'OUTBOUND';
   const hasTemplate = Boolean(message.templateName);
@@ -774,26 +777,64 @@ export function ChatBubble({
   const canForward =
     typeof onForwardMessage === 'function' && podeEncaminharMensagem(message);
   const forwardBlockedReason = canForward ? null : motivoEncaminharIndisponivel(message);
+  const showForwardCheckbox =
+    forwardSelectMode && canForward && typeof onToggleForwardSelect === 'function';
   const attachedReactions = Array.isArray(message.attachedReactions) ? message.attachedReactions : [];
   const hasReactionBadge = attachedReactions.length > 0;
 
   return (
     <div
       id={message.id != null ? `msg-${message.id}` : undefined}
-      className={`group/msg relative flex ${isOutbound ? 'justify-end' : 'justify-start'} ${
+      className={`group/msg relative flex items-start gap-2 ${isOutbound ? 'justify-end' : 'justify-start'} ${
         hasReactionBadge ? 'mb-2' : ''
       } ${
         isActiveSearchMatch ? 'rounded-2xl ring-2 ring-amber-500 ring-offset-2 ring-offset-[#e5ddd5] dark:ring-offset-slate-800/50' : ''
-      }`}
+      } ${forwardSelectMode && canForward ? 'cursor-pointer' : ''}`}
+      onClick={
+        showForwardCheckbox
+          ? (e) => {
+              if (e.target.closest('a, button, input, textarea, select, label')) return;
+              onToggleForwardSelect(message);
+            }
+          : undefined
+      }
+      onKeyDown={
+        showForwardCheckbox
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onToggleForwardSelect(message);
+              }
+            }
+          : undefined
+      }
+      role={showForwardCheckbox ? 'button' : undefined}
+      tabIndex={showForwardCheckbox ? 0 : undefined}
     >
+      {forwardSelectMode ? (
+        <div className={`shrink-0 pt-2 ${isOutbound ? 'order-2' : 'order-1'}`}>
+          {showForwardCheckbox ? (
+            <input
+              type="checkbox"
+              checked={forwardSelected}
+              onChange={() => onToggleForwardSelect(message)}
+              onClick={(e) => e.stopPropagation()}
+              className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+              aria-label="Selecionar mensagem para encaminhar"
+            />
+          ) : (
+            <span className="inline-block h-4 w-4" aria-hidden />
+          )}
+        </div>
+      ) : null}
       <div
         className={`relative max-w-[85%] sm:max-w-[70%] rounded-2xl px-3 py-2 shadow-sm ${
           isOutbound
             ? 'bg-[#25D366] text-white rounded-br-md'
             : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-bl-md'
-        } ${isMedia ? 'bg-opacity-95' : ''}`}
+        } ${isMedia ? 'bg-opacity-95' : ''} ${forwardSelected ? 'ring-2 ring-emerald-500 ring-offset-1 ring-offset-[#e5ddd5] dark:ring-offset-slate-800/50' : ''}`}
       >
-        {canDelete || canForward ? (
+        {!forwardSelectMode && (canDelete || canForward) ? (
           <div
             className={`absolute -top-2 ${isOutbound ? '-left-2' : '-right-2'} z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover/msg:opacity-100 focus-within:opacity-100`}
           >
