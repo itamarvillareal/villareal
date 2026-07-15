@@ -1,5 +1,9 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import { abrirPastaClienteLocal, verificarLocalHelperAtivo } from './abrirPastaLocalService.js';
+import {
+  abrirPastaClienteLocal,
+  abrirPastaClienteViaNavegador,
+  verificarLocalHelperAtivo,
+} from './abrirPastaLocalService.js';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -28,10 +32,49 @@ describe('abrirPastaLocalService', () => {
     expect(body.numeroInterno).toBe(1);
   });
 
+  it('abrirPastaClienteLocal usa navegador quando fetch falha por rede', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new TypeError('Failed to fetch');
+    }));
+    const openMock = vi.fn(() => ({}));
+    vi.stubGlobal('window', { open: openMock });
+
+    const result = await abrirPastaClienteLocal({
+      codigoCliente: '491',
+      nomeCliente: 'Veredas',
+      numeroInterno: 2,
+    });
+
+    expect(result).toEqual({ ok: true, viaNavegador: true });
+    expect(openMock).toHaveBeenCalledOnce();
+    expect(String(openMock.mock.calls[0][0])).toContain('/abrir-pasta-cliente?');
+    expect(String(openMock.mock.calls[0][0])).toContain('codigoCliente=491');
+  });
+
+  it('abrirPastaClienteViaNavegador monta URL com parâmetros', () => {
+    const openMock = vi.fn(() => ({}));
+    vi.stubGlobal('window', { open: openMock });
+
+    abrirPastaClienteViaNavegador({
+      codigoCliente: '00000491',
+      nomeCliente: 'Teste',
+      numeroInterno: 3,
+    });
+
+    expect(openMock).toHaveBeenCalledOnce();
+    const url = String(openMock.mock.calls[0][0]);
+    expect(url).toContain('numeroInterno=3');
+    expect(url).toContain('nomeCliente=');
+  });
+
   it('verificarLocalHelperAtivo retorna false quando fetch falha', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => {
       throw new Error('ECONNREFUSED');
     }));
-    await expect(verificarLocalHelperAtivo()).resolves.toEqual({ ativo: false, baseClientes: null });
+    await expect(verificarLocalHelperAtivo()).resolves.toEqual({
+      ativo: false,
+      baseClientes: null,
+      baseUrl: null,
+    });
   });
 });

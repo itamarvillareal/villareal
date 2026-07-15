@@ -23,6 +23,7 @@ import {
 import { dateKeyBR } from '../../utils/whatsappScheduleUtils.js';
 import { FREE_TEXT_DELIVERY_ERROR } from '../../utils/whatsappTemplateUtils.js';
 import { isWhatsAppMediaPending, mergeMediaReady, consumirLocalPreview, revogarPreviewsLocaisEmLista } from './utils/whatsappMediaUtils.js';
+import { mergeMessageStatusUpdate } from './utils/whatsappMessageStatusUtils.js';
 import {
   criarOnPasteCompositor,
   handleAttachSelect,
@@ -158,7 +159,7 @@ function FloatingConversationList({ conversations, loading, query, onQueryChange
   );
 }
 
-function FloatingChatView({ conversation, onBack, onClose, latestInbound, latestMediaReady, onMarkRead, headerDragProps = {} }) {
+function FloatingChatView({ conversation, onBack, onClose, latestInbound, latestMediaReady, latestStatusUpdate, onMarkRead, headerDragProps = {} }) {
   const { className: dragClassName = '', ...headerDragRest } = headerDragProps;
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -259,6 +260,11 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
     }
     setMessages((prev) => mergeMediaReady(prev, latestMediaReady));
   }, [latestMediaReady, phoneApi]);
+
+  useEffect(() => {
+    if (!latestStatusUpdate?.waMessageId) return;
+    setMessages((prev) => mergeMessageStatusUpdate(prev, latestStatusUpdate));
+  }, [latestStatusUpdate]);
 
   useEffect(() => {
     if (!messages.some(isWhatsAppMediaPending)) return undefined;
@@ -511,6 +517,7 @@ export function WhatsAppFloatingChat() {
   const unreadCount = ctx?.unreadCount ?? 0;
   const latestInbound = ctx?.latestInbound ?? null;
   const latestMediaReady = ctx?.latestMediaReady ?? null;
+  const latestStatusUpdate = ctx?.latestStatusUpdate ?? null;
   const latestConversationRead = ctx?.latestConversationRead ?? null;
   const adjustUnreadConversations = ctx?.adjustUnreadConversations;
   const lastListInboundIdRef = useRef(null);
@@ -661,6 +668,7 @@ export function WhatsAppFloatingChat() {
               onClose={closePanel}
               latestInbound={latestInbound}
               latestMediaReady={latestMediaReady}
+              latestStatusUpdate={latestStatusUpdate}
               onMarkRead={handleMarkConversationRead}
               headerDragProps={dragHandleProps}
             />

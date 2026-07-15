@@ -807,10 +807,20 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
         if (chavesAlteradas.length === 0) return prev;
         isDirtyRodadaRef.current = true;
         persistRodadaKeysRef.current = chavesAlteradas;
+        // Parâmetros do painel (multa, honorários, índice…) persistem mesmo com cálculo aceito.
+        if (featureFlags.useApiCalculos && hidratacaoConcluida) {
+          if (saveRodadasTimerRef.current) {
+            window.clearTimeout(saveRodadasTimerRef.current);
+            saveRodadasTimerRef.current = null;
+          }
+          for (const chave of chavesAlteradas) {
+            void persistirRodadaCalculosAgora(nextMap, chave);
+          }
+        }
         return nextMap;
       });
     },
-    [rodadaKey, codigoClienteNorm, procNorm]
+    [rodadaKey, codigoClienteNorm, procNorm, hidratacaoConcluida]
   );
 
   useEffect(() => {

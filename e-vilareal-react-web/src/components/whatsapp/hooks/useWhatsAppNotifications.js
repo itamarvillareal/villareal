@@ -71,6 +71,7 @@ export function useWhatsAppNotifications({ enabled = true } = {}) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [latestInbound, setLatestInbound] = useState(null);
   const [latestMediaReady, setLatestMediaReady] = useState(null);
+  const [latestStatusUpdate, setLatestStatusUpdate] = useState(null);
   const [latestConversationRead, setLatestConversationRead] = useState(null);
   const abortRef = useRef(null);
   const reconnectTimerRef = useRef(null);
@@ -186,7 +187,12 @@ export function useWhatsAppNotifications({ enabled = true } = {}) {
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
           buffer = parseSseBlocks(buffer, (eventName, data) => {
-            if (eventName === 'whatsapp-message' || eventName === 'whatsapp-media-ready' || eventName === 'conversation-read') {
+            if (
+              eventName === 'whatsapp-message' ||
+              eventName === 'whatsapp-media-ready' ||
+              eventName === 'whatsapp-status' ||
+              eventName === 'conversation-read'
+            ) {
               coordinator.publishFromLeader(eventName, data);
             }
           });
@@ -205,6 +211,10 @@ export function useWhatsAppNotifications({ enabled = true } = {}) {
         handleInbound(data, { playFeedback: !meta.fromBroadcast || isLeaderRef.current });
       } else if (eventName === 'whatsapp-media-ready') {
         setLatestMediaReady(data);
+      } else if (eventName === 'whatsapp-status') {
+        if (data?.waMessageId && data?.status) {
+          setLatestStatusUpdate({ ...data, token: Date.now() });
+        }
       } else if (eventName === 'conversation-read') {
         handleConversationRead(data);
       }
@@ -261,6 +271,7 @@ export function useWhatsAppNotifications({ enabled = true } = {}) {
     unreadCount,
     latestInbound,
     latestMediaReady,
+    latestStatusUpdate,
     latestConversationRead,
     clearNotifications,
     dismissNotification,

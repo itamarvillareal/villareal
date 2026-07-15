@@ -31,7 +31,14 @@ export function mensagemLocalHelperIndisponivel(so = detectarSOUsuario()) {
   }
 
   msg += '\n\nRequer Node.js (https://nodejs.org). O Google Drive Desktop precisa estar sincronizado.';
-  msg += '\n\nSe o navegador pedir permissão para «rede local», clique em Permitir.';
+  msg +=
+    '\n\nSe o navegador pedir permissão para «rede local» ou «dispositivos na sua rede», clique em Permitir.';
+  if (so === 'macos') {
+    msg +=
+      '\n\nSe o agente já estiver instalado, teste no Terminal:\n' +
+      '  curl -s http://127.0.0.1:9876/health\n' +
+      'Deve retornar {"ok":true}. Se retornar, reinstale com install.sh e permita rede local no Chrome.';
+  }
   return msg;
 }
 

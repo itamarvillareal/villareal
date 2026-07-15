@@ -26,8 +26,16 @@ echo -n "4. Página de privacidade... "
 HTTP=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/privacidade")
 [ "$HTTP" = "200" ] && echo "OK" || echo "FALHA (esperava 200, recebeu $HTTP)"
 
+# 5. Lembrete: status da integração exige JWT
+echo -n "5. Endpoint de stats (protegido)... "
+HTTP=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/api/whatsapp/stats")
+[ "$HTTP" = "401" ] || [ "$HTTP" = "403" ] && echo "OK (exige login)" || echo "AVISO (esperava 401/403, recebeu $HTTP)"
+
 echo ""
 echo "=== Verificação completa ==="
+echo ""
+echo "Para confirmar integrationConfigured=true, faça login no portal e abra"
+echo "WhatsApp > Dashboard — o indicador deve ficar verde («Integração ativa»)."
 echo ""
 echo "Dados de produção:"
 echo "  Phone Number ID: 1144756872051746"

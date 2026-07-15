@@ -135,6 +135,20 @@ function montarBodyAbrirPasta({ codigoCliente, nomeCliente, numeroInterno, abrir
 }
 
 /**
+ * Fallback: abre URL GET no navegador (dispara permissão de rede local no Chrome e abre o Finder).
+ * Usado quando fetch CORS/PNA falha mesmo com o agente ativo em localhost:9876.
+ */
+export function abrirPastaClienteViaNavegador(params) {
+  const query = montarQueryAbrirPasta(params);
+  const url = `${urlsBase()[0]}/abrir-pasta-cliente?${query}`;
+  const popup = window.open(url, '_blank', 'noopener,noreferrer');
+  if (!popup) {
+    window.location.assign(url);
+  }
+  return { ok: true, viaNavegador: true };
+}
+
+/**
  * Abre a pasta do cliente (e subpasta Proc. NN se existir) no Finder/Explorer via agente local.
  */
 export async function abrirPastaClienteLocal({
@@ -153,8 +167,13 @@ export async function abrirPastaClienteLocal({
     return await chamarLocalHelperPost('/abrir-pasta-cliente', body);
   } catch (err) {
     if (!isErroRede(err)) throw err;
-    const query = montarQueryAbrirPasta(params);
-    return chamarLocalHelperGet(`/abrir-pasta-cliente?${query}`);
+    try {
+      const query = montarQueryAbrirPasta(params);
+      return await chamarLocalHelperGet(`/abrir-pasta-cliente?${query}`);
+    } catch (errGet) {
+      if (!isErroRede(errGet)) throw errGet;
+      return abrirPastaClienteViaNavegador(params);
+    }
   }
 }
 
@@ -165,7 +184,7 @@ export class LocalHelperIndisponivelError extends Error {
   }
 }
 
-/** Abre pasta no Finder/Explorer sem sair da página atual. */
+/** Abre pasta no Finder/Explorer; mantém o portal aberto quando possível. */
 export async function abrirPastaClienteLocalOuFalhar(params) {
   try {
     return await abrirPastaClienteLocal(params);

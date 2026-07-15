@@ -131,20 +131,41 @@ function campoValorNaoVazio(s) {
   return String(s ?? '').trim() !== '';
 }
 
+function tituloTemValorMonetario(t) {
+  return t && (campoValorNaoVazio(t.valorInicial) || campoValorNaoVazio(t.valorParcela));
+}
+
+function rodadaTemPanelConfigPersistido(rodada) {
+  const panel = rodada?.panelConfig;
+  return panel != null && typeof panel === 'object' && !Array.isArray(panel);
+}
+
 /**
- * True se alguma rodada tiver valor monetário (ou texto de valor) em título ou parcela.
- * Usado para não enviar PUT /api/calculos/rodadas com só templates vazios (autosave antes da hidratação apagava o MySQL).
+ * True se alguma rodada tiver conteúdo que justifique PUT na API:
+ * valores em títulos/parcelas, snapshot de cálculo aceito, panelConfig ou parcelamento aceito.
+ * Evita PUT com só templates vazios (autosave antes da hidratação apagava o MySQL).
  */
 export function mapaRodadasTemValorTituloOuParcela(map) {
   if (!map || typeof map !== 'object' || Array.isArray(map)) return false;
   for (const rodada of Object.values(map)) {
     if (!rodada || typeof rodada !== 'object') continue;
+    if (rodada.parcelamentoAceito) return true;
+    if (rodadaTemPanelConfigPersistido(rodada)) return true;
+
     const titulos = Array.isArray(rodada.titulos) ? rodada.titulos : [];
     for (const t of titulos) {
-      if (t && (campoValorNaoVazio(t.valorInicial) || campoValorNaoVazio(t.valorParcela))) return true;
+      if (tituloTemValorMonetario(t)) return true;
+    }
+    const gravados = Array.isArray(rodada.titulosGravadosAceito) ? rodada.titulosGravadosAceito : [];
+    for (const t of gravados) {
+      if (tituloTemValorMonetario(t)) return true;
     }
     const parcelas = Array.isArray(rodada.parcelas) ? rodada.parcelas : [];
     for (const p of parcelas) {
+      if (p && campoValorNaoVazio(p.valorParcela)) return true;
+    }
+    const parcelasGravadas = Array.isArray(rodada.parcelasGravadasAceito) ? rodada.parcelasGravadasAceito : [];
+    for (const p of parcelasGravadas) {
       if (p && campoValorNaoVazio(p.valorParcela)) return true;
     }
   }
