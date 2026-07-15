@@ -35,6 +35,9 @@ done
 
 echo "Iniciando frontend..."
 (cd "$ROOT/e-vilareal-react-web" && npm run dev) &
+
+echo "Iniciando agente local (Finder)..."
+(node "$ROOT/e-vilareal-local-helper/server.mjs") &
 sleep 2
 for i in $(seq 1 30); do
   if curl -sf -m 2 http://127.0.0.1:5173/ >/dev/null 2>&1; then
@@ -42,6 +45,7 @@ for i in $(seq 1 30); do
     echo "Pronto:"
     echo "  Frontend: http://127.0.0.1:5173/login"
     echo "  Backend:  http://127.0.0.1:8080"
+    echo "  Local helper (Finder): http://127.0.0.1:9876/health"
     echo "  Login:    itamar / 123456"
     open "http://127.0.0.1:5173/login" 2>/dev/null || true
     wait

@@ -26,6 +26,7 @@ import { ModalConfiguracoesCalculoCliente } from './ModalConfiguracoesCalculoCli
 import { ModalWhatsAppCliente } from './ModalWhatsAppCliente.jsx';
 import { ModalCobrancaAutomaticaCliente } from './cobranca/ModalCobrancaAutomaticaCliente.jsx';
 import { ModalImportarContratoHonorarios } from './contratos/ModalImportarContratoHonorarios.jsx';
+import { BotaoPastaLocal } from './BotaoPastaLocal.jsx';
 import { estadoPediuFocoCobranca } from './cobranca/cobrancaClienteNav.js';
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 import { importarWhatsAppDaPessoa } from '../repositories/clienteWhatsAppRepository.js';
@@ -2339,6 +2340,12 @@ export function CadastroClientes({ embedIntent, embedIntentRevision = 0, onFecha
                 <FolderOpen className={classesIconeSecao('cyan', false)} aria-hidden />
                 Documentos
               </button>
+              <BotaoPastaLocal
+                codigoCliente={codigo}
+                nomeCliente={nomeRazao}
+                abrirPastaProcesso={false}
+                variant="secao"
+              />
               <button
                 type="button"
                 onClick={() => setModalConfigCalculoAberto(true)}

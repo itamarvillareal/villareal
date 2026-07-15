@@ -55,6 +55,7 @@ import {
   obterPessoaParaVinculoUsuario,
   pesquisarPessoasParaVinculoUsuario,
 } from '../services/pessoaVinculoUsuarioService.js';
+import { BotaoPastaLocal } from './BotaoPastaLocal.jsx';
 import { loadCadastroClienteDados } from '../data/cadastroClientesStorage.js';
 import {
   getHistoricoDoProcesso,
@@ -3881,6 +3882,13 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                   <CircleDollarSign className="w-3.5 h-3.5" aria-hidden />
                   Conta Corrente
                 </button>
+                <BotaoPastaLocal
+                  codigoCliente={codigoCliente}
+                  nomeCliente={cliente}
+                  numeroInterno={processo}
+                  disabled={apiSaving}
+                  variant="toolbar"
+                />
                 {featureFlags.useApiProcessos ? (
                   <>
                     <button

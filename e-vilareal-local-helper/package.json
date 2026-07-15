@@ -1,0 +1,15 @@
+{
+  "name": "e-vilareal-local-helper",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Agente local para abrir pastas do Google Drive Desktop no Finder/Explorer",
+  "scripts": {
+    "start": "node server.mjs",
+    "install:launchagent": "node scripts/install-launchagent.mjs",
+    "uninstall:launchagent": "node scripts/uninstall-launchagent.mjs",
+    "install:windows": "node scripts/install-windows.mjs",
+    "build:instalador": "node scripts/build-instalador.mjs",
+    "test": "node --test lib/*.test.mjs scripts/*.test.mjs"
+  }
+}
