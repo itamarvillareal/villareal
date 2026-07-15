@@ -85,15 +85,12 @@ export function BotaoPastaLocal({
     }
     setAbrindo(true);
     try {
-      const resultado = await abrirPastaClienteLocalOuFalhar({
+      await abrirPastaClienteLocalOuFalhar({
         codigoCliente: codigo,
         nomeCliente,
         numeroInterno,
         abrirPastaProcesso,
       });
-      if (resultado?.viaNavegador) {
-        setHelperAtivo(true);
-      }
       const status = await verificarLocalHelperAtivo();
       setHelperAtivo(status.ativo);
       setBaseClientes(status.baseClientes);

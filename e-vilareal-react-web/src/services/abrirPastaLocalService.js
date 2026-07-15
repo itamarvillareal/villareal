@@ -18,11 +18,12 @@ function fetchOpcoes(method = 'GET', body) {
     method,
     mode: 'cors',
     cache: 'no-store',
+    headers: { Accept: 'application/json' },
     // Chrome: declara acesso à rede local (loopback) a partir de site HTTPS.
     targetAddressSpace: 'loopback',
   };
   if (body != null) {
-    init.headers = { 'Content-Type': 'application/json' };
+    init.headers = { ...init.headers, 'Content-Type': 'application/json' };
     init.body = JSON.stringify(body);
   }
   return init;
@@ -38,6 +39,10 @@ async function tentarFetch(url, init) {
   }
 }
 
+function isErroRede(err) {
+  return err instanceof TypeError || /fetch|network|Failed|abort/i.test(String(err?.message ?? ''));
+}
+
 async function chamarEmAlgumHost(caminho, init) {
   let ultimoErro = null;
   for (const base of urlsBase()) {
@@ -51,8 +56,7 @@ async function chamarEmAlgumHost(caminho, init) {
   throw ultimoErro ?? new Error('Agente local indisponível');
 }
 
-async function chamarLocalHelper(caminho, body) {
-  const { res } = await chamarEmAlgumHost(caminho, fetchOpcoes('POST', body));
+async function parseRespostaLocalHelper(res) {
   let data = null;
   try {
     data = await res.json();
@@ -64,6 +68,16 @@ async function chamarLocalHelper(caminho, body) {
     throw new Error(msg);
   }
   return data;
+}
+
+async function chamarLocalHelperPost(caminho, body) {
+  const { res } = await chamarEmAlgumHost(caminho, fetchOpcoes('POST', body));
+  return parseRespostaLocalHelper(res);
+}
+
+async function chamarLocalHelperGet(caminho) {
+  const { res } = await chamarEmAlgumHost(caminho, fetchOpcoes('GET'));
+  return parseRespostaLocalHelper(res);
 }
 
 /** Verifica se o agente local está ativo. */
@@ -94,15 +108,16 @@ function montarQueryAbrirPasta({ codigoCliente, nomeCliente, numeroInterno, abri
   return params.toString();
 }
 
-/** Fallback: abre URL GET no navegador (costuma disparar permissão de rede local no Chrome). */
-export function abrirPastaClienteViaNavegador(params) {
-  const query = montarQueryAbrirPasta(params);
-  const bases = urlsBase();
-  const url = `${bases[0]}/abrir-pasta-cliente?${query}`;
-  const popup = window.open(url, '_blank', 'noopener,noreferrer');
-  if (!popup) {
-    window.location.assign(url);
+function montarBodyAbrirPasta({ codigoCliente, nomeCliente, numeroInterno, abrirPastaProcesso = true }) {
+  const cod = String(codigoCliente ?? '').trim();
+  const body = {
+    codigoCliente: cod,
+    nomeCliente: String(nomeCliente ?? '').trim() || undefined,
+  };
+  if (abrirPastaProcesso && numeroInterno != null && String(numeroInterno).trim() !== '') {
+    body.numeroInterno = Number(numeroInterno);
   }
+  return body;
 }
 
 /**
@@ -117,15 +132,16 @@ export async function abrirPastaClienteLocal({
   const cod = String(codigoCliente ?? '').trim();
   if (!cod) throw new Error('Informe o código do cliente.');
 
-  const body = {
-    codigoCliente: cod,
-    nomeCliente: String(nomeCliente ?? '').trim() || undefined,
-  };
-  if (abrirPastaProcesso && numeroInterno != null && String(numeroInterno).trim() !== '') {
-    body.numeroInterno = Number(numeroInterno);
-  }
+  const params = { codigoCliente: cod, nomeCliente, numeroInterno, abrirPastaProcesso };
+  const body = montarBodyAbrirPasta(params);
 
-  return chamarLocalHelper('/abrir-pasta-cliente', body);
+  try {
+    return await chamarLocalHelperPost('/abrir-pasta-cliente', body);
+  } catch (err) {
+    if (!isErroRede(err)) throw err;
+    const query = montarQueryAbrirPasta(params);
+    return chamarLocalHelperGet(`/abrir-pasta-cliente?${query}`);
+  }
 }
 
 export class LocalHelperIndisponivelError extends Error {
@@ -135,14 +151,13 @@ export class LocalHelperIndisponivelError extends Error {
   }
 }
 
-/** Tenta POST silencioso; se o browser bloquear, usa GET em nova aba. */
+/** Abre pasta no Finder/Explorer sem sair da página atual. */
 export async function abrirPastaClienteLocalOuFalhar(params) {
   try {
     return await abrirPastaClienteLocal(params);
   } catch (err) {
-    if (err instanceof TypeError || /fetch|network|Failed|abort/i.test(String(err?.message ?? ''))) {
-      abrirPastaClienteViaNavegador(params);
-      return { ok: true, viaNavegador: true };
+    if (isErroRede(err)) {
+      throw new LocalHelperIndisponivelError();
     }
     throw err;
   }

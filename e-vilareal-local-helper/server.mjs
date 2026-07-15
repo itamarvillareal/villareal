@@ -172,7 +172,8 @@ const server = http.createServer(async (req, res) => {
               numeroInterno: url.searchParams.get('numeroInterno'),
             };
       const result = await handleAbrirPastaCliente(body);
-      if (req.method === 'GET') {
+      const querJson = String(req.headers.accept ?? '').includes('application/json');
+      if (req.method === 'GET' && !querJson) {
         html(
           res,
           200,
@@ -199,6 +200,11 @@ const server = http.createServer(async (req, res) => {
   } catch (err) {
     const msg = err?.message || 'Erro interno';
     if (req.method === 'GET' && String(req.url || '').includes('/abrir-pasta-cliente')) {
+      const querJson = String(req.headers.accept ?? '').includes('application/json');
+      if (querJson) {
+        json(res, 400, { ok: false, erro: msg }, req);
+        return;
+      }
       html(
         res,
         400,
