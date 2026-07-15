@@ -108,6 +108,19 @@ export function detectarBaseClientesDrive({ homeDir = os.homedir(), envBase = pr
     pushCandidatos(candidatos, path.join(homeDir, 'Google Drive'));
     pushCandidatos(candidatos, path.join(homeDir, 'Library', 'CloudStorage', 'GoogleDrive'));
   } else if (process.platform === 'win32') {
+    for (const cloudRel of ['CloudStorage', path.join('Library', 'CloudStorage')]) {
+      const cloudStorage = path.join(homeDir, cloudRel);
+      if (!diretorioExiste(cloudStorage)) continue;
+      try {
+        for (const entry of fs.readdirSync(cloudStorage)) {
+          if (entry.startsWith('GoogleDrive')) {
+            pushCandidatos(candidatos, path.join(cloudStorage, entry));
+          }
+        }
+      } catch {
+        /* ignorar */
+      }
+    }
     candidatos.push(...candidatosWindows(homeDir));
   }
 

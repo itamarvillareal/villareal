@@ -96,10 +96,7 @@ export function BotaoPastaLocal({
       setBaseClientes(status.baseClientes);
     } catch (err) {
       if (err instanceof LocalHelperIndisponivelError) {
-        window.alert(
-          mensagemLocalHelperIndisponivel(so) +
-            '\n\nSe o Chrome pedir permissão para «rede local», clique em Permitir.'
-        );
+        window.alert(mensagemLocalHelperIndisponivel(so));
         setHelperAtivo(false);
         return;
       }

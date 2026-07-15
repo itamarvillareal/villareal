@@ -21,7 +21,16 @@ export function mensagemLocalHelperIndisponivel(so = detectarSOUsuario()) {
       '  bash ~/Documents/villareal/e-vilareal-local-helper/install.sh';
   }
 
+  if (so === 'windows') {
+    msg +=
+      '\n\nNo Windows, se já instalou:\n' +
+      '1. Abra %LOCALAPPDATA%\\VillaReal\\local-helper\\Iniciar-Agente-VillaReal.bat\n' +
+      '2. No navegador, teste http://127.0.0.1:9876/health (deve mostrar {"ok":true})\n' +
+      '3. Se falhar, veja o log em %USERPROFILE%\\.vilareal\\local-helper.log';
+  }
+
   msg += '\n\nRequer Node.js (https://nodejs.org). O Google Drive Desktop precisa estar sincronizado.';
+  msg += '\n\nSe o navegador pedir permissão para «rede local», clique em Permitir.';
   return msg;
 }
 

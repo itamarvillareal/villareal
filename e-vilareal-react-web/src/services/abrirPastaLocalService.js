@@ -1,5 +1,6 @@
 const DEFAULT_PORT = 9876;
 const HOSTS_TENTATIVA = ['127.0.0.1', 'localhost'];
+const TIMEOUT_MS = 5000;
 
 function portas() {
   const port = Number(import.meta.env?.VITE_LOCAL_HELPER_PORT || DEFAULT_PORT);
@@ -13,15 +14,16 @@ function urlsBase() {
   return HOSTS_TENTATIVA.map((host) => `http://${host}:${port}`);
 }
 
-function fetchOpcoes(method = 'GET', body) {
+function fetchOpcoes(method = 'GET', body, { loopback = true } = {}) {
   const init = {
     method,
     mode: 'cors',
     cache: 'no-store',
     headers: { Accept: 'application/json' },
-    // Chrome: declara acesso à rede local (loopback) a partir de site HTTPS.
-    targetAddressSpace: 'loopback',
   };
+  if (loopback) {
+    init.targetAddressSpace = 'loopback';
+  }
   if (body != null) {
     init.headers = { ...init.headers, 'Content-Type': 'application/json' };
     init.body = JSON.stringify(body);
@@ -30,13 +32,25 @@ function fetchOpcoes(method = 'GET', body) {
 }
 
 async function tentarFetch(url, init) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 2500);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
+  const variantes = [init];
+  if (init.targetAddressSpace) {
+    const { targetAddressSpace, ...plain } = init;
+    variantes.push(plain);
   }
+
+  let ultimoErro = null;
+  for (const opcao of variantes) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    try {
+      return await fetch(url, { ...opcao, signal: controller.signal });
+    } catch (err) {
+      ultimoErro = err;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw ultimoErro ?? new Error('Agente local indisponível');
 }
 
 function isErroRede(err) {

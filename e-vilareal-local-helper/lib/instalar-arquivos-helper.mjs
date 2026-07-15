@@ -6,6 +6,7 @@ const ARQUIVOS_HELPER = [
   'package.json',
   'lib/resolver-pasta-cliente-drive.mjs',
   'lib/validar-caminho-base-clientes.mjs',
+  'lib/expandir-caminho-usuario.mjs',
   'scripts/prompt-base-clientes.mjs',
   'scripts/launchagent-config.mjs',
   'scripts/install-launchagent.mjs',
