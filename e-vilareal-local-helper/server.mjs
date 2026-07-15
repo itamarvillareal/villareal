@@ -83,7 +83,7 @@ function abrirNoSistema(caminho) {
       cmd = 'open';
       args = [caminho];
     } else if (process.platform === 'win32') {
-      cmd = 'explorer';
+      cmd = path.join(process.env.SystemRoot || 'C:\\Windows', 'explorer.exe');
       args = [caminho];
     } else {
       cmd = 'xdg-open';
@@ -92,6 +92,10 @@ function abrirNoSistema(caminho) {
     const child = spawn(cmd, args, { stdio: 'ignore' });
     child.on('error', reject);
     child.on('close', (code) => {
+      if (process.platform === 'win32') {
+        resolve();
+        return;
+      }
       if (code === 0) resolve();
       else reject(new Error(`Falha ao abrir pasta (código ${code})`));
     });

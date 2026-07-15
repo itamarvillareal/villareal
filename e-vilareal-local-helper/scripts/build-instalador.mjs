@@ -14,6 +14,8 @@ const ARQUIVOS = [
   'package.json',
   'lib/resolver-pasta-cliente-drive.mjs',
   'lib/validar-caminho-base-clientes.mjs',
+  'lib/expandir-caminho-usuario.mjs',
+  'lib/instalar-arquivos-helper.mjs',
   'scripts/install-launchagent.mjs',
   'scripts/install-windows.mjs',
   'scripts/prompt-base-clientes.mjs',

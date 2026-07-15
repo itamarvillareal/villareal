@@ -7,9 +7,10 @@ import {
   verificarLocalHelperAtivo,
 } from '../services/abrirPastaLocalService.js';
 import {
-  MENSAGEM_LOCAL_HELPER_INDISPONIVEL,
+  mensagemLocalHelperIndisponivel,
   tituloBotaoPastaLocal,
 } from '../services/abrirPastaLocalMessages.js';
+import { detectarSOUsuario } from '../utils/detectarSOUsuario.js';
 import { processosBtnToolbarIndigo } from './processos/ProcessosAdminLayout.jsx';
 
 const SECAO_BTN_BASE = [
@@ -65,7 +66,8 @@ export function BotaoPastaLocal({
 
   const codigoInformado = String(codigoCliente ?? '').trim();
   const codigo = codigoInformado ? padCliente(codigoCliente) : '';
-  const titulo = tituloBotaoPastaLocal({ ativo: helperAtivo, baseClientes });
+  const so = detectarSOUsuario();
+  const titulo = tituloBotaoPastaLocal({ ativo: helperAtivo, baseClientes, so });
 
   const handleClick = useCallback(async () => {
     if (!codigoInformado) {
@@ -85,7 +87,7 @@ export function BotaoPastaLocal({
       setBaseClientes(status.baseClientes);
     } catch (err) {
       if (err instanceof LocalHelperIndisponivelError) {
-        window.alert(MENSAGEM_LOCAL_HELPER_INDISPONIVEL);
+        window.alert(mensagemLocalHelperIndisponivel(so));
         setHelperAtivo(false);
         return;
       }
@@ -95,7 +97,7 @@ export function BotaoPastaLocal({
     } finally {
       setAbrindo(false);
     }
-  }, [abrirPastaProcesso, codigo, codigoInformado, nomeCliente, numeroInterno, onErro]);
+  }, [abrirPastaProcesso, codigo, codigoInformado, nomeCliente, numeroInterno, onErro, so]);
 
   const desabilitado = disabled || abrindo || !codigoInformado;
   const rotulo = abrindo ? 'Abrindo…' : 'Pasta local';

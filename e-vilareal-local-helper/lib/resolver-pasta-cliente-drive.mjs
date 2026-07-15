@@ -2,13 +2,31 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-const SUBPASTA_CLIENTES = path.join(
+const SUBPASTA_CLIENTES_PT = path.join(
   'Drives compartilhados',
   'Villa Real Documentos',
   'Sistema VilaReal',
   'clientes',
   '01 - Ativos',
 );
+
+const SUBPASTA_CLIENTES_EN = path.join(
+  'Shared drives',
+  'Villa Real Documentos',
+  'Sistema VilaReal',
+  'clientes',
+  '01 - Ativos',
+);
+
+const SUBPASTA_CLIENTES_ES = path.join(
+  'Unidades compartilhadas',
+  'Villa Real Documentos',
+  'Sistema VilaReal',
+  'clientes',
+  '01 - Ativos',
+);
+
+const RELATIVOS_CLIENTES = [SUBPASTA_CLIENTES_PT, SUBPASTA_CLIENTES_EN, SUBPASTA_CLIENTES_ES];
 
 /** Espelha {@code GoogleDriveService.sanitizarNomePasta} no backend Java. */
 export function sanitizarNomePasta(nome) {
@@ -47,6 +65,30 @@ function diretorioExiste(caminho) {
   }
 }
 
+function pushCandidatos(candidatos, base, relativos = RELATIVOS_CLIENTES) {
+  for (const rel of relativos) {
+    candidatos.push(path.join(base, rel));
+  }
+}
+
+function candidatosWindows(homeDir) {
+  const candidatos = [];
+  pushCandidatos(candidatos, path.join(homeDir, 'Google Drive'));
+  pushCandidatos(candidatos, path.join(homeDir, 'Meu Drive'));
+
+  for (const letra of 'GHIJKLMNOPQRSTUVWXYZCDEF') {
+    const raiz = `${letra}:\\`;
+    try {
+      if (!fs.statSync(raiz).isDirectory()) continue;
+    } catch {
+      continue;
+    }
+    pushCandidatos(candidatos, raiz);
+    pushCandidatos(candidatos, path.join(raiz, 'Google Drive'));
+  }
+  return candidatos;
+}
+
 /** Varre caminhos típicos do Google Drive Desktop (macOS e Windows). */
 export function detectarBaseClientesDrive({ homeDir = os.homedir(), envBase = process.env.VILAREAL_DRIVE_CLIENTES_BASE } = {}) {
   const env = String(envBase ?? '').trim();
@@ -59,24 +101,22 @@ export function detectarBaseClientesDrive({ homeDir = os.homedir(), envBase = pr
     if (diretorioExiste(cloudStorage)) {
       for (const entry of fs.readdirSync(cloudStorage)) {
         if (entry.startsWith('GoogleDrive')) {
-          candidatos.push(path.join(cloudStorage, entry, SUBPASTA_CLIENTES));
+          pushCandidatos(candidatos, path.join(cloudStorage, entry));
         }
       }
     }
-    candidatos.push(
-      path.join(homeDir, 'Google Drive', SUBPASTA_CLIENTES),
-      path.join(homeDir, 'Library', 'CloudStorage', 'GoogleDrive', SUBPASTA_CLIENTES),
-    );
+    pushCandidatos(candidatos, path.join(homeDir, 'Google Drive'));
+    pushCandidatos(candidatos, path.join(homeDir, 'Library', 'CloudStorage', 'GoogleDrive'));
   } else if (process.platform === 'win32') {
-    candidatos.push(
-      path.join(homeDir, 'Google Drive', SUBPASTA_CLIENTES),
-      path.join(homeDir, 'Meu Drive', SUBPASTA_CLIENTES),
-      path.join('G:', 'Drives compartilhados', 'Villa Real Documentos', 'Sistema VilaReal', 'clientes', '01 - Ativos'),
-    );
+    candidatos.push(...candidatosWindows(homeDir));
   }
 
+  const vistos = new Set();
   for (const candidato of candidatos) {
-    if (diretorioExiste(candidato)) return candidato;
+    const norm = path.normalize(candidato);
+    if (vistos.has(norm)) continue;
+    vistos.add(norm);
+    if (diretorioExiste(norm)) return norm;
   }
   return null;
 }

@@ -1,19 +1,13 @@
 import readline from 'node:readline/promises';
-import os from 'node:os';
 import { stdin as input, stdout as output } from 'node:process';
 import { detectarBaseClientesDrive } from '../lib/resolver-pasta-cliente-drive.mjs';
 import { validarCaminhoBaseClientes } from '../lib/validar-caminho-base-clientes.mjs';
+import { expandirCaminhoUsuario } from '../lib/expandir-caminho-usuario.mjs';
 
 const EXEMPLO_MAC =
   '~/Library/CloudStorage/GoogleDrive-…/Drives compartilhados/Villa Real Documentos/Sistema VilaReal/clientes/01 - Ativos';
-
-function expandirHome(caminho) {
-  const s = String(caminho ?? '').trim();
-  if (s.startsWith('~/')) {
-    return `${os.homedir()}${s.slice(1)}`;
-  }
-  return s;
-}
+const EXEMPLO_WIN =
+  'G:\\Drives compartilhados\\Villa Real Documentos\\Sistema VilaReal\\clientes\\01 - Ativos';
 
 async function perguntar(rl, texto) {
   const resposta = await rl.question(texto);
@@ -41,7 +35,11 @@ export async function resolverBaseClientesInterativo() {
     } else {
       console.log('');
       console.log('Não foi possível detectar automaticamente a pasta de clientes.');
-      console.log(`Exemplo (macOS): ${EXEMPLO_MAC}`);
+      console.log(
+        process.platform === 'win32'
+          ? `Exemplo (Windows): ${EXEMPLO_WIN}`
+          : `Exemplo (macOS): ${EXEMPLO_MAC}`,
+      );
       console.log('');
     }
 
@@ -50,7 +48,7 @@ export async function resolverBaseClientesInterativo() {
         rl,
         'Cole o caminho completo da pasta «clientes/01 - Ativos»: ',
       );
-      const caminho = await expandirHome(informado);
+      const caminho = expandirCaminhoUsuario(informado);
       const validacao = validarCaminhoBaseClientes(caminho);
       if (validacao.ok) {
         console.log(`\nPasta configurada: ${validacao.caminho}\n`);
