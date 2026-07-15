@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, FileText, Loader2, Trash2, UserRound } from 'lucide-react';
+import { AlertTriangle, FileText, Forward, Loader2, Trash2, UserRound } from 'lucide-react';
 import { formatTimeBR, formatPhoneDisplay, formatDateTimeBR } from '../../../utils/whatsappFormat.js';
 import { reprocessarWhatsAppMedia } from '../../../repositories/whatsappRepository.js';
 import { useWhatsAppMediaUrl } from '../hooks/useWhatsAppMediaUrl.js';
@@ -20,6 +20,10 @@ import { mapsUrl, parseLocationContent } from '../utils/whatsappLocation.js';
 import { labelReactionThread } from '../utils/whatsappReaction.js';
 import { parseInteractiveReplyContent } from '../utils/whatsappInteractiveReply.js';
 import { highlightText } from '../../../utils/highlightText.jsx';
+import {
+  motivoEncaminharIndisponivel,
+  podeEncaminharMensagem,
+} from '../utils/whatsappForwardEligibility.js';
 
 function BubbleText({ text, highlightTerm, active }) {
   const rendered = highlightText(text, highlightTerm, { active });
@@ -696,6 +700,7 @@ export function ChatBubble({
   highlightTerm = '',
   isActiveSearchMatch = false,
   onDeleteMessage,
+  onForwardMessage,
 }) {
   const isOutbound = String(message.direction ?? '').toUpperCase() === 'OUTBOUND';
   const hasTemplate = Boolean(message.templateName);
@@ -766,6 +771,9 @@ export function ChatBubble({
 
   const canDelete =
     typeof onDeleteMessage === 'function' && typeof message?.id === 'number' && message.id > 0;
+  const canForward =
+    typeof onForwardMessage === 'function' && podeEncaminharMensagem(message);
+  const forwardBlockedReason = canForward ? null : motivoEncaminharIndisponivel(message);
   const attachedReactions = Array.isArray(message.attachedReactions) ? message.attachedReactions : [];
   const hasReactionBadge = attachedReactions.length > 0;
 
@@ -785,16 +793,40 @@ export function ChatBubble({
             : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-bl-md'
         } ${isMedia ? 'bg-opacity-95' : ''}`}
       >
-        {canDelete ? (
-          <button
-            type="button"
-            onClick={() => onDeleteMessage(message)}
-            className={`absolute -top-2 ${isOutbound ? '-left-2' : '-right-2'} z-10 inline-flex items-center gap-0.5 rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-red-600 shadow-sm opacity-0 transition-opacity group-hover/msg:opacity-100 focus:opacity-100 dark:border-slate-600 dark:bg-slate-800 dark:text-red-400`}
-            title="Apagar mensagem"
+        {canDelete || canForward ? (
+          <div
+            className={`absolute -top-2 ${isOutbound ? '-left-2' : '-right-2'} z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover/msg:opacity-100 focus-within:opacity-100`}
           >
-            <Trash2 className="h-3 w-3" aria-hidden />
-            Apagar
-          </button>
+            {canForward ? (
+              <button
+                type="button"
+                onClick={() => onForwardMessage(message)}
+                className="inline-flex items-center gap-0.5 rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 shadow-sm dark:border-slate-600 dark:bg-slate-800 dark:text-emerald-300"
+                title="Encaminhar mensagem"
+              >
+                <Forward className="h-3 w-3" aria-hidden />
+                Encaminhar
+              </button>
+            ) : forwardBlockedReason && typeof onForwardMessage === 'function' ? (
+              <span
+                className="inline-flex items-center rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-400 shadow-sm dark:border-slate-600 dark:bg-slate-800"
+                title={forwardBlockedReason}
+              >
+                Encaminhar
+              </span>
+            ) : null}
+            {canDelete ? (
+              <button
+                type="button"
+                onClick={() => onDeleteMessage(message)}
+                className="inline-flex items-center gap-0.5 rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-red-600 shadow-sm dark:border-slate-600 dark:bg-slate-800 dark:text-red-400"
+                title="Apagar mensagem"
+              >
+                <Trash2 className="h-3 w-3" aria-hidden />
+                Apagar
+              </button>
+            ) : null}
+          </div>
         ) : null}
         {hasTemplate ? (
           <span

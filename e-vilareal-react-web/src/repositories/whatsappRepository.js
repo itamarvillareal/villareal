@@ -371,6 +371,27 @@ export async function arquivarConversasLote(phoneNumbers) {
 }
 
 /**
+ * Encaminha mensagem ou mídia para outro(s) contato(s).
+ * @param {number|string} messageId
+ * @param {{ phoneNumbers: string[], caption?: string }} payload
+ */
+export async function encaminharMensagemWhatsApp(messageId, { phoneNumbers, caption } = {}) {
+  const id = messageId != null ? String(messageId).trim() : '';
+  if (!id) throw new Error('ID da mensagem ausente.');
+  const phones = Array.isArray(phoneNumbers)
+    ? phoneNumbers.map((p) => String(p ?? '').trim()).filter(Boolean)
+    : [];
+  if (phones.length === 0) throw new Error('Selecione ao menos um destinatário.');
+  const body = { phoneNumbers: phones };
+  const cap = String(caption ?? '').trim();
+  if (cap) body.caption = cap;
+  return request(`/api/whatsapp/messages/${encodeURIComponent(id)}/forward`, {
+    method: 'POST',
+    body,
+  });
+}
+
+/**
  * Apaga mensagem.
  * @param {number|string} messageId
  * @param {{ escopo?: 'inbox' | 'todos' }} [options]

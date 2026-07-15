@@ -16,6 +16,8 @@ import br.com.vilareal.whatsapp.dto.WhatsAppArquivarConversasLoteRequest;
 import br.com.vilareal.whatsapp.dto.WhatsAppArquivarConversasLoteResultDTO;
 import br.com.vilareal.whatsapp.dto.WhatsAppFixarConversasLoteRequest;
 import br.com.vilareal.whatsapp.dto.WhatsAppFixarConversasLoteResultDTO;
+import br.com.vilareal.whatsapp.dto.WhatsAppForwardMessageRequest;
+import br.com.vilareal.whatsapp.dto.WhatsAppForwardMessageResponse;
 import br.com.vilareal.whatsapp.dto.WhatsAppMarcarLidasLoteRequest;
 import br.com.vilareal.whatsapp.dto.WhatsAppMarcarLidasLoteResultDTO;
 import br.com.vilareal.whatsapp.dto.CreateTemplateRequest;
@@ -61,6 +63,7 @@ import br.com.vilareal.whatsapp.service.WhatsAppConversationWindowService;
 import br.com.vilareal.whatsapp.service.WhatsAppIniciarConversaService;
 import br.com.vilareal.whatsapp.service.WhatsAppConversationContextService;
 import br.com.vilareal.whatsapp.service.WhatsAppConversationFeedService;
+import br.com.vilareal.whatsapp.service.WhatsAppForwardMessageService;
 import br.com.vilareal.whatsapp.service.WhatsAppMessageDeleteService;
 import br.com.vilareal.whatsapp.service.WhatsAppNomeExibicaoService;
 import br.com.vilareal.whatsapp.service.WhatsAppGrupoListService;
@@ -144,6 +147,7 @@ public class WhatsAppController {
     private final WhatsAppNomeExibicaoService nomeExibicaoService;
     private final WhatsAppContactPhotoService contactPhotoService;
     private final WhatsAppConversationSearchService conversationSearchService;
+    private final WhatsAppForwardMessageService forwardMessageService;
 
     public WhatsAppController(
             WhatsAppService whatsAppService,
@@ -168,7 +172,8 @@ public class WhatsAppController {
             WhatsAppConversationWindowService conversationWindowService,
             WhatsAppNomeExibicaoService nomeExibicaoService,
             WhatsAppContactPhotoService contactPhotoService,
-            WhatsAppConversationSearchService conversationSearchService) {
+            WhatsAppConversationSearchService conversationSearchService,
+            WhatsAppForwardMessageService forwardMessageService) {
         this.whatsAppService = whatsAppService;
         this.whatsAppSchedulerService = whatsAppSchedulerService;
         this.whatsAppMessageRepository = whatsAppMessageRepository;
@@ -192,6 +197,7 @@ public class WhatsAppController {
         this.nomeExibicaoService = nomeExibicaoService;
         this.contactPhotoService = contactPhotoService;
         this.conversationSearchService = conversationSearchService;
+        this.forwardMessageService = forwardMessageService;
     }
 
     @GetMapping("/iniciar/telefones")
@@ -548,6 +554,22 @@ public class WhatsAppController {
             return ResponseEntity.ok(conversationFeedService.buscarMensagens(phoneNumber, termo));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @PostMapping("/messages/{messageId}/forward")
+    @Operation(summary = "Encaminha mensagem ou mídia para outro(s) contato(s)")
+    public ResponseEntity<?> encaminharMensagem(
+            @PathVariable Long messageId, @Valid @RequestBody WhatsAppForwardMessageRequest request) {
+        try {
+            WhatsAppForwardMessageResponse response = forwardMessageService.encaminhar(
+                    messageId, request.phoneNumbers(), request.caption());
+            if (response.success()) {
+                return ResponseEntity.ok(response);
+            }
+            return ResponseEntity.status(HttpStatus.MULTI_STATUS).body(response);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         }
     }
 

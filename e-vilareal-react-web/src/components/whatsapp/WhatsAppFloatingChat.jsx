@@ -4,6 +4,7 @@ import { Loader2, MessageCircle, Paperclip, Search, Send, X } from 'lucide-react
 import { WhatsAppMediaAttachPreview } from './components/WhatsAppMediaAttachPreview.jsx';
 import { useWhatsAppNotificationContext } from './WhatsAppNotificationProvider.jsx';
 import { ChatBubble } from './components/ChatBubble.jsx';
+import { EncaminharMensagemModal } from './components/EncaminharMensagemModal.jsx';
 import { DaySeparator } from './components/DaySeparator.jsx';
 import {
   getWhatsAppMessages,
@@ -168,6 +169,7 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
   const [selectedFile, setSelectedFile] = useState(null);
   const [mediaCaption, setMediaCaption] = useState('');
   const [error, setError] = useState('');
+  const [pendingForwardMessage, setPendingForwardMessage] = useState(null);
   const fileInputRef = useRef(null);
   const bottomRef = useRef(null);
   const phone = conversation.phoneNumber;
@@ -191,6 +193,16 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
     },
     [retryOptimisticMedia],
   );
+
+  const requestForwardMessage = useCallback((message) => {
+    if (!message?.id || message.id <= 0) return;
+    setPendingForwardMessage(message);
+  }, []);
+
+  const handleForwardSuccess = useCallback(() => {
+    setError('');
+    setPendingForwardMessage(null);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -399,6 +411,7 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
                   message={m}
                   onRetryOutboundMedia={handleRetryOutboundMedia}
                   onLocalPreviewConsumed={handleLocalPreviewConsumed}
+                  onForwardMessage={requestForwardMessage}
                 />
               </Fragment>
             );
@@ -470,6 +483,13 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
           {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         </button>
       </div>
+      <EncaminharMensagemModal
+        open={Boolean(pendingForwardMessage)}
+        message={pendingForwardMessage}
+        sourcePhoneNumber={phoneApi}
+        onClose={() => setPendingForwardMessage(null)}
+        onSuccess={handleForwardSuccess}
+      />
     </>
   );
 }

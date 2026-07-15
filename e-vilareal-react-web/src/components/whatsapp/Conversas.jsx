@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { ExternalLink, LayoutTemplate, Link2, Loader2, MessageCircle, MessageSquarePlus, Pencil, Plus, Search, Send, ChevronUp, ChevronDown, ChevronLeft, X, Trash2, Camera, ImageMinus, MoreVertical } from 'lucide-react';
 import { ConfirmDialog } from '../financeiro/shared/ConfirmDialog.jsx';
 import { WhatsAppDeleteMessageDialog } from './components/WhatsAppDeleteMessageDialog.jsx';
+import { EncaminharMensagemModal } from './components/EncaminharMensagemModal.jsx';
 import { ChatBubble } from './components/ChatBubble.jsx';
 import { DaySeparator } from './components/DaySeparator.jsx';
 import {
@@ -311,6 +312,7 @@ export function WhatsAppConversas() {
   const [selectedPhones, setSelectedPhones] = useState(() => new Set());
   const [bulkSelectionBusy, setBulkSelectionBusy] = useState(false);
   const [pendingDeleteMessage, setPendingDeleteMessage] = useState(null);
+  const [pendingForwardMessage, setPendingForwardMessage] = useState(null);
   const [pendingDeleteConversationPhone, setPendingDeleteConversationPhone] = useState('');
   const bottomRef = useRef(null);
   const conversationSearchInputRef = useRef(null);
@@ -580,6 +582,21 @@ export function WhatsAppConversas() {
     if (!message?.id || message.id <= 0) return;
     setPendingDeleteMessage(message);
   }, []);
+
+  const requestForwardMessage = useCallback((message) => {
+    if (!message?.id || message.id <= 0) return;
+    setPendingForwardMessage(message);
+  }, []);
+
+  const handleForwardSuccess = useCallback(
+    (_response, destino) => {
+      toast.success(
+        `Mensagem encaminhada para ${destino?.contactName || formatPhoneDisplay(destino?.phoneNumber)}.`,
+      );
+      void loadConversations();
+    },
+    [toast, loadConversations],
+  );
 
   const confirmDeleteMessage = useCallback(
     async (escopo = 'inbox') => {
@@ -1871,6 +1888,7 @@ export function WhatsAppConversas() {
                       highlightTerm={searchMatchIds.has(msg.id) ? searchHighlightTerm : ''}
                       isActiveSearchMatch={msg.id != null && msg.id === activeSearchMessageId}
                       onDeleteMessage={requestDeleteMessage}
+                      onForwardMessage={requestForwardMessage}
                     />
                   </Fragment>
                 );
@@ -1972,6 +1990,13 @@ export function WhatsAppConversas() {
         onDeleteInbox={() => void confirmDeleteMessage('inbox')}
         onDeleteForEveryone={() => void confirmDeleteMessage('todos')}
         onCancel={() => setPendingDeleteMessage(null)}
+      />
+      <EncaminharMensagemModal
+        open={Boolean(pendingForwardMessage)}
+        message={pendingForwardMessage}
+        sourcePhoneNumber={activePhone}
+        onClose={() => setPendingForwardMessage(null)}
+        onSuccess={handleForwardSuccess}
       />
       <ConfirmDialog
         open={Boolean(pendingDeleteConversationPhone)}
