@@ -75,7 +75,7 @@ export function BotaoPastaLocal({
     setAbrindo(true);
     try {
       await abrirPastaClienteLocalOuFalhar({
-        codigoCliente: cod,
+        codigoCliente: codigo,
         nomeCliente,
         numeroInterno,
         abrirPastaProcesso,
@@ -95,7 +95,7 @@ export function BotaoPastaLocal({
     } finally {
       setAbrindo(false);
     }
-  }, [abrirPastaProcesso, cod, codigoInformado, nomeCliente, numeroInterno, onErro]);
+  }, [abrirPastaProcesso, codigo, codigoInformado, nomeCliente, numeroInterno, onErro]);
 
   const desabilitado = disabled || abrindo || !codigoInformado;
   const rotulo = abrindo ? 'Abrindo…' : 'Pasta local';
