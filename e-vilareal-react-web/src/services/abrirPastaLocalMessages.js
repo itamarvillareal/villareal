@@ -9,10 +9,16 @@ export function mensagemLocalHelperIndisponivel(so = detectarSOUsuario()) {
 
   let msg =
     `Para abrir a pasta no ${gerenciador}, instale o agente local (uma vez nesta máquina).\n\n` +
-    'Abra Configurações no sistema e baixe o instalador.';
+    'Abra Configurações no sistema e baixe o instalador do seu sistema operacional.';
 
   if (instalador) {
     msg += `\n\nDepois de baixar:\n1. Extraia o zip\n2. Execute ${so === 'windows' ? 'Instalar-Pasta-Local-VillaReal.bat' : 'Instalar-Pasta-Local-VillaReal.command'}`;
+  }
+
+  if (so === 'macos') {
+    msg +=
+      '\n\nSe você tem o código do projeto neste Mac, também pode rodar no Terminal:\n' +
+      '  bash ~/Documents/villareal/e-vilareal-local-helper/install.sh';
   }
 
   msg += '\n\nRequer Node.js (https://nodejs.org). O Google Drive Desktop precisa estar sincronizado.';

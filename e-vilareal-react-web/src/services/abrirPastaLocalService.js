@@ -1,18 +1,58 @@
 const DEFAULT_PORT = 9876;
-const DEFAULT_HOST = '127.0.0.1';
+const HOSTS_TENTATIVA = ['127.0.0.1', 'localhost'];
 
-function baseUrl() {
+function portas() {
   const port = Number(import.meta.env?.VITE_LOCAL_HELPER_PORT || DEFAULT_PORT);
-  const host = String(import.meta.env?.VITE_LOCAL_HELPER_HOST || DEFAULT_HOST).trim() || DEFAULT_HOST;
-  return `http://${host}:${port}`;
+  return Number.isFinite(port) && port > 0 ? port : DEFAULT_PORT;
+}
+
+function urlsBase() {
+  const port = portas();
+  const envHost = String(import.meta.env?.VITE_LOCAL_HELPER_HOST || '').trim();
+  if (envHost) return [`http://${envHost}:${port}`];
+  return HOSTS_TENTATIVA.map((host) => `http://${host}:${port}`);
+}
+
+function fetchOpcoes(method = 'GET', body) {
+  const init = {
+    method,
+    mode: 'cors',
+    cache: 'no-store',
+    // Chrome: declara acesso à rede local (loopback) a partir de site HTTPS.
+    targetAddressSpace: 'loopback',
+  };
+  if (body != null) {
+    init.headers = { 'Content-Type': 'application/json' };
+    init.body = JSON.stringify(body);
+  }
+  return init;
+}
+
+async function tentarFetch(url, init) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 2500);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function chamarEmAlgumHost(caminho, init) {
+  let ultimoErro = null;
+  for (const base of urlsBase()) {
+    try {
+      const res = await tentarFetch(`${base}${caminho}`, init);
+      return { res, base };
+    } catch (err) {
+      ultimoErro = err;
+    }
+  }
+  throw ultimoErro ?? new Error('Agente local indisponível');
 }
 
 async function chamarLocalHelper(caminho, body) {
-  const res = await fetch(`${baseUrl()}${caminho}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body ?? {}),
-  });
+  const { res } = await chamarEmAlgumHost(caminho, fetchOpcoes('POST', body));
   let data = null;
   try {
     data = await res.json();
@@ -28,19 +68,45 @@ async function chamarLocalHelper(caminho, body) {
 
 /** Verifica se o agente local está ativo. */
 export async function verificarLocalHelperAtivo() {
-  try {
-    const res = await fetch(`${baseUrl()}/health`, { method: 'GET' });
-    if (!res.ok) return { ativo: false, baseClientes: null };
-    const data = await res.json();
-    return { ativo: Boolean(data?.ok), baseClientes: data?.baseClientes ?? null };
-  } catch {
-    return { ativo: false, baseClientes: null };
+  for (const base of urlsBase()) {
+    try {
+      const res = await tentarFetch(`${base}/health`, fetchOpcoes('GET'));
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (data?.ok) {
+        return { ativo: true, baseClientes: data?.baseClientes ?? null, baseUrl: base };
+      }
+    } catch {
+      /* tenta próximo host */
+    }
+  }
+  return { ativo: false, baseClientes: null, baseUrl: null };
+}
+
+function montarQueryAbrirPasta({ codigoCliente, nomeCliente, numeroInterno, abrirPastaProcesso = true }) {
+  const params = new URLSearchParams();
+  params.set('codigoCliente', String(codigoCliente ?? '').trim());
+  const nome = String(nomeCliente ?? '').trim();
+  if (nome) params.set('nomeCliente', nome);
+  if (abrirPastaProcesso && numeroInterno != null && String(numeroInterno).trim() !== '') {
+    params.set('numeroInterno', String(Number(numeroInterno)));
+  }
+  return params.toString();
+}
+
+/** Fallback: abre URL GET no navegador (costuma disparar permissão de rede local no Chrome). */
+export function abrirPastaClienteViaNavegador(params) {
+  const query = montarQueryAbrirPasta(params);
+  const bases = urlsBase();
+  const url = `${bases[0]}/abrir-pasta-cliente?${query}`;
+  const popup = window.open(url, '_blank', 'noopener,noreferrer');
+  if (!popup) {
+    window.location.assign(url);
   }
 }
 
 /**
  * Abre a pasta do cliente (e subpasta Proc. NN se existir) no Finder/Explorer via agente local.
- * @param {{ codigoCliente: string, nomeCliente?: string, numeroInterno?: number|null, abrirPastaProcesso?: boolean }} params
  */
 export async function abrirPastaClienteLocal({
   codigoCliente,
@@ -69,13 +135,14 @@ export class LocalHelperIndisponivelError extends Error {
   }
 }
 
-/** Tenta abrir via agente; se falhar por conexão, lança LocalHelperIndisponivelError. */
+/** Tenta POST silencioso; se o browser bloquear, usa GET em nova aba. */
 export async function abrirPastaClienteLocalOuFalhar(params) {
   try {
     return await abrirPastaClienteLocal(params);
   } catch (err) {
-    if (err instanceof TypeError || /fetch|network|Failed/i.test(String(err?.message ?? ''))) {
-      throw new LocalHelperIndisponivelError();
+    if (err instanceof TypeError || /fetch|network|Failed|abort/i.test(String(err?.message ?? ''))) {
+      abrirPastaClienteViaNavegador(params);
+      return { ok: true, viaNavegador: true };
     }
     throw err;
   }

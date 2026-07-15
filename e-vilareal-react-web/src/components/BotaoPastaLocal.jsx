@@ -54,13 +54,22 @@ export function BotaoPastaLocal({
 
   useEffect(() => {
     let cancelado = false;
-    void verificarLocalHelperAtivo().then((status) => {
-      if (cancelado) return;
-      setHelperAtivo(status.ativo);
-      setBaseClientes(status.baseClientes);
+    const checar = () => {
+      void verificarLocalHelperAtivo().then((status) => {
+        if (cancelado) return;
+        setHelperAtivo(status.ativo);
+        setBaseClientes(status.baseClientes);
+      });
+    };
+    checar();
+    const onFocus = () => checar();
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') checar();
     });
     return () => {
       cancelado = true;
+      window.removeEventListener('focus', onFocus);
     };
   }, []);
 
@@ -76,18 +85,24 @@ export function BotaoPastaLocal({
     }
     setAbrindo(true);
     try {
-      await abrirPastaClienteLocalOuFalhar({
+      const resultado = await abrirPastaClienteLocalOuFalhar({
         codigoCliente: codigo,
         nomeCliente,
         numeroInterno,
         abrirPastaProcesso,
       });
+      if (resultado?.viaNavegador) {
+        setHelperAtivo(true);
+      }
       const status = await verificarLocalHelperAtivo();
       setHelperAtivo(status.ativo);
       setBaseClientes(status.baseClientes);
     } catch (err) {
       if (err instanceof LocalHelperIndisponivelError) {
-        window.alert(mensagemLocalHelperIndisponivel(so));
+        window.alert(
+          mensagemLocalHelperIndisponivel(so) +
+            '\n\nSe o Chrome pedir permissão para «rede local», clique em Permitir.'
+        );
         setHelperAtivo(false);
         return;
       }
