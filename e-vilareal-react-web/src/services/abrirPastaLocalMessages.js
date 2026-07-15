@@ -23,10 +23,11 @@ export function mensagemLocalHelperIndisponivel(so = detectarSOUsuario()) {
 
   if (so === 'windows') {
     msg +=
-      '\n\nNo Windows, se já instalou:\n' +
-      '1. Abra %LOCALAPPDATA%\\VillaReal\\local-helper\\Iniciar-Agente-VillaReal.bat\n' +
-      '2. No navegador, teste http://127.0.0.1:9876/health (deve mostrar {"ok":true})\n' +
-      '3. Se falhar, veja o log em %USERPROFILE%\\.vilareal\\local-helper.log';
+      '\n\nNo Windows:\n' +
+      '1. Baixe o zip em Configurações e execute Instalar-Pasta-Local-VillaReal.bat\n' +
+      '2. Se falhar, use Diagnosticar-Pasta-Local-VillaReal.bat (no zip)\n' +
+      '3. Teste http://127.0.0.1:9876/health — deve mostrar {"ok":true}\n' +
+      '4. Log: %USERPROFILE%\\.vilareal\\local-helper.log';
   }
 
   msg += '\n\nRequer Node.js (https://nodejs.org). O Google Drive Desktop precisa estar sincronizado.';

@@ -29,6 +29,24 @@ carregarConfigPersistida();
 
 const PORT = Number(process.env.VILAREAL_LOCAL_HELPER_PORT || 9876);
 const HOST = process.env.VILAREAL_LOCAL_HELPER_HOST || '127.0.0.1';
+const LOG_PATH = path.join(os.homedir(), '.vilareal', 'local-helper.log');
+
+function logHelper(msg) {
+  try {
+    fs.mkdirSync(path.dirname(LOG_PATH), { recursive: true });
+    fs.appendFileSync(LOG_PATH, `[${new Date().toISOString()}] ${msg}\n`);
+  } catch {
+    /* ignorar falha de log */
+  }
+}
+
+process.on('uncaughtException', (err) => {
+  logHelper(`FATAL: ${err?.stack || err}`);
+  process.exit(1);
+});
+process.on('unhandledRejection', (err) => {
+  logHelper(`REJECT: ${err?.stack || err}`);
+});
 
 let baseClientesCache = detectarBaseClientesDrive();
 
@@ -219,10 +237,16 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => {
   baseClientesCache = detectarBaseClientesDrive();
+  logHelper(`Agente ativo em http://${HOST}:${PORT}`);
   console.log(`[vilareal-local-helper] http://${HOST}:${PORT}`);
   console.log(
     baseClientesCache
       ? `[vilareal-local-helper] base clientes: ${baseClientesCache}`
       : '[vilareal-local-helper] base clientes não detectada — defina VILAREAL_DRIVE_CLIENTES_BASE',
   );
+});
+server.on('error', (err) => {
+  logHelper(`Erro ao iniciar servidor: ${err?.message || err}`);
+  console.error('[vilareal-local-helper]', err);
+  process.exit(1);
 });
