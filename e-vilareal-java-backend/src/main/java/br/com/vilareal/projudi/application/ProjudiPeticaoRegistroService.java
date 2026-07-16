@@ -7,6 +7,7 @@ import br.com.vilareal.documento.DrivePastaProcessoDto;
 import br.com.vilareal.documento.GoogleDriveService;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
+import br.com.vilareal.projudi.ProjudiArquivoAssinavelUtil;
 import br.com.vilareal.projudi.ProjudiNumeroReduzidoUtil;
 import br.com.vilareal.projudi.ProjudiAssinaturaP7sUtil;
 import br.com.vilareal.projudi.ProjudiAssinaturaP7sUtil.ValidacaoP7s;
@@ -29,6 +30,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -135,13 +137,15 @@ public class ProjudiPeticaoRegistroService {
             String pdfSha256 = sha256Hex(item.pdfBytes());
             String sha8 = pdfSha256.substring(0, 8);
             int ordem = i + 1;
-            String nomeStore = peticao.getId() + "_" + ordem + "_" + sha8 + ".pdf";
+            // Mantém a extensão original (.pdf, .jpg, .jpeg, .mp4) no nome canônico do store.
+            String nomeStore = peticao.getId() + "_" + ordem + "_" + sha8
+                    + ProjudiArquivoAssinavelUtil.extensaoStore(item.nomeOriginal());
             Path destino = storeDir.resolve(nomeStore);
 
             try {
                 Files.write(destino, item.pdfBytes());
             } catch (Exception e) {
-                throw new IllegalStateException("Falha ao gravar PDF local: " + destino, e);
+                throw new IllegalStateException("Falha ao gravar arquivo local: " + destino, e);
             }
 
             ProjudiPeticaoArquivoEntity arquivo = new ProjudiPeticaoArquivoEntity();
@@ -154,8 +158,9 @@ public class ProjudiPeticaoRegistroService {
             peticao.adicionarArquivo(arquivo);
 
             if (sincronizarDrive) {
-                processoOpt.ifPresent(
-                        processo -> copiarPdfParaPastaAssinar(processo, nomeStore, item.pdfBytes(), arquivo));
+                String mimeType = ProjudiArquivoAssinavelUtil.mimeTypePorNome(item.nomeOriginal());
+                processoOpt.ifPresent(processo ->
+                        copiarArquivoParaPastaAssinar(processo, nomeStore, item.pdfBytes(), mimeType, arquivo));
             }
         }
 
@@ -222,7 +227,8 @@ public class ProjudiPeticaoRegistroService {
             String pdfSha256 = validacao.sha256ConteudoEmbutido();
             String sha8 = pdfSha256.substring(0, 8);
             int ordem = i + 1;
-            String nomeStore = peticao.getId() + "_" + ordem + "_" + sha8 + ".pdf";
+            String nomeStore = peticao.getId() + "_" + ordem + "_" + sha8
+                    + ProjudiArquivoAssinavelUtil.extensaoStore(removerSufixoP7s(item.nomeOriginal()));
             String p7sRef = peticao.getId() + "_" + ordem + "_assinado.p7s";
 
             try {
@@ -244,8 +250,9 @@ public class ProjudiPeticaoRegistroService {
             arquivo.setStatus(STATUS_ARQUIVO_ASSINADO);
             peticao.adicionarArquivo(arquivo);
 
+            String mimeConteudo = ProjudiArquivoAssinavelUtil.mimeTypePorNome(nomeStore);
             processoOpt.ifPresent(processo -> {
-                copiarPdfParaPastaAssinar(processo, nomeStore, pdfBytes, arquivo);
+                copiarArquivoParaPastaAssinar(processo, nomeStore, pdfBytes, mimeConteudo, arquivo);
                 copiarP7sParaPastaAssinar(processo, p7sRef, item.p7sBytes(), arquivo);
             });
         }
@@ -445,13 +452,14 @@ public class ProjudiPeticaoRegistroService {
                 });
     }
 
-    /** Copia o PDF para a subpasta «Assinar» da pasta do processo no Drive (best-effort). */
-    private void copiarPdfParaPastaAssinar(
+    /** Copia o arquivo original (PDF/JPG/MP4) para a subpasta «Assinar» no Drive (best-effort). */
+    private void copiarArquivoParaPastaAssinar(
             ProcessoEntity processo,
             String nomeArquivo,
-            byte[] pdfBytes,
+            byte[] bytes,
+            String mimeType,
             ProjudiPeticaoArquivoEntity arquivoEntity) {
-        String id = enviarParaPastaAssinar(processo, nomeArquivo, pdfBytes, "application/pdf");
+        String id = enviarParaPastaAssinar(processo, nomeArquivo, bytes, mimeType);
         if (id != null) {
             arquivoEntity.setDriveFileId(id);
         }
@@ -512,6 +520,18 @@ public class ProjudiPeticaoRegistroService {
                     e.getMessage());
             return null;
         }
+    }
+
+    /** {@code foto.jpg.p7s} → {@code foto.jpg}; devolve o nome inalterado quando não termina em .p7s. */
+    static String removerSufixoP7s(String nomeOriginal) {
+        if (!StringUtils.hasText(nomeOriginal)) {
+            return nomeOriginal;
+        }
+        String nome = nomeOriginal.trim();
+        if (nome.toLowerCase(Locale.ROOT).endsWith(".p7s")) {
+            return nome.substring(0, nome.length() - 4);
+        }
+        return nome;
     }
 
     static String sha256Hex(byte[] bytes) {

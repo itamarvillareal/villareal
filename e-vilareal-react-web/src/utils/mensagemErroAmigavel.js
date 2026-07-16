@@ -21,24 +21,26 @@ function pareceMensagemNegocioApi(msg) {
 function enriquecerMensagemPrepararAssinar(msg, contexto) {
   const lower = msg.toLowerCase();
 
-  if (/nenhum pdf disponível para nova assinatura|já constam como protocolados/i.test(lower)) {
+  if (
+    /nenhum (pdf|arquivo) disponível para nova assinatura|já constam como protocolados/i.test(lower)
+  ) {
     return msg;
   }
 
-  if (/nenhum pdf pendente|nenhum pdf encontrado|sem arquivos/i.test(lower)) {
+  if (/nenhum (pdf|arquivo) (pendente|encontrado|assinável)|sem arquivos/i.test(lower)) {
     if (/pasta.*assinar|google drive|drive/i.test(lower)) {
       return msg;
     }
     return (
-      `${msg} Verifique se cada processo tem PDFs na subpasta «Assinar» no Google Drive ` +
-      '(não em Petição, Movimentações ou outras pastas). PDFs já assinados na fila PROJUDI são ignorados.'
+      `${msg} Verifique se cada processo tem arquivos (PDF, JPG/JPEG, MP4) na subpasta «Assinar» no Google Drive ` +
+      '(não em Petição, Movimentações ou outras pastas). Arquivos já assinados na fila PROJUDI são ignorados.'
     );
   }
 
-  if (/pdf.*n[aã]o encontrado|store-dir|n[aã]o est[aá] no servidor/i.test(lower)) {
+  if (/(pdf|arquivo).*n[aã]o encontrado|store-dir|n[aã]o est[aá] no servidor/i.test(lower)) {
     return (
-      'O PDF foi registrado na fila, mas o arquivo sumiu do servidor (comum após reinício do sistema). ' +
-      'Clique em «Preparar e baixar ZIP» de novo para buscar os PDFs no Drive. ' +
+      'O arquivo foi registrado na fila, mas sumiu do servidor (comum após reinício do sistema). ' +
+      'Clique em «Preparar e baixar ZIP» de novo para buscar os arquivos no Drive. ' +
       'Se repetir, contacte o suporte.'
     );
   }

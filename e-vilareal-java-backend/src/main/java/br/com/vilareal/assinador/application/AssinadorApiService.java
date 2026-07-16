@@ -91,7 +91,7 @@ public class AssinadorApiService {
         AssinaturaLoteEntity lote = assinaturaLoteService.exigirLoteEmAssinaturaDoAssinador(loteId, assinadorId);
         List<ProjudiPeticaoArquivoEntity> pendentes = listarArquivosPendentesDoLote(lote);
         if (pendentes.isEmpty()) {
-            throw new BusinessRuleException("Nenhum PDF pendente de assinatura neste lote.");
+            throw new BusinessRuleException("Nenhum arquivo pendente de assinatura neste lote.");
         }
 
         List<ArquivoAssinadoRecebido> recebidos = converterP7s(arquivosP7s, pendentes.size());

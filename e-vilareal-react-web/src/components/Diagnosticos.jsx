@@ -2332,7 +2332,7 @@ export function Diagnosticos() {
                   <Loader2 className="h-8 w-8 animate-spin text-violet-600" aria-hidden />
                   <p className="font-medium text-slate-800">Preparando…</p>
                   <p className="text-xs text-slate-500">
-                    Buscando PDFs no Drive e enfileirando lote para o assinador local.
+                    Buscando arquivos (PDF, JPG/JPEG, MP4) no Drive e enfileirando lote para o assinador local.
                     {assinarAutomaticoLoteId != null ? ` · Lote #${assinarAutomaticoLoteId}` : ''}
                   </p>
                   <button
@@ -2469,13 +2469,13 @@ export function Diagnosticos() {
             </div>
             <div className="px-4 py-4 space-y-3 text-sm text-slate-700">
               <p>
-                Os PDFs da pasta <strong>Assinar</strong> serão pré-registrados na fila PROJUDI
+                Os arquivos (PDF, JPG/JPEG, MP4) da pasta <strong>Assinar</strong> serão pré-registrados na fila PROJUDI
                 (pendentes de assinatura). O ZIP usa nomes canônicos; o pareamento no retorno é por{' '}
                 <strong>hash do conteúdo</strong>, não por nome.
               </p>
               <p className="text-xs text-slate-500">
-                Cada «Preparar e baixar» busca os PDFs de novo na pasta <strong>Assinar</strong> do
-                Drive e descarta preparações anteriores (pendentes ou não concluídas). PDFs já
+                Cada «Preparar e baixar» busca os arquivos de novo na pasta <strong>Assinar</strong> do
+                Drive e descarta preparações anteriores (pendentes ou não concluídas). Arquivos já
                 protocolados no PROJUDI não entram no lote. Arquivos grandes abrem o diálogo
                 «Salvar como» do navegador (evita queda da aba por falta de memória).
               </p>
@@ -2509,7 +2509,7 @@ export function Diagnosticos() {
               {prepararAssinarResultado ? (
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50/80 p-3 text-sm text-emerald-900 space-y-2">
                   <p className="font-medium">
-                    {prepararAssinarResultado.totalArquivos ?? 0} PDF(s) no ZIP ·{' '}
+                    {prepararAssinarResultado.totalArquivos ?? 0} arquivo(s) no ZIP ·{' '}
                     {(prepararAssinarResultado.peticaoIds || []).length} petição(ões)
                   </p>
                   {Array.isArray(prepararAssinarResultado.resumo) ? (

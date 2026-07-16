@@ -40,7 +40,8 @@ import java.util.concurrent.Executors;
 
 /**
  * Orquestra assinatura automática (Diagnósticos → Aguardando Protocolo): enfileira lote PREPARANDO,
- * busca PDFs no Drive em segundo plano e libera para o assinador Windows (pull).
+ * busca os arquivos assináveis (PDF, JPG/JPEG, MP4) no Drive em segundo plano e libera para o
+ * assinador Windows (pull).
  */
 @Service
 public class DiagnosticoAssinaturaAutomaticaService {
@@ -191,17 +192,17 @@ public class DiagnosticoAssinaturaAutomaticaService {
                 arquivoRepository.findByStatusAndPeticaoIdIn(STATUS_ARQUIVO_PENDENTE, ids);
         if (pendentes.isEmpty()) {
             throw new BusinessRuleException(
-                    "Petição #" + peticaoId + " não possui PDFs pendentes de assinatura.");
+                    "Petição #" + peticaoId + " não possui arquivos pendentes de assinatura.");
         }
         for (ProjudiPeticaoArquivoEntity arquivo : pendentes) {
             if (!StringUtils.hasText(arquivo.getPdfRef())) {
                 throw new BusinessRuleException(
-                        "PDF da petição #" + peticaoId + " não está no servidor. Use «Preparar e baixar ZIP» de novo.");
+                        "Arquivo da petição #" + peticaoId + " não está no servidor. Use «Preparar e baixar ZIP» de novo.");
             }
             Path pdfPath = storeDir.resolve(arquivo.getPdfRef());
             if (!Files.isRegularFile(pdfPath)) {
                 throw new BusinessRuleException(
-                        "PDF «"
+                        "Arquivo «"
                                 + arquivo.getPdfRef()
                                 + "» não encontrado no servidor. Use «Preparar e baixar ZIP» de novo.");
             }
@@ -209,7 +210,7 @@ public class DiagnosticoAssinaturaAutomaticaService {
 
         AssinaturaLoteEntity lote = assinaturaLoteService.criarLote(ids, peticao.getCredencialId());
         log.info(
-                "Reenfileirada petição #{} para assinatura automática (lote #{}, {} PDF(s))",
+                "Reenfileirada petição #{} para assinatura automática (lote #{}, {} arquivo(s))",
                 peticaoId,
                 lote.getId(),
                 pendentes.size());
@@ -258,7 +259,7 @@ public class DiagnosticoAssinaturaAutomaticaService {
                     preparado.totalArquivos(),
                     objectMapper.valueToTree(preparado.resumo()));
             log.info(
-                    "Preparo assíncrono concluído: lote #{} — {} petição(ões), {} PDF(s)",
+                    "Preparo assíncrono concluído: lote #{} — {} petição(ões), {} arquivo(s)",
                     loteId,
                     peticaoIds.size(),
                     preparado.totalArquivos());
@@ -289,7 +290,7 @@ public class DiagnosticoAssinaturaAutomaticaService {
                         preparado.resumo());
             }
         }
-        return "Nenhum PDF pendente para assinar. Verifique a pasta «Assinar» no Drive.";
+        return "Nenhum arquivo pendente para assinar. Verifique a pasta «Assinar» no Drive.";
     }
 
     private Optional<AssinaturaLoteEntity> buscarPreparandoMesmaSelecao(
