@@ -15,6 +15,12 @@ class DiagnosticoAguardandoProtocoloAssinarServiceTest {
                 .isTrue();
         assertThat(DiagnosticoAguardandoProtocoloAssinarService.isNomeCanonicoStorePdf(" 119_12_14F46E51.pdf "))
                 .isTrue();
+        assertThat(DiagnosticoAguardandoProtocoloAssinarService.isNomeCanonicoStorePdf("119_1_14f46e51.jpg"))
+                .isTrue();
+        assertThat(DiagnosticoAguardandoProtocoloAssinarService.isNomeCanonicoStorePdf("119_1_14f46e51.jpeg"))
+                .isTrue();
+        assertThat(DiagnosticoAguardandoProtocoloAssinarService.isNomeCanonicoStorePdf("119_1_14f46e51.mp4"))
+                .isTrue();
     }
 
     @Test

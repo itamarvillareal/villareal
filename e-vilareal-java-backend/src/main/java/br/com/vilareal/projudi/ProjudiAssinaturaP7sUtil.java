@@ -23,6 +23,9 @@ import java.util.HexFormat;
 public final class ProjudiAssinaturaP7sUtil {
 
     private static final byte[] PDF_MAGIC = "%PDF".getBytes();
+    private static final byte[] JPEG_MAGIC = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF};
+    /** MP4/ISO-BMFF: box {@code ftyp} nos bytes 4–7. */
+    private static final byte[] MP4_FTYP = "ftyp".getBytes();
 
     static {
         if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
@@ -68,8 +71,8 @@ public final class ProjudiAssinaturaP7sUtil {
 
         String sha = sha256(embedido);
         String motivo = null;
-        if (!iniciaComPdf(embedido)) {
-            motivo = "conteúdo embutido não começa com %PDF";
+        if (!isConteudoAssinavelReconhecido(embedido)) {
+            motivo = "conteúdo embutido não é PDF, JPEG nem MP4";
         }
 
         boolean assinaturaConsistente = verificarAssinaturas(signedData);
@@ -95,12 +98,18 @@ public final class ProjudiAssinaturaP7sUtil {
         return out.toByteArray();
     }
 
-    private static boolean iniciaComPdf(byte[] bytes) {
-        if (bytes.length < PDF_MAGIC.length) {
+    private static boolean isConteudoAssinavelReconhecido(byte[] bytes) {
+        return iniciaCom(bytes, PDF_MAGIC, 0)
+                || iniciaCom(bytes, JPEG_MAGIC, 0)
+                || iniciaCom(bytes, MP4_FTYP, 4);
+    }
+
+    private static boolean iniciaCom(byte[] bytes, byte[] magic, int offset) {
+        if (bytes.length < offset + magic.length) {
             return false;
         }
-        for (int i = 0; i < PDF_MAGIC.length; i++) {
-            if (bytes[i] != PDF_MAGIC[i]) {
+        for (int i = 0; i < magic.length; i++) {
+            if (bytes[offset + i] != magic[i]) {
                 return false;
             }
         }

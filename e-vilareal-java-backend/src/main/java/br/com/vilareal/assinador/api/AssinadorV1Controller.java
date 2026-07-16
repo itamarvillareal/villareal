@@ -7,6 +7,7 @@ import br.com.vilareal.assinador.api.dto.AssinadorLotePendenteResponse;
 import br.com.vilareal.assinador.application.AssinadorApiService;
 import br.com.vilareal.assinador.config.AssinadorApiProperties;
 import br.com.vilareal.common.exception.BusinessRuleException;
+import br.com.vilareal.projudi.ProjudiArquivoAssinavelUtil;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -85,20 +86,20 @@ public class AssinadorV1Controller {
     }
 
     @GetMapping("/lotes/{loteId}/pdfs/{arquivoId}")
-    @Operation(summary = "Baixa PDF pendente do lote em assinatura (somente pelo assinador que fez claim)")
+    @Operation(summary = "Baixa arquivo pendente do lote em assinatura (somente pelo assinador que fez claim)")
     public ResponseEntity<byte[]> baixarPdf(
             @PathVariable Long loteId,
             @PathVariable Long arquivoId,
             @RequestHeader(AssinadorSecurityConstants.HEADER_ASSINADOR_ID) String assinadorId) {
         validarAssinadorId(assinadorId);
-        byte[] pdf = assinadorApiService.obterPdfDoLote(loteId, arquivoId, assinadorId.trim());
+        byte[] conteudo = assinadorApiService.obterPdfDoLote(loteId, arquivoId, assinadorId.trim());
         String filename = assinadorApiService.nomePdfParaDownload(loteId, arquivoId, assinadorId.trim());
         return ResponseEntity.ok()
-                .contentType(MediaType.APPLICATION_PDF)
+                .contentType(MediaType.parseMediaType(ProjudiArquivoAssinavelUtil.mimeTypePorNome(filename)))
                 .header(
                         HttpHeaders.CONTENT_DISPOSITION,
                         ContentDisposition.attachment().filename(filename).build().toString())
-                .body(pdf);
+                .body(conteudo);
     }
 
     @PostMapping(value = "/lotes/{loteId}/concluir", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

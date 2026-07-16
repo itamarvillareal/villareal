@@ -15,6 +15,7 @@ import br.com.vilareal.processo.api.dto.PrepararAssinarResultado.ResumoProcessoP
 import br.com.vilareal.processo.api.dto.ProcessoDiagnosticoPessoaItemResponse;
 import br.com.vilareal.processo.api.dto.ProcessoResponse;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
+import br.com.vilareal.projudi.ProjudiArquivoAssinavelUtil;
 import br.com.vilareal.projudi.ProjudiAssinaturaP7sUtil;
 import br.com.vilareal.projudi.ProjudiNumeroReduzidoUtil;
 import br.com.vilareal.projudi.application.ProjudiPeticaoAssinaturaService;
@@ -61,9 +62,12 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
     private static final String STATUS_PETICAO_PROTOCOLADA = "PROTOCOLADA";
     private static final String STATUS_PETICAO_PROTOCOLANDO = "PROTOCOLANDO";
 
-    /** Cópias geradas pelo backend ({@code peticaoId_ordem_sha8.pdf}) — não são documentos originais do usuário. */
+    /**
+     * Cópias geradas pelo backend ({@code peticaoId_ordem_sha8.pdf|jpg|jpeg|mp4}) — não são documentos
+     * originais do usuário.
+     */
     private static final Pattern NOME_CANONICO_STORE_PDF =
-            Pattern.compile("^\\d+_\\d+_[a-f0-9]{8}\\.pdf$", Pattern.CASE_INSENSITIVE);
+            Pattern.compile("^\\d+_\\d+_[a-f0-9]{8}\\.(pdf|jpe?g|mp4)$", Pattern.CASE_INSENSITIVE);
 
     private final DocumentoDrivePastaService documentoDrivePastaService;
     private final GoogleDriveService googleDriveService;
@@ -225,7 +229,7 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
         long erros = resumos.stream().filter(ResumoProcessoPrepararAssinar::ignoradoPorErro).count();
         if (erros > 0) {
             StringBuilder sb = new StringBuilder();
-            sb.append("Nenhum PDF preparado. ")
+            sb.append("Nenhum arquivo preparado. ")
                     .append(erros)
                     .append(" processo(s) ignorado(s) por erro — verifique o cadastro:");
             for (ResumoProcessoPrepararAssinar r : resumos) {
@@ -241,22 +245,22 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
         }
         long semArquivosDrive = resumos.stream().filter(ResumoProcessoPrepararAssinar::semArquivos).count();
         if (semArquivosDrive == resumos.size()) {
-            return "Nenhum PDF na pasta «Assinar» do Google Drive nos "
+            return "Nenhum arquivo assinável (PDF, JPG/JPEG ou MP4) na pasta «Assinar» do Google Drive nos "
                     + resumos.size()
-                    + " processo(s) listados. Coloque os PDFs na subpasta «Assinar» de cada processo "
+                    + " processo(s) listados. Coloque os arquivos na subpasta «Assinar» de cada processo "
                     + "(não use Petição, Movimentações ou outras pastas) e tente novamente.";
         }
         long ignoradas = resumos.stream().mapToLong(ResumoProcessoPrepararAssinar::ignoradasJaAssinadas).sum();
         if (ignoradas > 0) {
-            return "Nenhum PDF disponível para nova assinatura. "
+            return "Nenhum arquivo disponível para nova assinatura. "
                     + ignoradas
                     + " arquivo(s) já constam na fila PROJUDI (pendentes de assinatura, assinados ou em protocolo) "
                     + "e não podem ser refeitos. "
                     + "Veja Peticionamento PROJUDI → «Pendentes de assinatura» ou «Protocolar». "
-                    + "Para um documento novo, altere o conteúdo do PDF na pasta «Assinar» "
+                    + "Para um documento novo, altere o conteúdo do arquivo na pasta «Assinar» "
                     + "ou retire os arquivos já registrados do lote.";
         }
-        return "Nenhum PDF pendente para assinar. Verifique a pasta «Assinar» no Drive e tente novamente.";
+        return "Nenhum arquivo pendente para assinar. Verifique a pasta «Assinar» no Drive e tente novamente.";
     }
 
     private record ResultadoUmProcesso(
@@ -298,7 +302,7 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
                     continue;
                 }
                 String nome = arq.nome() != null ? arq.nome().trim() : "documento";
-                if (!nome.toLowerCase().endsWith(".pdf")) {
+                if (!ProjudiArquivoAssinavelUtil.isNomeAssinavel(nome)) {
                     continue;
                 }
                 if (isNomeCanonicoStorePdf(nome)) {
@@ -454,9 +458,9 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
                 arquivoRepository.findByStatusAndPeticaoIdIn(STATUS_ARQUIVO_PENDENTE, peticaoIds);
         if (pendentes.isEmpty()) {
             throw new BusinessRuleException(
-                    "Nenhum PDF pendente na fila PROJUDI para este lote. "
+                    "Nenhum arquivo pendente na fila PROJUDI para este lote. "
                             + "Os arquivos podem já ter sido assinados ou protocolados — use «Preparar e baixar ZIP» "
-                            + "de novo após colocar novos PDFs na pasta «Assinar».");
+                            + "de novo após colocar novos arquivos na pasta «Assinar».");
         }
 
         List<Map<String, Object>> manifestArquivos = new ArrayList<>();
@@ -470,10 +474,10 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
                     Long peticaoId =
                             arquivo.getPeticao() != null ? arquivo.getPeticao().getId() : null;
                     throw new BusinessRuleException(
-                            "PDF da petição"
+                            "Arquivo da petição"
                                     + (peticaoId != null ? " #" + peticaoId : "")
                                     + " não está no servidor. Clique em «Preparar e baixar ZIP» de novo "
-                                    + "para buscar os PDFs no Drive; se o erro repetir, contacte o suporte.");
+                                    + "para buscar os arquivos no Drive; se o erro repetir, contacte o suporte.");
                 }
                 byte[] pdfBytes = Files.readAllBytes(pdfPath);
                 String entryName = Path.of(arquivo.getPdfRef()).getFileName().toString();
@@ -791,11 +795,15 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
         return NOME_CANONICO_STORE_PDF.matcher(nomeArquivo.trim()).matches();
     }
 
+    /** 16 = Petição (padrão); 1 = Outros (cálculos e mídias JPG/JPEG/MP4). */
     private static int inferirIdArquivoTipo(String nomeOriginal) {
         String n = Normalizer.normalize(String.valueOf(nomeOriginal), Normalizer.Form.NFD)
                 .replaceAll("\\p{M}", "")
                 .toLowerCase();
         if (n.contains("calculo")) {
+            return 1;
+        }
+        if (n.endsWith(".jpg") || n.endsWith(".jpeg") || n.endsWith(".mp4")) {
             return 1;
         }
         return 16;
