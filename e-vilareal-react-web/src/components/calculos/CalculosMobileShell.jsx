@@ -81,20 +81,28 @@ export function CalculosMobileResumoParametros({ dataCalculo, juros, multa, indi
 
 export function CalculosMobileStatusBar({
   aceitarPagamento,
+  aceitarPagamentoDisponivel = true,
   modoAlteracao,
   onToggleAceitar,
   onToggleModoAlteracao,
 }) {
   return (
     <div className="shrink-0 flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-200 bg-white px-3 py-2 text-xs lg:hidden">
-      <label className="flex min-h-9 items-center gap-2 cursor-pointer">
+      <label
+        className={`flex min-h-9 items-center gap-2 ${aceitarPagamentoDisponivel ? 'cursor-pointer' : 'cursor-wait opacity-60'}`}
+        title={aceitarPagamentoDisponivel ? undefined : 'Aguarde o cálculo terminar de carregar.'}
+      >
         <input
           type="checkbox"
           checked={aceitarPagamento}
+          disabled={!aceitarPagamentoDisponivel}
           onChange={(e) => onToggleAceitar(e.target.checked)}
           className="h-4 w-4 rounded border-slate-300"
         />
-        <span className="font-medium text-slate-800">Aceitar pagamento</span>
+        <span className="font-medium text-slate-800">
+          Aceitar pagamento
+          {aceitarPagamentoDisponivel ? '' : ' (carregando…)'}
+        </span>
       </label>
       <label className="flex min-h-9 items-center gap-2 cursor-pointer">
         <input
