@@ -38,6 +38,7 @@ export function CalculosPainelLateral({
   calculoAceito,
   modoAlteracao,
   aceitarPagamento,
+  aceitarPagamentoDisponivel = true,
   limpezaAtiva,
   sincronizandoRodadasApi,
   inputCodClienteRodadaRef,
@@ -341,10 +342,14 @@ export function CalculosPainelLateral({
       </button>
       {!layoutMobile && (
         <>
-          <label className="flex cursor-pointer items-center gap-2 py-0.5 text-xs">
+          <label
+            className={`flex items-center gap-2 py-0.5 text-xs ${aceitarPagamentoDisponivel ? 'cursor-pointer' : 'cursor-wait opacity-60'}`}
+            title={aceitarPagamentoDisponivel ? undefined : 'Aguarde o cálculo terminar de carregar.'}
+          >
             <input
               type="checkbox"
               checked={aceitarPagamento}
+              disabled={!aceitarPagamentoDisponivel}
               onChange={(e) => onAlternarAceitarPagamento(e.target.checked)}
               className="rounded border-slate-300"
             />
