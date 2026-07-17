@@ -1127,6 +1127,14 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   const rodadaExisteNoEstado = rodadasState[rodadaKey] != null;
   const calculoTravadoAceito = Boolean(rodadaAtual.parcelamentoAceito);
   const calculoAceito = aceitarPagamento || calculoTravadoAceito;
+  /**
+   * «Aceitar Pagamento» só fica ativo quando a rodada já está carregada no estado.
+   * Antes disso (ex.: rede lenta no celular), o patch de aceite era descartado
+   * (`prev[rodadaKey]` inexistente) e o GET que chegava depois com
+   * `parcelamentoAceito=false` desmarcava o checkbox sozinho, sem persistir nada.
+   */
+  const aceitarPagamentoDisponivel =
+    !featureFlags.useApiCalculos || (hidratacaoConcluida && rodadaExisteNoEstado && !carregandoRodadaApi);
 
   useEffect(() => {
     const logKey = rodadaKey;
@@ -2594,6 +2602,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   ]);
 
   function alternarAceitarPagamento(next) {
+    if (!aceitarPagamentoDisponivel) return;
     const ok = confirmarAlternarAceitarPagamento(next);
     if (!ok) return;
     setAceitarPagamento(next);
@@ -2642,6 +2651,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     calculoAceito,
     modoAlteracao,
     aceitarPagamento,
+    aceitarPagamentoDisponivel,
     limpezaAtiva,
     sincronizandoRodadasApi,
     inputCodClienteRodadaRef,
@@ -2774,6 +2784,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
 
       <CalculosMobileStatusBar
         aceitarPagamento={aceitarPagamento}
+        aceitarPagamentoDisponivel={aceitarPagamentoDisponivel}
         modoAlteracao={modoAlteracao}
         onToggleAceitar={alternarAceitarPagamento}
         onToggleModoAlteracao={setModoAlteracao}
