@@ -1329,10 +1329,13 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
     };
   }, [modo, editId]);
 
+  // Em modo leitura os inputs de texto usam readOnly (não disabled) para permitir selecionar/copiar.
+  const classesSomenteLeitura =
+    'read-only:bg-slate-100 read-only:text-slate-600 read-only:cursor-default read-only:focus:ring-0 read-only:focus:border-slate-300';
   const inputClassComAutofill = (campo, opts = {}) => {
     const base = opts.flex
-      ? 'flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-100'
-      : 'w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-100';
+      ? `flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-100 ${classesSomenteLeitura}`
+      : `w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-100 ${classesSomenteLeitura}`;
     return camposPreenchidosPorTexto[campo]
       ? `${base} ring-2 ring-amber-400 border-amber-500/70 bg-amber-50/60`
       : base;
@@ -2249,10 +2252,10 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                   <textarea
                     value={textoColagemPessoa}
                     onChange={(e) => setTextoColagemPessoa(e.target.value)}
-                    disabled={form.edicaoDesabilitada}
+                    readOnly={form.edicaoDesabilitada}
                     rows={5}
                     placeholder="Ex.: Nome completo: ... CPF: ... ou texto jurídico corrido."
-                    className="w-full px-3 py-2 border border-indigo-200 rounded-lg text-sm bg-white text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 disabled:bg-slate-100 resize-y min-h-[100px]"
+                    className="w-full px-3 py-2 border border-indigo-200 rounded-lg text-sm bg-white text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 read-only:bg-slate-100 read-only:text-slate-600 read-only:focus:ring-0 read-only:focus:border-indigo-200 resize-y min-h-[100px]"
                   />
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <button
@@ -2377,10 +2380,11 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                           setForm((f) => ({ ...f, nome: normalizarNomePessoa(e.target.value) }));
                         }}
                         onBlur={() => {
+                          if (form.edicaoDesabilitada) return;
                           marcarAutofillRevisado('nome');
                           setForm((f) => ({ ...f, nome: normalizarNomePessoa(f.nome) }));
                         }}
-                        disabled={form.edicaoDesabilitada}
+                        readOnly={form.edicaoDesabilitada}
                         placeholder="Nome completo"
                         className={inputClassComAutofill('nome')}
                       />
@@ -2411,6 +2415,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                             setForm((f) => ({ ...f, cpf: mascararCpfCnpjInput(e.target.value) }));
                           }}
                           onBlur={() => {
+                            if (form.edicaoDesabilitada) return;
                             marcarAutofillRevisado('cpf');
                             setForm((f) => {
                               if (f.edicaoDesabilitada) return f;
@@ -2423,7 +2428,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                               return { ...f, cpf: r.valor };
                             });
                           }}
-                          disabled={form.edicaoDesabilitada}
+                          readOnly={form.edicaoDesabilitada}
                           placeholder="000.000.000-00 ou 00.000.000/0000-00"
                           className={`flex-1 ${inputClassComAutofill('cpf')}${
                             erroDocumento ? ' border-rose-500 ring-2 ring-rose-200 bg-rose-50/40' : ''
@@ -2454,8 +2459,11 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                           setCamposPreenchidosPorTexto((c) => ({ ...c, rg: false }));
                           setForm((f) => ({ ...f, rg: e.target.value }));
                         }}
-                        onBlur={() => marcarAutofillRevisado('rg')}
-                        disabled={form.edicaoDesabilitada}
+                        onBlur={() => {
+                          if (form.edicaoDesabilitada) return;
+                          marcarAutofillRevisado('rg');
+                        }}
+                        readOnly={form.edicaoDesabilitada}
                         className={inputClassComAutofill('rg')}
                       />
                     </div>
@@ -2470,9 +2478,9 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                             orgaoExpedidor: e.target.value.toLocaleUpperCase('pt-BR'),
                           }))
                         }
-                        disabled={form.edicaoDesabilitada}
+                        readOnly={form.edicaoDesabilitada}
                         placeholder="Ex: SSP-SP"
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-100"
+                        className={`w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${classesSomenteLeitura}`}
                       />
                     </div>
                     <div>
@@ -2482,9 +2490,9 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                         value={form.contato}
                         onChange={(e) => setForm((f) => ({ ...f, contato: e.target.value }))}
                         onFocus={abrirModalContatosDesdeContato}
-                        disabled={form.edicaoDesabilitada}
+                        readOnly={form.edicaoDesabilitada}
                         placeholder="Telefone"
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-100"
+                        className={`w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${classesSomenteLeitura}`}
                       />
                     </div>
                   </div>
@@ -2499,8 +2507,11 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                             setCamposPreenchidosPorTexto((c) => ({ ...c, profissao: false }));
                             setForm((f) => ({ ...f, profissao: e.target.value }));
                           }}
-                          onBlur={() => marcarAutofillRevisado('profissao')}
-                          disabled={form.edicaoDesabilitada}
+                          onBlur={() => {
+                            if (form.edicaoDesabilitada) return;
+                            marcarAutofillRevisado('profissao');
+                          }}
+                          readOnly={form.edicaoDesabilitada}
                           placeholder="Profissão"
                           className={inputClassComAutofill('profissao', { flex: true })}
                         />
@@ -2527,13 +2538,14 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                           }));
                         }}
                         onBlur={() => {
+                          if (form.edicaoDesabilitada) return;
                           marcarAutofillRevisado('dataNascimento');
                           setForm((f) => ({
                             ...f,
                             dataNascimento: normalizarDataNascimentoBrAoBlur(f.dataNascimento),
                           }));
                         }}
-                        disabled={form.edicaoDesabilitada}
+                        readOnly={form.edicaoDesabilitada}
                         className={inputClassComAutofill('dataNascimento')}
                       />
                     </div>
@@ -2547,10 +2559,11 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                           setForm((f) => ({ ...f, nacionalidade: e.target.value }));
                         }}
                         onBlur={() => {
+                          if (form.edicaoDesabilitada) return;
                           setNacionalidadeSugestaoNaoValidada(false);
                           marcarAutofillRevisado('nacionalidade');
                         }}
-                        disabled={form.edicaoDesabilitada}
+                        readOnly={form.edicaoDesabilitada}
                         placeholder="Ex: Brasileira"
                         title={
                           nacionalidadeSugestaoNaoValidada && !form.edicaoDesabilitada
@@ -2591,16 +2604,19 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                             setCamposPreenchidosPorTexto((c) => ({ ...c, email: false }));
                             setForm((f) => ({ ...f, email: e.target.value }));
                           }}
-                          onBlur={() => marcarAutofillRevisado('email')}
-                          disabled={form.edicaoDesabilitada}
+                          onBlur={() => {
+                            if (form.edicaoDesabilitada) return;
+                            marcarAutofillRevisado('email');
+                          }}
+                          readOnly={form.edicaoDesabilitada}
                           placeholder="email@exemplo.com"
                           className={inputClassComAutofill('email', { flex: true })}
                         />
                         <button
                           type="button"
                           onClick={() => setModalEnderecos(true)}
-                          disabled={form.edicaoDesabilitada}
-                          className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-slate-300 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+                          title={form.edicaoDesabilitada ? 'Ver endereços (somente leitura)' : 'Endereços'}
+                          className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-slate-300 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200"
                         >
                           <MapPin className="w-4 h-4" />
                           Endereços
@@ -2683,8 +2699,8 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                         <button
                           type="button"
                           onClick={() => setModalContatos(true)}
-                          disabled={form.edicaoDesabilitada}
-                          className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-slate-300 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+                          title={form.edicaoDesabilitada ? 'Ver contatos (somente leitura)' : 'Abrir contatos'}
+                          className="inline-flex items-center gap-1.5 px-3 py-2 text-sm border border-slate-300 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200"
                         >
                           <Phone className="w-4 h-4" />
                           Abrir contatos
@@ -2699,8 +2715,8 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                   </div>
                 </div>
 
-                {!form.edicaoDesabilitada && (
-                  <div className="mt-6 space-y-3">
+                <div className="mt-6 space-y-3">
+                  {!form.edicaoDesabilitada && (
                     <SeletorResponsavelPessoa
                       pessoas={lista}
                       valueId={form.responsavelId}
@@ -2711,21 +2727,21 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                       disabled={form.edicaoDesabilitada}
                       ehPessoaJuridica={ehPessoaJuridica}
                     />
-                    {form.responsavel && String(form.nome ?? '').trim() ? (
-                      <p className="text-xs text-slate-600 border border-dashed border-slate-200 rounded-lg p-3 bg-slate-50/90 leading-relaxed">
-                        <span className="font-medium text-slate-700">Esboço para documentos: </span>
-                        {qualificacaoPreviewCarregando
-                          ? 'Carregando qualificação…'
-                          : qualificacaoPreviewCompleta
-                            || esbocoQualificacaoComResponsavel(
-                              { nome: form.nome, cpf: form.cpf },
-                              form.responsavel,
-                              { isPj: ehPessoaJuridica },
-                            )}
-                      </p>
-                    ) : null}
-                  </div>
-                )}
+                  )}
+                  {form.responsavel && String(form.nome ?? '').trim() ? (
+                    <p className="text-xs text-slate-600 border border-dashed border-slate-200 rounded-lg p-3 bg-slate-50/90 leading-relaxed select-text">
+                      <span className="font-medium text-slate-700">Esboço para documentos: </span>
+                      {qualificacaoPreviewCarregando
+                        ? 'Carregando qualificação…'
+                        : qualificacaoPreviewCompleta
+                          || esbocoQualificacaoComResponsavel(
+                            { nome: form.nome, cpf: form.cpf },
+                            form.responsavel,
+                            { isPj: ehPessoaJuridica },
+                          )}
+                    </p>
+                  ) : null}
+                </div>
                 </div>
 
                 <div className="flex flex-wrap gap-3 mt-6 pt-6 border-t border-slate-200">
@@ -2808,6 +2824,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
         enderecos={enderecos}
         onChange={atualizarEnderecos}
         sugestaoEndereco={extracaoEndereco}
+        somenteLeitura={form.edicaoDesabilitada}
       />
       <ModalContatos
         open={modalContatos}
@@ -2817,6 +2834,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
         }}
         contatos={contatos}
         onChange={atualizarContatos}
+        somenteLeitura={form.edicaoDesabilitada}
       />
 
       {modalCpfDuplicado && (

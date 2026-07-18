@@ -43,7 +43,7 @@ function normalizarContato(item) {
   };
 }
 
-export function ModalContatos({ open, onClose, contatos, onChange }) {
+export function ModalContatos({ open, onClose, contatos, onChange, somenteLeitura = false }) {
   const navigate = useNavigate();
   const [tipo, setTipo] = useState('email');
   const [valor, setValor] = useState('');
@@ -126,6 +126,11 @@ export function ModalContatos({ open, onClose, contatos, onChange }) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 shrink-0 flex-wrap gap-2">
           <div className="flex items-center gap-4 flex-wrap">
             <h2 className="text-lg font-semibold text-gray-800">Contatos</h2>
+            {somenteLeitura && (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium">
+                Somente leitura
+              </span>
+            )}
             <div className="flex items-center gap-3 text-sm text-slate-600">
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-100">
                 <span className="font-medium text-slate-700">{contagem.telefone}</span>
@@ -153,6 +158,7 @@ export function ModalContatos({ open, onClose, contatos, onChange }) {
 
         <div className="p-5 flex flex-col flex-1 min-h-0">
           {/* Formulário adicionar */}
+          {!somenteLeitura && (
           <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 mb-4 shrink-0">
             <p className="text-sm font-medium text-slate-700 mb-3">Adicionar contato</p>
             <div className="flex flex-wrap gap-3 items-end">
@@ -202,6 +208,7 @@ export function ModalContatos({ open, onClose, contatos, onChange }) {
               </button>
             </div>
           </div>
+          )}
 
           {/* Tabela com altura fixa e rolagem */}
           <div className="border border-slate-200 rounded-xl overflow-hidden flex-1 min-h-0 flex flex-col">
@@ -224,7 +231,9 @@ export function ModalContatos({ open, onClose, contatos, onChange }) {
                   {lista.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
-                        Nenhum contato. Use o formulário acima para adicionar.
+                        {somenteLeitura
+                          ? 'Nenhum contato registrado.'
+                          : 'Nenhum contato. Use o formulário acima para adicionar.'}
                       </td>
                     </tr>
                   ) : (
@@ -261,15 +270,17 @@ export function ModalContatos({ open, onClose, contatos, onChange }) {
                                 </svg>
                               </button>
                             )}
-                            <button
-                              type="button"
-                              onClick={() => remover(index)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600 inline-flex items-center justify-center"
-                              title="Remover"
-                              aria-label="Remover"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            {!somenteLeitura && (
+                              <button
+                                type="button"
+                                onClick={() => remover(index)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600 inline-flex items-center justify-center"
+                                title="Remover"
+                                aria-label="Remover"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
                           </span>
                         </td>
                       </tr>
