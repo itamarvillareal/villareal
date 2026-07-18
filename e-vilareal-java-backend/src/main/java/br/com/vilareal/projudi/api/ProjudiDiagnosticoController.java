@@ -5,6 +5,9 @@ package br.com.vilareal.projudi.api;
 import br.com.vilareal.documento.GoogleDriveService;
 import br.com.vilareal.julia.application.JuliaTriagemService;
 import br.com.vilareal.julia.triagem.TriagemRunResponse;
+import br.com.vilareal.jobrun.application.JobRunTracker;
+import br.com.vilareal.jobrun.domain.JobNames;
+import br.com.vilareal.processo.application.ProcessoMovimentacoesConsolidadoDriveBackfillService;
 import br.com.vilareal.projudi.ProjudiOrquestradorService;
 import br.com.vilareal.projudi.ProjudiBackfillSubmenuDiagnosticoService;
 import br.com.vilareal.projudi.ProjudiDrivePdfOcrBackfillService;
@@ -79,6 +82,8 @@ public class ProjudiDiagnosticoController {
     private final ProjudiSelecaoAutomaticaDiagnosticoService selecaoAutomaticaDiagnosticoService;
     private final ProjudiPublicacaoLimpezaDiagnosticoService publicacaoLimpezaDiagnosticoService;
     private final ProjudiBackfillSubmenuDiagnosticoService backfillSubmenuDiagnosticoService;
+    private final ProcessoMovimentacoesConsolidadoDriveBackfillService consolidadoDriveBackfillService;
+    private final JobRunTracker jobRunTracker;
     private final ProjudiDrivePdfTextoDiagnosticoService drivePdfTextoDiagnosticoService;
     private final ProjudiDrivePdfOcrBackfillService drivePdfOcrBackfillService;
     private final ProjudiProcessoArquivosDiagnosticoService processoArquivosDiagnosticoService;
@@ -104,6 +109,8 @@ public class ProjudiDiagnosticoController {
                                         ProjudiSelecaoAutomaticaDiagnosticoService selecaoAutomaticaDiagnosticoService,
                                         ProjudiPublicacaoLimpezaDiagnosticoService publicacaoLimpezaDiagnosticoService,
                                         ProjudiBackfillSubmenuDiagnosticoService backfillSubmenuDiagnosticoService,
+                                        ProcessoMovimentacoesConsolidadoDriveBackfillService consolidadoDriveBackfillService,
+                                        JobRunTracker jobRunTracker,
                                         ProjudiDrivePdfTextoDiagnosticoService drivePdfTextoDiagnosticoService,
                                         ProjudiDrivePdfOcrBackfillService drivePdfOcrBackfillService,
                                         ProjudiProcessoArquivosDiagnosticoService processoArquivosDiagnosticoService,
@@ -119,6 +126,8 @@ public class ProjudiDiagnosticoController {
         this.selecaoAutomaticaDiagnosticoService = selecaoAutomaticaDiagnosticoService;
         this.publicacaoLimpezaDiagnosticoService = publicacaoLimpezaDiagnosticoService;
         this.backfillSubmenuDiagnosticoService = backfillSubmenuDiagnosticoService;
+        this.consolidadoDriveBackfillService = consolidadoDriveBackfillService;
+        this.jobRunTracker = jobRunTracker;
         this.drivePdfTextoDiagnosticoService = drivePdfTextoDiagnosticoService;
         this.drivePdfOcrBackfillService = drivePdfOcrBackfillService;
         this.processoArquivosDiagnosticoService = processoArquivosDiagnosticoService;
@@ -317,6 +326,35 @@ public class ProjudiDiagnosticoController {
             @RequestParam(required = false) String ids,
             @RequestParam(required = false) String numero) {
         return publicacaoLimpezaDiagnosticoService.apagarPublicacoesProjudi(ids, numero);
+    }
+
+    /** TEMP — backfill PDF consolidado na pasta pai de Movimentações (últimos N da fila Movimentações Email). */
+    @PostMapping("/consolidado-drive-backfill")
+    public Map<String, Object> consolidadoDriveBackfill(
+            @RequestParam(required = false) Integer limite) {
+        Long runId = jobRunTracker.submitAsyncJob(JobNames.CONSOLIDADO_DRIVE_BACKFILL, ctx -> {
+            Map<String, Object> resumo = consolidadoDriveBackfillService.executarBackfill(limite, ctx);
+            Object res = resumo.get("resumo");
+            if (res instanceof Map<?, ?> m) {
+                Object integralizados = m.get("integralizados");
+                if (integralizados instanceof Number n) {
+                    ctx.setItemsProcessed(n.intValue());
+                }
+                Object erros = m.get("erros");
+                if (erros instanceof Number n) {
+                    ctx.setItemsFailed(n.intValue());
+                }
+            }
+        });
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("runId", runId);
+        out.put("jobName", JobNames.CONSOLIDADO_DRIVE_BACKFILL);
+        out.put(
+                "mensagem",
+                "Backfill consolidado Drive iniciado em background. Acompanhe em /api/jobs/runs ou job_run id="
+                        + runId);
+        out.put("limite", limite != null && limite > 0 ? limite : 100);
+        return out;
     }
 
     /** TEMP — backfill progressivo Drive para processos do submenu Movimentações Email (PROJUDI). Remover antes de produção. */

@@ -2,6 +2,7 @@ package br.com.vilareal.projudi.pipeline;
 
 import br.com.vilareal.documento.GoogleDriveService;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
+import br.com.vilareal.processo.application.ProcessoMovimentacoesConsolidadoDriveAutoService;
 import br.com.vilareal.projudi.ProjudiDriveProgressivoUtil;
 import br.com.vilareal.projudi.ProjudiOrquestradorErroUtil;
 import br.com.vilareal.projudi.ProjudiOrquestradorGate;
@@ -34,6 +35,7 @@ public class ProjudiSomenteDrivePassadaService {
     private final ProjudiTeorService teorService;
     private final GoogleDriveService googleDriveService;
     private final PublicacaoDriveAndamentosService publicacaoDriveAndamentosService;
+    private final ProcessoMovimentacoesConsolidadoDriveAutoService consolidadoDriveAutoService;
     private final ProjudiOrquestradorGate orquestradorGate;
     private final int passoBackfill;
     private final long delayMsDownload;
@@ -44,6 +46,7 @@ public class ProjudiSomenteDrivePassadaService {
             ProjudiTeorService teorService,
             GoogleDriveService googleDriveService,
             PublicacaoDriveAndamentosService publicacaoDriveAndamentosService,
+            ProcessoMovimentacoesConsolidadoDriveAutoService consolidadoDriveAutoService,
             ProjudiOrquestradorGate orquestradorGate,
             @Value("${projudi.orquestrador.passo-backfill:10}") int passoBackfill,
             @Value("${projudi.orquestrador.delay-ms-download:2000}") long delayMsDownload) {
@@ -52,6 +55,7 @@ public class ProjudiSomenteDrivePassadaService {
         this.teorService = teorService;
         this.googleDriveService = googleDriveService;
         this.publicacaoDriveAndamentosService = publicacaoDriveAndamentosService;
+        this.consolidadoDriveAutoService = consolidadoDriveAutoService;
         this.orquestradorGate = orquestradorGate;
         this.passoBackfill = passoBackfill > 0 ? passoBackfill : 10;
         this.delayMsDownload = delayMsDownload >= 0 ? delayMsDownload : 2000;
@@ -142,6 +146,8 @@ public class ProjudiSomenteDrivePassadaService {
 
             publicacaoDriveAndamentosService.tentarMarcarAndamentosNoDrivePorCnj(
                     numeroCnj, pastaMovimentacoesId, arquivosEnviados);
+
+            consolidadoDriveAutoService.tentarAposArquivamento(processo, arquivosEnviados);
 
             List<String> nomesDriveApos = googleDriveService.listarFilhos(pastaMovimentacoesId).stream()
                     .map(com.google.api.services.drive.model.File::getName)

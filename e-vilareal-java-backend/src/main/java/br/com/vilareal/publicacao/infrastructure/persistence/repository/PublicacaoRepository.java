@@ -147,6 +147,27 @@ public interface PublicacaoRepository extends JpaRepository<PublicacaoEntity, Lo
     List<Long> findDistinctProcessoIdsComPublicacaoProjudiCnjCompleto();
 
     /**
+     * Últimos processos distintos com publicação PROJUDI (Movimentações Email), ordenados pela
+     * entrada de e-mail mais recente (fiel à fila da UI).
+     */
+    @Query(
+            value =
+                    """
+            SELECT proc_id FROM (
+              SELECT p.processo_id AS proc_id,
+                     MAX(COALESCE(p.email_recebido_em, p.created_at)) AS ultimo_email
+              FROM publicacoes p
+              WHERE p.origem_importacao = 'PROJUDI'
+                AND p.processo_id IS NOT NULL
+              GROUP BY p.processo_id
+              ORDER BY ultimo_email DESC
+              LIMIT :limite
+            ) t
+            """,
+            nativeQuery = true)
+    List<Long> findUltimosProcessoIdsMovimentacoesEmailProjudi(@Param("limite") int limite);
+
+    /**
      * Processos com movimentação PROJUDI vinculada ({@code processo_id}) e e-mail recebido desde
      * {@code emailRecebidoDesde} — janela do pipeline automático (ex.: últimos 7 dias).
      */

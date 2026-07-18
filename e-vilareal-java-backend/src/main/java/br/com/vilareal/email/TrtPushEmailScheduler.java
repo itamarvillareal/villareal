@@ -11,7 +11,6 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.util.concurrent.TimeUnit;
 
 @Component
 public class TrtPushEmailScheduler {
@@ -31,7 +30,7 @@ public class TrtPushEmailScheduler {
         this.jobRunTracker = jobRunTracker;
     }
 
-    @Scheduled(fixedRate = 3, timeUnit = TimeUnit.HOURS)
+    @Scheduled(fixedDelayString = "${vilareal.email.gmail.importacao.intervalo-ms:900000}")
     public void processarMovimentacoesTrtEmail() {
         jobRunTracker.runTrackedJobVoid(JobNames.GMAIL_TRT, ctx -> {
             if (gmailTrtPushManifestacaoService == null || !gmailTrtPushManifestacaoService.isDisponivel()) {

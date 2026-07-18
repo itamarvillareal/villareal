@@ -12,11 +12,10 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.util.concurrent.TimeUnit;
 
 /**
- * Importação Gmail PROJUDI periódica (3 h). Desligado quando o pipeline
- * {@code vilareal.email.projudi.pipeline.enabled=true} assume o mesmo fluxo em loop.
+ * Importação Gmail PROJUDI periódica ({@code vilareal.email.gmail.importacao.intervalo-ms}, padrão 15 min).
+ * Desligado quando o pipeline {@code vilareal.email.projudi.pipeline.enabled=true} assume o mesmo fluxo em loop.
  */
 @Component
 @ConditionalOnProperty(
@@ -40,7 +39,7 @@ public class ProjudiEmailScheduler {
         this.jobRunTracker = jobRunTracker;
     }
 
-    @Scheduled(fixedRate = 3, timeUnit = TimeUnit.HOURS)
+    @Scheduled(fixedDelayString = "${vilareal.email.gmail.importacao.intervalo-ms:900000}")
     public void processarManifestacoesProjudiEmail() {
         jobRunTracker.runTrackedJobVoid(JobNames.GMAIL_PROJUDI, ctx -> {
             if (gmailProjudiManifestacaoService == null || !gmailProjudiManifestacaoService.isDisponivel()) {
