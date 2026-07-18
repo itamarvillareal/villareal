@@ -275,11 +275,9 @@ export function getPermissoesUsuario(userId) {
     Object.prototype.hasOwnProperty.call(stored, 'clientes') &&
     stored.clientes === false &&
     !Object.prototype.hasOwnProperty.call(stored, 'clientes/lista') &&
-    !Object.prototype.hasOwnProperty.call(stored, 'clientes/nova') &&
     !Object.prototype.hasOwnProperty.call(stored, 'clientes/relatorio')
   ) {
     merged['clientes/lista'] = false;
-    merged['clientes/nova'] = false;
     merged['clientes/relatorio'] = false;
   }
   return merged;
@@ -333,6 +331,7 @@ export function pathParaModuloId(pathname) {
   if (path === '/' || path === '') return 'inicio';
   const noLead = path.replace(/^\//, '');
   if (noLead === 'clientes') return 'clientes/lista';
+  if (noLead === 'clientes/nova') return 'clientes/lista';
   if (noLead.startsWith('clientes/editar/')) return 'clientes/lista';
   if (noLead === 'clientes/relatorio') return 'clientes/relatorio';
   if (noLead === 'resultado-financeiro' || noLead.startsWith('resultado-financeiro/')) {

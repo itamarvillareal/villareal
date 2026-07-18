@@ -515,7 +515,21 @@ export function RelatorioPessoas() {
                     {listaExibida.length === 0 ? (
                       <tr>
                         <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
-                          Nenhuma pessoa cadastrada.
+                          {valorBusca.trim() || valorBuscaCpf.trim() ? (
+                            <span className="inline-flex flex-col items-center gap-3">
+                              <span>Nenhuma pessoa encontrada para esta busca.</span>
+                              <button
+                                type="button"
+                                onClick={() => navigate('/clientes/nova')}
+                                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold hover:from-indigo-500 hover:to-violet-500 shadow-lg shadow-indigo-500/20"
+                              >
+                                <Plus className="w-4 h-4" />
+                                Nova pessoa
+                              </button>
+                            </span>
+                          ) : (
+                            'Nenhuma pessoa cadastrada.'
+                          )}
                         </td>
                       </tr>
                     ) : (
