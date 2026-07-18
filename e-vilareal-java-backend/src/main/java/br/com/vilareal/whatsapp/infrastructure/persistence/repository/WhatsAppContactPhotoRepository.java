@@ -14,7 +14,9 @@ public interface WhatsAppContactPhotoRepository extends JpaRepository<WhatsAppCo
 
     List<WhatsAppContactPhotoEntity> findByPhoneNumberIn(Collection<String> phoneNumbers);
 
-    @Modifying
+    // clearAutomatically: o upsert nativo não passa pela sessão Hibernate; sem limpar o contexto,
+    // um findById subsequente na mesma transação devolveria a entidade obsoleta em cache.
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(
             value =
                     """
@@ -32,7 +34,7 @@ public interface WhatsAppContactPhotoRepository extends JpaRepository<WhatsAppCo
             @Param("driveUrl") String driveUrl,
             @Param("updatedAt") Instant updatedAt);
 
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(value = "DELETE FROM whatsapp_contact_photo WHERE phone_number = :phoneNumber", nativeQuery = true)
     int deleteByPhoneNumber(@Param("phoneNumber") String phoneNumber);
 }

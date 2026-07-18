@@ -10,7 +10,9 @@ import java.time.Instant;
 
 public interface WhatsAppConversationArchiveRepository extends JpaRepository<WhatsAppConversationArchiveEntity, String> {
 
-    @Modifying
+    // clearAutomatically: o upsert nativo não passa pela sessão Hibernate; sem limpar o contexto,
+    // um findById subsequente na mesma transação devolveria a entidade obsoleta em cache.
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(
             value =
                     """
@@ -23,7 +25,7 @@ public interface WhatsAppConversationArchiveRepository extends JpaRepository<Wha
             nativeQuery = true)
     void upsertArchivedAt(@Param("phoneNumber") String phoneNumber, @Param("archivedAt") Instant archivedAt);
 
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(value = "DELETE FROM whatsapp_conversation_archive WHERE phone_number = :phoneNumber", nativeQuery = true)
     int deleteByPhoneNumber(@Param("phoneNumber") String phoneNumber);
 }

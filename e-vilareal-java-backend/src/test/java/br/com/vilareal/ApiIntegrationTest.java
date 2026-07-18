@@ -849,7 +849,7 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
         h.setBearerAuth(token);
         h.setContentType(MediaType.APPLICATION_JSON);
 
-        String cpfUnico = String.format("%011d", Math.abs(UUID.randomUUID().getMostSignificantBits() % 10_000_000_000L));
+        String cpfUnico = cpfValidoAleatorio();
 
         Map<String, Object> comCpf = new LinkedHashMap<>();
         comCpf.put("nome", "Titular CPF " + cpfUnico);
@@ -907,6 +907,31 @@ class ApiIntegrationTest extends AbstractIntegrationTest {
                 new ParameterizedTypeReference<>() {});
 
         assertThat(second.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+
+    /** CPF sintético com dígitos verificadores válidos — o cadastro valida checksum e rejeitaria 11 dígitos aleatórios. */
+    private static String cpfValidoAleatorio() {
+        int[] d = new int[11];
+        java.util.concurrent.ThreadLocalRandom rnd = java.util.concurrent.ThreadLocalRandom.current();
+        for (int i = 0; i < 9; i++) {
+            d[i] = rnd.nextInt(10);
+        }
+        d[9] = digitoVerificadorCpf(d, 9);
+        d[10] = digitoVerificadorCpf(d, 10);
+        StringBuilder sb = new StringBuilder(11);
+        for (int v : d) {
+            sb.append(v);
+        }
+        return sb.toString();
+    }
+
+    private static int digitoVerificadorCpf(int[] d, int posicao) {
+        int soma = 0;
+        for (int i = 0; i < posicao; i++) {
+            soma += d[i] * (posicao + 1 - i);
+        }
+        int resto = soma % 11;
+        return resto < 2 ? 0 : 11 - resto;
     }
 
     private String login() {
