@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, Fragment } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ExternalLink, Link2, Loader2, MessageCircle, MessageSquarePlus, Pencil, Plus, Search, Send, ChevronUp, ChevronDown, ChevronLeft, X, Trash2, Camera, ImageMinus, MoreVertical } from 'lucide-react';
 import { ConfirmDialog } from '../financeiro/shared/ConfirmDialog.jsx';
@@ -309,6 +309,9 @@ export function WhatsAppConversas() {
   const [pendingDeleteMessage, setPendingDeleteMessage] = useState(null);
   const [pendingDeleteConversationPhone, setPendingDeleteConversationPhone] = useState('');
   const bottomRef = useRef(null);
+  const messagesScrollRef = useRef(null);
+  const preserveScrollRef = useRef(null);
+  const lastMessageKeyRef = useRef(null);
   const conversationSearchInputRef = useRef(null);
   const contactPhotoFileInputRef = useRef(null);
   const openedFromUrl = useRef(false);
@@ -318,6 +321,23 @@ export function WhatsAppConversas() {
 
   const scrollToBottom = () => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  /**
+   * Elemento que de fato rola o histórico: no desktop é a própria lista de
+   * mensagens (overflow-y-auto); no mobile o painel cresce e quem rola é um
+   * ancestral (o <main> do App). Sobe na árvore até achar o scroller real.
+   */
+  const getMessagesScroller = () => {
+    let el = messagesScrollRef.current;
+    while (el) {
+      if (el.scrollHeight > el.clientHeight + 1) {
+        const { overflowY } = window.getComputedStyle(el);
+        if (overflowY === 'auto' || overflowY === 'scroll') return el;
+      }
+      el = el.parentElement;
+    }
+    return messagesScrollRef.current;
   };
 
   const resetConversationSearch = useCallback(() => {
@@ -894,9 +914,18 @@ export function WhatsAppConversas() {
   const handleLoadMore = async () => {
     if (!activePhone || page + 1 >= totalPages) return;
     setLoadingMore(true);
+    const scroller = getMessagesScroller();
+    if (scroller) {
+      preserveScrollRef.current = {
+        el: scroller,
+        prevScrollHeight: scroller.scrollHeight,
+        prevScrollTop: scroller.scrollTop,
+      };
+    }
     try {
       await fetchPage(activePhone, page + 1, true);
     } catch (err) {
+      preserveScrollRef.current = null;
       toast.error(err?.message || 'Erro ao carregar mensagens.');
     } finally {
       setLoadingMore(false);
@@ -1159,9 +1188,26 @@ export function WhatsAppConversas() {
 
   useEffect(() => {
     if (!activePhone || !messages.some(isWhatsAppMediaPending)) return undefined;
+    // Mescla a página 0 na lista atual em vez de substituí-la: recarregar com
+    // fetchPage(…, 0) descartava as páginas antigas já carregadas via
+    // «Carregar mensagens anteriores» e devolvia o usuário ao fim da conversa.
     const reload = async () => {
       try {
-        await fetchPage(activePhone, 0, false);
+        const res = await getMessages(normalizePhoneForApi(activePhone), 0, PAGE_SIZE);
+        const chunk = Array.isArray(res?.content) ? res.content : [];
+        if (!chunk.length) return;
+        const byId = new Map(chunk.filter((m) => m?.id != null).map((m) => [m.id, m]));
+        setMessages((prev) => {
+          let changed = false;
+          const next = prev.map((m) => {
+            if (m?.id == null || !isWhatsAppMediaPending(m)) return m;
+            const updated = byId.get(m.id);
+            if (!updated || isWhatsAppMediaPending(updated)) return m;
+            changed = true;
+            return { ...m, ...updated };
+          });
+          return changed ? next : prev;
+        });
       } catch {
         // silencioso
       }
@@ -1170,7 +1216,7 @@ export function WhatsAppConversas() {
       void reload();
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [activePhone, messages, fetchPage]);
+  }, [activePhone, messages, getMessages]);
 
   useEffect(() => {
     if (openedFromUrl.current) return;
@@ -1183,9 +1229,29 @@ export function WhatsAppConversas() {
     }
   }, [conversations, openConversation, searchParams]);
 
+  // Mantém o usuário no mesmo ponto do histórico após prepend de mensagens antigas.
+  useLayoutEffect(() => {
+    const pending = preserveScrollRef.current;
+    if (!pending?.el) return;
+    preserveScrollRef.current = null;
+    const delta = pending.el.scrollHeight - pending.prevScrollHeight;
+    if (delta > 0) pending.el.scrollTop = pending.prevScrollTop + delta;
+  }, [messages]);
+
+  // Rola para o fim apenas quando a ÚLTIMA mensagem muda (conversa aberta ou
+  // mensagem nova). Prepend de mensagens antigas não altera a última, então
+  // não dispara — antes, o scroll voltava para o fim após «Carregar anteriores».
   useEffect(() => {
-    if (messages.length && !loadingMore) scrollToBottom();
-  }, [messages.length, loadingMore]);
+    if (!messages.length) {
+      lastMessageKeyRef.current = null;
+      return;
+    }
+    const last = messages[messages.length - 1];
+    const key = String(last?.id ?? last?.waMessageId ?? last?.createdAt ?? '');
+    if (key === lastMessageKeyRef.current) return;
+    lastMessageKeyRef.current = key;
+    scrollToBottom();
+  }, [messages]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -1788,7 +1854,10 @@ export function WhatsAppConversas() {
                 onChanged={() => void recarregarGruposAbas()}
               />
             </div>
-            <div className="flex-1 min-h-0 overflow-y-auto px-3 py-4 space-y-3 bg-[#e5ddd5] dark:bg-slate-800/50">
+            <div
+              ref={messagesScrollRef}
+              className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-4 space-y-3 bg-[#e5ddd5] dark:bg-slate-800/50"
+            >
               {page + 1 < totalPages ? (
                 <div className="text-center">
                   <button
