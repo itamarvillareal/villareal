@@ -1352,10 +1352,15 @@ export function WhatsAppConversas() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div
-        className="flex min-h-0 flex-1 flex-col md:flex-row gap-0 overflow-hidden max-w-6xl w-full mx-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm max-md:min-h-[calc(100dvh-11rem)] md:h-[calc(100dvh-12rem)]"
+        className="flex min-h-0 flex-1 flex-col md:flex-row gap-0 overflow-hidden max-w-6xl w-full mx-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm max-md:min-h-[18rem] md:h-[calc(100dvh-12rem)]"
       >
+      {/* max-md:flex-1 (basis 0) dá altura DEFINIDA ao aside dentro do painel:
+          sem isso, no celular o aside cresce com o conteúdo, o painel
+          (overflow-hidden) corta a lista e nada rola — só as primeiras
+          conversas ficavam visíveis. Com altura definida, a lista interna
+          (overflow-y-auto) rola de verdade. */}
       <aside
-        className={`w-full md:w-80 shrink-0 flex-col border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/80 min-h-0 ${
+        className={`w-full md:w-80 max-md:flex-1 md:shrink-0 flex-col border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/80 min-h-0 ${
           activePhone ? 'hidden md:flex' : 'flex'
         }`}
       >
@@ -1497,7 +1502,7 @@ export function WhatsAppConversas() {
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
           {loadingConversations ? (
             <div className="flex items-center justify-center py-12 text-slate-500">
               <Loader2 className="w-5 h-5 animate-spin mr-2" />
