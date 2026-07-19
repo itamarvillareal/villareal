@@ -38,4 +38,19 @@ public interface JobRunRepository extends JpaRepository<JobRunEntity, Long> {
             """)
     Page<JobRunEntity> findFiltrado(
             @Param("jobName") String jobName, @Param("status") JobRunStatus status, Pageable pageable);
+
+    /** Backfill consolidado por ano CNJ já concluído com sucesso (evita reexecução a cada deploy). */
+    @Query(
+            value =
+                    """
+            SELECT COUNT(*) > 0 FROM job_run r
+            WHERE r.job_name = :jobName
+              AND r.status = 'SUCCESS'
+              AND JSON_UNQUOTE(JSON_EXTRACT(r.metadata_json, '$.modo')) = 'ano-cnj-acervo-completo'
+              AND CAST(JSON_UNQUOTE(JSON_EXTRACT(r.metadata_json, '$.anoCnj')) AS UNSIGNED) = :ano
+            """,
+            nativeQuery = true)
+    boolean existsConsolidadoAnoBackfillConcluido(@Param("jobName") String jobName, @Param("ano") int ano);
+
+    boolean existsByJobNameAndStatus(String jobName, JobRunStatus status);
 }

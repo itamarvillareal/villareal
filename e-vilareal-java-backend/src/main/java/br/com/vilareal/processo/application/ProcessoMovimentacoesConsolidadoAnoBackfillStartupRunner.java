@@ -15,7 +15,8 @@ import java.util.Map;
 
 /**
  * Dispara backfill do PDF consolidado por ano CNJ no boot (ex.: todos os processos 2026 Projudi
- * com acervo integral completo). Controlado por propriedade — desligar após a primeira execução.
+ * com acervo integral completo). Reexecuta no boot enquanto não houver job SUCCESS no banco;
+ * após a primeira conclusão bem-sucedida, não dispara de novo (mesmo com a propriedade ligada).
  */
 @ConditionalOnProperty(
         prefix = "vilareal.processo.movimentacoes.consolidado.backfill",
@@ -28,15 +29,18 @@ public class ProcessoMovimentacoesConsolidadoAnoBackfillStartupRunner
     private static final Logger log = LoggerFactory.getLogger(ProcessoMovimentacoesConsolidadoAnoBackfillStartupRunner.class);
 
     private final ProcessoMovimentacoesConsolidadoDriveBackfillService backfillService;
+    private final ProcessoMovimentacoesConsolidadoAnoBackfillGateService backfillGate;
     private final JobRunTracker jobRunTracker;
     private final int ano;
 
     public ProcessoMovimentacoesConsolidadoAnoBackfillStartupRunner(
             ProcessoMovimentacoesConsolidadoDriveBackfillService backfillService,
+            ProcessoMovimentacoesConsolidadoAnoBackfillGateService backfillGate,
             JobRunTracker jobRunTracker,
             @Value("${vilareal.processo.movimentacoes.consolidado.backfill.disparar-ano-no-startup:0}")
                     int ano) {
         this.backfillService = backfillService;
+        this.backfillGate = backfillGate;
         this.jobRunTracker = jobRunTracker;
         this.ano = ano;
     }
@@ -44,6 +48,18 @@ public class ProcessoMovimentacoesConsolidadoAnoBackfillStartupRunner
     @Override
     public void onApplicationEvent(ApplicationReadyEvent event) {
         if (ano < 2000 || ano > 2100) {
+            return;
+        }
+        if (!backfillGate.deveDispararNoStartup(ano)) {
+            if (backfillGate.jaConcluidoComSucesso(ano)) {
+                log.info(
+                        "Backfill consolidado Drive ano CNJ={} já concluído anteriormente — não reexecutando no startup.",
+                        ano);
+            } else if (backfillGate.haExecucaoEmAndamento()) {
+                log.info(
+                        "Backfill consolidado Drive já em execução — não iniciando outro no startup (ano CNJ={}).",
+                        ano);
+            }
             return;
         }
         log.info("Backfill consolidado Drive por ano CNJ={} agendado no startup.", ano);
