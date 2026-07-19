@@ -5,6 +5,7 @@ package br.com.vilareal.projudi.api;
 import br.com.vilareal.documento.GoogleDriveService;
 import br.com.vilareal.julia.application.JuliaTriagemService;
 import br.com.vilareal.julia.triagem.TriagemRunResponse;
+import br.com.vilareal.jobrun.application.JobRunContext;
 import br.com.vilareal.jobrun.application.JobRunTracker;
 import br.com.vilareal.jobrun.domain.JobNames;
 import br.com.vilareal.processo.application.ProcessoMovimentacoesConsolidadoDriveBackfillService;
@@ -328,33 +329,54 @@ public class ProjudiDiagnosticoController {
         return publicacaoLimpezaDiagnosticoService.apagarPublicacoesProjudi(ids, numero);
     }
 
-    /** TEMP — backfill PDF consolidado na pasta pai de Movimentações (últimos N da fila Movimentações Email). */
+    /** TEMP — backfill PDF consolidado na pasta pai de Movimentações (últimos N ou por ano CNJ). */
     @PostMapping("/consolidado-drive-backfill")
     public Map<String, Object> consolidadoDriveBackfill(
-            @RequestParam(required = false) Integer limite) {
-        Long runId = jobRunTracker.submitAsyncJob(JobNames.CONSOLIDADO_DRIVE_BACKFILL, ctx -> {
-            Map<String, Object> resumo = consolidadoDriveBackfillService.executarBackfill(limite, ctx);
-            Object res = resumo.get("resumo");
-            if (res instanceof Map<?, ?> m) {
-                Object integralizados = m.get("integralizados");
-                if (integralizados instanceof Number n) {
-                    ctx.setItemsProcessed(n.intValue());
-                }
-                Object erros = m.get("erros");
-                if (erros instanceof Number n) {
-                    ctx.setItemsFailed(n.intValue());
-                }
-            }
-        });
+            @RequestParam(required = false) Integer limite,
+            @RequestParam(required = false) Integer ano) {
+        Long runId;
         Map<String, Object> out = new LinkedHashMap<>();
+        if (ano != null && ano > 0) {
+            int anoFinal = ano;
+            runId = jobRunTracker.submitAsyncJob(JobNames.CONSOLIDADO_DRIVE_BACKFILL, ctx -> {
+                Map<String, Object> resumo = consolidadoDriveBackfillService.executarBackfillPorAno(anoFinal, ctx);
+                preencherContadoresJob(ctx, resumo);
+            });
+            out.put("ano", anoFinal);
+            out.put(
+                    "mensagem",
+                    "Backfill consolidado Drive (ano CNJ "
+                            + anoFinal
+                            + ", Projudi com acervo integral) iniciado em background. Acompanhe em /api/jobs/runs ou job_run id="
+                            + runId);
+        } else {
+            runId = jobRunTracker.submitAsyncJob(JobNames.CONSOLIDADO_DRIVE_BACKFILL, ctx -> {
+                Map<String, Object> resumo = consolidadoDriveBackfillService.executarBackfill(limite, ctx);
+                preencherContadoresJob(ctx, resumo);
+            });
+            out.put("limite", limite != null && limite > 0 ? limite : 100);
+            out.put(
+                    "mensagem",
+                    "Backfill consolidado Drive iniciado em background. Acompanhe em /api/jobs/runs ou job_run id="
+                            + runId);
+        }
         out.put("runId", runId);
         out.put("jobName", JobNames.CONSOLIDADO_DRIVE_BACKFILL);
-        out.put(
-                "mensagem",
-                "Backfill consolidado Drive iniciado em background. Acompanhe em /api/jobs/runs ou job_run id="
-                        + runId);
-        out.put("limite", limite != null && limite > 0 ? limite : 100);
         return out;
+    }
+
+    private static void preencherContadoresJob(JobRunContext ctx, Map<String, Object> resumo) {
+        Object res = resumo.get("resumo");
+        if (res instanceof Map<?, ?> m) {
+            Object integralizados = m.get("integralizados");
+            if (integralizados instanceof Number n) {
+                ctx.setItemsProcessed(n.intValue());
+            }
+            Object erros = m.get("erros");
+            if (erros instanceof Number n) {
+                ctx.setItemsFailed(n.intValue());
+            }
+        }
     }
 
     /** TEMP — backfill progressivo Drive para processos do submenu Movimentações Email (PROJUDI). Remover antes de produção. */

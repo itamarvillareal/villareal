@@ -469,4 +469,20 @@ public interface ProcessoRepository extends JpaRepository<ProcessoEntity, Long> 
             ORDER BY cp.nome ASC
             """)
     List<Object[]> findClientesEscritorioComProcessosUnidade();
+
+    /**
+     * Processos Projudi com CNJ do {@code ano}, vinculados a pelo menos uma publicação ou e-mail importado.
+     */
+    @Query(
+            value =
+                    """
+            SELECT DISTINCT p.id
+            FROM processo p
+            WHERE UPPER(TRIM(p.tramitacao)) = 'PROJUDI'
+              AND p.numero_cnj LIKE CONCAT('%.', :ano, '.%')
+              AND EXISTS (SELECT 1 FROM publicacoes pub WHERE pub.processo_id = p.id)
+            ORDER BY p.id ASC
+            """,
+            nativeQuery = true)
+    List<Long> findIdsProjudiComPublicacaoPorAnoCnj(@Param("ano") int ano);
 }
