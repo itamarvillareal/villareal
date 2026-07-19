@@ -21,7 +21,7 @@ public class ProcessoMovimentacoesConsolidadoAnoBackfillGateService {
         if (ano < 2000 || ano > 2100) {
             return false;
         }
-        return jobRunRepository.existsConsolidadoAnoBackfillConcluido(JobNames.CONSOLIDADO_DRIVE_BACKFILL, ano);
+        return jobRunRepository.countConsolidadoAnoBackfillConcluido(JobNames.CONSOLIDADO_DRIVE_BACKFILL, ano) > 0;
     }
 
     /** Evita segundo job no boot enquanto um backfill consolidado ainda está RUNNING. */

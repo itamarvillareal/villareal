@@ -50,17 +50,24 @@ public class ProcessoMovimentacoesConsolidadoAnoBackfillStartupRunner
         if (ano < 2000 || ano > 2100) {
             return;
         }
-        if (!backfillGate.deveDispararNoStartup(ano)) {
-            if (backfillGate.jaConcluidoComSucesso(ano)) {
-                log.info(
-                        "Backfill consolidado Drive ano CNJ={} já concluído anteriormente — não reexecutando no startup.",
-                        ano);
-            } else if (backfillGate.haExecucaoEmAndamento()) {
-                log.info(
-                        "Backfill consolidado Drive já em execução — não iniciando outro no startup (ano CNJ={}).",
-                        ano);
+        try {
+            if (!backfillGate.deveDispararNoStartup(ano)) {
+                if (backfillGate.jaConcluidoComSucesso(ano)) {
+                    log.info(
+                            "Backfill consolidado Drive ano CNJ={} já concluído anteriormente — não reexecutando no startup.",
+                            ano);
+                } else if (backfillGate.haExecucaoEmAndamento()) {
+                    log.info(
+                            "Backfill consolidado Drive já em execução — não iniciando outro no startup (ano CNJ={}).",
+                            ano);
+                }
+                return;
             }
-            return;
+        } catch (Exception e) {
+            log.warn(
+                    "Falha ao verificar gate do backfill consolidado ano={} — prosseguindo com startup: {}",
+                    ano,
+                    e.getMessage());
         }
         log.info("Backfill consolidado Drive por ano CNJ={} agendado no startup.", ano);
         Long runId = jobRunTracker.submitAsyncJob(JobNames.CONSOLIDADO_DRIVE_BACKFILL, ctx -> {

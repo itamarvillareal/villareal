@@ -22,8 +22,8 @@ class ProcessoMovimentacoesConsolidadoAnoBackfillGateServiceTest {
 
     @Test
     void jaConcluidoComSucesso_quandoExisteJobSuccessNoBanco() {
-        when(jobRunRepository.existsConsolidadoAnoBackfillConcluido(JobNames.CONSOLIDADO_DRIVE_BACKFILL, 2026))
-                .thenReturn(true);
+        when(jobRunRepository.countConsolidadoAnoBackfillConcluido(JobNames.CONSOLIDADO_DRIVE_BACKFILL, 2026))
+                .thenReturn(1L);
 
         assertTrue(gate.jaConcluidoComSucesso(2026));
     }
