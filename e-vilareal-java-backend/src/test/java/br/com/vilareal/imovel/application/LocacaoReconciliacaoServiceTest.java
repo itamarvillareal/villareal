@@ -81,12 +81,28 @@ class LocacaoReconciliacaoServiceTest {
     private ImovelProcessoRepository imovelProcessoRepository;
     @Mock
     private FinanceiroCompensacaoService financeiroCompensacaoService;
+    @Mock
+    private ImovelVinculoProcessoPrincipalResolver vinculoPrincipalResolver;
 
     @InjectMocks
     private LocacaoReconciliacaoService service;
 
     @BeforeEach
     void stubContasRepasseInterno() {
+        lenient().when(vinculoPrincipalResolver.resolverProcessoDoContrato(any())).thenAnswer(inv -> {
+            ContratoLocacaoEntity c = inv.getArgument(0);
+            if (c == null || c.getImovel() == null || c.getImovel().getId() == null) {
+                return Optional.empty();
+            }
+            ProcessoEntity escalar = c.getImovel().getProcesso();
+            if (escalar != null && escalar.getId() != null) {
+                return Optional.of(escalar);
+            }
+            return imovelProcessoRepository
+                    .findFirstByImovel_IdAndAtivoTrueOrderByIdDesc(c.getImovel().getId())
+                    .map(ImovelProcessoEntity::getProcesso)
+                    .filter(p -> p.getNumeroInterno() != null);
+        });
         lenient().when(contaBancariaRepository.findByNumeroBanco(19)).thenReturn(Optional.of(contaZero()));
         lenient().when(contaBancariaRepository.findByTipo("VIRTUAL")).thenReturn(List.of(contaVirtual()));
         lenient().when(contaContabilRepository.findFirstByCodigoIgnoreCase("A")).thenReturn(Optional.of(contaA()));

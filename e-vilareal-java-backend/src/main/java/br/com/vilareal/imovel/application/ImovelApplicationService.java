@@ -194,6 +194,7 @@ public class ImovelApplicationService {
         imovelVinculoProcessoPrincipalRepository.save(row);
 
         aplicarPrincipalPersistido(numeroPlanilha, vinculos);
+        buscarProcessoPorCodigoProc(cod8, proc).ifPresent(processo -> sincronizarProcessoPrincipalNaPlanilha(numeroPlanilha, processo));
         ImovelVinculosProcessoResponse out = new ImovelVinculosProcessoResponse();
         out.setNumeroPlanilha(numeroPlanilha);
         out.setVinculos(vinculos);
@@ -255,6 +256,59 @@ public class ImovelApplicationService {
         }
 
         itens.get(itens.size() - 1).setPrincipal(true);
+    }
+
+    /** Propaga o vínculo principal para contratos vigentes e N:N do imóvel ocupado na planilha. */
+    private void sincronizarProcessoPrincipalNaPlanilha(int numeroPlanilha, ProcessoEntity processo) {
+        if (processo == null || processo.getId() == null) {
+            return;
+        }
+        List<ImovelEntity> imoveis = imovelRepository.findAllPorNumeroPlanilhaLegado(numeroPlanilha);
+        ImovelEntity alvoSync = selecionarImovelParaSyncProcessoPrincipal(imoveis);
+        if (alvoSync != null && alvoSync.getId() != null) {
+            imovelProcessoLinkService.sincronizarProcessoAtivoAdministrativo(alvoSync.getId(), processo.getId());
+        }
+        for (ImovelEntity im : imoveis) {
+            if (im.getId() == null) {
+                continue;
+            }
+            for (ContratoLocacaoEntity contrato :
+                    contratoLocacaoRepository.findByImovel_IdOrderByDataInicioDescIdDesc(im.getId())) {
+                if ("VIGENTE".equalsIgnoreCase(String.valueOf(contrato.getStatus()))) {
+                    contrato.setProcesso(processo);
+                    contratoLocacaoRepository.save(contrato);
+                }
+            }
+        }
+    }
+
+    private ImovelEntity selecionarImovelParaSyncProcessoPrincipal(List<ImovelEntity> imoveis) {
+        if (imoveis == null || imoveis.isEmpty()) {
+            return null;
+        }
+        ImovelEntity ocupadoComContrato = null;
+        ImovelEntity qualquerComContrato = null;
+        for (ImovelEntity im : imoveis) {
+            if (im.getId() == null) {
+                continue;
+            }
+            boolean temVigente = contratoLocacaoRepository.findByImovel_IdOrderByDataInicioDescIdDesc(im.getId()).stream()
+                    .anyMatch(c -> "VIGENTE".equalsIgnoreCase(String.valueOf(c.getStatus())));
+            if (!temVigente) {
+                continue;
+            }
+            qualquerComContrato = im;
+            if ("OCUPADO".equalsIgnoreCase(String.valueOf(im.getSituacao()))) {
+                ocupadoComContrato = im;
+            }
+        }
+        if (ocupadoComContrato != null) {
+            return ocupadoComContrato;
+        }
+        if (qualquerComContrato != null) {
+            return qualquerComContrato;
+        }
+        return imoveis.get(imoveis.size() - 1);
     }
 
     private ImovelVinculoProcessoItemResponse montarVinculoProcessoDeImovel(

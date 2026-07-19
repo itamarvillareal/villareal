@@ -19,6 +19,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -108,6 +109,44 @@ public class ImovelProcessoLinkService {
         imovelProcessoRepository.save(row);
         sincronizarProcessoAtivoNoImovel(imovel);
         return toResponse(row);
+    }
+
+    /**
+     * Alinha o N:N ativo e o escalar do imóvel ao vínculo principal (Cod.+Proc.), sem validar
+     * cliente do imóvel × cliente do processo — comum quando a locação migra de cod. legado.
+     */
+    @Transactional
+    public void sincronizarProcessoAtivoAdministrativo(Long imovelId, Long processoId) {
+        if (imovelId == null || processoId == null) {
+            return;
+        }
+        ImovelEntity imovel = requireImovel(imovelId);
+        ProcessoEntity processo = processoRepository
+                .findById(processoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Processo não encontrado: " + processoId));
+
+        Optional<ImovelProcessoEntity> existente =
+                imovelProcessoRepository.findByImovel_IdAndProcesso_Id(imovelId, processoId);
+        if (existente.isPresent()) {
+            ImovelProcessoEntity row = existente.get();
+            desativarOutrosVinculosAtivos(imovelId, row.getId());
+            row.setAtivo(true);
+            row.setDataFim(null);
+            if (!StringUtils.hasText(row.getObservacao())) {
+                row.setObservacao("Sincronizado com vínculo principal Cod.+Proc.");
+            }
+            imovelProcessoRepository.save(row);
+        } else {
+            desativarOutrosVinculosAtivos(imovelId, null);
+            ImovelProcessoEntity row = new ImovelProcessoEntity();
+            row.setImovel(imovel);
+            row.setProcesso(processo);
+            row.setDataInicio(LocalDate.now());
+            row.setAtivo(true);
+            row.setObservacao("Sincronizado com vínculo principal Cod.+Proc.");
+            imovelProcessoRepository.save(row);
+        }
+        sincronizarProcessoAtivoNoImovel(imovel);
     }
 
     @Transactional
