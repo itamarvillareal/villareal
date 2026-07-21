@@ -16,6 +16,9 @@ public class ProcessoParteResponse {
     /** Ids em {@code pessoa} dos advogados desta parte (ordem preservada). */
     private List<Long> advogadoPessoaIds = new ArrayList<>();
 
+    /** Endereço escolhido para esta parte nesta demanda. */
+    private Long pessoaEnderecoId;
+
     public Long getId() {
         return id;
     }
@@ -78,5 +81,13 @@ public class ProcessoParteResponse {
 
     public void setAdvogadoPessoaIds(List<Long> advogadoPessoaIds) {
         this.advogadoPessoaIds = advogadoPessoaIds != null ? advogadoPessoaIds : new ArrayList<>();
+    }
+
+    public Long getPessoaEnderecoId() {
+        return pessoaEnderecoId;
+    }
+
+    public void setPessoaEnderecoId(Long pessoaEnderecoId) {
+        this.pessoaEnderecoId = pessoaEnderecoId;
     }
 }

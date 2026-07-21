@@ -1314,6 +1314,7 @@ export async function sincronizarPartesIncremental(processoId, partes) {
     polo: p.polo,
     qualificacao: p.qualificacao ?? null,
     ordem: p.ordem ?? 0,
+    pessoaEnderecoId: p.pessoaEnderecoId ?? null,
     advogadoPessoaIds: Array.isArray(p.advogadoPessoaIds) ? p.advogadoPessoaIds.map(Number).filter(Number.isFinite) : [],
   }));
   const desejadasAss = new Set(desejadas.map(assinaturaParte));

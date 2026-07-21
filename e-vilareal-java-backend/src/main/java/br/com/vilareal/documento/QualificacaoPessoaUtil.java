@@ -8,6 +8,7 @@ import br.com.vilareal.pessoa.api.dto.PessoaEnderecoItemResponse;
 import br.com.vilareal.pessoa.application.PessoaApplicationService;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
+import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoParteEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -59,14 +60,33 @@ public class QualificacaoPessoaUtil {
 
     @Transactional(readOnly = true)
     public QualificacaoJuridicaResponse gerarQualificacaoJuridicaResponse(Long pessoaId) {
+        return gerarQualificacaoJuridicaResponse(pessoaId, null);
+    }
+
+    @Transactional(readOnly = true)
+    public QualificacaoJuridicaResponse gerarQualificacaoJuridicaResponse(Long pessoaId, Long pessoaEnderecoId) {
         return new QualificacaoJuridicaResponse(
-                montarQualificacaoParaPessoa(pessoaId, false),
-                montarQualificacaoParaPessoa(pessoaId, true));
+                montarQualificacaoParaPessoa(pessoaId, false, pessoaEnderecoId),
+                montarQualificacaoParaPessoa(pessoaId, true, pessoaEnderecoId));
     }
 
     @Transactional(readOnly = true)
     public String gerarQualificacaoPorPessoaId(Long pessoaId, boolean nomeEmNegrito) {
-        return montarQualificacaoParaPessoa(pessoaId, nomeEmNegrito);
+        return montarQualificacaoParaPessoa(pessoaId, nomeEmNegrito, null);
+    }
+
+    @Transactional(readOnly = true)
+    public String gerarQualificacaoPorPessoaId(Long pessoaId, Long pessoaEnderecoId, boolean nomeEmNegrito) {
+        return montarQualificacaoParaPessoa(pessoaId, nomeEmNegrito, pessoaEnderecoId);
+    }
+
+    @Transactional(readOnly = true)
+    public String gerarQualificacaoPorProcessoParte(ProcessoParteEntity parte, boolean nomeEmNegrito) {
+        if (parte == null || parte.getPessoa() == null || parte.getPessoa().getId() == null) {
+            return "";
+        }
+        return gerarQualificacaoPorPessoaId(
+                parte.getPessoa().getId(), enderecoIdDaParte(parte), nomeEmNegrito);
     }
 
     /**
@@ -76,23 +96,50 @@ public class QualificacaoPessoaUtil {
      */
     @Transactional(readOnly = true)
     public String gerarQualificacaoProcuracaoPorPessoaId(Long pessoaId) {
-        DadosQualificacao dados = carregarDadosQualificacao(pessoaId);
+        return gerarQualificacaoProcuracaoPorPessoaId(pessoaId, null);
+    }
+
+    @Transactional(readOnly = true)
+    public String gerarQualificacaoProcuracaoPorPessoaId(Long pessoaId, Long pessoaEnderecoId) {
+        DadosQualificacao dados = carregarDadosQualificacao(pessoaId, pessoaEnderecoId);
         String base = gerarQualificacaoProcuracao(dados);
         if (!ehPessoaJuridica(dados)) {
             return base;
         }
-        return base + montarSufixoRepresentantePj(pessoaId, dados, false);
+        return base + montarSufixoRepresentantePj(pessoaId, dados, false, pessoaEnderecoId);
+    }
+
+    @Transactional(readOnly = true)
+    public String gerarQualificacaoProcuracaoPorProcessoParte(ProcessoParteEntity parte) {
+        if (parte == null || parte.getPessoa() == null || parte.getPessoa().getId() == null) {
+            return "";
+        }
+        return gerarQualificacaoProcuracaoPorPessoaId(parte.getPessoa().getId(), enderecoIdDaParte(parte));
     }
 
     /** Qualificação do contratante no contrato de honorários (inclui telefone, quando cadastrado). */
     @Transactional(readOnly = true)
     public String gerarQualificacaoContratoContratantePorPessoaId(Long pessoaId) {
-        DadosQualificacao dados = carregarDadosQualificacao(pessoaId);
+        return gerarQualificacaoContratoContratantePorPessoaId(pessoaId, null);
+    }
+
+    @Transactional(readOnly = true)
+    public String gerarQualificacaoContratoContratantePorPessoaId(Long pessoaId, Long pessoaEnderecoId) {
+        DadosQualificacao dados = carregarDadosQualificacao(pessoaId, pessoaEnderecoId);
         String base = appendTelefoneContrato(gerarQualificacaoProcuracao(dados), dados.telefone());
         if (!ehPessoaJuridica(dados)) {
             return base;
         }
-        return base + montarSufixoRepresentantePj(pessoaId, dados, false);
+        return base + montarSufixoRepresentantePj(pessoaId, dados, false, pessoaEnderecoId);
+    }
+
+    @Transactional(readOnly = true)
+    public String gerarQualificacaoContratoContratantePorProcessoParte(ProcessoParteEntity parte) {
+        if (parte == null || parte.getPessoa() == null || parte.getPessoa().getId() == null) {
+            return "";
+        }
+        return gerarQualificacaoContratoContratantePorPessoaId(
+                parte.getPessoa().getId(), enderecoIdDaParte(parte));
     }
 
     /**
@@ -101,40 +148,60 @@ public class QualificacaoPessoaUtil {
      */
     @Transactional(readOnly = true)
     public String gerarQualificacaoContratoLocacaoPorPessoaId(Long pessoaId) {
-        DadosQualificacao dados = carregarDadosQualificacao(pessoaId);
+        return gerarQualificacaoContratoLocacaoPorPessoaId(pessoaId, null);
+    }
+
+    @Transactional(readOnly = true)
+    public String gerarQualificacaoContratoLocacaoPorPessoaId(Long pessoaId, Long pessoaEnderecoId) {
+        DadosQualificacao dados = carregarDadosQualificacao(pessoaId, pessoaEnderecoId);
         String base = montarQualificacao(dados, false);
         if (!ehPessoaJuridica(dados)) {
             return appendTelefoneContrato(base, dados.telefone());
         }
-        return base + montarSufixoRepresentantePj(pessoaId, dados, false);
+        return base + montarSufixoRepresentantePj(pessoaId, dados, false, pessoaEnderecoId);
     }
 
     /** Qualificação sem o nome (para modelos com {@code Nome()} + {@code Qualifica_Sem_Nome()}). */
     @Transactional(readOnly = true)
     public String gerarQualificacaoSemNomePorPessoaId(Long pessoaId) {
-        DadosQualificacao dados = carregarDadosQualificacao(pessoaId);
+        return gerarQualificacaoSemNomePorPessoaId(pessoaId, null);
+    }
+
+    @Transactional(readOnly = true)
+    public String gerarQualificacaoSemNomePorPessoaId(Long pessoaId, Long pessoaEnderecoId) {
+        DadosQualificacao dados = carregarDadosQualificacao(pessoaId, pessoaEnderecoId);
         String base = removerPrefixoNomeDaQualificacao(montarQualificacao(dados, false), dados.nome());
         if (!ehPessoaJuridica(dados)) {
             return base;
         }
-        return base + montarSufixoRepresentantePj(pessoaId, dados, false);
+        return base + montarSufixoRepresentantePj(pessoaId, dados, false, pessoaEnderecoId);
     }
 
     /** Qualificação de locação sem o nome (telefone incluído quando houver). */
     @Transactional(readOnly = true)
     public String gerarQualificacaoContratoLocacaoSemNomePorPessoaId(Long pessoaId) {
-        DadosQualificacao dados = carregarDadosQualificacao(pessoaId);
+        return gerarQualificacaoContratoLocacaoSemNomePorPessoaId(pessoaId, null);
+    }
+
+    @Transactional(readOnly = true)
+    public String gerarQualificacaoContratoLocacaoSemNomePorPessoaId(Long pessoaId, Long pessoaEnderecoId) {
+        DadosQualificacao dados = carregarDadosQualificacao(pessoaId, pessoaEnderecoId);
         String base = removerPrefixoNomeDaQualificacao(montarQualificacao(dados, false), dados.nome());
         if (!ehPessoaJuridica(dados)) {
             return appendTelefoneContrato(base, dados.telefone());
         }
-        return base + montarSufixoRepresentantePj(pessoaId, dados, false);
+        return base + montarSufixoRepresentantePj(pessoaId, dados, false, pessoaEnderecoId);
     }
 
     /** Gênero gramatical do contratante (para concordância no contrato de honorários). */
     @Transactional(readOnly = true)
     public FlexaoUtil.Genero generoFlexaoPorPessoaId(Long pessoaId) {
-        DadosQualificacao dados = carregarDadosQualificacao(pessoaId);
+        return generoFlexaoPorPessoaId(pessoaId, null);
+    }
+
+    @Transactional(readOnly = true)
+    public FlexaoUtil.Genero generoFlexaoPorPessoaId(Long pessoaId, Long pessoaEnderecoId) {
+        DadosQualificacao dados = carregarDadosQualificacao(pessoaId, pessoaEnderecoId);
         return determinarFeminino(dados.nome(), dados.sexo())
                 ? FlexaoUtil.Genero.FEMININO
                 : FlexaoUtil.Genero.MASCULINO;
@@ -238,12 +305,16 @@ public class QualificacaoPessoaUtil {
     }
 
     private String montarQualificacaoParaPessoa(Long pessoaId, boolean nomeEmNegrito) {
-        DadosQualificacao dados = carregarDadosQualificacao(pessoaId);
+        return montarQualificacaoParaPessoa(pessoaId, nomeEmNegrito, null);
+    }
+
+    private String montarQualificacaoParaPessoa(Long pessoaId, boolean nomeEmNegrito, Long pessoaEnderecoId) {
+        DadosQualificacao dados = carregarDadosQualificacao(pessoaId, pessoaEnderecoId);
         String base = montarQualificacao(dados, nomeEmNegrito);
         if (!ehPessoaJuridica(dados)) {
             return base;
         }
-        return base + montarSufixoRepresentantePj(pessoaId, dados, nomeEmNegrito);
+        return base + montarSufixoRepresentantePj(pessoaId, dados, nomeEmNegrito, pessoaEnderecoId);
     }
 
     /**
@@ -261,6 +332,11 @@ public class QualificacaoPessoaUtil {
      * </ul>
      */
     private String montarSufixoRepresentantePj(Long pjId, DadosQualificacao dadosPj, boolean nomeEmNegrito) {
+        return montarSufixoRepresentantePj(pjId, dadosPj, nomeEmNegrito, null);
+    }
+
+    private String montarSufixoRepresentantePj(
+            Long pjId, DadosQualificacao dadosPj, boolean nomeEmNegrito, Long pessoaEnderecoIdPj) {
         PessoaEntity pj = pessoaRepository.findById(pjId).orElse(null);
         if (pj == null || pj.getResponsavel() == null) {
             return "";
@@ -293,28 +369,37 @@ public class QualificacaoPessoaUtil {
      */
     @Transactional(readOnly = true)
     public boolean possuiEnderecoCadastrado(Long pessoaId) {
+        return possuiEnderecoCadastrado(pessoaId, null);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean possuiEnderecoCadastrado(Long pessoaId, Long pessoaEnderecoId) {
         if (pessoaId == null) {
             return false;
         }
         List<PessoaEnderecoItemResponse> enderecos = pessoaApplicationService.listarEnderecos(pessoaId);
-        if (enderecos == null) {
-            return false;
+        PessoaEnderecoItemResponse endereco = resolverEndereco(enderecos, pessoaEnderecoId);
+        return endereco != null && endereco.getRua() != null && !endereco.getRua().isBlank();
+    }
+
+    public static Long enderecoIdDaParte(ProcessoParteEntity parte) {
+        if (parte == null || parte.getPessoaEndereco() == null) {
+            return null;
         }
-        for (PessoaEnderecoItemResponse e : enderecos) {
-            if (e != null && e.getRua() != null && !e.getRua().isBlank()) {
-                return true;
-            }
-        }
-        return false;
+        return parte.getPessoaEndereco().getId();
     }
 
     private DadosQualificacao carregarDadosQualificacao(Long pessoaId) {
+        return carregarDadosQualificacao(pessoaId, null);
+    }
+
+    private DadosQualificacao carregarDadosQualificacao(Long pessoaId, Long pessoaEnderecoId) {
         PessoaEntity pessoa = pessoaRepository.findById(pessoaId)
                 .orElseThrow(() -> new ResourceNotFoundException("Pessoa não encontrada: " + pessoaId));
 
         PessoaComplementarPayload complementar = pessoaApplicationService.obterComplementar(pessoaId);
         List<PessoaEnderecoItemResponse> enderecos = pessoaApplicationService.listarEnderecos(pessoaId);
-        PessoaEnderecoItemResponse endereco = enderecos.isEmpty() ? null : enderecos.get(0);
+        PessoaEnderecoItemResponse endereco = resolverEndereco(enderecos, pessoaEnderecoId);
         List<PessoaContatoItemResponse> contatos = pessoaApplicationService.listarContatos(pessoaId);
 
         String email = textoOuNull(pessoa.getEmail());
@@ -371,6 +456,21 @@ public class QualificacaoPessoaUtil {
                 endereco != null ? endereco.getCep() : null,
                 email,
                 telefone);
+    }
+
+    private static PessoaEnderecoItemResponse resolverEndereco(
+            List<PessoaEnderecoItemResponse> enderecos, Long pessoaEnderecoId) {
+        if (enderecos == null || enderecos.isEmpty()) {
+            return null;
+        }
+        if (pessoaEnderecoId != null) {
+            for (PessoaEnderecoItemResponse e : enderecos) {
+                if (e != null && pessoaEnderecoId.equals(e.getId())) {
+                    return e;
+                }
+            }
+        }
+        return enderecos.get(0);
     }
 
     private static String montarQualificacao(DadosQualificacao dados, boolean nomeEmNegrito) {

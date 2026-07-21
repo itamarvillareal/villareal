@@ -22,10 +22,12 @@ import br.com.vilareal.pessoa.api.dto.ClienteCreateRequest;
 import br.com.vilareal.pessoa.api.dto.ClienteCreateResult;
 import br.com.vilareal.pessoa.api.dto.ClienteListItemResponse;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEnderecoEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.application.ClienteResolverService;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
+import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaEnderecoRepository;
 import br.com.vilareal.pje.domain.PjeGrau;
 import br.com.vilareal.pje.domain.PjeTribunal;
 import br.com.vilareal.processo.api.dto.*;
@@ -74,6 +76,7 @@ public class ProcessoApplicationService {
     private final ProcessoAndamentoRepository andamentoRepository;
     private final ProcessoPrazoRepository prazoRepository;
     private final PessoaRepository pessoaRepository;
+    private final PessoaEnderecoRepository pessoaEnderecoRepository;
     private final UsuarioRepository usuarioRepository;
     private final UsuarioDestinatarioGuard usuarioDestinatarioGuard;
     private final PlanilhaPasta1ClienteRepository planilhaPasta1ClienteRepository;
@@ -97,6 +100,7 @@ public class ProcessoApplicationService {
             ProcessoAndamentoRepository andamentoRepository,
             ProcessoPrazoRepository prazoRepository,
             PessoaRepository pessoaRepository,
+            PessoaEnderecoRepository pessoaEnderecoRepository,
             UsuarioRepository usuarioRepository,
             UsuarioDestinatarioGuard usuarioDestinatarioGuard,
             PlanilhaPasta1ClienteRepository planilhaPasta1ClienteRepository,
@@ -118,6 +122,7 @@ public class ProcessoApplicationService {
         this.andamentoRepository = andamentoRepository;
         this.prazoRepository = prazoRepository;
         this.pessoaRepository = pessoaRepository;
+        this.pessoaEnderecoRepository = pessoaEnderecoRepository;
         this.usuarioRepository = usuarioRepository;
         this.usuarioDestinatarioGuard = usuarioDestinatarioGuard;
         this.planilhaPasta1ClienteRepository = planilhaPasta1ClienteRepository;
@@ -1507,6 +1512,26 @@ public class ProcessoApplicationService {
         if (StringUtils.hasText(req.getImportacaoId())) {
             p.setImportacaoId(req.getImportacaoId().trim());
         }
+        aplicarEnderecoParte(p, req.getPessoaEnderecoId());
+    }
+
+    private void aplicarEnderecoParte(ProcessoParteEntity p, Long pessoaEnderecoId) {
+        if (pessoaEnderecoId == null) {
+            p.setPessoaEndereco(null);
+            return;
+        }
+        if (p.getPessoa() == null) {
+            throw new BusinessRuleException("Informe a pessoa da parte antes de escolher o endereço.");
+        }
+        PessoaEnderecoEntity endereco = pessoaEnderecoRepository
+                .findById(pessoaEnderecoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Endereço não encontrado: " + pessoaEnderecoId));
+        if (endereco.getPessoa() == null
+                || endereco.getPessoa().getId() == null
+                || !endereco.getPessoa().getId().equals(p.getPessoa().getId())) {
+            throw new BusinessRuleException("O endereço informado não pertence à pessoa desta parte.");
+        }
+        p.setPessoaEndereco(endereco);
     }
 
     /**
@@ -1683,6 +1708,11 @@ public class ProcessoApplicationService {
         r.setQualificacao(Utf8MojibakeUtil.corrigir(p.getQualificacao()));
         r.setOrdem(p.getOrdem());
         r.setAdvogadoPessoaIds(new ArrayList<>(advogadoPessoaIds != null ? advogadoPessoaIds : List.of()));
+        if (p.getPessoaEndereco() != null) {
+            r.setPessoaEnderecoId(p.getPessoaEndereco().getId());
+        } else {
+            r.setPessoaEnderecoId(null);
+        }
         return r;
     }
 

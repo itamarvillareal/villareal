@@ -15,6 +15,7 @@ import br.com.vilareal.pessoa.application.ClienteResolverService;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.ClienteRepository;
+import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaEnderecoRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoAndamentoRepository;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoParteAdvogadoRepository;
@@ -52,6 +53,8 @@ class ClienteCadastroUpsertServiceTest {
     private ProcessoPrazoRepository prazoRepository;
     @Mock
     private PessoaRepository pessoaRepository;
+    @Mock
+    private PessoaEnderecoRepository pessoaEnderecoRepository;
     @Mock
     private UsuarioRepository usuarioRepository;
     @Mock
@@ -95,6 +98,7 @@ class ClienteCadastroUpsertServiceTest {
                         andamentoRepository,
                         prazoRepository,
                         pessoaRepository,
+                        pessoaEnderecoRepository,
                         usuarioRepository,
                         usuarioDestinatarioGuard,
                         planilhaPasta1ClienteRepository,

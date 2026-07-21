@@ -204,7 +204,8 @@ public class PeticaoExecucaoService {
             if (pessoaId == null) {
                 continue; // parte com nome livre não tem cadastro de endereço a validar
             }
-            if (!qualificacaoPessoaUtil.possuiEnderecoCadastrado(pessoaId)) {
+            if (!qualificacaoPessoaUtil.possuiEnderecoCadastrado(
+                    pessoaId, QualificacaoPessoaUtil.enderecoIdDaParte(parte))) {
                 String nome = parte.getPessoa().getNome();
                 String label = StringUtils.hasText(nome) ? nome.trim() : ("pessoa #" + pessoaId);
                 if (!semEndereco.contains(label)) {
@@ -388,7 +389,7 @@ public class PeticaoExecucaoService {
         List<String> quals = new ArrayList<>();
         for (ProcessoParteEntity parte : partes) {
             if (parte.getPessoa() != null && parte.getPessoa().getId() != null) {
-                quals.add(qualificacaoPessoaUtil.gerarQualificacaoPorPessoaId(parte.getPessoa().getId(), true));
+                quals.add(qualificacaoPessoaUtil.gerarQualificacaoPorProcessoParte(parte, true));
             } else if (StringUtils.hasText(parte.getNomeLivre())) {
                 quals.add("<strong>" + esc(parte.getNomeLivre().trim().toUpperCase(Locale.ROOT)) + "</strong>");
             }

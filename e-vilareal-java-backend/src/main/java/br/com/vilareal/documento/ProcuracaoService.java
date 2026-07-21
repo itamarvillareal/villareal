@@ -5,11 +5,14 @@ import br.com.vilareal.documento.tema.DocumentoTemaResolver;
 import br.com.vilareal.documento.tema.TemaDocumento;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
+import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoParteEntity;
+import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoParteRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -21,16 +24,19 @@ public class ProcuracaoService {
 
     private final DocumentoPdfService pdfService;
     private final PessoaRepository pessoaRepository;
+    private final ProcessoParteRepository processoParteRepository;
     private final QualificacaoPessoaUtil qualificacaoPessoaUtil;
     private final DocumentoTemaResolver temaResolver;
 
     public ProcuracaoService(
             DocumentoPdfService pdfService,
             PessoaRepository pessoaRepository,
+            ProcessoParteRepository processoParteRepository,
             QualificacaoPessoaUtil qualificacaoPessoaUtil,
             DocumentoTemaResolver temaResolver) {
         this.pdfService = pdfService;
         this.pessoaRepository = pessoaRepository;
+        this.processoParteRepository = processoParteRepository;
         this.qualificacaoPessoaUtil = qualificacaoPessoaUtil;
         this.temaResolver = temaResolver;
     }
@@ -44,7 +50,7 @@ public class ProcuracaoService {
         PessoaEntity pessoa = pessoaRepository.findById(pessoaId)
                 .orElseThrow(() -> new ResourceNotFoundException("Pessoa não encontrada: " + pessoaId));
 
-        String qualificacao = qualificacaoPessoaUtil.gerarQualificacaoProcuracaoPorPessoaId(pessoaId);
+        String qualificacao = resolverQualificacaoOutorgante(pessoaId, request.processoId());
         String nomeOutorgante = pessoa.getNome() != null ? pessoa.getNome().trim().toUpperCase(Locale.ROOT) : "";
         String cpfOutorgante = QualificacaoPessoaUtil.formatarCpf(pessoa.getCpf());
 
@@ -65,5 +71,18 @@ public class ProcuracaoService {
                 "nomeAdvogadoNegrito",
                 QualificacaoPessoaUtil.formatarNomeAdvogadoProcuracaoEmNegrito(tema.advogadoNomeEfetivo()));
         return pdfService.gerarPdfDeTemplate(TEMPLATE_PROCURACAO, variables, tema);
+    }
+
+    private String resolverQualificacaoOutorgante(Long pessoaId, Long processoId) {
+        if (processoId != null) {
+            List<ProcessoParteEntity> partes =
+                    processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(processoId);
+            for (ProcessoParteEntity parte : partes) {
+                if (parte.getPessoa() != null && pessoaId.equals(parte.getPessoa().getId())) {
+                    return qualificacaoPessoaUtil.gerarQualificacaoProcuracaoPorProcessoParte(parte);
+                }
+            }
+        }
+        return qualificacaoPessoaUtil.gerarQualificacaoProcuracaoPorPessoaId(pessoaId);
     }
 }

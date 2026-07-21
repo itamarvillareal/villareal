@@ -268,12 +268,16 @@ export function qualificacaoApiParaTextoPlano(texto) {
   return decodificarEntidadesHtml(bruto.replace(/<\/?strong>/gi, ''));
 }
 
-export async function buscarQualificacaoCompleta(pessoaId) {
+export async function buscarQualificacaoCompleta(pessoaId, pessoaEnderecoId) {
   const id = Number(pessoaId);
   if (!Number.isFinite(id) || id < 1) return '';
 
+  const enderecoId = Number(pessoaEnderecoId);
+  const query =
+    Number.isFinite(enderecoId) && enderecoId > 0 ? { pessoaEnderecoId: enderecoId } : undefined;
+
   try {
-    const data = await request(`/api/pessoas/${id}/qualificacao-juridica`);
+    const data = await request(`/api/pessoas/${id}/qualificacao-juridica`, query ? { query } : undefined);
     return qualificacaoApiParaTextoPlano(data?.qualificacao || data?.qualificacaoHtml || '');
   } catch (error) {
     console.error('Erro ao buscar qualificação:', error);
@@ -286,7 +290,7 @@ async function montarNomeQualificacaoJuridica(parte, textoFallback) {
   const pessoaId = Number(parte?.pessoaId);
   let qualificacao = '';
   if (Number.isFinite(pessoaId) && pessoaId > 0) {
-    qualificacao = await buscarQualificacaoCompleta(pessoaId);
+    qualificacao = await buscarQualificacaoCompleta(pessoaId, parte?.pessoaEnderecoId);
   }
   return {
     nome: nome.toUpperCase(),
@@ -348,11 +352,16 @@ export async function montarDadosParaDocumentoFromProcesso(ctx) {
 
   const pessoaIdOutorgante = primeiraPessoaIdParteCliente(partes, papelUi);
   const pessoaIdOposta = primeiraPessoaIdParteOposta(partes, papelUi);
+  const enderecoIdOutorgante = partes.find(
+    (p) => Number(p.pessoaId) === Number(pessoaIdOutorgante),
+  )?.pessoaEnderecoId;
+  const enderecoIdOposta = partes.find((p) => Number(p.pessoaId) === Number(pessoaIdOposta))
+    ?.pessoaEnderecoId;
   const qualificacaoParteCliente = pessoaIdOutorgante
-    ? await buscarQualificacaoCompleta(pessoaIdOutorgante)
+    ? await buscarQualificacaoCompleta(pessoaIdOutorgante, enderecoIdOutorgante)
     : '';
   const qualificacaoParteOposta = pessoaIdOposta
-    ? await buscarQualificacaoCompleta(pessoaIdOposta)
+    ? await buscarQualificacaoCompleta(pessoaIdOposta, enderecoIdOposta)
     : '';
   const nomeOutorgante = textoParteCliente.toUpperCase();
 
