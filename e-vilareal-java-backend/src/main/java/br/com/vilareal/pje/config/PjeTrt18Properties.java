@@ -37,6 +37,15 @@ public class PjeTrt18Properties {
     private int copiaIntegralDownloadTimeoutMs = 30_000;
     private int copiaIntegralRetryPauseMs = 2_000;
 
+    /** Retentativas do fluxo completo (login + busca + download) em falhas transitórias. */
+    private int execucaoMaxTentativas = 3;
+
+    /** Pausa entre retentativas do fluxo completo (ms). */
+    private int execucaoRetryPauseMs = 8_000;
+
+    /** Pausa maior quando o browser usa proxy SOCKS5 (ms). */
+    private int execucaoRetryPauseComProxyMs = 15_000;
+
     public String getUrlPrimeiroGrau() {
         return urlPrimeiroGrau;
     }
@@ -117,6 +126,30 @@ public class PjeTrt18Properties {
 
     public void setCopiaIntegralRetryPauseMs(int copiaIntegralRetryPauseMs) {
         this.copiaIntegralRetryPauseMs = copiaIntegralRetryPauseMs;
+    }
+
+    public int getExecucaoMaxTentativas() {
+        return execucaoMaxTentativas;
+    }
+
+    public void setExecucaoMaxTentativas(int execucaoMaxTentativas) {
+        this.execucaoMaxTentativas = execucaoMaxTentativas;
+    }
+
+    public int getExecucaoRetryPauseMs() {
+        return execucaoRetryPauseMs;
+    }
+
+    public void setExecucaoRetryPauseMs(int execucaoRetryPauseMs) {
+        this.execucaoRetryPauseMs = execucaoRetryPauseMs;
+    }
+
+    public int getExecucaoRetryPauseComProxyMs() {
+        return execucaoRetryPauseComProxyMs;
+    }
+
+    public void setExecucaoRetryPauseComProxyMs(int execucaoRetryPauseComProxyMs) {
+        this.execucaoRetryPauseComProxyMs = execucaoRetryPauseComProxyMs;
     }
 
     /**

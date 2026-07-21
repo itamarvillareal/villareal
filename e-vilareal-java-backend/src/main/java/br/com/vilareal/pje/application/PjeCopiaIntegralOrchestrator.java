@@ -1,5 +1,6 @@
 package br.com.vilareal.pje.application;
 
+import br.com.vilareal.pje.config.PjeBrowserProperties;
 import br.com.vilareal.pje.config.PjeTrt18Properties;
 import br.com.vilareal.pje.domain.PjeGrau;
 import br.com.vilareal.pje.infrastructure.browser.PlaywrightPjeBrowserDriver;
@@ -31,6 +32,7 @@ public class PjeCopiaIntegralOrchestrator {
 
     private final ObjectProvider<PlaywrightPjeBrowserDriver> playwrightDriver;
     private final PjeTrt18Properties properties;
+    private final PjeBrowserProperties browserProperties;
     private final SegundoFatorCodigoResolver segundoFatorCodigoResolver;
     private final CredencialTotpService credencialTotpService;
     private final PjeDriveArquivamentoService driveArquivamentoService;
@@ -41,6 +43,7 @@ public class PjeCopiaIntegralOrchestrator {
     public PjeCopiaIntegralOrchestrator(
             ObjectProvider<PlaywrightPjeBrowserDriver> playwrightDriver,
             PjeTrt18Properties properties,
+            PjeBrowserProperties browserProperties,
             SegundoFatorCodigoResolver segundoFatorCodigoResolver,
             CredencialTotpService credencialTotpService,
             PjeDriveArquivamentoService driveArquivamentoService,
@@ -49,6 +52,7 @@ public class PjeCopiaIntegralOrchestrator {
             RobotLoteContext loteContext) {
         this.playwrightDriver = playwrightDriver;
         this.properties = properties;
+        this.browserProperties = browserProperties;
         this.segundoFatorCodigoResolver = segundoFatorCodigoResolver;
         this.credencialTotpService = credencialTotpService;
         this.driveArquivamentoService = driveArquivamentoService;
@@ -88,20 +92,51 @@ public class PjeCopiaIntegralOrchestrator {
 
     private PjeCopiaIntegralResult executarInterno(
             PjeGrau grau, String login, String senha, String numeroCnj) {
+        int max = Math.max(1, properties.getExecucaoMaxTentativas());
+        long pausaMs = PjeCopiaIntegralRetrySupport.pausaEntreTentativasMs(properties, browserProperties);
+        String cnj = numeroCnj != null ? numeroCnj.trim() : "";
+
+        PjeCopiaIntegralResult ultima = null;
+        for (int tentativa = 1; tentativa <= max; tentativa++) {
+            ultima = executarInternoUmaVez(grau, login, senha, cnj);
+            if (ultima.sucesso()) {
+                autoFreio.registrarSucesso();
+                return ultima;
+            }
+            if (tentativa < max && PjeCopiaIntegralRetrySupport.ehRetentavel(ultima.mensagem())) {
+                log.warn(
+                        "PJe cópia integral tentativa {}/{} falhou (cnj={}): {} — retentando em {}ms",
+                        tentativa,
+                        max,
+                        cnj,
+                        ultima.mensagem(),
+                        pausaMs);
+                dormirEntreTentativas(pausaMs);
+                continue;
+            }
+            break;
+        }
+        autoFreio.registrarFalha();
+        return ultima != null
+                ? ultima
+                : PjeCopiaIntegralResult.falha(grau, cnj, "Falha na cópia integral PJe TRT18.");
+    }
+
+    private PjeCopiaIntegralResult executarInternoUmaVez(
+            PjeGrau grau, String login, String senha, String cnj) {
         PlaywrightPjeBrowserDriver driver = playwrightDriver.getIfAvailable();
         if (driver == null) {
             return PjeCopiaIntegralResult.falha(
-                    grau, numeroCnj, "Playwright desabilitado (app.pje.browser.enabled=false).");
+                    grau, cnj, "Playwright desabilitado (app.pje.browser.enabled=false).");
         }
-        if (!StringUtils.hasText(login) || !StringUtils.hasText(numeroCnj)) {
-            return registrarFalha(grau, numeroCnj, "login e CNJ são obrigatórios.");
+        if (!StringUtils.hasText(login) || !StringUtils.hasText(cnj)) {
+            return PjeCopiaIntegralResult.falha(grau, cnj, "login e CNJ são obrigatórios.");
         }
 
         String loginNorm = login.trim();
-        String cnj = numeroCnj.trim();
         Optional<String> senhaResolvida = resolverSenha(loginNorm, senha);
         if (senhaResolvida.isEmpty()) {
-            return registrarFalha(grau, cnj, PjeLoginOrchestrator.mensagemSemSenha(loginNorm));
+            return PjeCopiaIntegralResult.falha(grau, cnj, PjeLoginOrchestrator.mensagemSemSenha(loginNorm));
         }
 
         try {
@@ -112,12 +147,11 @@ public class PjeCopiaIntegralOrchestrator {
             String nomeArquivo = PjeTrt18CnjUtil.nomeArquivoPdf(cnj);
             var upload = driveArquivamentoService.enviarCopiaIntegral(cnj, pdf, nomeArquivo);
 
-            autoFreio.registrarSucesso();
             return PjeCopiaIntegralResult.sucesso(
                     grau, cnj, upload.driveFileId(), upload.nomeArquivo(), upload.pastaMovimentacoesId());
         } catch (RuntimeException e) {
             log.warn("PJe cópia integral falhou (cnj={}): {}", cnj, e.getMessage());
-            return registrarFalha(grau, cnj, e.getMessage());
+            return PjeCopiaIntegralResult.falha(grau, cnj, e.getMessage());
         } finally {
             driver.fechar();
         }
@@ -152,8 +186,11 @@ public class PjeCopiaIntegralOrchestrator {
         return credencialTotpService.obterSenhaPrimeiroFator(TRIBUNAL, loginNorm);
     }
 
-    private PjeCopiaIntegralResult registrarFalha(PjeGrau grau, String cnj, String mensagem) {
-        autoFreio.registrarFalha();
-        return PjeCopiaIntegralResult.falha(grau, cnj, mensagem);
+    private static void dormirEntreTentativas(long pausaMs) {
+        try {
+            Thread.sleep(pausaMs);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        }
     }
 }

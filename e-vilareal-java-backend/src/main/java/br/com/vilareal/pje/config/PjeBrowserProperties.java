@@ -18,8 +18,14 @@ public class PjeBrowserProperties {
     /** Headless por padrão; use false para depurar login localmente. */
     private boolean headless = true;
 
-    /** Timeout padrão de locators/navegação (ms). */
+    /** Timeout padrão de locators (ms). */
     private int timeoutMs = 45_000;
+
+    /**
+     * Timeout de navegação ({@code page.navigate}). 0 = automático:
+     * igual a {@link #timeoutMs}, ou {@code max(timeoutMs, 120_000)} quando há proxy SOCKS5.
+     */
+    private int navigationTimeoutMs = 0;
 
     /** Espera extra após postbacks JSF/PrimeFaces (ms). */
     private int jsfSettleMs = 1_500;
@@ -64,6 +70,34 @@ public class PjeBrowserProperties {
 
     public void setTimeoutMs(int timeoutMs) {
         this.timeoutMs = timeoutMs;
+    }
+
+    public int getNavigationTimeoutMs() {
+        return navigationTimeoutMs;
+    }
+
+    public void setNavigationTimeoutMs(int navigationTimeoutMs) {
+        this.navigationTimeoutMs = navigationTimeoutMs;
+    }
+
+    /** Timeout efetivo de locators — respeita {@link #timeoutMs}. */
+    public int timeoutEfetivoMs() {
+        return Math.max(1_000, timeoutMs);
+    }
+
+    /**
+     * Timeout efetivo de {@code Frame.goto}. Com proxy Tailscale/SOCKS5 a latência sobe;
+     * o padrão sobe para pelo menos 120s quando {@link #proxy} está preenchido.
+     */
+    public int navigationTimeoutEfetivoMs() {
+        if (navigationTimeoutMs > 0) {
+            return Math.max(1_000, navigationTimeoutMs);
+        }
+        int base = timeoutEfetivoMs();
+        if (proxy != null && !proxy.isBlank()) {
+            return Math.max(base, 120_000);
+        }
+        return base;
     }
 
     public int getJsfSettleMs() {

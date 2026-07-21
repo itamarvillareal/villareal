@@ -263,7 +263,20 @@ public class PjeTrt18PlaywrightEngine {
         context = browser.newContext(opts);
         artifacts.iniciarTracing(context);
         page = context.newPage();
-        page.setDefaultTimeout(browserProperties.getTimeoutMs());
+        aplicarTimeoutsPagina(page);
+    }
+
+    private void aplicarTimeoutsPagina(Page pagina) {
+        int locatorTimeout = browserProperties.timeoutEfetivoMs();
+        int navigationTimeout = browserProperties.navigationTimeoutEfetivoMs();
+        pagina.setDefaultTimeout(locatorTimeout);
+        pagina.setDefaultNavigationTimeout(navigationTimeout);
+        if (navigationTimeout > locatorTimeout && StringUtils.hasText(browserProperties.getProxy())) {
+            log.info(
+                    "PJe Playwright: navigationTimeout={}ms (locators={}ms, proxy ativo)",
+                    navigationTimeout,
+                    locatorTimeout);
+        }
     }
 
     private boolean sessaoAutenticada() {
@@ -307,7 +320,7 @@ public class PjeTrt18PlaywrightEngine {
         var pages = context.pages();
         if (!pages.isEmpty()) {
             page = pages.get(pages.size() - 1);
-            page.setDefaultTimeout(browserProperties.getTimeoutMs());
+            aplicarTimeoutsPagina(page);
         }
     }
 

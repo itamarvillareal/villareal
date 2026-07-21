@@ -40,6 +40,7 @@ public class PjeCopiaIntegralPorProcessoService {
     private final PjeCopiaIntegralStatusStore statusStore;
     private final RobotAutoFreio autoFreio;
     private final PjeTrt18Properties pjeTrt18Properties;
+    private final PjeCopiaIntegralFalhaEmailService falhaEmailService;
     private final ExecutorService executor;
 
     public PjeCopiaIntegralPorProcessoService(
@@ -51,6 +52,7 @@ public class PjeCopiaIntegralPorProcessoService {
             PjeCopiaIntegralStatusStore statusStore,
             RobotAutoFreio autoFreio,
             PjeTrt18Properties pjeTrt18Properties,
+            PjeCopiaIntegralFalhaEmailService falhaEmailService,
             @Qualifier("pjeEmailTriggerExecutor") ExecutorService executor) {
         this.trt18TriggerProperties = trt18TriggerProperties;
         this.copiaIntegralOrchestrator = copiaIntegralOrchestrator;
@@ -60,6 +62,7 @@ public class PjeCopiaIntegralPorProcessoService {
         this.statusStore = statusStore;
         this.autoFreio = autoFreio;
         this.pjeTrt18Properties = pjeTrt18Properties;
+        this.falhaEmailService = falhaEmailService;
         this.executor = executor;
     }
 
@@ -96,6 +99,7 @@ public class PjeCopiaIntegralPorProcessoService {
         }
         if (!r.sucesso()) {
             log.warn("PJe cópia integral CNJ {}: {}", cnjNorm, r.mensagem());
+            notificarFalhaDefinitivaSeAplicavel(r);
         } else {
             log.info(
                     "PJe cópia integral CNJ {}: arquivada (fileId={}, pasta={})",
@@ -211,5 +215,19 @@ public class PjeCopiaIntegralPorProcessoService {
             return padrao;
         }
         return PjeEmailTriggerGrauResolver.resolver(recentes.getFirst().getJsonReferencia(), padrao);
+    }
+
+    private void notificarFalhaDefinitivaSeAplicavel(PjeCopiaIntegralResult resultado) {
+        if (resultado == null || !StringUtils.hasText(resultado.mensagem())) {
+            return;
+        }
+        if (!PjeCopiaIntegralRetrySupport.ehRetentavel(resultado.mensagem())) {
+            return;
+        }
+        falhaEmailService.notificarFalhaDefinitiva(
+                resultado.numeroCnj(),
+                resultado.grau(),
+                resultado.mensagem(),
+                pjeTrt18Properties.getExecucaoMaxTentativas());
     }
 }
