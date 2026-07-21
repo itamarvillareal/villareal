@@ -13,7 +13,8 @@
 </th:block>
 
 <th:block th:fragment="paragrafo(paragrafo)">
-    <p th:class="${paragrafo.tipo.name() == 'ENUMERACAO' ? 'enumeracao' :
+    <div th:if="${paragrafo.tipo.name() == 'TABELA'}" class="doc-tabela-wrapper" th:utext="${paragrafo.conteudo[0].texto}"></div>
+    <p th:unless="${paragrafo.tipo.name() == 'TABELA'}" th:class="${paragrafo.tipo.name() == 'ENUMERACAO' ? 'enumeracao' :
                    paragrafo.tipo.name() == 'FECHO' ? 'fecho' :
                    paragrafo.tipo.name() == 'CITACAO' ? 'citacao' :
                    paragrafo.tipo.name() == 'NOME_PECA' ? 'nome-peca' : 'corpo'}">

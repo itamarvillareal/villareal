@@ -80,4 +80,22 @@ class DocumentoParagrafoHtmlUtilTest {
         assertThat(restaurados.get(0).textoPlano()).contains("a) item");
         assertThat(restaurados.get(1).textoPlano()).contains("Texto comum");
     }
+
+    @Test
+    void roundTrip_tabelaHtml() {
+        String html =
+                "<p class=\"corpo\">Texto introdutório.</p>"
+                        + "<table class=\"doc-tabela\"><tr><th>Parcela</th><th>Valor</th></tr>"
+                        + "<tr><td>Entrada</td><td>4.748,71</td></tr></table>";
+
+        List<ParagrafoDocumento> paragrafos = DocumentoParagrafoHtmlUtil.htmlToParagrafos(html, TipoParagrafo.CORPO);
+
+        assertThat(paragrafos).hasSize(2);
+        assertThat(paragrafos.get(1).tipo()).isEqualTo(TipoParagrafo.TABELA);
+        assertThat(paragrafos.get(1).textoPlano()).contains("4.748,71");
+
+        String roundTrip = DocumentoParagrafoHtmlUtil.paragrafosToHtml(paragrafos);
+        assertThat(roundTrip).contains("<table class=\"doc-tabela\">");
+        assertThat(roundTrip).contains("4.748,71");
+    }
 }

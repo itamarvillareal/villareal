@@ -1,9 +1,11 @@
 package br.com.vilareal.documento.parse;
 
+import org.apache.poi.xwpf.usermodel.IBodyElement;
 import org.apache.poi.xwpf.usermodel.ParagraphAlignment;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.apache.poi.xwpf.usermodel.XWPFRun;
+import org.apache.poi.xwpf.usermodel.XWPFTable;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -49,7 +51,15 @@ public class DocumentoDocxParser {
         Estado estado = Estado.CABECALHO;
         SecaoDocumento secaoAtual = null;
 
-        for (XWPFParagraph paragrafo : doc.getParagraphs()) {
+        for (IBodyElement element : doc.getBodyElements()) {
+            if (element instanceof XWPFTable table) {
+                secaoAtual = adicionarTabela(table, estado, preambulo, secaoAtual, fecho);
+                continue;
+            }
+            if (!(element instanceof XWPFParagraph paragrafo)) {
+                continue;
+            }
+
             Props props = extrairPropriedades(paragrafo);
             if (props.texto().isBlank()) {
                 continue;
@@ -222,6 +232,31 @@ public class DocumentoDocxParser {
             n += secaoAtual.paragrafos().size();
         }
         return n >= 8;
+    }
+
+    private static SecaoDocumento adicionarTabela(
+            XWPFTable table,
+            Estado estado,
+            List<ParagrafoDocumento> preambulo,
+            SecaoDocumento secaoAtual,
+            List<ParagrafoDocumento> fecho) {
+        ParagrafoDocumento tabela = DocumentoDocxTabelaHtmlUtil.tabelaParaParagrafo(table);
+        if (tabela == null) {
+            return secaoAtual;
+        }
+        if (estado == Estado.FECHO) {
+            fecho.add(tabela);
+            return secaoAtual;
+        }
+        if (estado != Estado.CORPO && estado != Estado.PRE_CORPO) {
+            return secaoAtual;
+        }
+        if (secaoAtual == null) {
+            preambulo.add(tabela);
+        } else {
+            secaoAtual = adicionarParagrafo(secaoAtual, tabela);
+        }
+        return secaoAtual;
     }
 
     private static void finalizarSecao(List<SecaoDocumento> secoes, SecaoDocumento secaoAtual) {

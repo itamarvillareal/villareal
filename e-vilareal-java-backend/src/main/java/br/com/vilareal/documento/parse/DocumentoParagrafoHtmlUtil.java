@@ -27,6 +27,9 @@ public final class DocumentoParagrafoHtmlUtil {
         if (paragrafo == null) {
             return "";
         }
+        if (paragrafo.tipo() == TipoParagrafo.TABELA) {
+            return paragrafo.textoPlano();
+        }
         String cls =
                 switch (paragrafo.tipo()) {
                     case ENUMERACAO -> "enumeracao";
@@ -111,6 +114,14 @@ public final class DocumentoParagrafoHtmlUtil {
             return resultado;
         }
         for (Element el : doc.body().children()) {
+            if ("table".equalsIgnoreCase(el.tagName())) {
+                String tabelaHtml = el.outerHtml().trim();
+                if (StringUtils.hasText(tabelaHtml)) {
+                    resultado.add(new ParagrafoDocumento(
+                            TipoParagrafo.TABELA, List.of(new TextoFormatado(tabelaHtml, false, false, false))));
+                }
+                continue;
+            }
             TipoParagrafo tipo = tipoFromClass(el.className(), tipoPadrao);
             List<TextoFormatado> runs = parseRuns(el);
             if (!runs.isEmpty()) {

@@ -5,5 +5,6 @@ public enum TipoParagrafo {
     NOME_PECA,
     CITACAO,
     ENUMERACAO,
-    FECHO
+    FECHO,
+    TABELA
 }
