@@ -54,7 +54,7 @@ if [[ -f "$VPS_SSH_KEY" ]]; then
   SSH_OPTS=(-i "$VPS_SSH_KEY" -o IdentitiesOnly=yes)
 fi
 
-REMOTE_CMD="cd '$VPS_REPO_DIR' && git pull && docker compose --env-file .env.docker build $SERVICES && docker compose --env-file .env.docker up -d $SERVICES"
+REMOTE_CMD="cd '$VPS_REPO_DIR' && git checkout main && git pull origin main && docker compose --env-file .env.docker build $SERVICES && docker compose --env-file .env.docker up -d $SERVICES"
 
 echo "VPS: $VPS_HOST"
 echo "Repo: $VPS_REPO_DIR"
