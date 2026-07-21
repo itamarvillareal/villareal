@@ -207,4 +207,16 @@ describe('calculosDebitosTitulos', () => {
     expect(merged[0].juros).toBe('R$ 99,00');
     expect(merged[1].juros).toBe('R$ 50,00');
   });
+
+  it('mesclarTitulosGravadosComRecalculo: sem linha recalculada não reutiliza encargos zerados do txt', () => {
+    const map = (lista) => lista;
+    const merged = mesclarTitulosGravadosComRecalculo(
+      [{ valorInicial: 'R$ 100,00', juros: 'R$ 0,00', multa: 'R$ 0,00', dataVencimento: '01/01/2020' }],
+      [],
+      map,
+    );
+    expect(merged[0].valorInicial).toBe('R$ 100,00');
+    expect(merged[0].juros).toBe('');
+    expect(merged[0].multa).toBe('');
+  });
 });
