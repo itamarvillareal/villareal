@@ -12,8 +12,15 @@ export const NUMERO_BANCO_BB = 3;
 export const NUMERO_BANCO_CEF = 5;
 /** Cora */
 export const NUMERO_BANCO_CORA = 26;
+/** Sicoob VRV */
+export const NUMERO_BANCO_SICOOB_VRV = 29;
 
-const BANCOS_KARLA = [NUMERO_BANCO_BB, NUMERO_BANCO_CEF, NUMERO_BANCO_CORA];
+const BANCOS_KARLA = [
+  NUMERO_BANCO_BB,
+  NUMERO_BANCO_CEF,
+  NUMERO_BANCO_CORA,
+  NUMERO_BANCO_SICOOB_VRV,
+];
 const KARLA_PERFIL_IDS = new Set(['karla', '2']);
 
 export function usuarioTemAcessoTotalExtratos(perfilId, login) {

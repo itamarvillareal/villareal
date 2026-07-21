@@ -14,7 +14,7 @@ import java.util.Set;
 
 /**
  * Restringe visualização/importação de extratos bancários por usuário.
- * Itamar: todos os bancos. Karla: BB (3), CEF (5) e CORA (26).
+ * Itamar: todos os bancos. Karla: BB (3), CEF (5), CORA (26) e Sicoob VRV (29).
  */
 @Service
 public class FinanceiroExtratoAcessoService {
@@ -25,12 +25,14 @@ public class FinanceiroExtratoAcessoService {
     public static final int NUMERO_BANCO_CEF = 5;
     /** Cora */
     public static final int NUMERO_BANCO_CORA = 26;
+    /** Sicoob VRV */
+    public static final int NUMERO_BANCO_SICOOB_VRV = 29;
 
     /** Conta Escritório — lançamentos vinculados aqui são visíveis/editáveis sem acesso ao extrato do banco. */
     public static final String CODIGO_CONTA_ESCRITORIO = "A";
 
     private static final Set<Integer> BANCOS_KARLA =
-            Set.of(NUMERO_BANCO_BB, NUMERO_BANCO_CEF, NUMERO_BANCO_CORA);
+            Set.of(NUMERO_BANCO_BB, NUMERO_BANCO_CEF, NUMERO_BANCO_CORA, NUMERO_BANCO_SICOOB_VRV);
     private static final long USUARIO_ITAMAR_ID = 1L;
     private static final long USUARIO_KARLA_ID = 2L;
 
