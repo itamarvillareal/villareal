@@ -57,7 +57,7 @@ fi
 DRIVE_CREDS='e-vilareal-java-backend/src/main/resources/google-drive-credentials.json'
 REMOTE_CMD="cd '$VPS_REPO_DIR' && git checkout main && git pull origin main"
 if [[ "$SERVICES" == *backend* ]]; then
-  REMOTE_CMD="$REMOTE_CMD && test -f '$DRIVE_CREDS' || { echo 'ERRO: $DRIVE_CREDS ausente na VPS (Google Drive ficará desativado). Copie do backup villareal-OLD-* ou do cofre antes do build.' >&2; exit 1; }"
+  REMOTE_CMD="$REMOTE_CMD && { test -f '$DRIVE_CREDS' || { echo 'ERRO: $DRIVE_CREDS ausente na VPS (Google Drive ficará desativado). Copie do backup villareal-OLD-* ou do cofre antes do build.' >&2; exit 1; }; }"
 fi
 REMOTE_CMD="$REMOTE_CMD && docker compose --env-file .env.docker build $SERVICES && docker compose --env-file .env.docker up -d $SERVICES"
 
