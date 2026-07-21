@@ -53,4 +53,20 @@ describe('extratoLetrasFiltro', () => {
     expect(linhaBateFiltroLetras(rowA, { letras: ['E'], letrasModo: LETRAS_MODO_EXCLUIR })).toBe(true);
     expect(linhaBateFiltroLetras(rowE, { letras: ['E'], letrasModo: LETRAS_MODO_EXCLUIR })).toBe(false);
   });
+
+  it('linhaBateFiltroLetras usa letra exibida (N importado com juros sugere F)', () => {
+    const jurosEmN = {
+      contaCodigo: 'N',
+      etapa: 'IMPORTADO',
+      descricao: 'JUROS S/ CAPITAL s/ BRADESCO',
+    };
+    expect(linhaBateFiltroLetras(jurosEmN, { letras: ['N'], letrasModo: LETRAS_MODO_INCLUIR })).toBe(false);
+    expect(linhaBateFiltroLetras(jurosEmN, { letras: ['F'], letrasModo: LETRAS_MODO_INCLUIR })).toBe(true);
+    expect(
+      linhaBateFiltroLetras(
+        { contaCodigo: 'N', etapa: 'IMPORTADO', descricao: 'PIX TRANSF' },
+        { letras: ['N'], letrasModo: LETRAS_MODO_INCLUIR },
+      ),
+    ).toBe(true);
+  });
 });

@@ -1,3 +1,5 @@
+import { contaCodigoExtratoExibicao } from '../shared/financeiroDescricaoContaF.js';
+
 export const LETRAS_MODO_INCLUIR = 'incluir';
 export const LETRAS_MODO_EXCLUIR = 'excluir';
 
@@ -49,10 +51,10 @@ export function letrasParaQueryApi({ letras, letrasModo }) {
   };
 }
 
-/** Filtro client-side por letra da conta contábil (contaCodigo). */
+/** Filtro por letra exibida no extrato (inclui sugestão F para importados em N). */
 export function linhaBateFiltroLetras(row, { letras, letrasModo } = {}) {
   if (!letrasFiltroAtivo({ letras })) return true;
-  const cod = String(row?.contaCodigo ?? 'N').trim().toUpperCase() || 'N';
+  const cod = contaCodigoExtratoExibicao(row);
   const sel = new Set(normalizarLetrasFiltro(letras));
   const contem = sel.has(cod);
   return letrasModo === LETRAS_MODO_EXCLUIR ? !contem : contem;

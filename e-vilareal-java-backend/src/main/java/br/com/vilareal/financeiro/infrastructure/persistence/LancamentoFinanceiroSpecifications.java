@@ -6,8 +6,11 @@ import br.com.vilareal.financeiro.domain.StatusLancamento;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
 import br.com.vilareal.imovel.application.ImovelLancamentoFiltroCriteria;
 import br.com.vilareal.processo.application.ClienteCodigoPessoaResolver;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.util.StringUtils;
@@ -212,19 +215,76 @@ public final class LancamentoFinanceiroSpecifications {
                 .toList();
     }
 
+    /**
+     * Filtra pela letra exibida no extrato: importados em N com descrição de rendimento/juros
+     * contam como F (mesma regra de {@code contaCodigoExtratoExibicao} no frontend).
+     */
     public static Specification<LancamentoFinanceiroEntity> comContaCodigos(
             List<String> contaCodigos, boolean excluir) {
         return (root, query, cb) -> {
             if (contaCodigos == null || contaCodigos.isEmpty()) {
                 return null;
             }
-            var j = root.join("contaContabil", JoinType.INNER);
-            var upperCodigos = contaCodigos.stream()
-                    .map(s -> s.toUpperCase(Locale.ROOT))
-                    .toList();
-            var inPred = cb.upper(j.get("codigo")).in(upperCodigos);
-            return excluir ? cb.not(inPred) : inPred;
+            var conta = root.join("contaContabil", JoinType.INNER);
+            var codigoUpper = cb.upper(conta.get("codigo"));
+            var letterPreds = new ArrayList<Predicate>();
+            for (String raw : contaCodigos) {
+                letterPreds.add(predicadoLetraEfetivaExtratoIgual(root, cb, codigoUpper, raw));
+            }
+            var matchAny = cb.or(letterPreds.toArray(Predicate[]::new));
+            return excluir ? cb.not(matchAny) : matchAny;
         };
+    }
+
+    private static Predicate predicadoLetraEfetivaExtratoIgual(
+            Root<LancamentoFinanceiroEntity> root,
+            CriteriaBuilder cb,
+            Expression<String> codigoUpper,
+            String letraRaw) {
+        var letra = letraRaw.toUpperCase(Locale.ROOT);
+        if ("F".equals(letra)) {
+            var sugF = predicadoSugestaoContaFImportado(root, cb, codigoUpper);
+            return cb.or(cb.equal(codigoUpper, "F"), sugF);
+        }
+        if ("N".equals(letra)) {
+            var sugF = predicadoSugestaoContaFImportado(root, cb, codigoUpper);
+            return cb.and(cb.equal(codigoUpper, "N"), cb.not(sugF));
+        }
+        return cb.equal(codigoUpper, letra);
+    }
+
+    private static Predicate predicadoSugestaoContaFImportado(
+            Root<LancamentoFinanceiroEntity> root,
+            CriteriaBuilder cb,
+            Expression<String> codigoUpper) {
+        return cb.and(
+                cb.equal(codigoUpper, "N"),
+                cb.equal(root.get("etapa"), EtapaLancamento.IMPORTADO),
+                predicadoDescricaoIndicaContaF(root, cb));
+    }
+
+    /** Espelha {@link br.com.vilareal.financeiro.domain.FinanceiroDescricaoIndicaContaF#indica}. */
+    private static Predicate predicadoDescricaoIndicaContaF(
+            Root<LancamentoFinanceiroEntity> root, CriteriaBuilder cb) {
+        var d1 = cb.coalesce(root.get("descricao"), "");
+        var d2 = cb.coalesce(root.get("descricaoDetalhada"), "");
+        var texto = cb.upper(cb.concat(cb.concat(d1, " "), d2));
+        return cb.or(
+                cb.like(texto, "%COR JURS%"),
+                cb.like(texto, "%CORJURS%"),
+                cb.like(texto, "%JUROS%"),
+                cb.like(texto, "% CRI%"),
+                cb.like(texto, "CRI %"),
+                cb.like(texto, "% CRI"),
+                cb.equal(texto, "CRI"),
+                cb.like(texto, "% LCA%"),
+                cb.like(texto, "LCA %"),
+                cb.like(texto, "% LCA"),
+                cb.equal(texto, "LCA"),
+                cb.like(texto, "% CDB%"),
+                cb.like(texto, "CDB %"),
+                cb.like(texto, "% CDB"),
+                cb.equal(texto, "CDB"));
     }
 
     /**
