@@ -773,6 +773,13 @@ public class WhatsAppController {
         }
     }
 
+    @PostMapping("/templates/garantir-lembrete-audiencia-link")
+    @Operation(summary = "Garantir template lembrete_audiencia_link na Meta (submissão para aprovação)")
+    public ResponseEntity<Void> garantirTemplateLembreteAudienciaLink() {
+        whatsAppTemplateService.garantirTemplateLembreteAudienciaLink();
+        return ResponseEntity.accepted().build();
+    }
+
     @DeleteMapping("/templates/{name}")
     @Operation(summary = "Deletar template de mensagem (Meta)")
     public ResponseEntity<SendMessageResponse> deleteTemplate(

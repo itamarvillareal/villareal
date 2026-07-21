@@ -38,6 +38,7 @@ export function templateLabel(templateName) {
 export function templateIconName(templateName) {
   const icons = {
     lembrete_audiencia: 'Bell',
+    lembrete_audiencia_link: 'Video',
     atualizacao_processo: 'FileText',
     boas_vindas_cliente: 'UserPlus',
     cobranca_pagamento: 'Banknote',

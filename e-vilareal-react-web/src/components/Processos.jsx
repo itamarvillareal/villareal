@@ -646,6 +646,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [audienciaData, setAudienciaData] = useState('');
   const [audienciaHora, setAudienciaHora] = useState('');
   const [audienciaTipo, setAudienciaTipo] = useState('');
+  const [audienciaLinkReuniao, setAudienciaLinkReuniao] = useState('');
   const audienciaHoraInputRef = useRef(null);
   const [avisoAudiencia, setAvisoAudiencia] = useState('nao_avisado');
   const [prazoFatal, setPrazoFatal] = useState('');
@@ -1338,6 +1339,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       setAudienciaData(pickCampoStrSalvo(r, 'audienciaData', ''));
       setAudienciaHora(pickCampoStrSalvo(r, 'audienciaHora', ''));
       setAudienciaTipo(normalizarTipoAudienciaCanonico(pickCampoStrSalvo(r, 'audienciaTipo', '')));
+      setAudienciaLinkReuniao(pickCampoStrSalvo(r, 'audienciaLinkReuniao', ''));
       setAvisoAudiencia(pickCampoStrSalvo(r, 'avisoAudiencia', 'nao_avisado') || 'nao_avisado');
       setProximaInformacao(pickCampoStrSalvo(r, 'proximaInformacao', ''));
       setDataProximaInformacao(pickCampoStrSalvo(r, 'dataProximaInformacao', ''));
@@ -1427,6 +1429,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         audienciaData: pickCampoStrSalvo(r, 'audienciaData', ''),
         audienciaHora: pickCampoStrSalvo(r, 'audienciaHora', ''),
         audienciaTipo: normalizarTipoAudienciaCanonico(pickCampoStrSalvo(r, 'audienciaTipo', '')),
+        audienciaLinkReuniao: pickCampoStrSalvo(r, 'audienciaLinkReuniao', ''),
         avisoAudiencia: pickCampoStrSalvo(r, 'avisoAudiencia', 'nao_avisado') || 'nao_avisado',
         imovelId: nextImovelIdStr,
         unidade: mergedUnidade,
@@ -2641,6 +2644,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       audienciaData,
       audienciaHora,
       audienciaTipo: normalizarTipoAudienciaCanonico(audienciaTipo),
+      audienciaLinkReuniao: String(audienciaLinkReuniao ?? '').trim(),
       avisoAudiencia,
       imovelId: String(imovelId ?? ''),
       unidade: String(unidadeEndereco ?? ''),
@@ -2742,6 +2746,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     setAudienciaData('');
     setAudienciaHora('');
     setAudienciaTipo('');
+    setAudienciaLinkReuniao('');
     setAvisoAudiencia('nao_avisado');
     setProximaInformacao('');
     setDataProximaInformacao('');
@@ -2897,6 +2902,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
       setAudienciaData(mapped.audienciaData ?? '');
       setAudienciaHora(mapped.audienciaHora ?? '');
       setAudienciaTipo(normalizarTipoAudienciaCanonico(mapped.audienciaTipo ?? ''));
+      setAudienciaLinkReuniao(mapped.audienciaLinkReuniao ?? '');
       setAvisoAudiencia(mapped.avisoAudiencia ?? 'nao_avisado');
 
       if (featureFlags.useApiAgenda && procApi.id && String(mapped.audienciaData ?? '').trim()) {
@@ -3151,6 +3157,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     audienciaData,
     audienciaHora,
     audienciaTipo,
+    audienciaLinkReuniao,
     avisoAudiencia,
     imovelId,
     unidadeEndereco,
@@ -3716,6 +3723,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     setAudienciaData('');
     setAudienciaHora('');
     setAudienciaTipo('');
+    setAudienciaLinkReuniao('');
     setAvisoAudiencia('nao_avisado');
   }
 
@@ -4244,6 +4252,20 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                           ))}
                         </select>
                       )}
+                    </Field>
+                    <Field
+                      label="Link da reunião"
+                      className="min-w-0 flex-1 basis-full sm:basis-[min(100%,20rem)]"
+                      title="Link da videoconferência (Meet, Teams, Zoom etc.) — enviado no aviso WhatsApp"
+                    >
+                      <input
+                        type="url"
+                        value={audienciaLinkReuniao}
+                        readOnly={camposBloqueados}
+                        onChange={(e) => setAudienciaLinkReuniao(e.target.value)}
+                        placeholder="https://…"
+                        className={`w-full min-w-0 ${clsCampo}`}
+                      />
                     </Field>
                     <div className="w-full shrink-0 min-w-0 sm:w-auto sm:min-w-[10.5rem]">
                       <span className="block text-xs font-semibold text-violet-900 mb-0.5">Aviso</span>

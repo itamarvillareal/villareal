@@ -35,8 +35,11 @@ public class WhatsAppTemplateService {
     private static final Pattern PARAM_PATTERN = Pattern.compile("\\{\\{(\\d+)\\}\\}");
     private static final Pattern NAME_PATTERN = Pattern.compile("^[a-z0-9_]+$");
     public static final String TEMPLATE_ANIVERSARIO = "felicitacao_aniversario";
+    public static final String TEMPLATE_LEMBRETE_AUDIENCIA_LINK = "lembrete_audiencia_link";
     private static final String CORPO_TEMPLATE_ANIVERSARIO =
             "Olá {{1}}! 🎂 O escritório Villa Real Advocacia deseja a você um Feliz Aniversário! Que este novo ano seja repleto de conquistas e alegrias. Um grande abraço de toda a equipe! Dr. Itamar e Villa Real Advocacia.";
+    private static final String CORPO_TEMPLATE_LEMBRETE_AUDIENCIA_LINK =
+            "Olá {{1}}! Lembramos que há audiência agendada referente ao processo {{2}}, marcada para {{3}}. Link da reunião: {{4}}. Qualquer dúvida, estamos à disposição. Villa Real Advocacia.";
 
     private final WhatsAppConfig whatsAppConfig;
     private final RestClient restClient;
@@ -132,6 +135,59 @@ public class WhatsAppTemplateService {
             log.error("Falha ao garantir template {}: {}", TEMPLATE_ANIVERSARIO, e.getMessage());
         } catch (Exception e) {
             log.error("Erro inesperado ao garantir template {}: {}", TEMPLATE_ANIVERSARIO, e.getMessage(), e);
+        }
+    }
+
+    /** Garante o template de lembrete de audiência com link da reunião (4 variáveis). */
+    public void garantirTemplateLembreteAudienciaLink() {
+        try {
+            validarConfiguracao();
+        } catch (IllegalStateException e) {
+            log.warn("WhatsApp audiência link: integração não configurada — template não verificado");
+            return;
+        }
+
+        try {
+            String uri = UriComponentsBuilder.fromPath("/{wabaId}/message_templates")
+                    .queryParam("name", TEMPLATE_LEMBRETE_AUDIENCIA_LINK)
+                    .build(whatsAppConfig.getWabaId())
+                    .toString();
+            JsonNode response = getJson(uri);
+            JsonNode data = response.path("data");
+            if (data.isArray() && !data.isEmpty()) {
+                String status = textOrNull(data.get(0).get("status"));
+                log.info(
+                        "Template {} já existe (status: {})",
+                        TEMPLATE_LEMBRETE_AUDIENCIA_LINK,
+                        status != null ? status : "desconhecido");
+                return;
+            }
+
+            CreateTemplateRequest request = new CreateTemplateRequest(
+                    TEMPLATE_LEMBRETE_AUDIENCIA_LINK,
+                    "UTILITY",
+                    CORPO_TEMPLATE_LEMBRETE_AUDIENCIA_LINK,
+                    List.of(
+                            "Maria Silva",
+                            "5009686-73.2026.8.09.0007 — Cliente: Condomínio Solar; Parte autora: João da Silva",
+                            "10/07/2026 às 15:00",
+                            "https://meet.google.com/abc-defg-hij"));
+            WhatsAppTemplateDTO created = criarTemplate(request);
+            log.info(
+                    "Template {} criado (status: {})",
+                    TEMPLATE_LEMBRETE_AUDIENCIA_LINK,
+                    created.status() != null ? created.status() : "PENDING");
+        } catch (WhatsAppApiException e) {
+            log.error(
+                    "Falha ao garantir template {}: {}",
+                    TEMPLATE_LEMBRETE_AUDIENCIA_LINK,
+                    e.getMessage());
+        } catch (Exception e) {
+            log.error(
+                    "Erro inesperado ao garantir template {}: {}",
+                    TEMPLATE_LEMBRETE_AUDIENCIA_LINK,
+                    e.getMessage(),
+                    e);
         }
     }
 

@@ -40,7 +40,6 @@ public class AudienciaReminderJob {
     private static final ZoneId ZONE_BRASILIA = ZoneId.of("America/Sao_Paulo");
     private static final DateTimeFormatter DATA_HORA_BR = DateTimeFormatter.ofPattern("dd/MM/yyyy 'às' HH:mm");
     private static final LocalTime HORA_PADRAO = LocalTime.of(9, 0);
-    private static final String TEMPLATE_LEMBRETE = "lembrete_audiencia";
 
     private final WhatsAppConfig whatsAppConfig;
     private final ProcessoRepository processoRepository;
@@ -219,7 +218,8 @@ public class AudienciaReminderJob {
                     numeroProcesso,
                     parteCliente,
                     parteAutora,
-                    dataAudiencia);
+                    dataAudiencia,
+                    processo.getAudienciaLinkReuniao());
             if (agendado) {
                 criados++;
                 log.info(
@@ -246,9 +246,7 @@ public class AudienciaReminderJob {
         }
 
         Long processoId = processo.getId();
-        if (scheduledRepository
-                .findByProcessoIdAndStatusAndTemplateName(processoId, ScheduledMessageStatus.SENT, TEMPLATE_LEMBRETE)
-                .isEmpty()) {
+        if (!lembreteAudienciaEnviado(processoId)) {
             log.debug("Reforço véspera: processo {} sem lembrete 24h enviado. Pulando.", processoId);
             return 0;
         }
@@ -278,12 +276,19 @@ public class AudienciaReminderJob {
         String parteCliente = ProcessoPartesVinculoTextoResolver.parteCliente(processo, partes);
         String parteAutora = ProcessoPartesVinculoTextoResolver.parteAutora(processo, partes);
         List<String> params = LembreteAudienciaTemplateParams.montar(
-                nomeDestinatario, numeroProcesso, parteCliente, parteAutora, dataAudiencia);
+                nomeDestinatario,
+                numeroProcesso,
+                parteCliente,
+                parteAutora,
+                dataAudiencia,
+                processo.getAudienciaLinkReuniao());
+        String templateName =
+                LembreteAudienciaTemplateParams.resolverNomeTemplate(processo.getAudienciaLinkReuniao());
         int criados = 0;
 
         for (String telefone : telefones) {
             boolean agendado = whatsAppSchedulerService.agendarReforcoAudiencia(
-                    cliente.getId(), processoId, telefone, params, scheduledAt, numeroProcesso);
+                    cliente.getId(), processoId, telefone, params, scheduledAt, numeroProcesso, templateName);
             if (agendado) {
                 criados++;
                 log.info(
@@ -309,6 +314,18 @@ public class AudienciaReminderJob {
             return hoje.plusDays(1);
         }
         return hoje.plusDays(1);
+    }
+
+    private boolean lembreteAudienciaEnviado(Long processoId) {
+        for (String templateName : LembreteAudienciaTemplateParams.nomesTemplates()) {
+            if (!scheduledRepository
+                    .findByProcessoIdAndStatusAndTemplateName(
+                            processoId, ScheduledMessageStatus.SENT, templateName)
+                    .isEmpty()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Instant montarInstantAudiencia(ProcessoEntity processo) {

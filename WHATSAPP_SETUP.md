@@ -152,6 +152,7 @@ A página de privacidade exigida pela Meta está em `/privacidade` no portal pú
 | Nome | Categoria | Status | Parâmetros |
 |------|-----------|--------|------------|
 | `lembrete_audiencia` | Utility | **APPROVED** (pt_BR, ID `2589903884760478`) | `{{1}}`=nome, `{{2}}`=nº processo, `{{3}}`=data/hora |
+| `lembrete_audiencia_link` | Utility | Submetido na subida (prod) | `{{1}}`=nome, `{{2}}`=processo, `{{3}}`=data/hora, `{{4}}`=link reunião |
 | `atualizacao_processo` | Utility | Não criado ainda | `{{1}}`=nome, `{{2}}`=nº processo, `{{3}}`=movimentação |
 | `boas_vindas_cliente` | Utility | Não criado ainda | `{{1}}`=nome |
 

@@ -405,6 +405,7 @@ function normalizarRegistroProcesso(reg) {
     audienciaData: String(reg.audienciaData ?? ''),
     audienciaHora: String(reg.audienciaHora ?? ''),
     audienciaTipo: String(reg.audienciaTipo ?? ''),
+    audienciaLinkReuniao: String(reg.audienciaLinkReuniao ?? ''),
     avisoAudiencia: String(reg.avisoAudiencia ?? ''),
     imovelId: String(reg.imovelId ?? ''),
     unidade: String(reg.unidade ?? ''),
@@ -456,6 +457,8 @@ function upsertRegistroProcesso(payload) {
     audienciaData: payload.audienciaData !== undefined ? payload.audienciaData : prev.audienciaData,
     audienciaHora: payload.audienciaHora !== undefined ? payload.audienciaHora : prev.audienciaHora,
     audienciaTipo: payload.audienciaTipo !== undefined ? payload.audienciaTipo : prev.audienciaTipo,
+    audienciaLinkReuniao:
+      payload.audienciaLinkReuniao !== undefined ? payload.audienciaLinkReuniao : prev.audienciaLinkReuniao,
     avisoAudiencia: payload.avisoAudiencia !== undefined ? payload.avisoAudiencia : prev.avisoAudiencia,
     imovelId: payload.imovelId !== undefined ? payload.imovelId : prev.imovelId,
     unidade: payload.unidade !== undefined ? payload.unidade : prev.unidade,

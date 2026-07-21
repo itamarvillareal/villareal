@@ -5,6 +5,11 @@ export const WHATSAPP_TEMPLATES = [
     params: ['Nome do destinatário', 'Processo + cliente + parte autora', 'Data/hora'],
   },
   {
+    value: 'lembrete_audiencia_link',
+    label: 'Lembrete de Audiência (com link)',
+    params: ['Nome do destinatário', 'Processo + cliente + parte autora', 'Data/hora', 'Link da reunião'],
+  },
+  {
     value: 'atualizacao_processo',
     label: 'Atualização de Processo',
     params: ['Nome do cliente', 'Nº do processo', 'Movimentação'],

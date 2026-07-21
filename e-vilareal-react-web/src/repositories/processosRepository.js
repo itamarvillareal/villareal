@@ -1087,6 +1087,7 @@ export async function salvarCabecalhoProcesso(payload) {
     audienciaHora: normalizarHoraAudienciaCampo(payload.audienciaHora),
     audienciaTipo:
       normalizarTipoAudienciaCanonico(String(payload.audienciaTipo ?? '').trim()) || null,
+    audienciaLinkReuniao: String(payload.audienciaLinkReuniao ?? '').trim() || null,
     avisoAudiencia: avisoAudienciaUiParaApi(payload.avisoAudiencia),
   };
   if (processoId) {
@@ -1859,6 +1860,7 @@ export function mapApiProcessoToUiShape(p) {
     audienciaTipo: normalizarTipoAudienciaCanonico(
       corrigirMojibakeUtf8(String(p.audienciaTipo ?? '').trim())
     ),
+    audienciaLinkReuniao: String(p.audienciaLinkReuniao ?? p.audiencia_link_reuniao ?? '').trim(),
     avisoAudiencia: avisoAudienciaApiParaUi(p.avisoAudiencia ?? p.aviso_audiencia),
   };
 }

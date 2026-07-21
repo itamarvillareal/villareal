@@ -1400,6 +1400,7 @@ public class ProcessoApplicationService {
         e.setAudienciaData(req.getAudienciaData());
         e.setAudienciaHora(normalizarHoraAudiencia(req.getAudienciaHora()));
         e.setAudienciaTipo(trimToNull(req.getAudienciaTipo()));
+        e.setAudienciaLinkReuniao(trimToNull(req.getAudienciaLinkReuniao()));
         e.setAvisoAudiencia(normalizarAvisoAudiencia(req.getAvisoAudiencia()));
         e.setConsultaAutomatica(Boolean.TRUE.equals(req.getConsultaAutomatica()));
         if (req.getAtivo() != null) {
@@ -1647,6 +1648,7 @@ public class ProcessoApplicationService {
         r.setAudienciaData(e.getAudienciaData());
         r.setAudienciaHora(e.getAudienciaHora());
         r.setAudienciaTipo(Utf8MojibakeUtil.corrigir(trimToNull(e.getAudienciaTipo())));
+        r.setAudienciaLinkReuniao(trimToNull(e.getAudienciaLinkReuniao()));
         r.setAvisoAudiencia(e.getAvisoAudiencia());
         r.setConsultaAutomatica(e.getConsultaAutomatica());
         r.setAtivo(e.getAtivo());

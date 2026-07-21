@@ -44,6 +44,7 @@ public class ProcessoResponse {
     private LocalDate audienciaData;
     private String audienciaHora;
     private String audienciaTipo;
+    private String audienciaLinkReuniao;
     private String avisoAudiencia;
     private Boolean consultaAutomatica;
     private Boolean ativo;
@@ -317,6 +318,14 @@ public class ProcessoResponse {
 
     public void setAudienciaTipo(String audienciaTipo) {
         this.audienciaTipo = audienciaTipo;
+    }
+
+    public String getAudienciaLinkReuniao() {
+        return audienciaLinkReuniao;
+    }
+
+    public void setAudienciaLinkReuniao(String audienciaLinkReuniao) {
+        this.audienciaLinkReuniao = audienciaLinkReuniao;
     }
 
     public String getAvisoAudiencia() {
