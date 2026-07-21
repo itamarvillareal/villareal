@@ -12,8 +12,8 @@ import {
   LETRAS_MODO_INCLUIR,
   letrasFiltroAtivo,
 } from '../extrato/extratoLetrasFiltro.js';
-import { extratoRowKey } from './totalFinanceiroMerge.js';
-import { carregarTotalFinanceiroPaginado } from './totalFinanceiroLoader.js';
+import { extratoRowKey, paginarLinhasTotal, compararLancamentosTotal } from './totalFinanceiroMerge.js';
+import { carregarTotalFinanceiroLinhas } from './totalFinanceiroLoader.js';
 import { somarLancamentosExtratoRows } from '../consolidado/consolidadoUtils.js';
 import { filtroCompensacaoSemParAtivo } from '../extrato/compensacaoSemPar.js';
 import { useExtratoParearPorClique } from '../extrato/useExtratoParearPorClique.js';
@@ -37,9 +37,7 @@ export function TotalPage({ embedded = false, mes: mesProp, onMesChange } = {}) 
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(50);
   const [sortAsc, setSortAsc] = useState(false);
-  const [rows, setRows] = useState([]);
-  const [totalElements, setTotalElements] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
+  const [linhas, setLinhas] = useState([]);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState('');
   const [truncado, setTruncado] = useState(false);
@@ -48,7 +46,7 @@ export function TotalPage({ embedded = false, mes: mesProp, onMesChange } = {}) 
   const [detailItem, setDetailItem] = useState(null);
 
   const atualizarLinhasAposParear = useCallback((origemMerged, contrapartidaMerged) => {
-    setRows((prev) =>
+    setLinhas((prev) =>
       prev.map((r) => {
         const key = r._rowKey ?? extratoRowKey(r);
         const oKey = origemMerged._rowKey ?? extratoRowKey(origemMerged);
@@ -91,30 +89,25 @@ export function TotalPage({ embedded = false, mes: mesProp, onMesChange } = {}) 
 
   useEffect(() => {
     if (!featureFlags.useApiFinanceiro) {
-      setRows([]);
+      setLinhas([]);
       return undefined;
     }
     const ac = new AbortController();
     setLoading(true);
     setErro('');
-    carregarTotalFinanceiroPaginado(
+    carregarTotalFinanceiroLinhas(
       {
         mes,
         busca: buscaDebounced || undefined,
         etapa: filtroEtapa || undefined,
         letras: filtroLetras,
         letrasModo: filtroLetrasModo,
-        page,
-        size: pageSize,
-        sortAsc,
       },
       { signal: ac.signal },
     )
       .then((res) => {
         if (ac.signal.aborted) return;
-        setRows(res.content ?? []);
-        setTotalElements(Number(res.totalElements) || 0);
-        setTotalPages(Math.max(1, Number(res.totalPages) || 1));
+        setLinhas(res.linhas ?? []);
         setTruncado(Boolean(res.truncado));
         setStats({
           totalBanco: Number(res.totalBanco) || 0,
@@ -124,13 +117,22 @@ export function TotalPage({ embedded = false, mes: mesProp, onMesChange } = {}) 
       .catch((e) => {
         if (e?.name === 'AbortError') return;
         setErro(e?.message || 'Erro ao carregar lançamentos.');
-        setRows([]);
+        setLinhas([]);
       })
       .finally(() => {
         if (!ac.signal.aborted) setLoading(false);
       });
     return () => ac.abort();
-  }, [mes, filtroEtapa, filtroLetras, filtroLetrasModo, buscaDebounced, page, pageSize, sortAsc]);
+  }, [mes, filtroEtapa, filtroLetras, filtroLetrasModo, buscaDebounced]);
+
+  const paginaAtual = useMemo(() => {
+    const ordenadas = [...linhas].sort((a, b) => compararLancamentosTotal(a, b, sortAsc));
+    return paginarLinhasTotal(ordenadas, { page, size: pageSize });
+  }, [linhas, page, pageSize, sortAsc]);
+
+  const rows = paginaAtual.content ?? [];
+  const totalElements = Number(paginaAtual.totalElements) || 0;
+  const totalPages = Math.max(1, Number(paginaAtual.totalPages) || 1);
 
   const resumoPagina = useMemo(() => somarLancamentosExtratoRows(rows), [rows]);
 
@@ -277,7 +279,7 @@ export function TotalPage({ embedded = false, mes: mesProp, onMesChange } = {}) 
           <Pagination
             page={page}
             totalPages={totalPages}
-            totalElements={totalElements}
+            totalItems={totalElements}
             pageSize={pageSize}
             onPageChange={setPage}
             onPageSizeChange={(s) => {
@@ -305,7 +307,7 @@ export function TotalPage({ embedded = false, mes: mesProp, onMesChange } = {}) 
             onClose={() => setDetailItem(null)}
             onModoParearChange={handleModoParearChange}
             onSaved={(updated) => {
-              setRows((prev) =>
+              setLinhas((prev) =>
                 prev.map((r) => {
                   const key = r._rowKey ?? extratoRowKey(r);
                   const uKey = updated._rowKey ?? extratoRowKey(updated);
@@ -315,11 +317,10 @@ export function TotalPage({ embedded = false, mes: mesProp, onMesChange } = {}) 
               setDetailItem(updated);
             }}
             onDeleted={(apiId) => {
-              setRows((prev) => prev.filter((r) => Number(r.id) !== Number(apiId)));
-              setTotalElements((n) => Math.max(0, Number(n) - 1));
+              setLinhas((prev) => prev.filter((r) => Number(r.id) !== Number(apiId)));
               setSelectedKeys((prev) => {
                 const next = new Set(prev);
-                for (const r of rows) {
+                for (const r of linhas) {
                   if (Number(r.id) === Number(apiId)) next.delete(r._rowKey ?? extratoRowKey(r));
                 }
                 return next;

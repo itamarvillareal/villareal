@@ -88,10 +88,10 @@ async function carregarLinhasCartaoTotal(filtros, contaToLetra, signal) {
 }
 
 /**
- * Extratos bancários + cartões, mesclados e paginados no cliente.
- * @param {{ mes?: string, busca?: string, etapa?: string, page?: number, size?: number, sortAsc?: boolean }} filtros
+ * Extratos bancários + cartões, mesclados e filtrados no cliente (sem paginação).
+ * @param {{ mes?: string, busca?: string, etapa?: string, letras?: string[], letrasModo?: string, sortAsc?: boolean }} filtros
  */
-export async function carregarTotalFinanceiroPaginado(filtros = {}, opts = {}) {
+export async function carregarTotalFinanceiroLinhas(filtros = {}, opts = {}) {
   const { signal } = opts;
   const contaToLetra = buildContaToLetraMerge(loadPersistedContasContabeisExtrasFinanceiro());
 
@@ -110,15 +110,30 @@ export async function carregarTotalFinanceiroPaginado(filtros = {}, opts = {}) {
     letrasModo: filtros.letrasModo,
     semParCompensacao,
   });
-  const pagina = paginarLinhasTotal(filtrado, {
+
+  return {
+    linhas: filtrado,
+    truncado: truncadoBanco,
+    totalBanco: bancoRows.length,
+    totalCartao: cartaoRows.length,
+  };
+}
+
+/**
+ * Extratos bancários + cartões, mesclados e paginados no cliente.
+ * @param {{ mes?: string, busca?: string, etapa?: string, page?: number, size?: number, sortAsc?: boolean }} filtros
+ */
+export async function carregarTotalFinanceiroPaginado(filtros = {}, opts = {}) {
+  const { linhas, truncado, totalBanco, totalCartao } = await carregarTotalFinanceiroLinhas(filtros, opts);
+  const pagina = paginarLinhasTotal(linhas, {
     page: filtros.page,
     size: filtros.size,
   });
 
   return {
     ...pagina,
-    truncado: truncadoBanco,
-    totalBanco: bancoRows.length,
-    totalCartao: cartaoRows.length,
+    truncado,
+    totalBanco,
+    totalCartao,
   };
 }
