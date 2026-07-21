@@ -49,7 +49,7 @@ export const NUMERO_PARA_BANCO = {
  */
 export const BANCOS_API_SEM_PLANILHA_COMP = {
   3: 'BB',
-  30: '99 Pay',
+  30: '99 pay',
 };
 
 /** Nº no consolidado → cartão de crédito (extrato fatura). */

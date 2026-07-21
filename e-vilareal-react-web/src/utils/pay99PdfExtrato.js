@@ -10,7 +10,7 @@
 
 import { parseValorBtgPdfBr } from './btgPdfExtrato.js';
 
-const NOME_BANCO_99_PAY = '99 Pay';
+const NOME_BANCO_99_PAY = '99 pay';
 
 /** Instituições alimentadas por PDF no layout 99 Pay. */
 export function isInstituicaoPay99ExtratoPdf(nome) {
