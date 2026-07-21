@@ -122,7 +122,15 @@ public final class OfxParser {
         if (!StringUtils.hasText(raw)) {
             return BigDecimal.ZERO;
         }
-        String s = raw.trim().replace(',', '.');
+        String s = raw.trim();
+        long seps = s.chars().filter(c -> c == '.' || c == ',').count();
+        if (seps > 1) {
+            // CEF usa ponto como milhar E decimal (ex.: -4.856.61); o último separador é o decimal.
+            int last = Math.max(s.lastIndexOf('.'), s.lastIndexOf(','));
+            s = s.substring(0, last).replaceAll("[.,]", "") + "." + s.substring(last + 1);
+        } else {
+            s = s.replace(',', '.');
+        }
         try {
             return new BigDecimal(s);
         } catch (NumberFormatException ex) {

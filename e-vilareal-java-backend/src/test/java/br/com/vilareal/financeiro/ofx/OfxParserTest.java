@@ -99,6 +99,49 @@ class OfxParserTest {
     }
 
     @Test
+    void parseTransacoes_valorCefComPontoMilharEDecimal() {
+        String ofx =
+                """
+                <OFX>
+                <STMTTRN>
+                <TRNTYPE>DEBIT</TRNTYPE>
+                <TRNAMT>-4.856.61</TRNAMT>
+                <DTPOSTED>2026072000[-3:BRT]</DTPOSTED>
+                <FITID>201752</FITID>
+                <MEMO>PIX ENVIADO</MEMO>
+                </STMTTRN>
+                <STMTTRN>
+                <TRNTYPE>DEBIT</TRNTYPE>
+                <TRNAMT>-16.658.01</TRNAMT>
+                <DTPOSTED>2026070800[-3:BRT]</DTPOSTED>
+                <FITID>081959</FITID>
+                <MEMO>PIX ENVIADO</MEMO>
+                </STMTTRN>
+                <STMTTRN>
+                <TRNTYPE>CREDIT</TRNTYPE>
+                <TRNAMT>834.91</TRNAMT>
+                <DTPOSTED>2026072000[-3:BRT]</DTPOSTED>
+                <FITID>202340</FITID>
+                <MEMO>DEVOLUCAO PIX RECEBIDO</MEMO>
+                </STMTTRN>
+                <STMTTRN>
+                <TRNTYPE>CREDIT</TRNTYPE>
+                <TRNAMT>1.234,56</TRNAMT>
+                <DTPOSTED>2026070100[-3:BRT]</DTPOSTED>
+                <FITID>999</FITID>
+                <MEMO>CRED TED</MEMO>
+                </STMTTRN>
+                </OFX>
+                """;
+        List<OfxParser.OfxTransacao> txs = OfxParser.parseTransacoes(ofx);
+        assertThat(txs).hasSize(4);
+        assertThat(txs.get(0).trnAmt()).isEqualByComparingTo(new BigDecimal("-4856.61"));
+        assertThat(txs.get(1).trnAmt()).isEqualByComparingTo(new BigDecimal("-16658.01"));
+        assertThat(txs.get(2).trnAmt()).isEqualByComparingTo(new BigDecimal("834.91"));
+        assertThat(txs.get(3).trnAmt()).isEqualByComparingTo(new BigDecimal("1234.56"));
+    }
+
+    @Test
     void parseTransacoes_fitIdRepetido_sufixaComIndice() {
         String ofx =
                 """

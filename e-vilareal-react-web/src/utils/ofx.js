@@ -15,7 +15,15 @@ function parseOfxDate(dt) {
 }
 
 function parseNumberBRLike(n) {
-  const s = String(n ?? '').trim().replace(',', '.');
+  let s = String(n ?? '').trim();
+  const seps = s.match(/[.,]/g) || [];
+  if (seps.length > 1) {
+    // CEF usa ponto como milhar E decimal (ex.: -4.856.61); o último separador é o decimal.
+    const last = Math.max(s.lastIndexOf('.'), s.lastIndexOf(','));
+    s = `${s.slice(0, last).replace(/[.,]/g, '')}.${s.slice(last + 1)}`;
+  } else {
+    s = s.replace(',', '.');
+  }
   const v = Number(s);
   return Number.isNaN(v) ? 0 : v;
 }
