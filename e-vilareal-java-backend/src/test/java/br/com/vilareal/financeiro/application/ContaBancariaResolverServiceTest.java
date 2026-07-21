@@ -95,6 +95,20 @@ class ContaBancariaResolverServiceTest {
     }
 
     @Test
+    void provisionar_banco30_usaNomeCanonico99Pay() {
+        ContaBancariaResolverService svc = comSelf(null);
+        when(repo.findByNumeroBanco(30)).thenReturn(Optional.empty());
+        when(repo.saveAndFlush(any(ContaBancariaEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        svc.provisionar(30, "99 Pay");
+
+        ArgumentCaptor<ContaBancariaEntity> captor = ArgumentCaptor.forClass(ContaBancariaEntity.class);
+        verify(repo).saveAndFlush(captor.capture());
+        assertThat(captor.getValue().getBancoNome()).isEqualTo("99 pay");
+    }
+
+    @Test
     void provisionar_corrida_naoDuplicaERebuscaExistente() {
         ContaBancariaResolverService svc = comSelf(null);
         ContaBancariaEntity criadaPorConcorrente = conta(30L, 7, "REAL", true);

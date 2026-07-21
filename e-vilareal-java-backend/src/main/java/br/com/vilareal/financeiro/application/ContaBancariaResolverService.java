@@ -29,6 +29,9 @@ import java.util.Optional;
 @Service
 public class ContaBancariaResolverService {
 
+    private static final int NUMERO_BANCO_99_PAY = 30;
+    private static final String NOME_BANCO_99_PAY = "99 pay";
+
     private final ContaBancariaRepository contaBancariaRepository;
     private final ContaBancariaResolverService self;
 
@@ -65,7 +68,7 @@ public class ContaBancariaResolverService {
         }
         ContaBancariaEntity nova = new ContaBancariaEntity();
         nova.setNumeroBanco(numeroBanco);
-        nova.setBancoNome(StringUtils.hasText(bancoNome) ? bancoNome.trim() : null);
+        nova.setBancoNome(nomeCanonico(numeroBanco, bancoNome));
         nova.setTipo("REAL");
         nova.setTemExtrato(true);
         nova.setAtivo(true);
@@ -75,5 +78,12 @@ public class ContaBancariaResolverService {
             return contaBancariaRepository.findByNumeroBanco(numeroBanco)
                     .orElseThrow(() -> corrida);
         }
+    }
+
+    private static String nomeCanonico(Integer numeroBanco, String bancoNome) {
+        if (numeroBanco != null && numeroBanco == NUMERO_BANCO_99_PAY) {
+            return NOME_BANCO_99_PAY;
+        }
+        return StringUtils.hasText(bancoNome) ? bancoNome.trim() : null;
     }
 }
