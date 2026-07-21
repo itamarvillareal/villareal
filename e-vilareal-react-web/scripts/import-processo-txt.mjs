@@ -409,6 +409,25 @@ async function main() {
 
   imprimirPreview(dados, patch);
 
+  if (!opts.dryRun && patch.numeroCnj) {
+    const tokenPreview = opts.senha
+      ? await loginImportApi(opts.baseUrl, opts.login, opts.senha).catch(() => null)
+      : null;
+    if (tokenPreview) {
+      const procAtual = await buscarProcesso(
+        opts.baseUrl,
+        tokenPreview,
+        dados.cod8,
+        dados.numeroInterno
+      );
+      if (procAtual?.numeroCnj && procAtual.numeroCnj.replace(/\s/g, '') !== String(patch.numeroCnj).replace(/\s/g, '')) {
+        console.warn(
+          `\n[aviso] CNJ na API (${procAtual.numeroCnj}) difere do txt (${patch.numeroCnj}) — cabeçalho será sobrescrito.\n`
+        );
+      }
+    }
+  }
+
   const resultado = {
     opts: {
       cliente: opts.cliente,

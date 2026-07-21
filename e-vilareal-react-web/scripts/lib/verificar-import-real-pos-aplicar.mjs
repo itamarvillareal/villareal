@@ -10,7 +10,13 @@ import {
 } from './calculos-dropbox-txt.mjs';
 import { formatCod8 } from './historico-local-txt-paths.mjs';
 import { conectarMysqlVilareal } from './mysql-vilareal.mjs';
-import { listarPartes } from './proc-processo-partes-api.mjs';
+import {
+  compararCabecalhoTxtVsDb,
+  detectarContaminacaoCnj,
+  indexarCnjTxtGlobal,
+  montarSnapshotTxtCabecalho,
+} from './cabecalho-processo-txt-audit.mjs';
+import { listarProcessosComDadosCabecalhoTxt } from './processos-dropbox-cliente.mjs';
 import {
   lerPartesProcessoTxt,
   listarProcessosComPartesTxt,
@@ -19,6 +25,7 @@ import {
   verificarParteOpostaListagem,
   verificarPartesTxtContraApi,
 } from './verificar-partes-processo-pos-import.mjs';
+import { listarPartes } from './proc-processo-partes-api.mjs';
 import { buscarProcesso, loginImportApi } from './vilareal-import-processo-api.mjs';
 
 /**
@@ -66,7 +73,57 @@ export async function verificarImportRealPosAplicar(opts) {
   }
 
   const conn = await conectarMysqlVilareal();
+  const indiceCnj = indexarCnjTxtGlobal(opts.base);
   try {
+    const procsCabecalho = filtrarProcessos(listarProcessosComDadosCabecalhoTxt(opts.base, codNum), opts);
+    for (const ni of procsCabecalho) {
+      const txt = montarSnapshotTxtCabecalho(codNum, ni, opts.base);
+      if (!txt.temCabecalhoTxt) continue;
+      const proc = await buscarProcesso(opts.baseUrl, token, cod8, ni, clientePorCod8);
+      if (!proc?.id) {
+        issues.push({ tipo: 'cabecalho_orfao', numeroInterno: ni });
+        continue;
+      }
+      const cmp = compararCabecalhoTxtVsDb(txt, {
+        numero_cnj: proc.numeroCnj,
+        numero_processo_antigo: proc.numeroProcessoAntigo,
+        natureza_acao: proc.naturezaAcao,
+        descricao_acao: proc.descricaoAcao,
+        competencia: proc.competencia,
+        tramitacao: proc.tramitacao,
+        observacao: proc.observacao,
+        valor_causa: proc.valorCausa,
+        data_protocolo: proc.dataProtocolo,
+        prazo_fatal: proc.prazoFatal,
+        proxima_consulta: proc.proximaConsulta,
+        uf: proc.uf,
+        cidade: proc.cidade,
+        unidade: proc.unidade,
+        observacao_fase: proc.observacaoFase,
+      });
+      const contaminacao = detectarContaminacaoCnj(proc.numeroCnj, cod8, ni, indiceCnj);
+      if (contaminacao) {
+        issues.push({
+          tipo: 'cabecalho_cnj_contaminado',
+          numeroInterno: ni,
+          processoId: proc.id,
+          cnjDb: proc.numeroCnj,
+          cnjTxt: txt.campos.numeroCnj ?? null,
+          donoTxt: contaminacao.donoTxt,
+        });
+      }
+      for (const d of cmp.divergencias.filter((x) => x.severidade === 'critico')) {
+        issues.push({
+          tipo: 'cabecalho_divergente',
+          numeroInterno: ni,
+          processoId: proc.id,
+          campo: d.campo,
+          txt: d.txt,
+          api: d.db,
+        });
+      }
+    }
+
     if (!opts.semPartes) {
       const procsPartes = filtrarProcessos(listarProcessosComPartesTxt(opts.base, codNum), opts);
       for (const ni of procsPartes) {
@@ -170,7 +227,7 @@ export async function verificarImportRealPosAplicar(opts) {
  */
 export function imprimirVerificacaoImportReal(ver) {
   if (ver.ok) {
-    console.log('\n[verificação] OK — processos, partes (txt↔API), listagem e cálculos conferidos.\n');
+    console.log('\n[verificação] OK — cabeçalho, partes (txt↔API), listagem e cálculos conferidos.\n');
     return;
   }
   console.error(`\n[verificação] ${ver.issues.length} problema(s) pós-import:`);

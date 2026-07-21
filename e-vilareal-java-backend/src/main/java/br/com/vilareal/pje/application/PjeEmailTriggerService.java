@@ -2,6 +2,7 @@ package br.com.vilareal.pje.application;
 
 import br.com.vilareal.pje.config.PjeEmailTriggerProperties;
 import br.com.vilareal.pje.config.PjeTrt18EmailTriggerProperties;
+import br.com.vilareal.pje.domain.PjeGrau;
 import br.com.vilareal.pje.infrastructure.browser.PjeTrt18CnjUtil;
 import br.com.vilareal.processo.application.ProcessoDiagnosticoNumeroBuscaUtil;
 import br.com.vilareal.publicacao.infrastructure.persistence.entity.PublicacaoEntity;
@@ -61,7 +62,9 @@ public class PjeEmailTriggerService {
                         trt18TriggerProperties.getCopiaIntegralMinIntervaloMin());
                 continue;
             }
-            copiaIntegralPorProcessoService.dispararAssincrono(cnj);
+            PjeGrau grau = copiaIntegralPorProcessoService.resolverGrau(cnj);
+            log.info("Disparo PJe por e-mail CNJ {}: grau inferido={}", cnj, grau);
+            copiaIntegralPorProcessoService.dispararAssincrono(cnj, grau);
         }
     }
 

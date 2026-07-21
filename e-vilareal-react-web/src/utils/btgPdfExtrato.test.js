@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isInstituicaoBtgExtratoPdf, parseBtgPdfExtratoText, parseValorBtgPdfBr } from './btgPdfExtrato.js';
+import {
+  descricaoIndicaLinhaInformativaBtg,
+  isInstituicaoBtgExtratoPdf,
+  parseBtgPdfExtratoText,
+  parseValorBtgPdfBr,
+} from './btgPdfExtrato.js';
 
 describe('isInstituicaoBtgExtratoPdf', () => {
   it('identifica contas BTG', () => {
@@ -230,5 +235,50 @@ Total de Débitos523.115,22
     expect(rows[1].valor).toBeCloseTo(2500, 2);
     expect(rows[0].descricao).toContain('TED ENVIADA');
     expect(rows[1].descricao).toContain('TRANSFERÊNCIA A CRÉDITO');
+  });
+
+  it('ignora "Rendimento Disponível - Saldo Remunerado" (informativo, não compõe SF)', () => {
+    expect(descricaoIndicaLinhaInformativaBtg('Rendimento Disponível - Saldo Remunerado')).toBe(true);
+    expect(descricaoIndicaLinhaInformativaBtg('CONTA REMUNERADA - RESGATE REMUNERAÇÃO')).toBe(false);
+
+    const bloco = `
+Saldo Inicial 0,00
+29/06/2023 TRANSFERÊNCIA A CRÉDITO VIA PIX - ITAMAR 1.000,00 1.000,00
+30/06/2023 Rendimento Disponível - Saldo Remunerado 0,13 1.000,13
+30/06/2023 CONTA REMUNERADA - RESGATE REMUNERAÇÃO 2,53 1.002,66
+Saldo Final 1.002,53
+`;
+    const rows = parseBtgPdfExtratoText(bloco);
+    expect(rows.some((r) => /rendimento dispon/i.test(String(r.descricao)))).toBe(false);
+    expect(rows.some((r) => /conta remunerada/i.test(String(r.descricao)))).toBe(true);
+    const soma = rows.reduce((s, r) => s + Number(r.valor), 0);
+    expect(soma).toBeCloseTo(1002.53, 2);
+  });
+
+  it('ignora cabeçalho repetido "Lançamentos:" do app BTG (não vira movimento fantasma)', () => {
+    const bloco = `
+21/07/2026 11h51
+Lançamentos: -R$ 38.839,39
+21/07/2026 10h44 Transferência Pix recebido Itamar Alexandre F V R Junior R$ 14.252,90
+21/07/2026 23h59 Saldo Diário -R$ 38.839,39
+`;
+    const rows = parseBtgPdfExtratoText(bloco);
+    expect(rows.some((r) => /lan[cç]amentos/i.test(String(r.descricao)))).toBe(false);
+    expect(rows.some((r) => Math.abs(Number(r.valor) + 38839.39) < 0.01)).toBe(false);
+    expect(rows.length).toBe(1);
+    expect(rows[0].valor).toBeCloseTo(14252.9, 2);
+  });
+
+  it('ignora movimento zero quando 2º número é saldo (0,00 + 3.000,00)', () => {
+    const bloco = `
+Saldo Inicial 0,00
+03/05/2024 TRANSFERÊNCIA A CRÉDITO VIA PIX - ITAMAR 0,00 3.000,00
+03/05/2024 TED ENVIADA - Itamar Alexandre Felix Villa Real 100,00 2.900,00
+Saldo Final 2.900,00
+`;
+    const rows = parseBtgPdfExtratoText(bloco);
+    expect(rows.some((r) => Math.abs(Number(r.valor) - 3000) < 0.01)).toBe(false);
+    expect(rows.length).toBe(1);
+    expect(rows[0].valor).toBeCloseTo(-100, 2);
   });
 });

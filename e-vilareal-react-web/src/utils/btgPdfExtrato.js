@@ -88,7 +88,17 @@ function encontrarSaldoInicialBtg(linhas) {
   return null;
 }
 
-const RE_DESCRICAO_RUIDO = /^(saldo\b|total\s+de\s+|data\s+e\s+hora|data\s+descri|movimenta)/i;
+const RE_DESCRICAO_RUIDO =
+  /^(saldo\b|total\s+de\s+|data\s+e\s+hora|data\s+descri|movimenta|lan[cç]amentos\s*:)/i;
+
+/**
+ * Linha informativa do extrato BTG: aparece na listagem mas não compõe o Saldo Final
+ * (ex.: "Rendimento Disponível - Saldo Remunerado").
+ */
+export function descricaoIndicaLinhaInformativaBtg(descricao) {
+  const d = normalizarDescricaoParaRegra(descricao);
+  return /RENDIMENTO\s+DISPONIVEL/.test(d) && /SALDO\s+REMUNERADO/.test(d);
+}
 
 /** Palavras-chave para saída de numerário (layout com só 2 valores: movimento + saldo). */
 function descricaoIndicaDebito(descNorm) {
@@ -172,7 +182,8 @@ function extrairDescricaoEValorBtg(rest) {
     if (x < 0) {
       valor = x;
     } else if (x === 0 && y !== 0) {
-      valor = y;
+      // Layout movimento + saldo: "0,00 3.000,00" — o 2º número é saldo, não crédito.
+      valor = 0;
     } else if (descricaoIndicaDebito(descNorm)) {
       valor = -x;
     } else if (Math.abs(x - y) < 0.02) {
@@ -189,6 +200,8 @@ function extrairDescricaoEValorBtg(rest) {
   if (/^saldo\b/i.test(descricao)) return null;
   if (/^total\s+de\s+/i.test(descricao)) return null;
   if (/^data\s+e\s+hora\s+categoria/i.test(descricao)) return null;
+  if (/^lan[cç]amentos\s*:/i.test(descricao)) return null;
+  if (descricaoIndicaLinhaInformativaBtg(descricao)) return null;
 
   if (Math.abs(valor) < 1e-9) return null;
 
@@ -283,6 +296,7 @@ export function parseBtgPdfExtratoText(textoBruto) {
     const { descricao, nums } = ext;
     if (!descricao || descricao.length < 3) continue;
     if (RE_DESCRICAO_RUIDO.test(descricao)) continue;
+    if (descricaoIndicaLinhaInformativaBtg(descricao)) continue;
     candidatos.push({ data, descricao, rest, nums });
   }
 

@@ -2,6 +2,7 @@ package br.com.vilareal.pje.application;
 
 import br.com.vilareal.pje.config.PjeBrowserProperties;
 import br.com.vilareal.pje.config.PjeTrt18Properties;
+import br.com.vilareal.pje.infrastructure.browser.PjeCopiaIntegralMessages;
 import org.springframework.util.StringUtils;
 
 import java.util.Locale;
@@ -17,7 +18,9 @@ public final class PjeCopiaIntegralRetrySupport {
             "timeout|timeouterror|exceeded|navigating to|net::|econnrefused|etimedout|"
                     + "connection reset|connection refused|socket|proxy|socks|network|"
                     + "rob[oô] global ocupado|storagestate expirado|playwright|"
-                    + "n[aã]o respondeu a tempo|n[aã]o foi poss[ií]vel abrir",
+                    + "n[aã]o respondeu a tempo|n[aã]o foi poss[ií]vel abrir|"
+                    + "http status 401|jbweb|requires http authentication|"
+                    + "login pje n[aã]o concluiu|tel[aá]_login|sso rejeitou autentica",
             Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
     private PjeCopiaIntegralRetrySupport() {}
@@ -36,7 +39,21 @@ public final class PjeCopiaIntegralRetrySupport {
         if (m.contains("login e CNJ são obrigatórios") || m.contains("lote já reservado")) {
             return false;
         }
+        if (ehSemAcessoAcervo(m)) {
+            return false;
+        }
         return RETENTAVEL.matcher(m).find();
+    }
+
+    public static boolean ehSemAcessoAcervo(String mensagem) {
+        if (!StringUtils.hasText(mensagem)) {
+            return false;
+        }
+        String m = mensagem.trim();
+        return m.contains(PjeCopiaIntegralMessages.SEM_ACESSO_ACERVO)
+                || m.contains("descadastro")
+                || m.contains("falta de habilitação")
+                || m.contains("não localizado no acervo");
     }
 
     public static long pausaEntreTentativasMs(

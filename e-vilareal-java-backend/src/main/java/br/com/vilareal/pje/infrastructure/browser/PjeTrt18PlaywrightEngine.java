@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 
 /**
  * Motor Playwright do PJe TRT18 — login Keycloak PDPJ, busca de processo e cópia integral.
@@ -144,6 +145,11 @@ public class PjeTrt18PlaywrightEngine {
             registrarFalhaPasso("tela-otp-precondicao");
             throw e;
         } catch (RuntimeException e) {
+            Optional<String> authErro = PjeBrowserPreconditions.mensagemErroAutenticacao(page);
+            if (authErro.isPresent()) {
+                registrarFalhaPasso("tela-otp-auth-erro");
+                throw new IllegalStateException(authErro.get(), e);
+            }
             return false;
         }
     }
@@ -200,7 +206,14 @@ public class PjeTrt18PlaywrightEngine {
             }
             campo.fill(numeroCnj);
             campo.press("Enter");
-            PjeTrt18AngularWaits.aguardarAcervoComCnj(page, numeroCnj, browserProperties.getTimeoutMs());
+            try {
+                PjeTrt18AngularWaits.aguardarAcervoComCnj(page, numeroCnj, browserProperties.getTimeoutMs());
+            } catch (RuntimeException e) {
+                if (sessaoAutenticada()) {
+                    throw new IllegalStateException(PjeCopiaIntegralMessages.SEM_ACESSO_ACERVO, e);
+                }
+                throw e;
+            }
             log.info("PJe: processo localizado no acervo-geral");
         });
     }
@@ -228,6 +241,25 @@ public class PjeTrt18PlaywrightEngine {
             return PjeBrowserSessionState.TELA_LOGIN;
         }
         return PjeBrowserSessionState.ERRO;
+    }
+
+    void registrarFalhaLoginSeAplicavel() {
+        if (page == null || page.isClosed() || sessaoAutenticada()) {
+            return;
+        }
+        registrarFalhaPasso("login-incompleto");
+    }
+
+    String mensagemFalhaLogin() {
+        Optional<String> authErro = PjeBrowserPreconditions.mensagemErroAutenticacao(page);
+        if (authErro.isPresent()) {
+            return authErro.get();
+        }
+        PjeBrowserSessionState estado = estadoAtual();
+        if (estado == PjeBrowserSessionState.TELA_OTP) {
+            return "Login PJe parou na tela OTP (estado=" + estado + ").";
+        }
+        return "Login PJe não concluiu (estado=" + estado + ").";
     }
 
     void fechar() {

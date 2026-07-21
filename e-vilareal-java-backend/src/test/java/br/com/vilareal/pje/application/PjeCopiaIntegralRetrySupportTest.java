@@ -2,6 +2,7 @@ package br.com.vilareal.pje.application;
 
 import br.com.vilareal.pje.config.PjeBrowserProperties;
 import br.com.vilareal.pje.config.PjeTrt18Properties;
+import br.com.vilareal.pje.infrastructure.browser.PjeCopiaIntegralMessages;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -40,6 +41,23 @@ class PjeCopiaIntegralRetrySupportTest {
         assertThat(PjeCopiaIntegralRetrySupport.pausaEntreTentativasMs(trt18, browser)).isEqualTo(15_000L);
         browser.setProxy("");
         assertThat(PjeCopiaIntegralRetrySupport.pausaEntreTentativasMs(trt18, browser)).isEqualTo(8_000L);
+    }
+
+    @Test
+    void ehRetentavel_loginIncompletoEHttp401() {
+        assertThat(PjeCopiaIntegralRetrySupport.ehRetentavel("Login PJe não concluiu (estado=TELA_LOGIN)."))
+                .isTrue();
+        assertThat(PjeCopiaIntegralRetrySupport.ehRetentavel(
+                        "PJe SSO rejeitou autenticação (HTTP 401) — retentar em instantes."))
+                .isTrue();
+    }
+
+    @Test
+    void ehRetentavel_naoParaSemAcessoAcervo() {
+        assertThat(PjeCopiaIntegralRetrySupport.ehRetentavel(PjeCopiaIntegralMessages.SEM_ACESSO_ACERVO))
+                .isFalse();
+        assertThat(PjeCopiaIntegralRetrySupport.ehSemAcessoAcervo(PjeCopiaIntegralMessages.SEM_ACESSO_ACERVO))
+                .isTrue();
     }
 
     @Test

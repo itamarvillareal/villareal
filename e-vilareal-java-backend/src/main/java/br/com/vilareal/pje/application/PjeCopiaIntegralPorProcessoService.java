@@ -4,6 +4,7 @@ import br.com.vilareal.pje.config.PjeTrt18EmailTriggerProperties;
 import br.com.vilareal.pje.config.PjeTrt18Properties;
 import br.com.vilareal.pje.domain.PjeGrau;
 import br.com.vilareal.processo.application.ProcessoDiagnosticoNumeroBuscaUtil;
+import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.publicacao.application.PublicacaoDriveAndamentosService;
 import br.com.vilareal.publicacao.infrastructure.persistence.entity.PublicacaoEntity;
 import br.com.vilareal.publicacao.infrastructure.persistence.repository.PublicacaoRepository;
@@ -36,6 +37,7 @@ public class PjeCopiaIntegralPorProcessoService {
     private final PjeCopiaIntegralOrchestrator copiaIntegralOrchestrator;
     private final PublicacaoDriveAndamentosService publicacaoDriveAndamentosService;
     private final PublicacaoRepository publicacaoRepository;
+    private final ProcessoRepository processoRepository;
     private final CredencialTotpRepository credencialTotpRepository;
     private final PjeCopiaIntegralStatusStore statusStore;
     private final RobotAutoFreio autoFreio;
@@ -48,6 +50,7 @@ public class PjeCopiaIntegralPorProcessoService {
             PjeCopiaIntegralOrchestrator copiaIntegralOrchestrator,
             PublicacaoDriveAndamentosService publicacaoDriveAndamentosService,
             PublicacaoRepository publicacaoRepository,
+            ProcessoRepository processoRepository,
             CredencialTotpRepository credencialTotpRepository,
             PjeCopiaIntegralStatusStore statusStore,
             RobotAutoFreio autoFreio,
@@ -58,6 +61,7 @@ public class PjeCopiaIntegralPorProcessoService {
         this.copiaIntegralOrchestrator = copiaIntegralOrchestrator;
         this.publicacaoDriveAndamentosService = publicacaoDriveAndamentosService;
         this.publicacaoRepository = publicacaoRepository;
+        this.processoRepository = processoRepository;
         this.credencialTotpRepository = credencialTotpRepository;
         this.statusStore = statusStore;
         this.autoFreio = autoFreio;
@@ -181,24 +185,12 @@ public class PjeCopiaIntegralPorProcessoService {
             return Optional.empty();
         }
         PjeCopiaIntegralResult r = resultado.get();
-        if (grauSalvo == null && !r.sucesso() && grau == PjeGrau.PRIMEIRO_GRAU) {
-            String causaPrimeiroGrau = r.mensagem();
+        if (!r.sucesso() && PjeCopiaIntegralRetrySupport.ehSemAcessoAcervo(r.mensagem())) {
             log.info(
-                    "PJe cópia integral CNJ {}: falha em 1º grau ({}), tentando 2º grau",
+                    "PJe cópia integral CNJ {}: sem acesso ao acervo ({}); "
+                            + "não tenta outro grau — PUSH do tribunal não implica habilitação no PJe",
                     cnjNorm,
-                    causaPrimeiroGrau);
-            Optional<PjeCopiaIntegralResult> segundo =
-                    copiaIntegralOrchestrator.executar(PjeGrau.SEGUNDO_GRAU, login, null, cnjNorm);
-            if (segundo.isPresent() && segundo.get().sucesso()) {
-                return segundo;
-            }
-            if (segundo.isPresent()) {
-                return Optional.of(PjeCopiaIntegralResult.falha(
-                        PjeGrau.SEGUNDO_GRAU,
-                        cnjNorm,
-                        causaPrimeiroGrau + " Tentativa em 2º grau: " + segundo.get().mensagem()));
-            }
-            return Optional.of(PjeCopiaIntegralResult.falha(PjeGrau.PRIMEIRO_GRAU, cnjNorm, causaPrimeiroGrau));
+                    r.mensagem());
         }
         return resultado;
     }
@@ -206,19 +198,58 @@ public class PjeCopiaIntegralPorProcessoService {
     PjeGrau resolverGrau(String cnj) {
         PjeGrau padrao = trt18TriggerProperties.getGrauPadrao();
         String norm = ProcessoDiagnosticoNumeroBuscaUtil.normalizarSomenteDigitos(cnj);
+        if (norm.length() >= 20) {
+            Optional<PjeGrau> grauProcesso = processoRepository
+                    .findByNumeroCnj(cnj)
+                    .map(p -> p.getPjeGrau())
+                    .filter(g -> g != null);
+            if (grauProcesso.isPresent()) {
+                return grauProcesso.get();
+            }
+        }
         if (norm.length() < 20) {
             return padrao;
         }
         List<PublicacaoEntity> recentes = publicacaoRepository.findPublicacoesTrtPorCnjNormalizado(
-                norm, PageRequest.of(0, 1));
-        if (recentes.isEmpty()) {
-            return padrao;
+                norm, PageRequest.of(0, 8));
+        for (PublicacaoEntity pub : recentes) {
+            if (publicacaoIgnorarParaGrau(pub.getJsonReferencia())) {
+                continue;
+            }
+            PjeGrau inferido = PjeEmailTriggerGrauResolver.resolver(pub.getJsonReferencia(), padrao);
+            if (inferido != padrao || orgaoJulgadorPresente(pub.getJsonReferencia())) {
+                return inferido;
+            }
         }
-        return PjeEmailTriggerGrauResolver.resolver(recentes.getFirst().getJsonReferencia(), padrao);
+        return padrao;
+    }
+
+    private static boolean publicacaoIgnorarParaGrau(String jsonReferencia) {
+        if (!StringUtils.hasText(jsonReferencia)) {
+            return true;
+        }
+        String lower = jsonReferencia.toLowerCase();
+        return lower.contains("[pje trt18")
+                && lower.contains("falha");
+    }
+
+    private static boolean orgaoJulgadorPresente(String jsonReferencia) {
+        if (!StringUtils.hasText(jsonReferencia)) {
+            return false;
+        }
+        var m = java.util.regex.Pattern.compile("\"orgaoJulgador\"\\s*:\\s*\"([^\"]+)\"")
+                .matcher(jsonReferencia);
+        return m.find() && StringUtils.hasText(m.group(1));
     }
 
     private void notificarFalhaDefinitivaSeAplicavel(PjeCopiaIntegralResult resultado) {
         if (resultado == null || !StringUtils.hasText(resultado.mensagem())) {
+            return;
+        }
+        if (PjeCopiaIntegralRetrySupport.ehSemAcessoAcervo(resultado.mensagem())) {
+            log.info(
+                    "PJe cópia integral CNJ {}: sem e-mail de falha (provável descadastro/acervo)",
+                    resultado.numeroCnj());
             return;
         }
         if (!PjeCopiaIntegralRetrySupport.ehRetentavel(resultado.mensagem())) {

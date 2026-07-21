@@ -18,4 +18,20 @@ class PjeBrowserPreconditionsTest {
         String html = "<html><body><input name='otp' maxlength='6'/></body></html>";
         assertThat(PjeBrowserPreconditions.contemIndicioEnrollment(html.toLowerCase())).isFalse();
     }
+
+    @Test
+    void detectaHttp401NoConteudo() {
+        var msg = PjeBrowserPreconditions.mensagemErroAutenticacao(
+                "<html>JBWEB000065: HTTP Status 401 - requires HTTP authentication</html>");
+        assertThat(msg).isPresent();
+        assertThat(msg.get()).contains("HTTP 401");
+    }
+
+    @Test
+    void detectaCredencialInvalidaKeycloak() {
+        var msg = PjeBrowserPreconditions.mensagemErroAutenticacao(
+                "<html><span>Invalid username or password</span></html>");
+        assertThat(msg).isPresent();
+        assertThat(msg.get()).contains("Credenciais rejeitadas");
+    }
 }

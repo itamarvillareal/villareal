@@ -79,4 +79,12 @@ public class PlaywrightPjeBrowserDriver implements PjeBrowserDriver, PjeTrt18Pro
     public boolean tentarRestaurarSessao(PjeGrau grau, String login) {
         return engine.tentarRestaurarSessao(grau, login);
     }
+
+    public void registrarFalhaLoginSeAplicavel() {
+        engine.registrarFalhaLoginSeAplicavel();
+    }
+
+    public String mensagemFalhaLogin() {
+        return engine.mensagemFalhaLogin();
+    }
 }

@@ -29,6 +29,17 @@ describe('montarPatchProcessoFromTxt', () => {
     assert.equal(patch.naturezaAcao, 'Cível');
   });
 
+  it('limpa observacaoFase quando não há 146.1 no txt', () => {
+    const patch = montarPatchProcessoFromTxt({
+      cabecalho: { campos: {}, partesTxt: {} },
+      semantic: null,
+      statusProcesso: { ativo: true, statusInativo: false },
+      fase: { faseCanonica: 'Em Andamento', observacaoFase: undefined },
+    });
+    assert.equal(patch.fase, 'Em Andamento');
+    assert.equal(patch.observacaoFase, null);
+  });
+
   it('inclui prazo fatal do txt 145.1 canónico no patch', () => {
     const patch = montarPatchProcessoFromTxt({
       cabecalho: {

@@ -174,8 +174,8 @@ public class PjeCopiaIntegralOrchestrator {
         }
 
         if (driver.estadoAtual() != PjeBrowserSessionState.AUTENTICADO) {
-            throw new IllegalStateException(
-                    "Login PJe não concluiu (estado=" + driver.estadoAtual() + ").");
+            driver.registrarFalhaLoginSeAplicavel();
+            throw new IllegalStateException(driver.mensagemFalhaLogin());
         }
     }
 

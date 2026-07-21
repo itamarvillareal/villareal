@@ -1,6 +1,10 @@
 package br.com.vilareal.pje.infrastructure.browser;
 
 import com.microsoft.playwright.Page;
+
+import java.util.Locale;
+import java.util.Optional;
+
 import org.springframework.util.StringUtils;
 
 /**
@@ -13,6 +17,10 @@ final class PjeBrowserPreconditions {
     static void validarPosCredencial(Page page) {
         String html = page.content().toLowerCase();
         String url = page.url() != null ? page.url().toLowerCase() : "";
+
+        mensagemErroAutenticacao(html).ifPresent(msg -> {
+            throw new PjeBrowserPreconditionException(msg);
+        });
 
         if (somenteGovBr(html, url, page)) {
             throw new PjeBrowserPreconditionException(PjeBrowserPreconditionException.MSG_SOMENTE_GOVBR);
@@ -92,5 +100,36 @@ final class PjeBrowserPreconditions {
         } catch (RuntimeException e) {
             return false;
         }
+    }
+
+    static Optional<String> mensagemErroAutenticacao(Page page) {
+        if (page == null || page.isClosed()) {
+            return Optional.empty();
+        }
+        try {
+            return mensagemErroAutenticacao(page.content().toLowerCase(Locale.ROOT));
+        } catch (RuntimeException e) {
+            return Optional.empty();
+        }
+    }
+
+    static Optional<String> mensagemErroAutenticacao(String htmlLower) {
+        if (!StringUtils.hasText(htmlLower)) {
+            return Optional.empty();
+        }
+        String html = htmlLower.toLowerCase(Locale.ROOT);
+        if (html.contains("http status 401")
+                || html.contains("jbweb000065")
+                || html.contains("requires http authentication")) {
+            return Optional.of(
+                    "PJe SSO rejeitou autenticação (HTTP 401) — retentar em instantes ou verificar acesso ao grau.");
+        }
+        if (html.contains("invalid username or password")
+                || html.contains("invalid user")
+                || html.contains("usuário ou senha inválid")
+                || html.contains("usuario ou senha invalid")) {
+            return Optional.of("Credenciais rejeitadas pelo Keycloak PDPJ.");
+        }
+        return Optional.empty();
     }
 }

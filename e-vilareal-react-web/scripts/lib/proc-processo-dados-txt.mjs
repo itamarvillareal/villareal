@@ -130,7 +130,12 @@ export function montarPatchProcessoFromTxt(dados) {
     delete patch.fase;
   } else {
     if (dados.fase?.faseCanonica) patch.fase = dados.fase.faseCanonica;
-    if (dados.fase?.observacaoFase != null) patch.observacaoFase = dados.fase.observacaoFase;
+    if (dados.fase?.observacaoFase != null) {
+      patch.observacaoFase = dados.fase.observacaoFase;
+    } else {
+      // Sem 146.1 no txt: limpar obs. de fase obsoleta (import antigo / outro processo).
+      patch.observacaoFase = null;
+    }
   }
 
   const responsavelNome = dados.cabecalho.partesTxt?.responsavelNome;
