@@ -224,7 +224,8 @@ public class WhatsAppSchedulerService {
             String numeroProcesso,
             String parteCliente,
             String parteAutora,
-            Instant dataAudiencia) {
+            Instant dataAudiencia,
+            String linkReuniao) {
         String formattedPhone = WhatsAppService.formatPhoneNumber(phoneNumber);
         if (processoId != null
                 && lembreteAudienciaPendenteParaTelefone(processoId, formattedPhone, false)) {
@@ -234,11 +235,12 @@ public class WhatsAppSchedulerService {
 
         Instant scheduledAt = calcularHorarioEnvio(dataAudiencia, 24, 2);
         List<String> params = LembreteAudienciaTemplateParams.montar(
-                nomeDestinatario, numeroProcesso, parteCliente, parteAutora, dataAudiencia);
+                nomeDestinatario, numeroProcesso, parteCliente, parteAutora, dataAudiencia, linkReuniao);
+        String templateName = LembreteAudienciaTemplateParams.resolverNomeTemplate(linkReuniao);
 
         agendarMensagem(
                 formattedPhone,
-                "lembrete_audiencia",
+                templateName,
                 params,
                 scheduledAt,
                 clienteId,
@@ -256,7 +258,8 @@ public class WhatsAppSchedulerService {
             String phoneNumber,
             List<String> params,
             Instant scheduledAt,
-            String numeroProcesso) {
+            String numeroProcesso,
+            String templateName) {
         String formattedPhone = WhatsAppService.formatPhoneNumber(phoneNumber);
         String descricao = "Reforço véspera — " + numeroProcesso;
         if (processoId != null
@@ -270,7 +273,7 @@ public class WhatsAppSchedulerService {
 
         agendarMensagem(
                 formattedPhone,
-                "lembrete_audiencia",
+                templateName != null ? templateName : LembreteAudienciaTemplateParams.TEMPLATE_PADRAO,
                 params,
                 scheduledAt,
                 clienteId,
@@ -282,13 +285,19 @@ public class WhatsAppSchedulerService {
 
     private boolean lembreteAudienciaPendenteParaTelefone(
             Long processoId, String formattedPhone, boolean reforco) {
-        return scheduledRepository
-                .findByProcessoIdAndStatusAndTemplateName(
-                        processoId, ScheduledMessageStatus.PENDING, "lembrete_audiencia")
-                .stream()
-                .anyMatch(e -> formattedPhone.equals(e.getPhoneNumber())
-                        && reforco == (e.getDescricao() != null
-                                && e.getDescricao().startsWith("Reforço véspera — ")));
+        for (String templateName : LembreteAudienciaTemplateParams.nomesTemplates()) {
+            boolean pendente = scheduledRepository
+                    .findByProcessoIdAndStatusAndTemplateName(
+                            processoId, ScheduledMessageStatus.PENDING, templateName)
+                    .stream()
+                    .anyMatch(e -> formattedPhone.equals(e.getPhoneNumber())
+                            && reforco == (e.getDescricao() != null
+                                    && e.getDescricao().startsWith("Reforço véspera — ")));
+            if (pendente) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Transactional

@@ -107,6 +107,7 @@ public class LocacaoReconciliacaoService {
     private final ContaBancariaRepository contaBancariaRepository;
     private final ImovelProcessoRepository imovelProcessoRepository;
     private final FinanceiroCompensacaoService financeiroCompensacaoService;
+    private final ImovelVinculoProcessoPrincipalResolver vinculoPrincipalResolver;
 
     public LocacaoReconciliacaoService(
             ContratoLocacaoRepository contratoLocacaoRepository,
@@ -115,7 +116,8 @@ public class LocacaoReconciliacaoService {
             ContaContabilRepository contaContabilRepository,
             ContaBancariaRepository contaBancariaRepository,
             ImovelProcessoRepository imovelProcessoRepository,
-            FinanceiroCompensacaoService financeiroCompensacaoService) {
+            FinanceiroCompensacaoService financeiroCompensacaoService,
+            ImovelVinculoProcessoPrincipalResolver vinculoPrincipalResolver) {
         this.contratoLocacaoRepository = contratoLocacaoRepository;
         this.vinculoRepository = vinculoRepository;
         this.lancamentoRepository = lancamentoRepository;
@@ -123,6 +125,7 @@ public class LocacaoReconciliacaoService {
         this.contaBancariaRepository = contaBancariaRepository;
         this.imovelProcessoRepository = imovelProcessoRepository;
         this.financeiroCompensacaoService = financeiroCompensacaoService;
+        this.vinculoPrincipalResolver = vinculoPrincipalResolver;
     }
 
     // ----------------------------------------------------------------------------------------- (B)
@@ -1865,18 +1868,12 @@ public class LocacaoReconciliacaoService {
     }
 
     /**
-     * Processo do imóvel pela FONTE ÚNICA: a linha ATIVA de {@code imovel_processo} (Fase 3, item 4).
-     * Após o backfill V118, escalar == N:N ativo, então isto dá o mesmo resultado do escalar. O escalar
-     * segue sendo escrito pelo sync (espelho) até a FASE C.
+     * Processo do imóvel para reconciliação: vínculo principal da planilha (conta corrente) →
+     * N:N ativo ({@code imovel_processo}) → escalar {@code imovel.processo_id}.
      */
     private ProcessoEntity processoAtivoDoContrato(ContratoLocacaoEntity contrato) {
-        ImovelEntity imovel = contrato != null ? contrato.getImovel() : null;
-        if (imovel == null || imovel.getId() == null) {
-            return null;
-        }
-        return imovelProcessoRepository
-                .findFirstByImovel_IdAndAtivoTrueOrderByIdDesc(imovel.getId())
-                .map(ip -> ip.getProcesso())
+        return vinculoPrincipalResolver
+                .resolverProcessoDoContrato(contrato)
                 .orElse(null);
     }
 

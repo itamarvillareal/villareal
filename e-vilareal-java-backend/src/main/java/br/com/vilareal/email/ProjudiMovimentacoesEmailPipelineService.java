@@ -50,6 +50,7 @@ public class ProjudiMovimentacoesEmailPipelineService {
     private final ProjudiMovimentacoesEmailSchedulePolicy schedulePolicy;
     private final GmailProjudiManifestacaoService gmailProjudiManifestacaoService;
     private final GmailTrtPushManifestacaoService gmailTrtPushManifestacaoService;
+    private final GmailCaixaOrdemService gmailCaixaOrdemService;
     private final PublicacaoRepository publicacaoRepository;
     private final ProcessoRepository processoRepository;
     private final ProjudiOrquestradorGate orquestradorGate;
@@ -67,6 +68,7 @@ public class ProjudiMovimentacoesEmailPipelineService {
             ProjudiMovimentacoesEmailSchedulePolicy schedulePolicy,
             @Autowired(required = false) GmailProjudiManifestacaoService gmailProjudiManifestacaoService,
             @Autowired(required = false) GmailTrtPushManifestacaoService gmailTrtPushManifestacaoService,
+            @Autowired(required = false) GmailCaixaOrdemService gmailCaixaOrdemService,
             PublicacaoRepository publicacaoRepository,
             ProcessoRepository processoRepository,
             ProjudiOrquestradorGate orquestradorGate,
@@ -80,6 +82,7 @@ public class ProjudiMovimentacoesEmailPipelineService {
         this.schedulePolicy = schedulePolicy;
         this.gmailProjudiManifestacaoService = gmailProjudiManifestacaoService;
         this.gmailTrtPushManifestacaoService = gmailTrtPushManifestacaoService;
+        this.gmailCaixaOrdemService = gmailCaixaOrdemService;
         this.publicacaoRepository = publicacaoRepository;
         this.processoRepository = processoRepository;
         this.orquestradorGate = orquestradorGate;
@@ -190,6 +193,17 @@ public class ProjudiMovimentacoesEmailPipelineService {
             }
         } else {
             resumo.put("gmailTrt", "indisponivel");
+        }
+
+        // Sem ordem da caixa a tela oculta a publicação; atualiza após importar emails novos.
+        if (gmailCaixaOrdemService != null) {
+            try {
+                int ordenados = gmailCaixaOrdemService.atualizarOrdemCaixaInbox();
+                resumo.put("ordemCaixaAtualizados", ordenados);
+            } catch (Exception e) {
+                log.warn("Pipeline PROJUDI: falha ao atualizar ordem da caixa Gmail: {}", e.getMessage());
+                resumo.put("ordemCaixaErro", e.getMessage());
+            }
         }
 
         Instant desde = calcularInstanteJanela();

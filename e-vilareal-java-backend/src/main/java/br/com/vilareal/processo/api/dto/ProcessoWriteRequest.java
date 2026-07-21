@@ -35,6 +35,9 @@ public class ProcessoWriteRequest {
 
     private String audienciaTipo;
 
+    /** Link da reunião virtual (audiência online). */
+    private String audienciaLinkReuniao;
+
     /** AVISADO ou NAO_AVISADO. */
     private String avisoAudiencia;
 
@@ -139,6 +142,14 @@ public class ProcessoWriteRequest {
 
     public void setAudienciaTipo(String audienciaTipo) {
         this.audienciaTipo = audienciaTipo;
+    }
+
+    public String getAudienciaLinkReuniao() {
+        return audienciaLinkReuniao;
+    }
+
+    public void setAudienciaLinkReuniao(String audienciaLinkReuniao) {
+        this.audienciaLinkReuniao = audienciaLinkReuniao;
     }
 
     public String getAvisoAudiencia() {

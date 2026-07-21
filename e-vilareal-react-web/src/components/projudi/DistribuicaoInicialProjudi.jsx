@@ -23,6 +23,7 @@ import {
   validarProntidaoInicial,
 } from '../../api/iniciaisProjudiApi.js';
 import { listarCredenciais } from '../../api/peticoesProjudiApi.js';
+import { AssinaturaAutomaticaInicialPanel } from './AssinaturaAutomaticaInicialPanel.jsx';
 import { isArquivoP7s } from '../../domain/peticaoArquivo.js';
 import { SeletorPessoaParteImovel } from '../imoveis/SeletorPessoaParteImovel.jsx';
 import { buildLinkDestinoProcesso } from '../../domain/camposProcessoCliente.js';
@@ -77,7 +78,7 @@ function montarFormDataInicial({
   valorCausa,
   idsAssuntosSelecionados,
   pessoaAutor,
-  pessoaReu,
+  pessoasReu,
   linhasP7s,
   idProcessoTipo,
   processoTipoCodigo,
@@ -89,7 +90,11 @@ function montarFormDataInicial({
   fd.append('valorCausa', valorCausa.trim());
   fd.append('idAssuntos', montarCsvAssuntos(idsAssuntosSelecionados));
   fd.append('pessoaIdAutor', String(pessoaAutor.id));
-  fd.append('pessoaIdReu', String(pessoaReu.id));
+  for (const reu of pessoasReu || []) {
+    if (reu?.id) {
+      fd.append('pessoaIdsReu', String(reu.id));
+    }
+  }
   fd.append('idProcessoTipo', String(idProcessoTipo ?? CLASSE_JEC_PADRAO.idProcessoTipo));
   fd.append('processoTipoCodigo', String(processoTipoCodigo ?? CLASSE_JEC_PADRAO.processoTipoCodigo));
   for (const linha of linhasP7s) {
@@ -259,9 +264,9 @@ export function DistribuicaoInicialProjudi() {
   const [linhasP7s, setLinhasP7s] = useState([]);
 
   const [pessoaAutor, setPessoaAutor] = useState(null);
-  const [pessoaReu, setPessoaReu] = useState(null);
+  const [pessoasReu, setPessoasReu] = useState([]);
   const [parteAutor, setParteAutor] = useState(null);
-  const [parteReu, setParteReu] = useState(null);
+  const [partesReu, setPartesReu] = useState([]);
 
   const [apiError, setApiError] = useState('');
   const [toast, setToast] = useState('');
@@ -382,7 +387,11 @@ export function DistribuicaoInicialProjudi() {
     if (!dadosProcesso) return;
     if (dadosProcesso.valorCausa) setValorCausa(String(dadosProcesso.valorCausa));
     if (dadosProcesso.pessoaAutor?.id) setPessoaAutor(dadosProcesso.pessoaAutor);
-    if (dadosProcesso.pessoaReu?.id) setPessoaReu(dadosProcesso.pessoaReu);
+    if (Array.isArray(dadosProcesso.pessoasReu) && dadosProcesso.pessoasReu.length > 0) {
+      setPessoasReu(dadosProcesso.pessoasReu.filter((p) => p?.id));
+    } else if (dadosProcesso.pessoaReu?.id) {
+      setPessoasReu([dadosProcesso.pessoaReu]);
+    }
   }, [dadosProcesso]);
 
   useEffect(() => {
@@ -417,7 +426,7 @@ export function DistribuicaoInicialProjudi() {
     if (!dadosProcesso) {
       setValidacaoProntidao(null);
       setParteAutor(null);
-      setParteReu(null);
+      setPartesReu([]);
       setValidandoProntidao(false);
       return undefined;
     }
@@ -431,13 +440,13 @@ export function DistribuicaoInicialProjudi() {
             valorCausa,
             idAssuntos: montarCsvAssuntos(idsAssuntosSelecionados),
             pessoaIdAutor: pessoaAutor?.id,
-            pessoaIdReu: pessoaReu?.id,
+            pessoaIdsReu: pessoasReu.map((p) => p?.id).filter(Boolean),
             quantidadeAnexos: linhasP7s.length,
           });
           if (!cancelado) {
             setValidacaoProntidao(res);
             setParteAutor(res.autor ?? null);
-            setParteReu(res.reu ?? null);
+            setPartesReu(Array.isArray(res.reus) ? res.reus : []);
           }
         } catch {
           if (!cancelado) {
@@ -446,10 +455,10 @@ export function DistribuicaoInicialProjudi() {
               bloqueios: ['Falha ao consultar validação no servidor.'],
               pendenciasPartes: [],
               autor: null,
-              reu: null,
+              reus: [],
             });
             setParteAutor(null);
-            setParteReu(null);
+            setPartesReu([]);
           }
         } finally {
           if (!cancelado) setValidandoProntidao(false);
@@ -466,13 +475,18 @@ export function DistribuicaoInicialProjudi() {
     valorCausa,
     idsAssuntosSelecionados,
     pessoaAutor?.id,
-    pessoaReu?.id,
+    pessoasReu,
     linhasP7s.length,
   ]);
 
+  const reusComPendencia = partesReu.some((p) => p && !p.prontaParaInserir);
+  const todosReusInformados =
+    pessoasReu.length > 0 && pessoasReu.every((p) => Number(p?.id) > 0);
+
   const partesPendentes =
     (parteAutor && !parteAutor.prontaParaInserir) ||
-    (parteReu && !parteReu.prontaParaInserir) ||
+    reusComPendencia ||
+    !todosReusInformados ||
     validandoProntidao;
 
   const podePreparar = validacaoProntidao?.pronta === true && !validandoProntidao;
@@ -509,7 +523,7 @@ export function DistribuicaoInicialProjudi() {
         valorCausa,
         idsAssuntosSelecionados,
         pessoaAutor,
-        pessoaReu,
+        pessoasReu,
         linhasP7s,
         idProcessoTipo,
         processoTipoCodigo,
@@ -541,7 +555,7 @@ export function DistribuicaoInicialProjudi() {
         valorCausa,
         idsAssuntosSelecionados,
         pessoaAutor,
-        pessoaReu,
+        pessoasReu,
         linhasP7s,
         idProcessoTipo,
         processoTipoCodigo,
@@ -854,23 +868,64 @@ export function DistribuicaoInicialProjudi() {
                   erro=""
                 />
               </div>
-              <div className="space-y-2 min-w-0">
-                <span className="text-xs font-medium text-slate-600">Réu</span>
-                <SeletorPessoaParteImovel
-                  pessoaSelecionada={pessoaReu}
-                  onChange={setPessoaReu}
-                  disabled={!dadosProcesso}
-                />
-                <CartaoParteResolvida
-                  titulo="Réu"
-                  pessoa={pessoaReu}
-                  resolvida={parteReu}
-                  carregando={validandoProntidao && Boolean(pessoaReu?.id)}
-                  erro=""
-                />
+              <div className="space-y-4 min-w-0">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-medium text-slate-600">
+                    Réus{pessoasReu.length > 0 ? ` (${pessoasReu.length})` : ''}
+                  </span>
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-sky-700 hover:text-sky-900 disabled:text-slate-400"
+                    disabled={!dadosProcesso}
+                    onClick={() => setPessoasReu((prev) => [...prev, null])}
+                  >
+                    + Adicionar réu
+                  </button>
+                </div>
+                {pessoasReu.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/50 p-3 text-sm text-slate-500">
+                    Nenhum réu carregado — use o botão acima ou abra esta tela a partir do processo.
+                  </div>
+                ) : (
+                  pessoasReu.map((pessoa, idx) => (
+                    <div key={pessoa?.id ?? `reu-slot-${idx}`} className="space-y-2 rounded-lg border border-slate-100 bg-white/60 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-medium text-slate-600">
+                          {pessoasReu.length > 1 ? `Réu ${idx + 1}` : 'Réu'}
+                        </span>
+                        {pessoasReu.length > 1 ? (
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 text-xs text-rose-700 hover:text-rose-900"
+                            onClick={() =>
+                              setPessoasReu((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx)))
+                            }
+                          >
+                            <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                            Remover
+                          </button>
+                        ) : null}
+                      </div>
+                      <SeletorPessoaParteImovel
+                        pessoaSelecionada={pessoa}
+                        onChange={(novaPessoa) =>
+                          setPessoasReu((prev) => prev.map((item, i) => (i === idx ? novaPessoa : item)))
+                        }
+                        disabled={!dadosProcesso}
+                      />
+                      <CartaoParteResolvida
+                        titulo={pessoasReu.length > 1 ? `Réu ${idx + 1}` : 'Réu'}
+                        pessoa={pessoa}
+                        resolvida={partesReu[idx] ?? null}
+                        carregando={validandoProntidao && Boolean(pessoa?.id)}
+                        erro=""
+                      />
+                    </div>
+                  ))
+                )}
               </div>
             </div>
-            {partesPendentes && pessoaAutor && pessoaReu ? (
+            {partesPendentes && pessoaAutor && pessoasReu.length > 0 ? (
               <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
                 Corrija as pendências das partes antes de preparar.
               </p>
@@ -879,7 +934,23 @@ export function DistribuicaoInicialProjudi() {
 
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
             <h2 className="text-sm font-semibold text-slate-800">Anexos (.p7s)</h2>
+            <p className="text-xs text-slate-600">
+              Coloque os PDFs na subpasta <strong>«Assinar»</strong> do processo no Google Drive e use
+              assinatura automática, ou envie os <span className="font-mono">.p7s</span> já assinados
+              manualmente.
+            </p>
             <div className="flex flex-wrap items-center gap-2">
+              {dadosProcesso?.codigoCliente && dadosProcesso?.numeroInterno ? (
+                <AssinaturaAutomaticaInicialPanel
+                  credencialId={credencialId}
+                  codigoCliente={dadosProcesso.codigoCliente}
+                  numeroInterno={dadosProcesso.numeroInterno}
+                  disabled={!dadosProcesso || operacao != null}
+                  onArquivosAssinados={(linhas) => setLinhasP7s(linhas)}
+                  onToast={setToast}
+                  onErro={setApiError}
+                />
+              ) : null}
               <input
                 id="inicial-p7s"
                 type="file"

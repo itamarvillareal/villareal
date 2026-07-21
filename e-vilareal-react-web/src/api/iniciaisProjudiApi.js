@@ -1,4 +1,4 @@
-import { postFormData, request } from './httpClient.js';
+import { postFormData, request, requestBlob } from './httpClient.js';
 
 /**
  * @typedef {'RESOLVIDO' | 'PENDENTE'} NivelResolucao
@@ -53,7 +53,7 @@ import { postFormData, request } from './httpClient.js';
  * @property {string[]} bloqueios
  * @property {PendenciaParte[]} pendenciasPartes
  * @property {ParteProjudiResolvida|null} [autor]
- * @property {ParteProjudiResolvida|null} [reu]
+ * @property {ParteProjudiResolvida[]} [reus]
  */
 
 /**
@@ -144,7 +144,8 @@ export async function sugerirModalidadeProjudi(naturezaAcao) {
  * @param {string} [params.valorCausa]
  * @param {string} [params.idAssuntos]
  * @param {number|null|undefined} [params.pessoaIdAutor]
- * @param {number|null|undefined} [params.pessoaIdReu]
+ * @param {number[]|string} [params.pessoaIdsReu]
+ * @param {number|null|undefined} [params.pessoaIdReu] legado — usa só o 1º réu
  * @param {number} [params.quantidadeAnexos]
  * @returns {Promise<ValidacaoProntidaoInicial>}
  */
@@ -153,19 +154,40 @@ export async function validarProntidaoInicial({
   valorCausa = '',
   idAssuntos = '',
   pessoaIdAutor,
+  pessoaIdsReu,
   pessoaIdReu,
   quantidadeAnexos = 0,
 }) {
+  const idsReu = normalizarPessoaIdsReu(pessoaIdsReu, pessoaIdReu);
   return request('/api/projudi/iniciais/validar-prontidao', {
     query: {
       credencialId,
       valorCausa,
       idAssuntos,
       pessoaIdAutor: pessoaIdAutor ?? '',
-      pessoaIdReu: pessoaIdReu ?? '',
+      pessoaIdsReu: idsReu.join(','),
       quantidadeAnexos,
     },
   });
+}
+
+/** @param {number[]|string|undefined} pessoaIdsReu @param {number|null|undefined} pessoaIdReu */
+function normalizarPessoaIdsReu(pessoaIdsReu, pessoaIdReu) {
+  if (Array.isArray(pessoaIdsReu)) {
+    return [...new Set(pessoaIdsReu.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))];
+  }
+  if (typeof pessoaIdsReu === 'string' && pessoaIdsReu.trim()) {
+    return [
+      ...new Set(
+        pessoaIdsReu
+          .split(/[,;\s]+/)
+          .map((parte) => Number(parte.trim()))
+          .filter((id) => Number.isFinite(id) && id > 0),
+      ),
+    ];
+  }
+  const legado = Number(pessoaIdReu);
+  return Number.isFinite(legado) && legado > 0 ? [legado] : [];
 }
 
 /** @param {FormData} formData */
@@ -176,4 +198,81 @@ export async function prepararInicial(formData) {
 /** @param {FormData} formData */
 export async function distribuirInicial(formData) {
   return postFormData('/api/projudi/iniciais/distribuir', formData);
+}
+
+/**
+ * @typedef {Object} AssinarAutomaticoInicialResponse
+ * @property {number} loteId
+ * @property {number[]} peticaoIds
+ * @property {number} totalArquivos
+ * @property {boolean} [loteReutilizado]
+ */
+
+/**
+ * @typedef {Object} InicialArquivoAssinado
+ * @property {number} arquivoId
+ * @property {number} peticaoId
+ * @property {number} ordem
+ * @property {number} idArquivoTipo
+ * @property {string} nomeOriginal
+ * @property {string} nomeP7s
+ */
+
+/** @param {{ credencialId: number|string, codigoCliente: string, numeroInterno: number|string }} params */
+export async function assinarAutomaticoInicial({ credencialId, codigoCliente, numeroInterno }) {
+  return request('/api/projudi/iniciais/assinar-automatico', {
+    method: 'POST',
+    query: { credencialId, codigoCliente, numeroInterno },
+  });
+}
+
+/** @param {number|string} loteId */
+export async function consultarLoteAssinaturaInicial(loteId) {
+  return request(`/api/projudi/iniciais/lote-assinatura/${loteId}`);
+}
+
+/** @param {number|string} loteId */
+export async function reliberarLoteAssinaturaInicial(loteId) {
+  return request(`/api/projudi/iniciais/lote-assinatura/${loteId}/reliberar`, { method: 'POST' });
+}
+
+/** @param {number|string} loteId */
+export async function cancelarLoteAssinaturaInicial(loteId) {
+  return request(`/api/projudi/iniciais/lote-assinatura/${loteId}/cancelar`, { method: 'POST' });
+}
+
+/** @param {{ codigoCliente: string, numeroInterno: number|string }} params @returns {Promise<InicialArquivoAssinado[]>} */
+export async function listarArquivosAssinadosInicial({ codigoCliente, numeroInterno }) {
+  return request('/api/projudi/iniciais/arquivos-assinados', {
+    query: { codigoCliente, numeroInterno },
+  });
+}
+
+/** @param {{ arquivoId: number, codigoCliente: string, numeroInterno: number|string, nomeFallback?: string }} params */
+export async function baixarP7sAssinadoInicial({ arquivoId, codigoCliente, numeroInterno, nomeFallback }) {
+  const { blob, filename } = await requestBlob(
+    `/api/projudi/iniciais/arquivos-assinados/${arquivoId}/p7s`,
+    {
+      query: { codigoCliente, numeroInterno },
+      accept: 'application/octet-stream',
+      fallbackFilename: nomeFallback || 'documento.p7s',
+    },
+  );
+  return blob;
+}
+
+/** @param {{ peticaoId: number|string, codigoCliente: string, numeroInterno: number|string }} params */
+export async function excluirPeticaoFilaInicial({ peticaoId, codigoCliente, numeroInterno }) {
+  return request(`/api/projudi/iniciais/fila-peticao/${peticaoId}`, {
+    method: 'DELETE',
+    query: { codigoCliente, numeroInterno },
+  });
+}
+
+/** @param {{ peticaoId: number|string, arquivoId: number|string, codigoCliente: string, numeroInterno: number|string }} params */
+export async function excluirArquivoFilaInicial({ peticaoId, arquivoId, codigoCliente, numeroInterno }) {
+  return request(`/api/projudi/iniciais/fila-peticao/${peticaoId}/arquivos/${arquivoId}`, {
+    method: 'DELETE',
+    query: { codigoCliente, numeroInterno },
+  });
 }

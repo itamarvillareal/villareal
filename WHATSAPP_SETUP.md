@@ -58,6 +58,8 @@ Após deploy, em **developers.facebook.com > App > WhatsApp > Configuração**:
 - **Token de verificação:** mesmo valor de `WHATSAPP_VERIFY_TOKEN`
 - **Campos assinados:** `messages`, `message_template_status_update`
 
+O campo `messages` é obrigatório para receber **status de entrega** das mensagens enviadas (`sent`, `delivered`, `read`, `failed`). Sem ele, os ícones ✓/✓✓ nas conversas não atualizam em tempo real.
+
 Teste manual de verificação (substitua o token real):
 
 ```bash
@@ -65,6 +67,68 @@ curl -s "https://portal.villarealadvocacia.adv.br/api/webhook/whatsapp?hub.mode=
 ```
 
 Deve retornar `teste123` (texto puro).
+
+## Status da integração (visão completa)
+
+### 1. Variáveis de ambiente (servidor)
+
+A integração é considerada **ativa** quando `WHATSAPP_ACCESS_TOKEN` e `WHATSAPP_PHONE_NUMBER_ID` estão preenchidos com valores reais (não placeholders). O backend expõe isso em `GET /api/whatsapp/stats` → `integrationConfigured`.
+
+| Ambiente | Arquivo | Observação |
+|----------|---------|------------|
+| Produção (VPS) | `.env.docker` | `WHATSAPP_VALIDATE_SIGNATURE=true` |
+| Dev local | variáveis de ambiente ou `application-dev.properties` | `WHATSAPP_VALIDATE_SIGNATURE=false` |
+
+Checklist rápido na VPS:
+
+```bash
+# 1. Conferir variáveis no .env.docker (sem commitar tokens)
+grep WHATSAPP_ .env.docker
+
+# 2. Rebuild do backend após alterar env
+docker compose build backend && docker compose up -d backend
+
+# 3. Verificação automatizada
+./scripts/verify-whatsapp.sh
+```
+
+### 2. Indicador no portal (frontend)
+
+- **Cabeçalho WhatsApp:** pill compacto (verde = ativo, âmbar = não configurado, vermelho = erro de conexão com API).
+- **Dashboard:** banner detalhado com última verificação e contadores do dia.
+- Atualização automática a cada 30 segundos via `GET /api/whatsapp/stats`.
+
+### 3. Status de entrega das mensagens (webhook → SSE → UI)
+
+Fluxo:
+
+1. Meta envia POST em `/api/webhook/whatsapp` com `statuses[]` (campo `messages` assinado).
+2. Backend persiste em `whatsapp_messages.status` e emite evento SSE `whatsapp-status`.
+3. Frontend atualiza os ícones nas conversas abertas (✓ enviada, ✓✓ entregue, ✓✓ azul lida, ✗ falhou).
+
+Status suportados:
+
+| Status Meta | Significado | Ícone na conversa |
+|-----------|-------------|-------------------|
+| `sent` | Enviada ao servidor Meta | ✓ |
+| `delivered` | Entregue ao aparelho | ✓✓ cinza |
+| `read` | Lida pelo destinatário | ✓✓ azul |
+| `failed` | Falha de entrega | ✗ vermelho |
+
+### 4. Status de mídia (download Meta → Drive)
+
+Distinto do status de entrega. Valores em `whatsapp_messages.media_status`:
+
+- `PENDING` — aguardando download/upload
+- `DONE` — mídia disponível no Drive
+- `FAILED` — falha após tentativas
+
+Reprocessamento automático configurado em `application.properties` (`whatsapp.media.reprocess.*`).
+
+### 5. Status de agendamentos e cobranças
+
+- **Agendamentos** (`scheduled_whatsapp_messages.status`): `PENDING`, `SENT`, `FAILED`, `CANCELLED`
+- **Cobranças** (`cobranca_whatsapp.status`): mapeados do webhook (`AGENDADO`, `ENVIADO`, `ENTREGUE`, `LIDO`, `FALHOU`)
 
 ## Nginx / roteamento
 
@@ -88,6 +152,7 @@ A página de privacidade exigida pela Meta está em `/privacidade` no portal pú
 | Nome | Categoria | Status | Parâmetros |
 |------|-----------|--------|------------|
 | `lembrete_audiencia` | Utility | **APPROVED** (pt_BR, ID `2589903884760478`) | `{{1}}`=nome, `{{2}}`=nº processo, `{{3}}`=data/hora |
+| `lembrete_audiencia_link` | Utility | Submetido na subida (prod) | `{{1}}`=nome, `{{2}}`=processo, `{{3}}`=data/hora, `{{4}}`=link reunião |
 | `atualizacao_processo` | Utility | Não criado ainda | `{{1}}`=nome, `{{2}}`=nº processo, `{{3}}`=movimentação |
 | `boas_vindas_cliente` | Utility | Não criado ainda | `{{1}}`=nome |
 

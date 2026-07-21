@@ -26,5 +26,6 @@ export function parseLembreteAudienciaParamProcesso(paramProcesso) {
 }
 
 export function isLembreteAudienciaTemplate(templateName) {
-  return String(templateName ?? '').trim() === 'lembrete_audiencia';
+  const n = String(templateName ?? '').trim();
+  return n === 'lembrete_audiencia' || n === 'lembrete_audiencia_link';
 }

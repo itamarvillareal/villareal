@@ -106,26 +106,6 @@ function IconListaPessoas({ className }) {
   );
 }
 
-/** Nova pessoa (ícone user +). */
-function IconNovaPessoa({ className }) {
-  const uid = useId().replace(/:/g, '');
-  const g = `nova-p-${uid}`;
-  return (
-    <svg className={`block shrink-0 ${className ?? ''}`} viewBox="0 0 24 24" fill="none" style={shadow} aria-hidden>
-      <defs>
-        <linearGradient id={g} x1="3" y1="4" x2="13" y2="16" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#4ade80" />
-          <stop offset="1" stopColor="#15803d" />
-        </linearGradient>
-      </defs>
-      <circle cx="9.5" cy="8.5" r="4" fill={`url(#${g})`} stroke="#14532d" strokeWidth="0.35" />
-      <path d="M4.5 19.5c.8-3.2 3.5-5 5-5s4.2 1.8 5 5" stroke="#14532d" strokeWidth="1.35" strokeLinecap="round" />
-      <circle cx="18" cy="7" r="4.5" fill="#2563eb" stroke="#1e3a8a" strokeWidth="0.35" />
-      <path d="M18 5v4M16 7h4" stroke="#e0f2fe" strokeWidth="1.4" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 function IconClientes({ className }) {
   const uid = useId().replace(/:/g, '');
   const gF = `cli-f-${uid}`;
@@ -604,7 +584,6 @@ const MENU_ICONS = {
   'pessoas-grupo': IconPessoas,
   'clientes/lista': IconListaPessoas,
   'clientes/relatorio': IconRelatorioProcessos,
-  'clientes/nova': IconNovaPessoa,
   pessoas: IconClientes,
   'processos-grupo': IconFolderProcessos,
   processos: IconFolderProcessos,

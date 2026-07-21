@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "local-helper": "node ../e-vilareal-local-helper/server.mjs",
+    "build:instalador-local-helper": "node ../e-vilareal-local-helper/scripts/build-instalador.mjs",
     "dev:homolog": "vite --mode homolog",
     "build": "vite build",
     "lint": "eslint .",

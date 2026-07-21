@@ -438,17 +438,20 @@ public class WhatsAppService {
             case LOCATION -> "📍 Localização";
             case INTERACTIVE, BUTTON -> "↩️ Resposta";
             case REACTION -> body != null && !body.isBlank() ? body : "Reação";
+            case UNSUPPORTED -> "🚫 Conteúdo não suportado pelo WhatsApp Business"
+                    + " — peça ao contato para reenviar como mensagem comum.";
             default -> "📩 Mídia recebida";
         };
     }
 
-    /** Tipos cujo {@code content} é JSON estruturado — não enviar à IA como prompt. */
+    /** Tipos cujo {@code content} é estruturado ou aviso do sistema — não enviar à IA como prompt. */
     private static boolean isMensagemEstruturadaSemIa(WhatsAppMessageType messageType) {
         return messageType == WhatsAppMessageType.CONTACT
                 || messageType == WhatsAppMessageType.LOCATION
                 || messageType == WhatsAppMessageType.INTERACTIVE
                 || messageType == WhatsAppMessageType.BUTTON
-                || messageType == WhatsAppMessageType.REACTION;
+                || messageType == WhatsAppMessageType.REACTION
+                || messageType == WhatsAppMessageType.UNSUPPORTED;
     }
 
     private static String suffixFilename(String filename) {
@@ -816,6 +819,7 @@ public class WhatsAppService {
             case "interactive" -> WhatsAppMessageType.INTERACTIVE;
             case "button" -> WhatsAppMessageType.BUTTON;
             case "reaction" -> WhatsAppMessageType.REACTION;
+            case "unsupported" -> WhatsAppMessageType.UNSUPPORTED;
             default -> WhatsAppMessageType.UNKNOWN;
         };
     }

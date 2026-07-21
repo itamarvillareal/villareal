@@ -39,6 +39,8 @@ public class PublicacaoResponse {
     private String arquivoOrigemHash;
     /** Data/hora em que o email Jusbrasil chegou na caixa Gmail. */
     private Instant emailRecebidoEm;
+    /** Ordem na caixa Gmail (0 = topo); fiel à inbox Projudi+TRT. */
+    private Integer gmailCaixaOrdem;
     private String jsonReferencia;
     private String statusTratamento;
     private boolean lida;

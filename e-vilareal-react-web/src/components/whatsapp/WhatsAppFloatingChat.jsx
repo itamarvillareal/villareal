@@ -4,6 +4,10 @@ import { Loader2, MessageCircle, Paperclip, Search, Send, X } from 'lucide-react
 import { WhatsAppMediaAttachPreview } from './components/WhatsAppMediaAttachPreview.jsx';
 import { useWhatsAppNotificationContext } from './WhatsAppNotificationProvider.jsx';
 import { ChatBubble } from './components/ChatBubble.jsx';
+import { EncaminharMensagemModal } from './components/EncaminharMensagemModal.jsx';
+import { ForwardSelectionBar } from './components/ForwardSelectionBar.jsx';
+import { useWhatsAppForwardSelection } from './hooks/useWhatsAppForwardSelection.js';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 import { DaySeparator } from './components/DaySeparator.jsx';
 import {
   getWhatsAppMessages,
@@ -23,6 +27,7 @@ import {
 import { dateKeyBR } from '../../utils/whatsappScheduleUtils.js';
 import { FREE_TEXT_DELIVERY_ERROR } from '../../utils/whatsappTemplateUtils.js';
 import { isWhatsAppMediaPending, mergeMediaReady, consumirLocalPreview, revogarPreviewsLocaisEmLista } from './utils/whatsappMediaUtils.js';
+import { mergeMessageStatusUpdate } from './utils/whatsappMessageStatusUtils.js';
 import {
   criarOnPasteCompositor,
   handleAttachSelect,
@@ -158,7 +163,7 @@ function FloatingConversationList({ conversations, loading, query, onQueryChange
   );
 }
 
-function FloatingChatView({ conversation, onBack, onClose, latestInbound, latestMediaReady, onMarkRead, headerDragProps = {} }) {
+function FloatingChatView({ conversation, onBack, onClose, latestInbound, latestMediaReady, latestStatusUpdate, onMarkRead, headerDragProps = {} }) {
   const { className: dragClassName = '', ...headerDragRest } = headerDragProps;
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -190,6 +195,31 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
     },
     [retryOptimisticMedia],
   );
+
+  const {
+    forwardSelectActive,
+    forwardSelectedMessages,
+    forwardModalOpen,
+    startForwardSelection,
+    toggleForwardSelection,
+    cancelForwardSelection,
+    openForwardModal,
+    closeForwardModal,
+    finishForwardSuccess,
+    isForwardSelected,
+    forwardSelectionCount,
+  } = useWhatsAppForwardSelection(messages);
+
+  useEffect(() => {
+    cancelForwardSelection();
+  }, [phoneApi, cancelForwardSelection]);
+
+  useCloseOnEscape(forwardSelectActive && !forwardModalOpen, cancelForwardSelection);
+
+  const handleForwardSuccess = useCallback(() => {
+    setError('');
+    finishForwardSuccess();
+  }, [finishForwardSuccess]);
 
   useEffect(() => {
     return () => {
@@ -259,6 +289,11 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
     }
     setMessages((prev) => mergeMediaReady(prev, latestMediaReady));
   }, [latestMediaReady, phoneApi]);
+
+  useEffect(() => {
+    if (!latestStatusUpdate?.waMessageId) return;
+    setMessages((prev) => mergeMessageStatusUpdate(prev, latestStatusUpdate));
+  }, [latestStatusUpdate]);
 
   useEffect(() => {
     if (!messages.some(isWhatsAppMediaPending)) return undefined;
@@ -393,6 +428,10 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
                   message={m}
                   onRetryOutboundMedia={handleRetryOutboundMedia}
                   onLocalPreviewConsumed={handleLocalPreviewConsumed}
+                  onForwardMessage={startForwardSelection}
+                  forwardSelectMode={forwardSelectActive}
+                  forwardSelected={isForwardSelected(m)}
+                  onToggleForwardSelect={toggleForwardSelection}
                 />
               </Fragment>
             );
@@ -401,6 +440,13 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
         <div ref={bottomRef} />
       </div>
       {error ? <p className="px-3 text-xs text-red-600 shrink-0">{error}</p> : null}
+      {forwardSelectActive ? (
+        <ForwardSelectionBar
+          count={forwardSelectionCount}
+          onCancel={cancelForwardSelection}
+          onForward={openForwardModal}
+        />
+      ) : null}
       {selectedFile ? (
         <div className="px-3 py-2 border-t border-slate-100 dark:border-slate-800 shrink-0">
           <WhatsAppMediaAttachPreview
@@ -464,6 +510,13 @@ function FloatingChatView({ conversation, onBack, onClose, latestInbound, latest
           {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         </button>
       </div>
+      <EncaminharMensagemModal
+        open={forwardModalOpen}
+        messages={forwardSelectedMessages}
+        sourcePhoneNumber={phoneApi}
+        onClose={closeForwardModal}
+        onSuccess={handleForwardSuccess}
+      />
     </>
   );
 }
@@ -511,6 +564,7 @@ export function WhatsAppFloatingChat() {
   const unreadCount = ctx?.unreadCount ?? 0;
   const latestInbound = ctx?.latestInbound ?? null;
   const latestMediaReady = ctx?.latestMediaReady ?? null;
+  const latestStatusUpdate = ctx?.latestStatusUpdate ?? null;
   const latestConversationRead = ctx?.latestConversationRead ?? null;
   const adjustUnreadConversations = ctx?.adjustUnreadConversations;
   const lastListInboundIdRef = useRef(null);
@@ -661,6 +715,7 @@ export function WhatsAppFloatingChat() {
               onClose={closePanel}
               latestInbound={latestInbound}
               latestMediaReady={latestMediaReady}
+              latestStatusUpdate={latestStatusUpdate}
               onMarkRead={handleMarkConversationRead}
               headerDragProps={dragHandleProps}
             />

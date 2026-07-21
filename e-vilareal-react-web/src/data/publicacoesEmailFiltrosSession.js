@@ -31,6 +31,7 @@ export function loadPublicacoesEmailFiltrosSession(variant) {
         typeof p.filtroRecebimentoInicio === 'string' ? p.filtroRecebimentoInicio : '',
       filtroRecebimentoFim: typeof p.filtroRecebimentoFim === 'string' ? p.filtroRecebimentoFim : '',
       ordemDataAsc: p.ordemDataAsc === true,
+      ordenarPorEntrada: p.ordenarPorEntrada === true,
     };
   } catch {
     return null;
@@ -50,6 +51,7 @@ export function savePublicacoesEmailFiltrosSession(variant, filtros) {
         filtroRecebimentoInicio: filtros.filtroRecebimentoInicio ?? '',
         filtroRecebimentoFim: filtros.filtroRecebimentoFim ?? '',
         ordemDataAsc: filtros.ordemDataAsc === true,
+        ordenarPorEntrada: filtros.ordenarPorEntrada === true,
       })
     );
   } catch {

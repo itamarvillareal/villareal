@@ -1,7 +1,12 @@
 package br.com.vilareal.projudi.api;
 
-import br.com.vilareal.projudi.ProjudiAssuntoCatalogoService;
+import br.com.vilareal.processo.api.dto.AssinarAutomaticoResponse;
+import br.com.vilareal.processo.api.dto.LoteAssinaturaStatusResponse;
+import br.com.vilareal.processo.application.DiagnosticoAssinaturaAutomaticaService;
+import br.com.vilareal.projudi.api.dto.InicialArquivoAssinadoResponse;
+import br.com.vilareal.projudi.application.ProjudiInicialAssinaturaService;
 import br.com.vilareal.projudi.ProjudiClasseProcessoInicial;
+import br.com.vilareal.projudi.ProjudiAssuntoCatalogoService;
 import br.com.vilareal.projudi.ProjudiAssuntoCatalogoService.ClasseItem;
 import br.com.vilareal.projudi.ProjudiAssuntoCatalogoService.ModalidadeSugeridaResponse;
 import br.com.vilareal.projudi.ProjudiDistribuicaoService;
@@ -16,8 +21,12 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -39,14 +48,20 @@ public class ProjudiInicialController {
     private final ProjudiParteResolverService parteResolverService;
     private final ProjudiDistribuicaoService distribuicaoService;
     private final ProjudiAssuntoCatalogoService assuntoCatalogoService;
+    private final ProjudiInicialAssinaturaService inicialAssinaturaService;
+    private final DiagnosticoAssinaturaAutomaticaService assinaturaAutomaticaService;
 
     public ProjudiInicialController(
             ProjudiParteResolverService parteResolverService,
             ProjudiDistribuicaoService distribuicaoService,
-            ProjudiAssuntoCatalogoService assuntoCatalogoService) {
+            ProjudiAssuntoCatalogoService assuntoCatalogoService,
+            ProjudiInicialAssinaturaService inicialAssinaturaService,
+            DiagnosticoAssinaturaAutomaticaService assinaturaAutomaticaService) {
         this.parteResolverService = parteResolverService;
         this.distribuicaoService = distribuicaoService;
         this.assuntoCatalogoService = assuntoCatalogoService;
+        this.inicialAssinaturaService = inicialAssinaturaService;
+        this.assinaturaAutomaticaService = assinaturaAutomaticaService;
     }
 
     @GetMapping("/resolver-parte")
@@ -85,13 +100,15 @@ public class ProjudiInicialController {
             @RequestParam(required = false) String idAssuntos,
             @RequestParam(required = false) Long pessoaIdAutor,
             @RequestParam(required = false) Long pessoaIdReu,
+            @RequestParam(required = false) String pessoaIdsReu,
+            @RequestParam(required = false) List<Long> pessoaIdsReuList,
             @RequestParam(defaultValue = "0") int quantidadeAnexos) {
         return distribuicaoService.validarProntidao(
                 credencialId,
                 valorCausa,
                 parseIdAssuntosCsv(idAssuntos),
                 pessoaIdAutor,
-                pessoaIdReu,
+                normalizarPessoaIdsReu(pessoaIdReu, pessoaIdsReu, pessoaIdsReuList),
                 quantidadeAnexos);
     }
 
@@ -108,27 +125,29 @@ public class ProjudiInicialController {
             @RequestParam String valorCausa,
             @RequestParam String idAssuntos,
             @RequestParam Long pessoaIdAutor,
-            @RequestParam Long pessoaIdReu,
+            @RequestParam(required = false) Long pessoaIdReu,
+            @RequestParam(required = false) List<Long> pessoaIdsReu,
             @RequestParam("pdfs") List<MultipartFile> pdfs,
             @RequestParam(value = "idArquivoTipos", required = false) List<Integer> idArquivoTipos,
             @RequestParam(required = false) Integer idProcessoTipo,
             @RequestParam(required = false) Integer processoTipoCodigo)
             throws IOException {
+        List<Long> idsReu = normalizarPessoaIdsReu(pessoaIdReu, null, pessoaIdsReu);
         InicialRequest request = montarInicialRequest(
                 valorCausa,
                 idAssuntos,
                 pessoaIdAutor,
-                pessoaIdReu,
+                idsReu,
                 pdfs,
                 idArquivoTipos,
                 idProcessoTipo,
                 processoTipoCodigo);
         log.info(
-                "preparar-inicial credencialId={} assuntos={} autor={} reu={} arquivos={}",
+                "preparar-inicial credencialId={} assuntos={} autor={} reus={} arquivos={}",
                 credencialId,
                 request.idAssuntos(),
                 pessoaIdAutor,
-                pessoaIdReu,
+                idsReu,
                 request.arquivos().size());
         return distribuicaoService.prepararInicial(credencialId, request);
     }
@@ -146,7 +165,8 @@ public class ProjudiInicialController {
             @RequestParam String valorCausa,
             @RequestParam String idAssuntos,
             @RequestParam Long pessoaIdAutor,
-            @RequestParam Long pessoaIdReu,
+            @RequestParam(required = false) Long pessoaIdReu,
+            @RequestParam(required = false) List<Long> pessoaIdsReu,
             @RequestParam("pdfs") List<MultipartFile> pdfs,
             @RequestParam(value = "idArquivoTipos", required = false) List<Integer> idArquivoTipos,
             @RequestParam(defaultValue = "false") boolean confirmar,
@@ -154,35 +174,120 @@ public class ProjudiInicialController {
             @RequestParam(required = false) Integer idProcessoTipo,
             @RequestParam(required = false) Integer processoTipoCodigo)
             throws IOException {
+        List<Long> idsReu = normalizarPessoaIdsReu(pessoaIdReu, null, pessoaIdsReu);
         InicialRequest request = montarInicialRequest(
                 valorCausa,
                 idAssuntos,
                 pessoaIdAutor,
-                pessoaIdReu,
+                idsReu,
                 pdfs,
                 idArquivoTipos,
                 idProcessoTipo,
                 processoTipoCodigo);
         log.info(
-                "distribuir-inicial credencialId={} confirmar={} processoIdOrigem={} assuntos={} arquivos={}",
+                "distribuir-inicial credencialId={} confirmar={} processoIdOrigem={} assuntos={} reus={} arquivos={}",
                 credencialId,
                 confirmar,
                 processoIdOrigem,
                 request.idAssuntos(),
+                idsReu,
                 request.arquivos().size());
         return distribuicaoService.distribuirInicial(credencialId, request, confirmar, processoIdOrigem);
+    }
+
+    @PostMapping("/assinar-automatico")
+    @Operation(
+            summary = "Assina automaticamente PDFs da pasta «Assinar» (inicial)",
+            description =
+                    "Enfileira lote PREPARANDO, busca PDFs no Drive da subpasta «Assinar» do processo "
+                            + "e libera para o assinador Windows. Use GET lote-assinatura/{loteId} para polling.")
+    public AssinarAutomaticoResponse assinarAutomatico(
+            @RequestParam Long credencialId,
+            @RequestParam String codigoCliente,
+            @RequestParam Integer numeroInterno) {
+        log.info(
+                "assinar-automatico-inicial credencialId={} processo={}/{}",
+                credencialId,
+                codigoCliente,
+                numeroInterno);
+        return inicialAssinaturaService.assinarAutomatico(credencialId, codigoCliente, numeroInterno);
+    }
+
+    @GetMapping("/lote-assinatura/{loteId}")
+    @Operation(summary = "Status do lote de assinatura automática (inicial)")
+    public LoteAssinaturaStatusResponse statusLoteAssinatura(@PathVariable Long loteId) {
+        return assinaturaAutomaticaService.consultarStatus(loteId);
+    }
+
+    @PostMapping("/lote-assinatura/{loteId}/reliberar")
+    @Operation(summary = "Re-libera lote após TOKEN_OCUPADO (inicial)")
+    public LoteAssinaturaStatusResponse reliberarLoteAssinatura(@PathVariable Long loteId) {
+        return assinaturaAutomaticaService.reliberar(loteId);
+    }
+
+    @PostMapping("/lote-assinatura/{loteId}/cancelar")
+    @Operation(summary = "Cancela preparo assíncrono do lote (inicial)")
+    public LoteAssinaturaStatusResponse cancelarLoteAssinatura(@PathVariable Long loteId) {
+        return assinaturaAutomaticaService.cancelar(loteId);
+    }
+
+    @GetMapping("/arquivos-assinados")
+    @Operation(
+            summary = "Lista .p7s assinados prontos para anexar na inicial",
+            description = "Retorna arquivos da petição INICIAL-{cod}-{proc} com status ASSINADA.")
+    public List<InicialArquivoAssinadoResponse> listarArquivosAssinados(
+            @RequestParam String codigoCliente, @RequestParam Integer numeroInterno) {
+        return inicialAssinaturaService.listarArquivosAssinados(codigoCliente, numeroInterno);
+    }
+
+    @GetMapping(value = "/arquivos-assinados/{arquivoId}/p7s", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
+    @Operation(summary = "Baixa .p7s assinado para anexar na inicial")
+    public ResponseEntity<byte[]> baixarP7sAssinado(
+            @PathVariable Long arquivoId,
+            @RequestParam String codigoCliente,
+            @RequestParam Integer numeroInterno) {
+        byte[] bytes = inicialAssinaturaService.baixarP7s(arquivoId, codigoCliente, numeroInterno);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"documento.p7s\"")
+                .body(bytes);
+    }
+
+    @DeleteMapping("/fila-peticao/{peticaoId}")
+    @Operation(
+            summary = "Exclui petição INICIAL-* da fila (inclusive PROTOCOLADA pelo fluxo errado)",
+            description = "Libera nova assinatura automática na Distribuir Inicial PROJUDI.")
+    public ResponseEntity<Void> excluirPeticaoFila(
+            @PathVariable Long peticaoId,
+            @RequestParam String codigoCliente,
+            @RequestParam Integer numeroInterno) {
+        inicialAssinaturaService.excluirPeticaoFila(peticaoId, codigoCliente, numeroInterno);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/fila-peticao/{peticaoId}/arquivos/{arquivoId}")
+    @Operation(summary = "Exclui um arquivo da petição INICIAL-* na fila")
+    public ResponseEntity<Void> excluirArquivoFila(
+            @PathVariable Long peticaoId,
+            @PathVariable Long arquivoId,
+            @RequestParam String codigoCliente,
+            @RequestParam Integer numeroInterno) {
+        inicialAssinaturaService.excluirArquivoFila(peticaoId, arquivoId, codigoCliente, numeroInterno);
+        return ResponseEntity.noContent().build();
     }
 
     private InicialRequest montarInicialRequest(
             String valorCausa,
             String idAssuntos,
             Long pessoaIdAutor,
-            Long pessoaIdReu,
+            List<Long> pessoaIdsReu,
             List<MultipartFile> pdfs,
             List<Integer> idArquivoTipos,
             Integer idProcessoTipo,
             Integer processoTipoCodigo)
             throws IOException {
+        if (pessoaIdsReu == null || pessoaIdsReu.isEmpty()) {
+            throw new IllegalArgumentException("pessoaIdsReu é obrigatório (ao menos um réu).");
+        }
         if (pdfs == null || pdfs.isEmpty()) {
             throw new IllegalArgumentException("pdfs é obrigatório (ao menos um arquivo .p7s).");
         }
@@ -201,7 +306,34 @@ public class ProjudiInicialController {
                     pdfs.get(i).getBytes(), idTipo, pdfs.get(i).getOriginalFilename()));
         }
         ProjudiClasseProcessoInicial classe = assuntoCatalogoService.resolverClasse(idProcessoTipo, processoTipoCodigo);
-        return new InicialRequest(valorCausa, assuntos, pessoaIdAutor, pessoaIdReu, arquivos, classe);
+        return new InicialRequest(valorCausa, assuntos, pessoaIdAutor, List.copyOf(pessoaIdsReu), arquivos, classe);
+    }
+
+    private static List<Long> normalizarPessoaIdsReu(
+            Long pessoaIdReuLegado, String pessoaIdsReuCsv, List<Long> pessoaIdsReuList) {
+        List<Long> out = new ArrayList<>();
+        if (pessoaIdsReuList != null) {
+            for (Long id : pessoaIdsReuList) {
+                if (id != null && id > 0 && !out.contains(id)) {
+                    out.add(id);
+                }
+            }
+        }
+        if (out.isEmpty() && StringUtils.hasText(pessoaIdsReuCsv)) {
+            for (String parte : pessoaIdsReuCsv.split("[,;\\s]+")) {
+                if (!StringUtils.hasText(parte)) {
+                    continue;
+                }
+                long id = Long.parseLong(parte.trim());
+                if (id > 0 && !out.contains(id)) {
+                    out.add(id);
+                }
+            }
+        }
+        if (out.isEmpty() && pessoaIdReuLegado != null && pessoaIdReuLegado > 0) {
+            out.add(pessoaIdReuLegado);
+        }
+        return List.copyOf(out);
     }
 
     private static List<Integer> parseIdAssuntosCsv(String csv) {

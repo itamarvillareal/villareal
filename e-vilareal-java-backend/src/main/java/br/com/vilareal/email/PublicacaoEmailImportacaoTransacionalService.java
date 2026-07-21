@@ -8,6 +8,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -27,9 +29,44 @@ public class PublicacaoEmailImportacaoTransacionalService {
         this.publicacaoRepository = publicacaoRepository;
     }
 
+    /** Captura status TRATADA/IGNORADA indexados por {@code hash_conteudo} antes do reprocessamento Gmail. */
+    @Transactional(readOnly = true)
+    public Map<String, String> capturarStatusPreservaveisDoEmail(String messageId) {
+        String fragment = "[" + messageId + "]";
+        Map<String, String> out = new HashMap<>();
+        for (Object[] row : publicacaoRepository.findHashStatusPreservaveisByArquivoOrigemNomeContaining(fragment)) {
+            String hash = row[0] != null ? String.valueOf(row[0]).trim() : "";
+            String status = row[1] != null ? String.valueOf(row[1]).trim() : "";
+            if (!hash.isEmpty() && ("TRATADA".equals(status) || "IGNORADA".equals(status))) {
+                out.putIfAbsent(hash, status);
+            }
+        }
+        return out;
+    }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
     public int removerPublicacoesDoEmail(String messageId) {
         return publicacaoRepository.deleteByArquivoOrigemNomeContaining("[" + messageId + "]");
+    }
+
+    /** Reaplica TRATADA/IGNORADA após reimportação quando o {@code hash_conteudo} coincide. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
+    public void reaplicarStatusPreservados(Long publicacaoId, Map<String, String> statusPorHash) {
+        if (publicacaoId == null || statusPorHash == null || statusPorHash.isEmpty()) {
+            return;
+        }
+        publicacaoRepository
+                .findById(publicacaoId)
+                .ifPresent(
+                        pub -> {
+                            String hash = pub.getHashConteudo() != null ? pub.getHashConteudo().trim() : "";
+                            String status = statusPorHash.get(hash);
+                            if (status == null || status.equals(pub.getStatusTratamento())) {
+                                return;
+                            }
+                            pub.setStatusTratamento(status);
+                            publicacaoRepository.save(pub);
+                        });
     }
 
     /**

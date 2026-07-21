@@ -30,7 +30,7 @@ import {
   obterSyncProjudi,
   processarEmailsProjudiAgora,
 } from '../api/manifestacoesProjudiApi.js';
-import { ordenarPorEntradaEmail } from '../data/publicacoesEmailOrdenacao.js';
+import { ordenarPorOrdemCaixaGmail, ordenarPorEntradaEmail, entradaEmailExibicaoIso, temOrdemCaixaGmail } from '../data/publicacoesEmailOrdenacao.js';
 import {
   formatarPartesLinha,
   parseProjudiMeta,
@@ -113,6 +113,9 @@ const VARIANT_CONFIG = {
     resumoTipo: 'manifestação',
     placeholderBusca: 'Buscar movimento, CNJ, partes, código…',
     autoAplicarSugestoes: true,
+    // Só Projudi/TRT têm gmail_caixa_ordem gravado (GmailCaixaOrdemService);
+    // Jusbrasil (MONITORAMENTO) ficaria com a lista vazia se filtrado pela caixa.
+    ordenarPelaCaixaGmail: true,
   },
 };
 
@@ -308,7 +311,7 @@ function ModalTeor({ publicacao, onClose, onAbrirProcesso, isProjudi = false }) 
             </p>
             <p>
               <span className="font-medium text-slate-600 dark:text-slate-400">Email recebido:</span>{' '}
-              {fmtInstant(publicacao.emailRecebidoEm)}
+              {fmtInstant(entradaEmailExibicaoIso(publicacao))}
             </p>
             <p className="sm:col-span-2">
               <span className="font-medium text-slate-600 dark:text-slate-400">Origem:</span>{' '}
@@ -368,7 +371,8 @@ function montarResumoVinculoPublicacao(row, isProjudi) {
     const tipo = tipoMovimentoLinha(row);
     if (tipo) partes.push(tipo);
   }
-  if (row.emailRecebidoEm) partes.push(fmtInstant(row.emailRecebidoEm));
+  const entrada = entradaEmailExibicaoIso(row);
+  if (entrada) partes.push(fmtInstant(entrada));
   return partes.join(' · ') || 'Movimentação por email';
 }
 
@@ -467,6 +471,7 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
   );
   const [buscaDebounced, setBuscaDebounced] = useState(() => (filtrosIniciais?.buscaTexto ?? '').trim());
   const [resultadoProcessamento, setResultadoProcessamento] = useState(null);
+  const [progressoProcessamento, setProgressoProcessamento] = useState('');
   const [ultimaSyncGmail, setUltimaSyncGmail] = useState(null);
   const [processandoCompleto, setProcessandoCompleto] = useState(false);
   const [expandidoId, setExpandidoId] = useState(null);
@@ -478,6 +483,7 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
   const [carregandoSugestoes, setCarregandoSugestoes] = useState(false);
   const [vinculoModal, setVinculoModal] = useState(null);
   const [ordemDataAsc, setOrdemDataAsc] = useState(() => filtrosIniciais?.ordemDataAsc ?? false);
+  const [ordenarPorEntrada, setOrdenarPorEntrada] = useState(() => filtrosIniciais?.ordenarPorEntrada ?? false);
   const [aplicandoSugestoes, setAplicandoSugestoes] = useState(false);
   const sugestoesAutoTentadasRef = useRef(new Set());
 
@@ -489,6 +495,7 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
       filtroRecebimentoInicio,
       filtroRecebimentoFim,
       ordemDataAsc,
+      ordenarPorEntrada,
     });
   }, [
     variant,
@@ -498,6 +505,7 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
     filtroRecebimentoInicio,
     filtroRecebimentoFim,
     ordemDataAsc,
+    ordenarPorEntrada,
   ]);
 
   useEffect(() => {
@@ -587,8 +595,15 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
   }, [carregarSyncGmail]);
 
   const rowsExibidas = useMemo(() => {
-    return ordenarPorEntradaEmail(rows, ordemDataAsc);
-  }, [rows, ordemDataAsc]);
+    if (!cfg.ordenarPelaCaixaGmail) {
+      return ordenarPorEntradaEmail(rows, ordemDataAsc);
+    }
+    const naCaixa = rows.filter(temOrdemCaixaGmail);
+    if (ordenarPorEntrada) {
+      return ordenarPorEntradaEmail(naCaixa, ordemDataAsc);
+    }
+    return ordenarPorOrdemCaixaGmail(naCaixa, false);
+  }, [rows, ordemDataAsc, ordenarPorEntrada, cfg.ordenarPelaCaixaGmail]);
 
   const totalLabel = useMemo(() => {
     const n = rows.length;
@@ -622,9 +637,23 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
     setErr('');
     setMsgOk('');
     setResultadoProcessamento(null);
+    setProgressoProcessamento('');
     try {
-      const res = await cfg.processar({ forcar: forcarAtualizacaoCompleta });
+      const res = await cfg.processar({
+        forcar: forcarAtualizacaoCompleta,
+        onProgress: (run, fonte) => {
+          if (!run) return;
+          const status =
+            run.status === 'RUNNING'
+              ? 'processando em segundo plano…'
+              : run.status === 'SUCCESS'
+                ? 'concluído'
+                : run.status;
+          setProgressoProcessamento(`${fonte}: ${status}`);
+        },
+      });
       setResultadoProcessamento(res);
+      setProgressoProcessamento('');
       if (res?.ultimaSincronizacaoGravada) {
         setUltimaSyncGmail(res.ultimaSincronizacaoGravada);
       } else {
@@ -632,6 +661,7 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
       }
       await carregar();
     } catch (e) {
+      setProgressoProcessamento('');
       setErr(mensagemErroAmigavel(e, 'processar os emails'));
     } finally {
       setProcessando(false);
@@ -917,6 +947,11 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
 
   const toggleOrdemDataPublicacao = (e) => {
     e.preventDefault();
+    if (cfg.ordenarPelaCaixaGmail && !ordenarPorEntrada) {
+      setOrdenarPorEntrada(true);
+      setOrdemDataAsc(false);
+      return;
+    }
     setOrdemDataAsc((v) => !v);
   };
 
@@ -993,10 +1028,44 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
           </p>
         </div>
 
+        {progressoProcessamento ? (
+          <div className="rounded-xl border border-sky-200 bg-sky-50/80 p-4 text-sm dark:border-sky-900/50 dark:bg-sky-950/30">
+            <p className="inline-flex items-center gap-2 font-medium text-sky-900 dark:text-sky-100">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {progressoProcessamento}
+            </p>
+            <p className="mt-1 text-sky-800 dark:text-sky-200">
+              A atualização completa roda no servidor; você pode aguardar nesta tela.
+            </p>
+          </div>
+        ) : null}
+
         {resultadoProcessamento ? (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-4 text-sm dark:border-emerald-900/50 dark:bg-emerald-950/30">
-            <p className="font-medium text-emerald-900 dark:text-emerald-100">Processamento concluído</p>
-            <ul className="mt-2 space-y-1 text-emerald-800 dark:text-emerald-200">
+          <div
+            className={`rounded-xl border p-4 text-sm ${
+              (resultadoProcessamento.erros || []).length > 0
+                ? 'border-amber-200 bg-amber-50/80 dark:border-amber-900/50 dark:bg-amber-950/30'
+                : 'border-emerald-200 bg-emerald-50/80 dark:border-emerald-900/50 dark:bg-emerald-950/30'
+            }`}
+          >
+            <p
+              className={`font-medium ${
+                (resultadoProcessamento.erros || []).length > 0
+                  ? 'text-amber-900 dark:text-amber-100'
+                  : 'text-emerald-900 dark:text-emerald-100'
+              }`}
+            >
+              {(resultadoProcessamento.erros || []).length > 0
+                ? 'Processamento concluído com avisos'
+                : 'Processamento concluído'}
+            </p>
+            <ul
+              className={`mt-2 space-y-1 ${
+                (resultadoProcessamento.erros || []).length > 0
+                  ? 'text-amber-900 dark:text-amber-100'
+                  : 'text-emerald-800 dark:text-emerald-200'
+              }`}
+            >
               <li>
                 Modo:{' '}
                 {resultadoProcessamento.forcarAtualizacao
@@ -1016,6 +1085,15 @@ export function PublicacoesEmail({ variant = 'jusbrasil' }) {
               <li>Vínculos automáticos (CNJ): {resultadoProcessamento.vinculosAutomaticos ?? 0}</li>
               <li>Erros: {(resultadoProcessamento.erros || []).length}</li>
             </ul>
+            {(resultadoProcessamento.erros || []).length > 0 ? (
+              <ul className="mt-3 list-disc space-y-1 pl-5 text-amber-950 dark:text-amber-50">
+                {(resultadoProcessamento.erros || []).map((msg, idx) => (
+                  <li key={`${idx}-${msg}`} className="break-words">
+                    {msg}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </div>
         ) : null}
 

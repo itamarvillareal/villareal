@@ -24,6 +24,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -92,9 +93,22 @@ public class GmailMovimentacaoEmailEngine {
     /** Disparo manual: incremental por padrão, caixa completa (reprocessando) com {@code forcar}. */
     public PublicacaoEmailProcessamentoResumo processarManual(FonteMovimentacaoEmail fonte, boolean forcar)
             throws IOException {
+        return processarManual(fonte, forcar, null);
+    }
+
+    /**
+     * Disparo manual com cursor temporário ({@code desdeOverride}) para recuperar e-mails que o cursor
+     * tenha ultrapassado sem importação.
+     */
+    public PublicacaoEmailProcessamentoResumo processarManual(
+            FonteMovimentacaoEmail fonte, boolean forcar, Instant desdeOverride) throws IOException {
         if (forcar) {
             String query = EmailImportacaoSyncService.montarQueryCaixaCompleta(fonte.queryBase());
             return buscarEProcessar(fonte, query, true, true, false);
+        }
+        if (desdeOverride != null) {
+            String query = EmailImportacaoSyncService.montarQueryIncremental(fonte.queryBase(), desdeOverride);
+            return buscarEProcessar(fonte, query, false, true, true);
         }
         return processarIncremental(fonte);
     }
@@ -138,16 +152,20 @@ public class GmailMovimentacaoEmailEngine {
             boolean jaImportado = emailJaImportado(messageId);
 
             if (!reprocessarEmailsExistentes && jaImportado) {
+                emailMaisRecente = maisRecente(emailMaisRecente, obterDataRecebimentoMensagem(gmail, messageId));
                 continue;
             }
 
+            Map<String, String> statusPreservados = Map.of();
             if (reprocessarEmailsExistentes && jaImportado) {
+                statusPreservados = importacaoTransacional.capturarStatusPreservaveisDoEmail(messageId);
                 int removidos = importacaoTransacional.removerPublicacoesDoEmail(messageId);
                 log.info(
-                        "Reprocessamento email {} {}: removidas {} movimentação(ões) anteriores",
+                        "Reprocessamento email {} {}: removidas {} movimentação(ões) anteriores (status preservados: {})",
                         fonte.rotulo(),
                         messageId,
-                        removidos);
+                        removidos,
+                        statusPreservados.size());
             }
 
             try {
@@ -163,8 +181,7 @@ public class GmailMovimentacaoEmailEngine {
                 }
 
                 String arquivoOrigem = montarArquivoOrigem(assunto, messageId, fonte.arquivoFallbackPrefix());
-                Instant emailRecebidoEm = extrairDataRecebimentoEmail(completa);
-                emailMaisRecente = maisRecente(emailMaisRecente, emailRecebidoEm);
+                Instant emailRecebidoEm = GmailEmailRecebimentoUtil.extrairDataRecebimento(completa);
 
                 String snippet = completa.getSnippet();
                 List<PublicacaoWriteRequest> manifestacoes =
@@ -176,7 +193,11 @@ public class GmailMovimentacaoEmailEngine {
                             messageId,
                             assunto,
                             snippet);
+                    marcarComoLido(gmail, messageId);
+                    resumo.setEmailsLidos(resumo.getEmailsLidos() + 1);
+                    continue;
                 }
+                emailMaisRecente = maisRecente(emailMaisRecente, emailRecebidoEm);
                 for (PublicacaoWriteRequest req : manifestacoes) {
                     req.setEmailRecebidoEm(emailRecebidoEm);
                 }
@@ -200,6 +221,9 @@ public class GmailMovimentacaoEmailEngine {
                         if (pubId == null) {
                             duplicadas++;
                             continue;
+                        }
+                        if (!statusPreservados.isEmpty()) {
+                            importacaoTransacional.reaplicarStatusPreservados(pubId, statusPreservados);
                         }
                         gravadas++;
                         resumo.setPublicacoesProcessadas(resumo.getPublicacoesProcessadas() + 1);
@@ -267,13 +291,9 @@ public class GmailMovimentacaoEmailEngine {
         resumo.setProcessosUnicos(processosUnicosLote.size());
 
         if (atualizarCursor) {
-            Instant cursorGravar = emailMaisRecente != null ? emailMaisRecente : Instant.now();
-            if (!mensagens.isEmpty()
-                    && (cursorAnterior == null || !cursorGravar.isAfter(cursorAnterior))) {
-                cursorGravar = Instant.now();
-            }
-            Instant gravado = syncService.registrarSincronizacao(fonte.tipo(), cursorGravar);
-            resumo.setUltimaSincronizacaoGravada(gravado);
+            cursorParaGravar(cursorAnterior, emailMaisRecente)
+                    .ifPresent(cursor -> resumo.setUltimaSincronizacaoGravada(
+                            syncService.registrarSincronizacao(fonte.tipo(), cursor)));
         }
 
         if (fonte.tipo() == EmailImportacaoSyncTipo.PROJUDI && !pipelineProperties.isEnabled()) {
@@ -303,6 +323,22 @@ public class GmailMovimentacaoEmailEngine {
             return candidato;
         }
         return atual;
+    }
+
+    /** Só avança o cursor quando há data de e-mail processada mais recente que o cursor anterior. */
+    private static Optional<Instant> cursorParaGravar(Instant cursorAnterior, Instant emailMaisRecente) {
+        if (emailMaisRecente == null) {
+            return Optional.empty();
+        }
+        if (cursorAnterior == null || emailMaisRecente.isAfter(cursorAnterior)) {
+            return Optional.of(emailMaisRecente);
+        }
+        return Optional.empty();
+    }
+
+    private Instant obterDataRecebimentoMensagem(Gmail gmail, String messageId) throws IOException {
+        Message meta = gmail.users().messages().get(gmailUser, messageId).setFormat("minimal").execute();
+        return GmailEmailRecebimentoUtil.extrairDataRecebimento(meta);
     }
 
     private boolean emailJaImportado(String messageId) {
@@ -346,11 +382,7 @@ public class GmailMovimentacaoEmailEngine {
     }
 
     private static Instant extrairDataRecebimentoEmail(Message message) {
-        Long ms = message.getInternalDate();
-        if (ms == null || ms <= 0L) {
-            return null;
-        }
-        return Instant.ofEpochMilli(ms);
+        return GmailEmailRecebimentoUtil.extrairDataRecebimento(message);
     }
 
     private static String montarArquivoOrigem(String assunto, String messageId, String fallbackPrefix) {

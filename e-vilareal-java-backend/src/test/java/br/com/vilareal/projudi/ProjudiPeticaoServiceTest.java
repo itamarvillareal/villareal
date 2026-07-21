@@ -23,6 +23,20 @@ class ProjudiPeticaoServiceTest {
     }
 
     @Test
+    void resolverNomeArquivoUpload_normalizaP7sSemPdf() {
+        String nome = ProjudiPeticaoService.resolverNomeArquivoUpload(
+                "01._peticaoexecucao0000029928_1.p7s", "inicial", 1L, 0);
+        assertEquals("01._peticaoexecucao0000029928_1.pdf.p7s", nome);
+    }
+
+    @Test
+    void normalizarNomeP7sParaUpload_preservaPdfP7s() {
+        assertEquals(
+                "Peticao.pdf.p7s",
+                ProjudiPeticaoService.normalizarNomeP7sParaUpload("Peticao.pdf.p7s"));
+    }
+
+    @Test
     void encFormComponent_codificaMaisComoPercent2B() {
         String encoded = ProjudiPeticaoService.encFormComponent("data:application/pkcs7-signature;base64,ABC+DEF/GHI=");
         assertTrue(encoded.contains("%2B"), encoded);

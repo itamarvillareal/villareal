@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, FileText, Loader2, Trash2, UserRound } from 'lucide-react';
+import { AlertTriangle, FileText, Forward, Loader2, Trash2, UserRound } from 'lucide-react';
 import { formatTimeBR, formatPhoneDisplay, formatDateTimeBR } from '../../../utils/whatsappFormat.js';
 import { reprocessarWhatsAppMedia } from '../../../repositories/whatsappRepository.js';
 import { useWhatsAppMediaUrl } from '../hooks/useWhatsAppMediaUrl.js';
@@ -20,6 +20,10 @@ import { mapsUrl, parseLocationContent } from '../utils/whatsappLocation.js';
 import { labelReactionThread } from '../utils/whatsappReaction.js';
 import { parseInteractiveReplyContent } from '../utils/whatsappInteractiveReply.js';
 import { highlightText } from '../../../utils/highlightText.jsx';
+import {
+  motivoEncaminharIndisponivel,
+  podeEncaminharMensagem,
+} from '../utils/whatsappForwardEligibility.js';
 
 function BubbleText({ text, highlightTerm, active }) {
   const rendered = highlightText(text, highlightTerm, { active });
@@ -696,6 +700,10 @@ export function ChatBubble({
   highlightTerm = '',
   isActiveSearchMatch = false,
   onDeleteMessage,
+  onForwardMessage,
+  forwardSelectMode = false,
+  forwardSelected = false,
+  onToggleForwardSelect,
 }) {
   const isOutbound = String(message.direction ?? '').toUpperCase() === 'OUTBOUND';
   const hasTemplate = Boolean(message.templateName);
@@ -722,12 +730,14 @@ export function ChatBubble({
   const isContact = type === 'CONTACT';
   const isLocation = type === 'LOCATION';
   const isInteractive = type === 'INTERACTIVE' || type === 'BUTTON';
+  const isUnsupported = type === 'UNSUPPORTED';
   const parsedLocation = isLocation ? parseLocationContent(message.content) : null;
   const parsedInteractive = isInteractive ? parseInteractiveReplyContent(message.content) : null;
   const isMedia =
     !isContact &&
     !isLocation &&
     !isInteractive &&
+    !isUnsupported &&
     (MEDIA_TYPES.includes(type) ||
       Boolean(message.mediaId) ||
       Boolean(message.localPreviewUrl) ||
@@ -742,6 +752,19 @@ export function ChatBubble({
       activeHighlight={isActiveSearchMatch}
     />
   ) : null;
+  const unsupportedContent = isUnsupported ? (
+    <p className="text-sm whitespace-pre-wrap break-words flex items-start gap-1.5">
+      <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-500 dark:text-amber-400" aria-hidden />
+      <BubbleText
+        text={
+          message.content ||
+          '🚫 Conteúdo não suportado pelo WhatsApp Business — peça ao contato para reenviar como mensagem comum.'
+        }
+        highlightTerm={highlightTerm}
+        active={isActiveSearchMatch}
+      />
+    </p>
+  ) : null;
   const contactContent = isContact ? <ContactBubbleContent message={message} isOutbound={isOutbound} /> : null;
   const locationContent =
     parsedLocation ? <LocationBubbleContent location={parsedLocation} isOutbound={isOutbound} /> : null;
@@ -751,35 +774,100 @@ export function ChatBubble({
 
   const canDelete =
     typeof onDeleteMessage === 'function' && typeof message?.id === 'number' && message.id > 0;
+  const canForward =
+    typeof onForwardMessage === 'function' && podeEncaminharMensagem(message);
+  const forwardBlockedReason = canForward ? null : motivoEncaminharIndisponivel(message);
+  const showForwardCheckbox =
+    forwardSelectMode && canForward && typeof onToggleForwardSelect === 'function';
   const attachedReactions = Array.isArray(message.attachedReactions) ? message.attachedReactions : [];
   const hasReactionBadge = attachedReactions.length > 0;
 
   return (
     <div
       id={message.id != null ? `msg-${message.id}` : undefined}
-      className={`group/msg relative flex ${isOutbound ? 'justify-end' : 'justify-start'} ${
+      className={`group/msg relative flex items-start gap-2 ${isOutbound ? 'justify-end' : 'justify-start'} ${
         hasReactionBadge ? 'mb-2' : ''
       } ${
         isActiveSearchMatch ? 'rounded-2xl ring-2 ring-amber-500 ring-offset-2 ring-offset-[#e5ddd5] dark:ring-offset-slate-800/50' : ''
-      }`}
+      } ${forwardSelectMode && canForward ? 'cursor-pointer' : ''}`}
+      onClick={
+        showForwardCheckbox
+          ? (e) => {
+              if (e.target.closest('a, button, input, textarea, select, label')) return;
+              onToggleForwardSelect(message);
+            }
+          : undefined
+      }
+      onKeyDown={
+        showForwardCheckbox
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onToggleForwardSelect(message);
+              }
+            }
+          : undefined
+      }
+      role={showForwardCheckbox ? 'button' : undefined}
+      tabIndex={showForwardCheckbox ? 0 : undefined}
     >
+      {forwardSelectMode ? (
+        <div className={`shrink-0 pt-2 ${isOutbound ? 'order-2' : 'order-1'}`}>
+          {showForwardCheckbox ? (
+            <input
+              type="checkbox"
+              checked={forwardSelected}
+              onChange={() => onToggleForwardSelect(message)}
+              onClick={(e) => e.stopPropagation()}
+              className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+              aria-label="Selecionar mensagem para encaminhar"
+            />
+          ) : (
+            <span className="inline-block h-4 w-4" aria-hidden />
+          )}
+        </div>
+      ) : null}
       <div
         className={`relative max-w-[85%] sm:max-w-[70%] rounded-2xl px-3 py-2 shadow-sm ${
           isOutbound
             ? 'bg-[#25D366] text-white rounded-br-md'
             : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-bl-md'
-        } ${isMedia ? 'bg-opacity-95' : ''}`}
+        } ${isMedia ? 'bg-opacity-95' : ''} ${forwardSelected ? 'ring-2 ring-emerald-500 ring-offset-1 ring-offset-[#e5ddd5] dark:ring-offset-slate-800/50' : ''}`}
       >
-        {canDelete ? (
-          <button
-            type="button"
-            onClick={() => onDeleteMessage(message)}
-            className={`absolute -top-2 ${isOutbound ? '-left-2' : '-right-2'} z-10 inline-flex items-center gap-0.5 rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-red-600 shadow-sm opacity-0 transition-opacity group-hover/msg:opacity-100 focus:opacity-100 dark:border-slate-600 dark:bg-slate-800 dark:text-red-400`}
-            title="Apagar mensagem"
+        {!forwardSelectMode && (canDelete || canForward) ? (
+          <div
+            className={`absolute -top-2 ${isOutbound ? '-left-2' : '-right-2'} z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover/msg:opacity-100 focus-within:opacity-100`}
           >
-            <Trash2 className="h-3 w-3" aria-hidden />
-            Apagar
-          </button>
+            {canForward ? (
+              <button
+                type="button"
+                onClick={() => onForwardMessage(message)}
+                className="inline-flex items-center gap-0.5 rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 shadow-sm dark:border-slate-600 dark:bg-slate-800 dark:text-emerald-300"
+                title="Encaminhar mensagem"
+              >
+                <Forward className="h-3 w-3" aria-hidden />
+                Encaminhar
+              </button>
+            ) : forwardBlockedReason && typeof onForwardMessage === 'function' ? (
+              <span
+                className="inline-flex items-center rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] text-slate-400 shadow-sm dark:border-slate-600 dark:bg-slate-800"
+                title={forwardBlockedReason}
+              >
+                Encaminhar
+              </span>
+            ) : null}
+            {canDelete ? (
+              <button
+                type="button"
+                onClick={() => onDeleteMessage(message)}
+                className="inline-flex items-center gap-0.5 rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-red-600 shadow-sm dark:border-slate-600 dark:bg-slate-800 dark:text-red-400"
+                title="Apagar mensagem"
+              >
+                <Trash2 className="h-3 w-3" aria-hidden />
+                Apagar
+              </button>
+            ) : null}
+          </div>
         ) : null}
         {hasTemplate ? (
           <span
@@ -790,7 +878,7 @@ export function ChatBubble({
             Template: {message.templateName}
           </span>
         ) : null}
-        {contactContent ?? locationContent ?? interactiveContent ?? mediaContent ?? (
+        {unsupportedContent ?? contactContent ?? locationContent ?? interactiveContent ?? mediaContent ?? (
           <p className="text-sm whitespace-pre-wrap break-words">
             <BubbleText
               text={formatTemplateContent(message)}

@@ -5,49 +5,44 @@ import { StatsCard } from './components/StatsCard.jsx';
 import { ScheduleCard } from './components/ScheduleCard.jsx';
 import { WhatsAppStatusBanner } from './components/WhatsAppStatusBanner.jsx';
 import { useWhatsApp } from './hooks/useWhatsApp.js';
+import { useWhatsAppIntegrationStatus } from './hooks/useWhatsAppIntegrationStatus.js';
 import { useWhatsAppToast } from './WhatsAppToast.jsx';
 import { ConfirmDialog } from '../financeiro/shared/ConfirmDialog.jsx';
 import { cancelWhatsAppScheduledItem, scheduledItemKey } from '../../repositories/whatsappRepository.js';
 import { mensagemErroAmigavel } from '../../utils/mensagemErroAmigavel.js';
 
 export function WhatsAppDashboard() {
-  const { getStats, getScheduled } = useWhatsApp();
+  const { getScheduled } = useWhatsApp();
+  const integrationStatus = useWhatsAppIntegrationStatus();
   const toast = useWhatsAppToast();
-  const [stats, setStats] = useState(null);
+  const stats = integrationStatus.stats;
   const [pending, setPending] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [statsLoadOk, setStatsLoadOk] = useState(false);
+  const [loadingSched, setLoadingSched] = useState(true);
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelling, setCancelling] = useState(false);
 
-  const loadData = useCallback(async (signal) => {
+  const loadScheduled = useCallback(async (signal) => {
     try {
-      const [statsRes, schedRes] = await Promise.all([
-        getStats(signal),
-        getScheduled('PENDING', 0, 5, signal),
-      ]);
-      setStats(statsRes);
-      setStatsLoadOk(true);
+      const schedRes = await getScheduled('PENDING', 0, 5, signal);
       setPending(Array.isArray(schedRes?.content) ? schedRes.content : []);
     } catch (err) {
       if (err?.name !== 'AbortError') {
-        setStatsLoadOk(false);
-        toast.error(mensagemErroAmigavel(err, 'carregar o resumo do WhatsApp'));
+        toast.error(mensagemErroAmigavel(err, 'carregar os agendamentos do WhatsApp'));
       }
     } finally {
-      setLoading(false);
+      setLoadingSched(false);
     }
-  }, [getStats, getScheduled, toast]);
+  }, [getScheduled, toast]);
 
   useEffect(() => {
     const ac = new AbortController();
-    loadData(ac.signal);
-    const interval = window.setInterval(() => loadData(undefined), 30_000);
+    loadScheduled(ac.signal);
+    const interval = window.setInterval(() => loadScheduled(undefined), 30_000);
     return () => {
       ac.abort();
       window.clearInterval(interval);
     };
-  }, [loadData]);
+  }, [loadScheduled]);
 
   const handleCancel = async () => {
     if (!cancelTarget) return;
@@ -79,19 +74,19 @@ export function WhatsAppDashboard() {
       </p>
 
       <WhatsAppStatusBanner
-        configured={stats?.integrationConfigured}
-        loadOk={statsLoadOk}
-        fetchedAt={stats?.fetchedAt}
-        loading={loading && !stats}
+        configured={integrationStatus.configured}
+        loadOk={integrationStatus.loadOk}
+        fetchedAt={integrationStatus.fetchedAt}
+        loading={integrationStatus.loading}
       />
 
-      {statsLoadOk && stats?.integrationConfigured && todosZerados ? (
+      {integrationStatus.loadOk && integrationStatus.configured && todosZerados ? (
         <p className="text-sm text-slate-600 dark:text-slate-400 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 px-4 py-3">
           Nenhuma mensagem registrada hoje — a integração está ativa e funcionando normalmente.
         </p>
       ) : null}
 
-      {loading && !stats ? (
+      {integrationStatus.loading && !stats ? (
         <div className="flex justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
         </div>
@@ -114,7 +109,9 @@ export function WhatsAppDashboard() {
         {pending.length === 0 ? (
           <div className="px-4 py-8 text-center">
             <CalendarClock className="w-10 h-10 mx-auto text-slate-300 dark:text-slate-600 mb-2" aria-hidden />
-            <p className="text-sm text-slate-600 dark:text-slate-400">Nenhum agendamento pendente no momento.</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              {loadingSched ? 'Carregando agendamentos…' : 'Nenhum agendamento pendente no momento.'}
+            </p>
             <Link
               to="/whatsapp/agendamentos"
               className="inline-flex mt-3 text-sm font-medium text-emerald-700 hover:text-emerald-800 dark:text-emerald-400 underline"

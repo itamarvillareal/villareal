@@ -99,6 +99,7 @@ public class ProjudiPeticaoProtocoloLoteService {
         if (peticaoIds == null || peticaoIds.isEmpty()) {
             throw new IllegalArgumentException("peticaoIds é obrigatório (ao menos um id).");
         }
+        validarPeticaoIdsNaoSaoInicialDistribuicao(peticaoIds);
 
         Optional<List<ResultadoItemLote>> resultado = orquestradorGate.executarComRetornoAguardando(
                 "peticao/protocolar-lote",
@@ -221,11 +222,26 @@ public class ProjudiPeticaoProtocoloLoteService {
     }
 
     private List<Long> idsAssinadasParaProtocolo(String numeroProcesso) {
+        if (ProjudiInicialAssinaturaService.ehChaveInicialDistribuicao(numeroProcesso)) {
+            return List.of();
+        }
         return registroService.listarPorProcesso(numeroProcesso).stream()
                 .filter(p -> ProjudiPeticaoProtocoloEstadoService.STATUS_ASSINADA.equals(p.getStatus()))
                 .map(ProjudiPeticaoEntity::getId)
                 .sorted()
                 .toList();
+    }
+
+    private void validarPeticaoIdsNaoSaoInicialDistribuicao(List<Long> peticaoIds) {
+        for (Long id : peticaoIds) {
+            if (id == null) {
+                continue;
+            }
+            ProjudiPeticaoEntity peticao = peticaoRepository
+                    .findById(id)
+                    .orElseThrow(() -> new IllegalArgumentException("Petição não encontrada: " + id));
+            ProjudiInicialAssinaturaService.exigirNaoEhInicialDistribuicao(peticao.getNumeroProcesso(), id);
+        }
     }
 
     private PreviaProtocoloResponse montarPrevia(List<Long> peticaoIds, String numeroProcessoLabel) {

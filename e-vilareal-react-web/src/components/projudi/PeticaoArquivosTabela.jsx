@@ -1,4 +1,5 @@
 import { FileText, Loader2, Trash2 } from 'lucide-react';
+import { isChavePeticaoInicialDistribuicao } from '../../domain/peticaoInicialProjudi.js';
 
 const TIPOS_ARQUIVO = [
   { id: 16, label: 'Petição' },
@@ -18,16 +19,72 @@ export function formatDateTimePeticao(iso) {
   }
 }
 
-function podeExcluirArquivo(peticao, arquivo) {
-  return (
-    peticao?.status === 'PENDENTE_ASSINATURA' && arquivo?.status === 'PENDENTE_ASSINATURA' && arquivo?.id != null
-  );
+function statusPeticaoExcluivel(status) {
+  return status === 'PENDENTE_ASSINATURA' || status === 'ASSINADA' || status === 'ERRO';
 }
 
-function podeExcluirPeticao(peticao) {
-  if (peticao?.status !== 'PENDENTE_ASSINATURA') return false;
+export function podeExcluirArquivoPeticao(peticao, arquivo) {
+  if (!statusPeticaoExcluivel(peticao?.status) && !isChavePeticaoInicialDistribuicao(peticao?.numeroProcesso)) {
+    return false;
+  }
+  if (arquivo?.id == null) return false;
+  if (isChavePeticaoInicialDistribuicao(peticao?.numeroProcesso)) return true;
+  return arquivo.status === 'PENDENTE_ASSINATURA' || arquivo.status === 'ASSINADO';
+}
+
+export function podeExcluirPeticaoFilaInicial(peticao) {
+  return isChavePeticaoInicialDistribuicao(peticao?.numeroProcesso) && peticao?.id != null;
+}
+
+function podeExcluirArquivo(peticao, arquivo) {
+  return podeExcluirArquivoPeticao(peticao, arquivo);
+}
+
+export function podeExcluirPeticao(peticao) {
+  if (podeExcluirPeticaoFilaInicial(peticao)) return (peticao?.arquivos || []).length > 0;
+  if (!statusPeticaoExcluivel(peticao?.status)) return false;
   const arquivos = peticao?.arquivos || [];
-  return arquivos.length > 0 && arquivos.every((a) => a.status === 'PENDENTE_ASSINATURA');
+  return arquivos.length > 0 && arquivos.every((a) => podeExcluirArquivoPeticao(peticao, a));
+}
+
+/**
+ * Linha compacta de arquivo com botão de exclusão individual.
+ * @param {{
+ *   peticao: import('../../api/peticoesProjudiApi.js').ProjudiPeticao,
+ *   arquivo: import('../../api/peticoesProjudiApi.js').ProjudiPeticaoArquivo,
+ *   operacao?: string | null,
+ *   bloqueado?: boolean,
+ *   onExcluir?: (peticaoId: number, arquivoId: number, nome: string) => void,
+ * }} props
+ */
+export function PeticaoArquivoLinhaExcluir({ peticao, arquivo, operacao = null, bloqueado = false, onExcluir }) {
+  const excluivel = podeExcluirArquivoPeticao(peticao, arquivo) && onExcluir;
+  const chave = `excluir-arq-${peticao.id}-${arquivo.id}`;
+  const excluindo = operacao === chave;
+
+  return (
+    <div className="flex items-center gap-1 text-xs text-slate-600 min-w-0">
+      <span className="truncate flex-1" title={arquivo.nomeOriginal || undefined}>
+        {arquivo.nomeOriginal} ({labelTipoArquivoPeticao(arquivo.idArquivoTipo)})
+      </span>
+      {excluivel ? (
+        <button
+          type="button"
+          className="shrink-0 p-0.5 text-rose-600 hover:text-rose-800 disabled:opacity-50"
+          disabled={bloqueado || !!operacao}
+          onClick={() => onExcluir(peticao.id, arquivo.id, arquivo.nomeOriginal || 'arquivo')}
+          title="Excluir este arquivo"
+          aria-label={`Excluir ${arquivo.nomeOriginal || 'arquivo'}`}
+        >
+          {excluindo ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
+          ) : (
+            <Trash2 className="w-3.5 h-3.5" aria-hidden />
+          )}
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 /**

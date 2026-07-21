@@ -20,9 +20,80 @@ public interface PublicacaoRepository extends JpaRepository<PublicacaoEntity, Lo
     /** Detecta email Gmail já importado ({@code arquivo_origem_nome} termina com {@code [messageId]}). */
     boolean existsByArquivoOrigemNomeContaining(String fragment);
 
+    boolean existsByArquivoOrigemNomeContainingAndOrigemImportacaoIn(
+            String fragment, Collection<String> origensImportacao);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(
+            """
+            UPDATE PublicacaoEntity p
+            SET p.gmailCaixaOrdem = :ordem
+            WHERE p.arquivoOrigemNome LIKE CONCAT('%[', :messageId, ']%')
+              AND p.origemImportacao IN :origens
+            """)
+    int updateGmailCaixaOrdemForMessage(
+            @Param("messageId") String messageId,
+            @Param("ordem") int ordem,
+            @Param("origens") Collection<String> origens);
+
+    /**
+     * {@code emailRecebidoEm} nunca regride: PUSH TRT em thread antiga tem Date/internalDate
+     * defasados no Gmail; a entrada já corrigida (ex.: importação em 12/07) deve prevalecer.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(
+            """
+            UPDATE PublicacaoEntity p
+            SET p.gmailCaixaOrdem = :ordem,
+                p.emailRecebidoEm = CASE
+                    WHEN p.emailRecebidoEm IS NULL OR p.emailRecebidoEm < :emailRecebidoEm
+                        THEN :emailRecebidoEm
+                    ELSE p.emailRecebidoEm
+                END
+            WHERE p.arquivoOrigemNome LIKE CONCAT('%[', :messageId, ']%')
+              AND p.origemImportacao IN :origens
+            """)
+    int updateGmailCaixaOrdemAndEmailRecebidoForMessage(
+            @Param("messageId") String messageId,
+            @Param("ordem") int ordem,
+            @Param("emailRecebidoEm") Instant emailRecebidoEm,
+            @Param("origens") Collection<String> origens);
+
+    /** Pares (id, arquivoOrigemNome) para montar o índice messageId → publicações. */
+    @Query(
+            """
+            SELECT p.id, p.arquivoOrigemNome
+            FROM PublicacaoEntity p
+            WHERE p.origemImportacao IN :origens
+              AND p.arquivoOrigemNome IS NOT NULL
+            """)
+    List<Object[]> findIdAndArquivoOrigemNomeByOrigemImportacaoIn(@Param("origens") Collection<String> origens);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE PublicacaoEntity p SET p.gmailCaixaOrdem = NULL WHERE p.origemImportacao IN :origens")
+    int clearGmailCaixaOrdem(@Param("origens") Collection<String> origens);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE PublicacaoEntity p SET p.gmailCaixaOrdem = :ordem WHERE p.id IN :ids")
+    int updateGmailCaixaOrdemForIds(@Param("ids") Collection<Long> ids, @Param("ordem") int ordem);
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM PublicacaoEntity p WHERE p.arquivoOrigemNome LIKE CONCAT('%', :fragment, '%')")
     int deleteByArquivoOrigemNomeContaining(@Param("fragment") String fragment);
+
+    /**
+     * Antes de apagar publicações de um email no reprocessamento Gmail, captura
+     * {@code hash_conteudo → status_tratamento} para reaplicar após reimportação.
+     */
+    @Query(
+            """
+            SELECT p.hashConteudo, p.statusTratamento
+            FROM PublicacaoEntity p
+            WHERE p.arquivoOrigemNome LIKE CONCAT('%', :fragment, '%')
+              AND p.hashConteudo IS NOT NULL
+              AND p.statusTratamento IN ('TRATADA', 'IGNORADA')
+            """)
+    List<Object[]> findHashStatusPreservaveisByArquivoOrigemNomeContaining(@Param("fragment") String fragment);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(
@@ -74,6 +145,27 @@ public interface PublicacaoRepository extends JpaRepository<PublicacaoEntity, Lo
             ORDER BY p.processo.id ASC
             """)
     List<Long> findDistinctProcessoIdsComPublicacaoProjudiCnjCompleto();
+
+    /**
+     * Últimos processos distintos com publicação PROJUDI (Movimentações Email), ordenados pela
+     * entrada de e-mail mais recente (fiel à fila da UI).
+     */
+    @Query(
+            value =
+                    """
+            SELECT proc_id FROM (
+              SELECT p.processo_id AS proc_id,
+                     MAX(COALESCE(p.email_recebido_em, p.created_at)) AS ultimo_email
+              FROM publicacoes p
+              WHERE p.origem_importacao = 'PROJUDI'
+                AND p.processo_id IS NOT NULL
+              GROUP BY p.processo_id
+              ORDER BY ultimo_email DESC
+              LIMIT :limite
+            ) t
+            """,
+            nativeQuery = true)
+    List<Long> findUltimosProcessoIdsMovimentacoesEmailProjudi(@Param("limite") int limite);
 
     /**
      * Processos com movimentação PROJUDI vinculada ({@code processo_id}) e e-mail recebido desde

@@ -56,6 +56,10 @@ public class ProcessoEntity {
     @Column(name = "audiencia_tipo", length = 120)
     private String audienciaTipo;
 
+    /** Link da reunião virtual (Teams, Meet, Zoom etc.). */
+    @Column(name = "audiencia_link_reuniao", length = 500)
+    private String audienciaLinkReuniao;
+
     /** AVISADO ou NAO_AVISADO (legado «ClienteAvisado»). */
     @Column(name = "aviso_audiencia", length = 20)
     private String avisoAudiencia;

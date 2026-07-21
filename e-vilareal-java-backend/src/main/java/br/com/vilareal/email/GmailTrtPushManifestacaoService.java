@@ -43,6 +43,11 @@ public class GmailTrtPushManifestacaoService {
 
     public PublicacaoEmailProcessamentoResumo buscarEProcessarManifestacoesManual(boolean forcarAtualizacaoCompleta)
             throws IOException {
-        return engine.processarManual(fonte, forcarAtualizacaoCompleta);
+        return buscarEProcessarManifestacoesManual(forcarAtualizacaoCompleta, null);
+    }
+
+    public PublicacaoEmailProcessamentoResumo buscarEProcessarManifestacoesManual(
+            boolean forcarAtualizacaoCompleta, java.time.Instant desdeOverride) throws IOException {
+        return engine.processarManual(fonte, forcarAtualizacaoCompleta, desdeOverride);
     }
 }

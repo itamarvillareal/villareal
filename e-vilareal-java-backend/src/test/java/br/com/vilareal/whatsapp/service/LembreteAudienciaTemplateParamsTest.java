@@ -32,6 +32,25 @@ class LembreteAudienciaTemplateParamsTest {
     }
 
     @Test
+    void montar_comLink_incluiQuartaVariavel() {
+        Instant audiencia =
+                ZonedDateTime.of(2026, 7, 10, 15, 0, 0, 0, ZoneId.of("America/Sao_Paulo")).toInstant();
+
+        List<String> params = LembreteAudienciaTemplateParams.montar(
+                "Maria",
+                "5009686-73.2026.8.09.0007",
+                "Condomínio Solar",
+                "João da Silva",
+                audiencia,
+                "https://meet.google.com/abc-defg-hij");
+
+        assertThat(params).hasSize(4);
+        assertThat(params.get(3)).isEqualTo("https://meet.google.com/abc-defg-hij");
+        assertThat(LembreteAudienciaTemplateParams.resolverNomeTemplate("https://meet.google.com/x"))
+                .isEqualTo(LembreteAudienciaTemplateParams.TEMPLATE_COM_LINK);
+    }
+
+    @Test
     void formatParamProcesso_usaTracoQuandoVazio() {
         assertThat(LembreteAudienciaTemplateParams.formatParamProcesso("123", "", null))
                 .isEqualTo("123 — Cliente: —; Parte autora: —");

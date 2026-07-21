@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import {
   acompanharProtocolo,
+  excluirArquivo,
   excluirPeticao,
   listarCredenciais,
   listarPorProcesso,
@@ -23,7 +24,7 @@ import {
 } from '../../api/peticoesProjudiApi.js';
 import { isArquivoP7s } from '../../domain/peticaoArquivo.js';
 import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
-import { labelTipoArquivoPeticao } from './PeticaoArquivosTabela.jsx';
+import { PeticaoArquivoLinhaExcluir } from './PeticaoArquivosTabela.jsx';
 import { PeticaoHistoricoLista } from './PeticaoHistoricoLista.jsx';
 import { PeticaoProtocoloConfirmModal } from './PeticaoProtocoloConfirmModal.jsx';
 
@@ -262,6 +263,26 @@ export function ModalPeticionamentoProcesso({ open, onClose, numeroCnj, clienteN
     }
   };
 
+  const onExcluirArquivo = async (peticaoId, arquivoId, nomeArquivo) => {
+    if (
+      !window.confirm(
+        `Excluir o arquivo «${nomeArquivo}» da petição #${peticaoId}? Esta ação não pode ser desfeita.`,
+      )
+    ) {
+      return;
+    }
+    setOperacao(`excluir-arq-${peticaoId}-${arquivoId}`);
+    setErro('');
+    try {
+      await excluirArquivo(peticaoId, arquivoId);
+      await recarregar();
+    } catch (e) {
+      setErro(e?.message || 'Falha ao excluir arquivo.');
+    } finally {
+      setOperacao(null);
+    }
+  };
+
   if (!open) return null;
 
   return (
@@ -467,9 +488,13 @@ export function ModalPeticionamentoProcesso({ open, onClose, numeroCnj, clienteN
                           <li key={p.id} className="px-2 py-2 space-y-1">
                             <div className="font-medium">#{p.id}</div>
                             {(p.arquivos || []).slice(0, 2).map((a) => (
-                              <div key={a.id ?? a.ordem} className="text-xs text-slate-600 truncate">
-                                {a.nomeOriginal} ({labelTipoArquivoPeticao(a.idArquivoTipo)})
-                              </div>
+                              <PeticaoArquivoLinhaExcluir
+                                key={a.id ?? a.ordem}
+                                peticao={p}
+                                arquivo={a}
+                                operacao={operacao}
+                                onExcluir={onExcluirArquivo}
+                              />
                             ))}
                             {(p.arquivos || []).length > 2 ? (
                               <div className="text-xs text-slate-500">
@@ -508,9 +533,14 @@ export function ModalPeticionamentoProcesso({ open, onClose, numeroCnj, clienteN
                           <div className="min-w-0 flex-1">
                             <div className="font-medium">#{p.id}</div>
                             {(p.arquivos || []).map((a) => (
-                              <div key={a.id ?? a.ordem} className="text-xs text-slate-600 truncate">
-                                {a.nomeOriginal} ({labelTipoArquivoPeticao(a.idArquivoTipo)})
-                              </div>
+                              <PeticaoArquivoLinhaExcluir
+                                key={a.id ?? a.ordem}
+                                peticao={p}
+                                arquivo={a}
+                                operacao={operacao}
+                                bloqueado={operacao === 'protocolo'}
+                                onExcluir={onExcluirArquivo}
+                              />
                             ))}
                           </div>
                           <button

@@ -100,6 +100,7 @@ export function ModalEnderecos({
   enderecos,
   onChange,
   sugestaoEndereco = null,
+  somenteLeitura = false,
 }) {
   /** Índice ordinal na lista de endereços (1, 2, 3…). */
   const [numeroLista, setNumeroLista] = useState(1);
@@ -347,7 +348,14 @@ export function ModalEnderecos({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 shrink-0">
-          <h2 className="text-lg font-semibold text-gray-800">Endereços</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-semibold text-gray-800">Endereços</h2>
+            {somenteLeitura && (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium">
+                Somente leitura
+              </span>
+            )}
+          </div>
           <button
             type="button"
             onClick={onClose}
@@ -364,7 +372,7 @@ export function ModalEnderecos({
               {codigoPessoa != null && <p className="text-sm text-gray-500">Código: {codigoPessoa}</p>}
             </div>
           )}
-          {featureFlags.useApiPessoasComplementares ? (
+          {featureFlags.useApiPessoasComplementares && !somenteLeitura ? (
             <div className="mb-4">
               <button
                 type="button"
@@ -436,6 +444,7 @@ export function ModalEnderecos({
               ) : null}
             </div>
           ) : null}
+          {!somenteLeitura && (
           <div className="space-y-3 mb-4">
             {editandoIndex >= 0 ? (
               <p className="text-sm text-blue-800 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
@@ -562,6 +571,10 @@ export function ModalEnderecos({
               </button>
             </div>
           </div>
+          )}
+          {somenteLeitura && lista.length === 0 && (
+            <p className="text-sm text-slate-500 text-center py-6">Nenhum endereço registrado.</p>
+          )}
           {lista.length > 0 && (
             <div className="border border-gray-200 rounded-lg overflow-hidden">
               <div className="bg-gray-50 px-3 py-2 text-sm font-medium text-gray-700 border-b border-gray-200">
@@ -591,22 +604,24 @@ export function ModalEnderecos({
                         </span>
                       ) : null}
                     </span>
-                    <span className="shrink-0 flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => iniciarEdicao(i)}
-                        className="text-blue-600 hover:underline"
-                      >
-                        Editar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => remover(i)}
-                        className="text-red-600 hover:underline"
-                      >
-                        Remover
-                      </button>
-                    </span>
+                    {!somenteLeitura && (
+                      <span className="shrink-0 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => iniciarEdicao(i)}
+                          className="text-blue-600 hover:underline"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => remover(i)}
+                          className="text-red-600 hover:underline"
+                        >
+                          Remover
+                        </button>
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>

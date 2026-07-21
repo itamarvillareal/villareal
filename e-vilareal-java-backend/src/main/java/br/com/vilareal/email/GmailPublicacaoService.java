@@ -18,6 +18,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -111,15 +112,19 @@ public class GmailPublicacaoService {
 
             if (!reprocessarEmailsExistentes && jaImportado) {
                 log.debug("Email {} já importado anteriormente; ignorado.", messageId);
+                emailMaisRecente = maisRecente(emailMaisRecente, obterDataRecebimentoMensagem(gmail, messageId));
                 continue;
             }
 
+            Map<String, String> statusPreservados = Map.of();
             if (reprocessarEmailsExistentes && jaImportado) {
+                statusPreservados = importacaoTransacional.capturarStatusPreservaveisDoEmail(messageId);
                 int removidos = importacaoTransacional.removerPublicacoesDoEmail(messageId);
                 log.info(
-                        "Reprocessamento email {}: removidas {} publicação(ões) anteriores antes de nova extração",
+                        "Reprocessamento email {}: removidas {} publicação(ões) anteriores antes de nova extração (status preservados: {})",
                         messageId,
-                        removidos);
+                        removidos,
+                        statusPreservados.size());
             }
 
             try {
@@ -135,7 +140,7 @@ public class GmailPublicacaoService {
                 }
 
                 String arquivoOrigem = montarArquivoOrigem(assunto, messageId);
-                Instant emailRecebidoEm = extrairDataRecebimentoEmail(completa);
+                Instant emailRecebidoEm = GmailEmailRecebimentoUtil.extrairDataRecebimento(completa);
                 emailMaisRecente = maisRecente(emailMaisRecente, emailRecebidoEm);
 
                 log.info(
@@ -181,6 +186,9 @@ public class GmailPublicacaoService {
                                     messageId,
                                     req.getNumeroProcessoEncontrado());
                             continue;
+                        }
+                        if (!statusPreservados.isEmpty()) {
+                            importacaoTransacional.reaplicarStatusPreservados(pubId, statusPreservados);
                         }
                         gravadas++;
                         resumo.setPublicacoesProcessadas(resumo.getPublicacoesProcessadas() + 1);
@@ -232,13 +240,11 @@ public class GmailPublicacaoService {
         resumo.setProcessosUnicos(processosUnicosLote.size());
 
         if (atualizarCursor) {
-            Instant cursorGravar = emailMaisRecente != null ? emailMaisRecente : Instant.now();
-            if (!mensagens.isEmpty()
-                    && (cursorAnterior == null || !cursorGravar.isAfter(cursorAnterior))) {
-                cursorGravar = Instant.now();
+            if (emailMaisRecente != null
+                    && (cursorAnterior == null || emailMaisRecente.isAfter(cursorAnterior))) {
+                Instant gravado = syncService.registrarSincronizacao(EmailImportacaoSyncTipo.JUSBRASIL, emailMaisRecente);
+                resumo.setUltimaSincronizacaoGravada(gravado);
             }
-            Instant gravado = syncService.registrarSincronizacao(EmailImportacaoSyncTipo.JUSBRASIL, cursorGravar);
-            resumo.setUltimaSincronizacaoGravada(gravado);
         }
 
         log.info(
@@ -304,11 +310,7 @@ public class GmailPublicacaoService {
     }
 
     private static Instant extrairDataRecebimentoEmail(Message message) {
-        Long ms = message.getInternalDate();
-        if (ms == null || ms <= 0L) {
-            return null;
-        }
-        return Instant.ofEpochMilli(ms);
+        return GmailEmailRecebimentoUtil.extrairDataRecebimento(message);
     }
 
     private static String montarArquivoOrigem(String assunto, String messageId) {
@@ -332,5 +334,10 @@ public class GmailPublicacaoService {
             }
         }
         return last;
+    }
+
+    private Instant obterDataRecebimentoMensagem(Gmail gmail, String messageId) throws IOException {
+        Message meta = gmail.users().messages().get(gmailUser, messageId).setFormat("minimal").execute();
+        return GmailEmailRecebimentoUtil.extrairDataRecebimento(meta);
     }
 }

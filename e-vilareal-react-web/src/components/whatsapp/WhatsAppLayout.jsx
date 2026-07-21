@@ -2,6 +2,8 @@ import { NavLink, Outlet, useLocation, useSearchParams } from 'react-router-dom'
 import { LayoutDashboard, MessageCircle, Send, CalendarClock, FileText, Cake, Banknote } from 'lucide-react';
 import { WhatsAppToastProvider } from './WhatsAppToast.jsx';
 import { WhatsAppIaToggle } from './components/WhatsAppIaToggle.jsx';
+import { WhatsAppStatusIndicator } from './components/WhatsAppStatusIndicator.jsx';
+import { useWhatsAppIntegrationStatus } from './hooks/useWhatsAppIntegrationStatus.js';
 
 const TABS = [
   { to: '/whatsapp/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -16,6 +18,7 @@ const TABS = [
 export function WhatsAppLayout() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
+  const integrationStatus = useWhatsAppIntegrationStatus();
   const isConversasRoute = /\/whatsapp\/conversas\/?$/.test(location.pathname);
   const conversaAbertaNoMobile = isConversasRoute && Boolean(searchParams.get('telefone')?.trim());
 
@@ -23,10 +26,18 @@ export function WhatsAppLayout() {
     <WhatsAppToastProvider>
       <div className="flex flex-1 flex-col min-h-0 w-full max-md:min-h-[calc(100dvh-3.5rem)]">
         <header className="shrink-0 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-4">
-          <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2 mb-3">
-            <MessageCircle className="w-6 h-6 text-emerald-600" aria-hidden />
-            WhatsApp
-          </h1>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <MessageCircle className="w-6 h-6 text-emerald-600" aria-hidden />
+              WhatsApp
+            </h1>
+            <WhatsAppStatusIndicator
+              configured={integrationStatus.configured}
+              loadOk={integrationStatus.loadOk}
+              fetchedAt={integrationStatus.fetchedAt}
+              loading={integrationStatus.loading}
+            />
+          </div>
           <nav
             className="flex gap-1 overflow-x-auto pb-1 -mx-1 px-1 scroll-smooth [scrollbar-width:thin]"
             aria-label="Seções WhatsApp"

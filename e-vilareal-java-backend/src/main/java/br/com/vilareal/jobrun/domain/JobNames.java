@@ -9,6 +9,7 @@ public final class JobNames {
     public static final String GMAIL_PROJUDI_COMPLETO = "atualizar_emails_projudi";
     public static final String GMAIL_PUBLICACOES = "buscar_emails_publicacoes";
     public static final String GMAIL_TRT = "buscar_emails_trt";
+    public static final String GMAIL_TRT_COMPLETO = "atualizar_emails_trt";
     public static final String PIPELINE_PROJUDI = "pipeline_projudi_movimentacoes";
     public static final String PAGAMENTO_ROTINA_DIARIA = "pagamento_rotina_diaria";
     public static final String PAGAMENTO_RECORRENCIA = "pagamento_recorrencia";
@@ -23,12 +24,14 @@ public final class JobNames {
     public static final String CONTRATO_HONORARIOS_IMPORTACAO_EXTRACAO = "contrato_honorarios_importacao_extracao";
     public static final String AGENDA_AUDIENCIA_ESPELHAMENTO = "agenda_audiencia_espelhamento";
     public static final String PROJUDI_VARREDURA_MONITORAMENTO = "projudi_varredura_monitoramento";
+    public static final String CONSOLIDADO_DRIVE_BACKFILL = "consolidado_drive_backfill";
 
     public static final List<String> TODOS_MONITORADOS = List.of(
             GMAIL_PROJUDI,
             GMAIL_PROJUDI_COMPLETO,
             GMAIL_PUBLICACOES,
             GMAIL_TRT,
+            GMAIL_TRT_COMPLETO,
             PIPELINE_PROJUDI,
             PAGAMENTO_ROTINA_DIARIA,
             PAGAMENTO_RECORRENCIA,
@@ -42,7 +45,8 @@ public final class JobNames {
             WHATSAPP_HONORARIOS_VENCIMENTO,
             CONTRATO_HONORARIOS_IMPORTACAO_EXTRACAO,
             AGENDA_AUDIENCIA_ESPELHAMENTO,
-            PROJUDI_VARREDURA_MONITORAMENTO);
+            PROJUDI_VARREDURA_MONITORAMENTO,
+            CONSOLIDADO_DRIVE_BACKFILL);
 
     private JobNames() {}
 }

@@ -31,7 +31,6 @@ export const navItems = [
     children: [
       { id: 'clientes/lista', label: 'Todas as pessoas', icon: 'List' },
       { id: 'clientes/relatorio', label: 'Relatório de pessoas', icon: 'FileSpreadsheet' },
-      { id: 'clientes/nova', label: 'Nova pessoa', icon: 'UserPlus' },
     ],
   },
   { id: 'pessoas', label: 'Clientes', icon: 'UserCircle' },

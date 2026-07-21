@@ -190,6 +190,14 @@ public class WhatsAppWebhookController {
                         body = WhatsAppInteractiveReplySupport.toContentJson(message.interactive());
                 case "button" -> body = WhatsAppInteractiveReplySupport.toContentJson(message.button());
                 case "reaction" -> body = WhatsAppReactionSupport.toContentJson(message.reaction());
+                case "unsupported" -> {
+                    body = WhatsAppUnsupportedMessageSupport.descricao(message.errors(), message.unsupported());
+                    log.warn(
+                            "Mensagem não suportada pela Cloud API recebida de {}: unsupportedType={}, errors={}",
+                            maskPhoneNumber(from),
+                            message.unsupported() != null ? message.unsupported().type() : null,
+                            message.errors());
+                }
                 default -> { }
             }
 

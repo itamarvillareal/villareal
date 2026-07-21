@@ -30,6 +30,7 @@ public class PublicacaoWriteRequest {
     private String arquivoOrigemNome;
     private String arquivoOrigemHash;
     private Instant emailRecebidoEm;
+    private Integer gmailCaixaOrdem;
     private String jsonReferencia;
     private String statusTratamento;
     private Boolean lida;

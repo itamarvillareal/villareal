@@ -33,6 +33,7 @@ public class ProjudiPeticaoAgendamentoService {
                 .findById(peticaoId)
                 .orElseThrow(() -> new IllegalArgumentException("Petição não encontrada: " + peticaoId));
         validarStatusAgendavel(peticao);
+        ProjudiInicialAssinaturaService.exigirNaoEhInicialDistribuicao(peticao.getNumeroProcesso(), peticaoId);
         peticao.setProtocoloAgendadoPara(agendadoPara);
         peticaoRepository.save(peticao);
     }

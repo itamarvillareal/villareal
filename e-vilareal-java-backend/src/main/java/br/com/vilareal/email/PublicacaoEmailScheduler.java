@@ -11,7 +11,6 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.util.concurrent.TimeUnit;
 
 @Component
 public class PublicacaoEmailScheduler {
@@ -28,7 +27,7 @@ public class PublicacaoEmailScheduler {
         this.jobRunTracker = jobRunTracker;
     }
 
-    @Scheduled(fixedRate = 3, timeUnit = TimeUnit.HOURS)
+    @Scheduled(fixedDelayString = "${vilareal.email.gmail.importacao.intervalo-ms:900000}")
     public void processarPublicacoesEmail() {
         jobRunTracker.runTrackedJobVoid(JobNames.GMAIL_PUBLICACOES, ctx -> {
             if (gmailPublicacaoService == null || !gmailPublicacaoService.isDisponivel()) {

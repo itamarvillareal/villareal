@@ -25,7 +25,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.math.BigInteger;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -39,6 +41,7 @@ import java.util.stream.Collectors;
 public class PublicacaoApplicationService {
 
     private static final Set<String> STATUS_TRATAMENTO = Set.of("PENDENTE", "VINCULADA", "TRATADA", "IGNORADA");
+    private static final Set<String> ORIGENS_MOVIMENTACAO_EMAIL = Set.of("PROJUDI", "TRT");
 
     private final PublicacaoRepository publicacaoRepository;
     private final ProcessoRepository processoRepository;
@@ -80,6 +83,7 @@ public class PublicacaoApplicationService {
         if (clienteId != null && clienteId > 0) {
             clientePk = clienteResolverService.buscarPorId(clienteId).getId();
         }
+        boolean movimentacaoEmail = isOrigemMovimentacaoEmail(origemImportacao);
         var spec = PublicacaoSpecifications.comFiltros(
                 dataInicio,
                 dataFim,
@@ -89,10 +93,22 @@ public class PublicacaoApplicationService {
                 processoId,
                 clientePk,
                 texto,
-                origemImportacao);
-        List<PublicacaoEntity> lista = publicacaoRepository.findAll(
-                spec,
-                Sort.by(Sort.Order.desc("emailRecebidoEm").nullsLast(), Sort.Order.desc("createdAt")));
+                origemImportacao,
+                movimentacaoEmail);
+        // Ordenação por emailRecebidoEm em memória: Hibernate Criteria não suporta nullsLast no Sort.
+        List<PublicacaoEntity> lista = publicacaoRepository.findAll(spec, Sort.by(Sort.Direction.DESC, "createdAt"));
+        lista.sort(
+                Comparator.comparing(
+                                PublicacaoEntity::getGmailCaixaOrdem,
+                                Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(
+                                PublicacaoEntity::getEmailRecebidoEm,
+                                Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(
+                                PublicacaoApplicationService::extrairGmailMessageId,
+                                Comparator.reverseOrder())
+                        .thenComparing(
+                                PublicacaoEntity::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())));
         Set<Long> procIds = new LinkedHashSet<>();
         for (PublicacaoEntity e : lista) {
             Long pid = extrairProcessoIdSeguro(e);
@@ -128,6 +144,38 @@ public class PublicacaoApplicationService {
         } catch (EntityNotFoundException ex) {
             return null;
         }
+    }
+
+    static String extrairGmailMessageId(PublicacaoEntity e) {
+        if (e == null) {
+            return "";
+        }
+        String nome = e.getArquivoOrigemNome();
+        if (!StringUtils.hasText(nome)) {
+            return "";
+        }
+        int abre = nome.lastIndexOf('[');
+        int fecha = nome.lastIndexOf(']');
+        if (abre < 0 || fecha <= abre) {
+            return "";
+        }
+        return nome.substring(abre + 1, fecha).trim().toLowerCase();
+    }
+
+    private static boolean isOrigemMovimentacaoEmail(String origemImportacao) {
+        if (!StringUtils.hasText(origemImportacao)) {
+            return false;
+        }
+        return ORIGENS_MOVIMENTACAO_EMAIL.contains(origemImportacao.trim().toUpperCase(Locale.ROOT));
+    }
+
+    /** Entrada exibida: horário do email (cabeçalho Date/internalDate); sem ele, a importação. */
+    static Instant entradaEmailExibicao(PublicacaoEntity e) {
+        if (e == null) {
+            return null;
+        }
+        Instant recebido = e.getEmailRecebidoEm();
+        return recebido != null ? recebido : e.getCreatedAt();
     }
 
     private ProcessoEntity carregarProcessoParaPublicacao(PublicacaoEntity e) {
@@ -177,6 +225,7 @@ public class PublicacaoApplicationService {
         e.setArquivoOrigemNome(trimToNull(req.getArquivoOrigemNome()));
         e.setArquivoOrigemHash(trimToNull(req.getArquivoOrigemHash()));
         e.setEmailRecebidoEm(req.getEmailRecebidoEm());
+        e.setGmailCaixaOrdem(req.getGmailCaixaOrdem());
         e.setJsonReferencia(trimToNull(req.getJsonReferencia()));
         e.setStatusTratamento(normalizarStatus(req.getStatusTratamento()));
         e.setLida(Boolean.TRUE.equals(req.getLida()));
@@ -515,7 +564,8 @@ public class PublicacaoApplicationService {
         r.setOrigemImportacao(e.getOrigemImportacao());
         r.setArquivoOrigemNome(e.getArquivoOrigemNome());
         r.setArquivoOrigemHash(e.getArquivoOrigemHash());
-        r.setEmailRecebidoEm(e.getEmailRecebidoEm());
+        r.setEmailRecebidoEm(entradaEmailExibicao(e));
+        r.setGmailCaixaOrdem(e.getGmailCaixaOrdem());
         r.setJsonReferencia(e.getJsonReferencia());
         r.setStatusTratamento(e.getStatusTratamento());
         r.setLida(e.isLida());

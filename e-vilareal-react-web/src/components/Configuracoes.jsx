@@ -17,6 +17,7 @@ import {
   salvarConfigProjudiProtocoloEmail,
 } from '../repositories/configuracaoRepository.js';
 import { VisorCodigoPdpj } from './VisorCodigoPdpj.jsx';
+import { ConfiguracoesLocalHelper } from './ConfiguracoesLocalHelper.jsx';
 
 /**
  * Tela de configurações do sistema.
@@ -177,6 +178,8 @@ export function Configuracoes() {
         </div>
 
         <VisorCodigoPdpj />
+
+        <ConfiguracoesLocalHelper />
 
         {mostrarEstacaoMock ? (
           <div className="border-t border-slate-200 pt-6">

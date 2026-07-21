@@ -1,4 +1,10 @@
-import { chaveNumeroProcessoBuscaDiagnostico, padCnjDigitos19para20 } from './normalizarNumeroProcessoBuscaDiagnostico.js';
+import {
+  chaveNumeroProcessoBuscaDiagnostico,
+  ehNumeroProjudiInternoEmail,
+  padCnjDigitos19para20,
+} from './normalizarNumeroProcessoBuscaDiagnostico.js';
+
+export { ehNumeroProjudiInternoEmail };
 
 /** Distância de Levenshtein (cadeias curtas: CNJ / fragmentos). */
 export function levenshtein(a, b) {
@@ -25,11 +31,6 @@ export function digitosCnjNormalizados(cnjRaw) {
   return chaveNumeroProcessoBuscaDiagnostico(cnjRaw);
 }
 
-/** Número interno Projudi em email de intimação (ex.: {@code 5500622.97}). */
-export function ehNumeroProjudiInternoEmail(raw) {
-  return /^\d{4,9}\.\d{2}$/i.test(String(raw ?? '').trim());
-}
-
 /**
  * Diz se o termo de busca (só dígitos) corresponde ao CNJ gravado, com tolerância a 1 dígito trocado
  * no primeiro segmento (OCR/PDF) e substring exacta como antes.
@@ -45,8 +46,10 @@ export function termoDigitosCorrespondeCnjCampo(termDigits, campoCnjRaw, opts = 
   const c = digitosCnjNormalizados(campoCnjRaw);
   if (!c) return false;
   if (t === c || c.includes(t) || t.includes(c)) return true;
-  if (opts.projudiInternoExato && t.length >= 8 && t.length <= 10) {
-    return c.length >= t.length && c.slice(0, t.length) === t;
+  if (opts.projudiInternoExato) {
+    if (t.length >= 9 && c.length >= t.length && c.slice(0, t.length) === t) return true;
+    if (t.length >= 7 && t.length < 9 && c.length >= 7 && c.slice(0, 7) === t.slice(0, 7)) return true;
+    return false;
   }
 
   // Primeiro segmento do CNJ (7 dígitos do número + 2 do DV) — erros de leitura costumam estar aqui.

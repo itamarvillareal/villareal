@@ -412,10 +412,29 @@ public class ProjudiPeticaoService {
                 nome = nome.substring(barra + 1);
             }
             if (!nome.isBlank()) {
-                return nome;
+                return normalizarNomeP7sParaUpload(nome);
             }
         }
         return gerarNomeP7s(numeroProcesso, epochMillis, indice);
+    }
+
+    /**
+     * PROJUDI (ProcessoCivel / inicial) rejeita extensão {@code .p7s} isolada;
+     * aceita nomes no padrão {@code *.pdf.p7s} (como nas interlocutórias).
+     */
+    static String normalizarNomeP7sParaUpload(String nome) {
+        if (!StringUtils.hasText(nome)) {
+            return nome;
+        }
+        String trimmed = nome.trim();
+        String lower = trimmed.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".pdf.p7s")) {
+            return trimmed;
+        }
+        if (lower.endsWith(".p7s")) {
+            return trimmed.substring(0, trimmed.length() - 4) + ".pdf.p7s";
+        }
+        return trimmed;
     }
 
     static String gerarNomeP7s(String numeroProcesso, long epochMillis, int indice) {

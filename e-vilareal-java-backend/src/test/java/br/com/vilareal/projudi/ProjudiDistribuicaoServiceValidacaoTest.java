@@ -49,7 +49,7 @@ class ProjudiDistribuicaoServiceValidacaoTest {
         assertTrue(res.bloqueios().contains("Valor da causa não informado."));
         assertTrue(res.bloqueios().contains("Nenhum assunto PROJUDI selecionado."));
         assertTrue(res.bloqueios().contains("Autor não selecionado."));
-        assertTrue(res.bloqueios().contains("Réu não selecionado."));
+        assertTrue(res.bloqueios().contains("Ao menos um réu deve ser selecionado."));
         assertTrue(res.bloqueios().contains("Nenhum anexo .p7s adicionado."));
     }
 
@@ -59,7 +59,7 @@ class ProjudiDistribuicaoServiceValidacaoTest {
         when(parteResolverService.resolver(eq(10L), eq(1L))).thenReturn(autorPendente);
         when(parteResolverService.resolver(eq(20L), eq(1L))).thenReturn(partePronta());
 
-        var res = service.validarProntidao(1L, "1500,00", List.of(451), 10L, 20L, 2);
+        var res = service.validarProntidao(1L, "1500,00", List.of(451), 10L, List.of(20L), 2);
 
         assertFalse(res.pronta());
         assertEquals(1, res.pendenciasPartes().size());
@@ -72,11 +72,26 @@ class ProjudiDistribuicaoServiceValidacaoTest {
         when(parteResolverService.resolver(eq(10L), eq(1L))).thenReturn(partePronta());
         when(parteResolverService.resolver(eq(20L), eq(1L))).thenReturn(partePronta());
 
-        var res = service.validarProntidao(1L, "1500,00", List.of(451), 10L, 20L, 1);
+        var res = service.validarProntidao(1L, "1500,00", List.of(451), 10L, List.of(20L), 1);
 
         assertTrue(res.pronta());
         assertTrue(res.bloqueios().isEmpty());
         assertTrue(res.pendenciasPartes().isEmpty());
+    }
+
+    @Test
+    void validarProntidao_validaVariosReus() {
+        when(parteResolverService.resolver(eq(10L), eq(1L))).thenReturn(partePronta());
+        when(parteResolverService.resolver(eq(20L), eq(1L))).thenReturn(partePronta());
+        when(parteResolverService.resolver(eq(30L), eq(1L))).thenReturn(partePendente("Cidade não encontrada."));
+
+        var res = service.validarProntidao(1L, "1500,00", List.of(451), 10L, List.of(20L, 30L), 1);
+
+        assertFalse(res.pronta());
+        assertEquals(2, res.reus().size());
+        assertEquals(1, res.pendenciasPartes().size());
+        assertEquals("REU_2", res.pendenciasPartes().getFirst().papel());
+        assertTrue(res.bloqueios().stream().anyMatch((b) -> b.contains("Réu 2") && b.contains("Cidade")));
     }
 
     @Test
@@ -85,7 +100,7 @@ class ProjudiDistribuicaoServiceValidacaoTest {
                 .thenThrow(new BusinessRuleException("credencial PROJUDI inválida"));
         when(parteResolverService.resolver(eq(20L), eq(1L))).thenReturn(partePronta());
 
-        var res = service.validarProntidao(1L, "1500,00", List.of(451), 10L, 20L, 1);
+        var res = service.validarProntidao(1L, "1500,00", List.of(451), 10L, List.of(20L), 1);
 
         assertFalse(res.pronta());
         assertTrue(res.bloqueios().stream().anyMatch((b) -> b.contains("Autor:") && b.contains("credencial PROJUDI")));

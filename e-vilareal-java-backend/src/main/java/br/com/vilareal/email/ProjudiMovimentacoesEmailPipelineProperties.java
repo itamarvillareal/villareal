@@ -17,10 +17,10 @@ public class ProjudiMovimentacoesEmailPipelineProperties {
      * até chegar publicação nova por e-mail.
      */
     private boolean desarmeAcervoIntegralEnabled = true;
-    private PerfilConfig noturno = new PerfilConfig(8, 15, 60);
-    private PerfilConfig comercial = new PerfilConfig(30, 60, 20);
+    private PerfilConfig noturno = new PerfilConfig(15, 15, 60);
+    private PerfilConfig comercial = new PerfilConfig(15, 60, 20);
     /** Binding: {@code vilareal.email.projudi.pipeline.perfil.fim-de-semana.*} */
-    private PerfilConfig fimDeSemana = new PerfilConfig(8, 15, 60);
+    private PerfilConfig fimDeSemana = new PerfilConfig(15, 15, 60);
 
     public boolean isEnabled() {
         return enabled;

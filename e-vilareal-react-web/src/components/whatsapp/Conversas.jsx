@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, Fragment } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ExternalLink, Link2, Loader2, MessageCircle, MessageSquarePlus, Pencil, Plus, Search, Send, ChevronUp, ChevronDown, ChevronLeft, X, Trash2, Camera, ImageMinus, MoreVertical } from 'lucide-react';
+import { ExternalLink, LayoutTemplate, Link2, Loader2, MessageCircle, MessageSquarePlus, Pencil, Plus, Search, Send, ChevronUp, ChevronDown, ChevronLeft, X, Trash2, Camera, ImageMinus, MoreVertical } from 'lucide-react';
 import { ConfirmDialog } from '../financeiro/shared/ConfirmDialog.jsx';
 import { WhatsAppDeleteMessageDialog } from './components/WhatsAppDeleteMessageDialog.jsx';
+import { EncaminharMensagemModal } from './components/EncaminharMensagemModal.jsx';
+import { ForwardSelectionBar } from './components/ForwardSelectionBar.jsx';
 import { ChatBubble } from './components/ChatBubble.jsx';
 import { DaySeparator } from './components/DaySeparator.jsx';
 import {
@@ -10,8 +12,10 @@ import {
   WhatsAppMediaSendingIndicator,
 } from './components/WhatsAppMediaAttachComposer.jsx';
 import { IniciarConversaModal } from './components/IniciarConversaModal.jsx';
+import { EnviarTemplateConversaModal } from './components/EnviarTemplateConversaModal.jsx';
 import { ModalVinculosTelefoneConversa } from './components/ModalVinculosTelefoneConversa.jsx';
 import { useWhatsApp } from './hooks/useWhatsApp.js';
+import { useWhatsAppForwardSelection } from './hooks/useWhatsAppForwardSelection.js';
 import { useWhatsAppToast } from './WhatsAppToast.jsx';
 import { useWhatsAppNotificationContext } from './WhatsAppNotificationProvider.jsx';
 import { getWhatsAppConversationContext, fixarConversa, desfixarConversa, arquivarConversa, desarquivarConversa, arquivarConversasLote, fixarConversasLote, marcarLidasLote, apagarMensagem, apagarConversa, getWhatsAppGrupos, definirFotoContato, removerFotoContato } from '../../repositories/whatsappRepository.js';
@@ -23,8 +27,10 @@ import {
   normalizePhoneForApi,
 } from '../../utils/whatsappFormat.js';
 import { dateKeyBR } from '../../utils/whatsappScheduleUtils.js';
+import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 import { FREE_TEXT_DELIVERY_ERROR, FREE_TEXT_WINDOW_HINT } from '../../utils/whatsappTemplateUtils.js';
 import { isWhatsAppMediaPending, mergeMediaReady, consumirLocalPreview, revogarPreviewsLocaisEmLista } from './utils/whatsappMediaUtils.js';
+import { mergeMessageStatusUpdate } from './utils/whatsappMessageStatusUtils.js';
 import {
   criarOnPasteCompositor,
   handleAttachSelect,
@@ -51,6 +57,7 @@ import {
   buscarConversasPorNome,
   conversationMatchesQuery,
 } from './utils/whatsappConversationSearch.js';
+import { findLastOutboundTemplateMessage } from './utils/whatsappTemplateParamsUtils.js';
 
 const PAGE_SIZE = 20;
 const CONVERSATIONS_PAGE_SIZE = 50;
@@ -259,7 +266,7 @@ function ConversationMessageSearchBar({
 export function WhatsAppConversas() {
   const { getConversations, getMessages, sendText, searchMessages } = useWhatsApp();
   const toast = useWhatsAppToast();
-  const { clearNotifications, latestInbound, latestMediaReady, latestConversationRead, adjustUnreadConversations } =
+  const { clearNotifications, latestInbound, latestMediaReady, latestStatusUpdate, latestConversationRead, adjustUnreadConversations } =
     useWhatsAppNotificationContext() ?? {};
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState('');
@@ -298,6 +305,7 @@ export function WhatsAppConversas() {
   const [indiceContexto, setIndiceContexto] = useState(0);
   const [modalVinculosAberto, setModalVinculosAberto] = useState(false);
   const [iniciarModalOpen, setIniciarModalOpen] = useState(false);
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [conversationSearchOpen, setConversationSearchOpen] = useState(false);
   const [conversationSearchQuery, setConversationSearchQuery] = useState('');
   const [conversationSearchMatches, setConversationSearchMatches] = useState([]);
@@ -322,6 +330,10 @@ export function WhatsAppConversas() {
   const scrollToBottom = () => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  useEffect(() => {
+    setTemplateModalOpen(false);
+  }, [activePhone]);
 
   /**
    * Elemento que de fato rola o histórico: no desktop é a própria lista de
@@ -1049,6 +1061,85 @@ export function WhatsAppConversas() {
 
   const displayMessages = useMemo(() => enrichMessagesWithReactions(messages), [messages]);
 
+  const {
+    forwardSelectActive,
+    forwardSelectedMessages,
+    forwardModalOpen,
+    startForwardSelection,
+    toggleForwardSelection,
+    cancelForwardSelection,
+    openForwardModal,
+    closeForwardModal,
+    finishForwardSuccess,
+    isForwardSelected,
+    forwardSelectionCount,
+  } = useWhatsAppForwardSelection(messages);
+
+  useEffect(() => {
+    cancelForwardSelection();
+  }, [activePhone, cancelForwardSelection]);
+
+  useCloseOnEscape(forwardSelectActive && !forwardModalOpen, cancelForwardSelection);
+
+  const handleForwardSuccess = useCallback(
+    (_response, destino) => {
+      const n = forwardSelectedMessages.length;
+      const rotulo =
+        n === 1
+          ? 'Mensagem encaminhada'
+          : `${n} mensagens encaminhadas`;
+      toast.success(
+        `${rotulo} para ${destino?.contactName || formatPhoneDisplay(destino?.phoneNumber)}.`,
+      );
+      finishForwardSuccess();
+      void loadConversations();
+    },
+    [toast, loadConversations, finishForwardSuccess, forwardSelectedMessages.length],
+  );
+
+  const lastOutboundTemplateMessage = useMemo(
+    () => findLastOutboundTemplateMessage(messages),
+    [messages],
+  );
+
+  const contextoVinculoAtivo = useMemo(() => {
+    const ctx = contextosAtivos[indiceContexto] ?? contextosAtivos[0];
+    if (!ctx) return null;
+    return {
+      clienteId: ctx.clienteId ?? null,
+      processoId: ctx.processoId ?? null,
+    };
+  }, [contextosAtivos, indiceContexto]);
+
+  const handleTemplateSendSuccess = useCallback(
+    async ({ templateName, params }) => {
+      const preview = params.filter(Boolean).join(', ') || templateName;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `local-template-${Date.now()}`,
+          direction: 'OUTBOUND',
+          messageType: 'TEMPLATE',
+          templateName,
+          content: preview,
+          status: 'SENT',
+          createdAt: new Date().toISOString(),
+          phoneNumber: activePhone,
+        },
+      ]);
+      toast.success('Template enviado.');
+      window.setTimeout(scrollToBottom, 50);
+      loadConversations({ silent: true });
+      try {
+        await fetchPage(activePhone, 0, false);
+        window.setTimeout(scrollToBottom, 50);
+      } catch {
+        /* mantém mensagem otimista */
+      }
+    },
+    [activePhone, fetchPage, loadConversations, toast],
+  );
+
   useEffect(() => {
     if (!activePhone) return;
     const conv = conversations.find((c) => normalizePhoneForApi(c.phoneNumber) === activePhone);
@@ -1185,6 +1276,11 @@ export function WhatsAppConversas() {
     if (latestMediaReady.phoneNumber && normalizePhoneForApi(latestMediaReady.phoneNumber) !== activePhone) return;
     setMessages((prev) => mergeMediaReady(prev, latestMediaReady));
   }, [latestMediaReady, activePhone]);
+
+  useEffect(() => {
+    if (!latestStatusUpdate?.waMessageId) return;
+    setMessages((prev) => mergeMessageStatusUpdate(prev, latestStatusUpdate));
+  }, [latestStatusUpdate]);
 
   useEffect(() => {
     if (!activePhone || !messages.some(isWhatsAppMediaPending)) return undefined;
@@ -1889,12 +1985,23 @@ export function WhatsAppConversas() {
                       highlightTerm={searchMatchIds.has(msg.id) ? searchHighlightTerm : ''}
                       isActiveSearchMatch={msg.id != null && msg.id === activeSearchMessageId}
                       onDeleteMessage={requestDeleteMessage}
+                      onForwardMessage={startForwardSelection}
+                      forwardSelectMode={forwardSelectActive}
+                      forwardSelected={isForwardSelected(msg)}
+                      onToggleForwardSelect={toggleForwardSelection}
                     />
                   </Fragment>
                 );
               })}
               <div ref={bottomRef} />
             </div>
+            {forwardSelectActive ? (
+              <ForwardSelectionBar
+                count={forwardSelectionCount}
+                onCancel={cancelForwardSelection}
+                onForward={openForwardModal}
+              />
+            ) : null}
             <form
               onSubmit={handleSend}
               className="shrink-0 flex flex-col gap-1 p-3 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
@@ -1932,6 +2039,15 @@ export function WhatsAppConversas() {
                   showPreview={false}
                   clipBtnClass="inline-flex shrink-0 flex-none items-center justify-center px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
                 />
+                <button
+                  type="button"
+                  onClick={() => setTemplateModalOpen(true)}
+                  className="inline-flex shrink-0 flex-none items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-semibold hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-200 dark:hover:bg-emerald-950/60"
+                  title="Enviar mensagem por template (reenviar anterior ou escolher outro)"
+                >
+                  <LayoutTemplate className="h-4 w-4 shrink-0" aria-hidden />
+                  <span className="hidden sm:inline">Template</span>
+                </button>
                 <input
                   type="text"
                   className={chatComposeInputClass}
@@ -1966,12 +2082,28 @@ export function WhatsAppConversas() {
         onClose={() => setIniciarModalOpen(false)}
         onSuccess={handleIniciarConversaSuccess}
       />
+      <EnviarTemplateConversaModal
+        open={templateModalOpen}
+        onClose={() => setTemplateModalOpen(false)}
+        phoneNumber={activePhone}
+        contactName={contactName}
+        lastTemplateMessage={lastOutboundTemplateMessage}
+        contextoVinculo={contextoVinculoAtivo}
+        onSuccess={handleTemplateSendSuccess}
+      />
       <WhatsAppDeleteMessageDialog
         open={Boolean(pendingDeleteMessage)}
         message={pendingDeleteMessage}
         onDeleteInbox={() => void confirmDeleteMessage('inbox')}
         onDeleteForEveryone={() => void confirmDeleteMessage('todos')}
         onCancel={() => setPendingDeleteMessage(null)}
+      />
+      <EncaminharMensagemModal
+        open={forwardModalOpen}
+        messages={forwardSelectedMessages}
+        sourcePhoneNumber={activePhone}
+        onClose={closeForwardModal}
+        onSuccess={handleForwardSuccess}
       />
       <ConfirmDialog
         open={Boolean(pendingDeleteConversationPhone)}

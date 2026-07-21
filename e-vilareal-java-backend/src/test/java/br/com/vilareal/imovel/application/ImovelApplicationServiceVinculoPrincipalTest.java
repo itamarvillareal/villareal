@@ -2,6 +2,7 @@ package br.com.vilareal.imovel.application;
 
 import br.com.vilareal.imovel.api.dto.ImovelVinculoPrincipalWriteRequest;
 import br.com.vilareal.imovel.api.dto.ImovelVinculosProcessoResponse;
+import br.com.vilareal.imovel.infrastructure.persistence.entity.ContratoLocacaoEntity;
 import br.com.vilareal.imovel.infrastructure.persistence.entity.ImovelEntity;
 import br.com.vilareal.imovel.infrastructure.persistence.entity.ImovelVinculoProcessoPrincipalEntity;
 import br.com.vilareal.imovel.infrastructure.persistence.repository.ContratoLocacaoRepository;
@@ -106,10 +107,18 @@ class ImovelApplicationServiceVinculoPrincipalTest {
         ClienteEntity c938 = cliente("00000938");
         ClienteEntity c149 = cliente("00000149");
         ImovelEntity im1 = imovel(101L, c938, processo(8801L, 34, c938));
+        im1.setSituacao("OCUPADO");
         ImovelEntity im2 = imovel(102L, c149, processo(8802L, 64, c149));
 
         when(imovelRepository.findAllPorNumeroPlanilhaLegado(NUMERO_PLANILHA)).thenReturn(List.of(im1, im2));
         when(imovelProcessoRepository.findFirstByImovel_IdAndAtivoTrueOrderByIdDesc(any())).thenReturn(Optional.empty());
+        ContratoLocacaoEntity vigente = new ContratoLocacaoEntity();
+        vigente.setStatus("VIGENTE");
+        when(contratoLocacaoRepository.findByImovel_IdOrderByDataInicioDescIdDesc(101L)).thenReturn(List.of(vigente));
+        when(contratoLocacaoRepository.findByImovel_IdOrderByDataInicioDescIdDesc(102L)).thenReturn(List.of());
+        when(clienteRepository.findByCodigoCliente("00000938")).thenReturn(Optional.of(c938));
+        when(processoRepository.findByPessoa_IdAndNumeroInterno(100L, 34))
+                .thenReturn(Optional.of(processo(8801L, 34, c938)));
         when(imovelVinculoProcessoPrincipalRepository.save(any())).thenAnswer(inv -> {
             ImovelVinculoProcessoPrincipalEntity row = inv.getArgument(0);
             ImovelVinculoProcessoPrincipalEntity saved = new ImovelVinculoProcessoPrincipalEntity();
@@ -133,6 +142,7 @@ class ImovelApplicationServiceVinculoPrincipalTest {
         assertThat(cap.getValue().getNumeroInterno()).isEqualTo(34);
         assertThat(out.getVinculos().stream().filter(v -> v.isPrincipal()).findFirst().orElseThrow().getNumeroInterno())
                 .isEqualTo(34);
+        verify(imovelProcessoLinkService).sincronizarProcessoAtivoAdministrativo(101L, 8801L);
     }
 
     private static ImovelEntity imovel(Long id, ClienteEntity cliente, ProcessoEntity proc) {
