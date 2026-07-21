@@ -107,8 +107,8 @@ export function ImoveisPendenciasAluguel({
             ) : null}
             <button
               type="button"
-              disabled={salvando}
-              onClick={() => onDesvincular(vinc.vinculoId)}
+              disabled={vinculandoLancamentoId != null}
+              onClick={() => onDesvincular?.(vinc.vinculoId)}
               className="px-3 py-1.5 rounded-md border border-red-300 text-red-700 text-xs font-medium hover:bg-red-50 disabled:opacity-40"
             >
               Desvincular

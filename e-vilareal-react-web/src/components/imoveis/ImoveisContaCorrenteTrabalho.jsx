@@ -182,6 +182,7 @@ export function ImoveisContaCorrenteTrabalho({
   transacoes = [],
   vinculosPorLancamento,
   vinculandoLancamentoId = null,
+  movendoCompetenciaLancamentoId = null,
   linhasVinculadasRecentes,
   linhasDesvinculadasRecentes,
   filtroCompetencia,
@@ -365,13 +366,14 @@ export function ImoveisContaCorrenteTrabalho({
 
     if (vinc?.papel) {
       const refAtual = refPorLancamento[id] ?? vinc.competenciaMes ?? refMes ?? '';
+      const movendoRef = movendoCompetenciaLancamentoId === id;
       return (
         <input
           type="month"
           value={refAtual}
           min={competenciaMin}
           max={competenciaMax}
-          disabled={salvando}
+          disabled={salvando && movendoRef}
           onChange={(e) => {
             const nova = e.target.value;
             setRefPorLancamento((prev) => ({ ...prev, [id]: nova }));
@@ -469,6 +471,7 @@ export function ImoveisContaCorrenteTrabalho({
     const vinc = vinculosPorLancamento.get(id);
     const refMes = refPorLancamento[id] ?? '';
     const emVinculo = vinculandoLancamentoId === id;
+    const movendoRef = movendoCompetenciaLancamentoId === id;
     const recémVinculado = linhasVinculadasRecentes?.has?.(id);
 
     if (vinc?.papel) {
@@ -482,8 +485,8 @@ export function ImoveisContaCorrenteTrabalho({
           ) : null}
           <button
             type="button"
-            disabled={salvando}
-            onClick={() => onDesvincular(vinc.vinculoId)}
+            disabled={emVinculo || movendoRef}
+            onClick={() => onDesvincular?.(vinc.vinculoId ?? vinc.id)}
             className="px-2 py-1 rounded border border-red-300 text-red-700 text-[11px] hover:bg-red-50 disabled:opacity-40"
           >
             Desvincular

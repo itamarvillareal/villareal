@@ -61,13 +61,17 @@ function mergeVinculosRespostaApi(vinculosAtuais, respostaApi) {
   for (const n of respostaApi || []) {
     const lid = Number(n.lancamentoFinanceiroId);
     if (!Number.isFinite(lid)) continue;
+    const prev = map.get(lid);
+    const id = n.id ?? prev?.id ?? prev?.vinculoId ?? null;
     map.set(lid, {
+      ...(prev || {}),
       ...n,
-      id: n.id,
+      id,
+      vinculoId: id,
       lancamentoFinanceiroId: lid,
-      papel: n.papel,
-      competenciaMes: n.competenciaMes,
-      rotuloClassificacao: n.rotuloClassificacao ?? null,
+      papel: n.papel ?? prev?.papel,
+      competenciaMes: n.competenciaMes ?? prev?.competenciaMes,
+      rotuloClassificacao: n.rotuloClassificacao ?? prev?.rotuloClassificacao ?? null,
     });
   }
   return [...map.values()];
@@ -135,6 +139,7 @@ export function ImoveisAdministracaoFinanceiro({
   const [alertasAbertos, setAlertasAbertos] = useState(false);
   const [filtroCompetencia, setFiltroCompetencia] = useState(null);
   const [vinculandoLancamentoId, setVinculandoLancamentoId] = useState(null);
+  const [movendoCompetenciaLancamentoId, setMovendoCompetenciaLancamentoId] = useState(null);
   const [linhasVinculadasRecentes, setLinhasVinculadasRecentes] = useState(() => new Set());
   const [linhasDesvinculadasRecentes, setLinhasDesvinculadasRecentes] = useState(() => new Set());
   const [conferidoPorCompetencia, setConferidoPorCompetencia] = useState({});
@@ -272,7 +277,7 @@ export function ImoveisAdministracaoFinanceiro({
       const id = Number(v?.lancamentoFinanceiroId);
       if (!Number.isFinite(id)) continue;
       map.set(id, {
-        vinculoId: v.id,
+        vinculoId: v.id ?? v.vinculoId,
         papel: v.papel,
         competenciaMes: v.competenciaMes,
         rotuloClassificacao: v.rotuloClassificacao ?? null,
@@ -551,6 +556,8 @@ export function ImoveisAdministracaoFinanceiro({
     if (!contratoId || !vinc?.lancamentoFinanceiroId || !competenciaValida(novaCompetencia)) return;
     const papel = String(vinc?.papel ?? 'ALUGUEL').toUpperCase();
     if (papel !== 'ALUGUEL' && papel !== 'REPASSE' && papel !== 'DESPESA') return;
+    const lancId = Number(vinc.lancamentoFinanceiroId);
+    setMovendoCompetenciaLancamentoId(Number.isFinite(lancId) ? lancId : null);
     setSalvandoReconc(true);
     setErroReconc('');
     setSucesso('');
@@ -566,28 +573,35 @@ export function ImoveisAdministracaoFinanceiro({
       setSucesso(`Referência movida para ${novaCompetencia}.`);
       setCompetencia(novaCompetencia);
       setFiltroCompetencia(novaCompetencia);
-      recarregarReconciliacao();
+      await recarregarReconciliacaoDados(novaCompetencia);
       recarregar();
     } catch (e) {
       setErroReconc(e?.message || 'Falha ao alterar a referência do mês.');
     } finally {
+      setMovendoCompetenciaLancamentoId(null);
       setSalvandoReconc(false);
     }
   }
 
   async function desvincularAluguel(vinculoId) {
-    if (!contratoId || !vinculoId) return;
     const vid = Number(vinculoId);
-    const vinc = (vinculosContrato || []).find((v) => Number(v?.id) === vid);
+    if (!contratoId || !Number.isFinite(vid)) {
+      setErroReconc('Não foi possível desvincular: identificador do vínculo inválido.');
+      return;
+    }
+    const vinc = (vinculosContrato || []).find((v) => Number(v?.id ?? v?.vinculoId) === vid);
     const lancId =
       vinc?.lancamentoFinanceiroId != null ? Number(v.lancamentoFinanceiroId) : NaN;
     setSalvandoReconc(true);
     setErroReconc('');
     try {
-      await desvincularReconciliacaoApi(contratoId, vinculoId);
+      await desvincularReconciliacaoApi(contratoId, vid);
+      setVinculosContrato((prev) =>
+        prev.filter((v) => Number(v?.id ?? v?.vinculoId) !== vid),
+      );
       if (Number.isFinite(lancId)) marcarLinhaDesvinculada(lancId);
       setSucesso('Vínculo removido.');
-      recarregarReconciliacao();
+      await recarregarReconciliacaoDados();
       recarregar();
     } catch (e) {
       setErroReconc(e?.message || 'Falha ao desvincular.');
@@ -845,6 +859,7 @@ export function ImoveisAdministracaoFinanceiro({
                     transacoes={painel.transacoes}
                     vinculosPorLancamento={vinculosPorLancamento}
                     vinculandoLancamentoId={vinculandoLancamentoId}
+                    movendoCompetenciaLancamentoId={movendoCompetenciaLancamentoId}
                     linhasVinculadasRecentes={linhasVinculadasRecentes}
                     linhasDesvinculadasRecentes={linhasDesvinculadasRecentes}
                     filtroCompetencia={filtroCompetencia}
