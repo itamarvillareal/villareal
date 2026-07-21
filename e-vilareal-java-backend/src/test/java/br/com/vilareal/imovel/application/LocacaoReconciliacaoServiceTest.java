@@ -183,6 +183,7 @@ class LocacaoReconciliacaoServiceTest {
         existente.setContratoLocacao(contratoTerceiro());
         existente.setLancamentoFinanceiro(lanc);
         existente.setPapel(PapelReconciliacao.ALUGUEL);
+        existente.setCompetenciaMes("2026-03");
         when(vinculoRepository.findByContratoLocacao_IdAndLancamentoFinanceiro_IdAndPapel(
                         CONTRATO_ID, 10L, PapelReconciliacao.ALUGUEL))
                 .thenReturn(Optional.of(existente));
@@ -194,6 +195,35 @@ class LocacaoReconciliacaoServiceTest {
 
         verify(vinculoRepository, never()).save(any());
         assertThat(out.get(0).id()).isEqualTo(55L);
+        assertThat(out.get(0).competenciaMes()).isEqualTo("2026-03");
+    }
+
+    @Test
+    void vincularAtualizaCompetenciaQuandoVinculoJaExiste() {
+        when(contratoLocacaoRepository.findById(CONTRATO_ID)).thenReturn(Optional.of(contratoTerceiro()));
+        LancamentoFinanceiroEntity lanc = lancamento(10L, NaturezaLancamento.CREDITO, "1000.00", LocalDate.of(2026, 3, 10), "ALUGUEL");
+        lanc.setProcesso(processoComId(PROCESSO_ID));
+        when(lancamentoRepository.findById(10L)).thenReturn(Optional.of(lanc));
+
+        LocacaoRepasseLancamentoEntity existente = new LocacaoRepasseLancamentoEntity();
+        existente.setId(55L);
+        existente.setContratoLocacao(contratoTerceiro());
+        existente.setLancamentoFinanceiro(lanc);
+        existente.setPapel(PapelReconciliacao.ALUGUEL);
+        existente.setCompetenciaMes("2026-03");
+        when(vinculoRepository.findByContratoLocacao_IdAndLancamentoFinanceiro_IdAndPapel(
+                        CONTRATO_ID, 10L, PapelReconciliacao.ALUGUEL))
+                .thenReturn(Optional.of(existente));
+        when(vinculoRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        ReconciliacaoVincularRequest req = new ReconciliacaoVincularRequest(
+                List.of(new ReconciliacaoVincularRequest.Item(10L, PapelReconciliacao.ALUGUEL, "2026-04", null)));
+
+        List<ReconciliacaoVinculoResponse> out = service.vincular(CONTRATO_ID, req);
+
+        verify(vinculoRepository).save(existente);
+        assertThat(existente.getCompetenciaMes()).isEqualTo("2026-04");
+        assertThat(out.get(0).competenciaMes()).isEqualTo("2026-04");
     }
 
     @Test

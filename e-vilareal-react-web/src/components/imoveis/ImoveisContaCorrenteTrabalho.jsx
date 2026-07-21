@@ -35,35 +35,42 @@ function mesDaDataBr(dataBr) {
   return mesReferenciaLancamentoParaRelatorio({ data: dataBr })?.chave ?? '';
 }
 
-function linhaEhAluguelCandidato(t, vinculosPorLancamento) {
+function linhaDesvinculadaRecentemente(id, linhasDesvinculadasRecentes) {
+  return Number.isFinite(id) && linhasDesvinculadasRecentes?.has?.(id);
+}
+
+function linhaEhAluguelCandidato(t, vinculosPorLancamento, linhasDesvinculadasRecentes) {
   const id = t?.apiId != null ? Number(t.apiId) : NaN;
+  if (linhaDesvinculadaRecentemente(id, linhasDesvinculadasRecentes)) return false;
   if (Number.isFinite(id) && vinculosPorLancamento.get(id)?.papel === 'ALUGUEL') return true;
   return t?.classificacao?.papel === PAPEL_ALUGUEL && Number(t?.valor) > 0;
 }
 
-function linhaEhRepasseCandidato(t, vinculosPorLancamento) {
+function linhaEhRepasseCandidato(t, vinculosPorLancamento, linhasDesvinculadasRecentes) {
   const id = t?.apiId != null ? Number(t.apiId) : NaN;
+  if (linhaDesvinculadaRecentemente(id, linhasDesvinculadasRecentes)) return false;
   if (Number.isFinite(id) && vinculosPorLancamento.get(id)?.papel === 'REPASSE') return true;
   return t?.classificacao?.papel === PAPEL_REPASSE && Number(t?.valor) < 0;
 }
 
-function linhaPassaFiltroCompetencia(t, filtroCompetencia, vinculosPorLancamento) {
+function linhaPassaFiltroCompetencia(t, filtroCompetencia, vinculosPorLancamento, linhasDesvinculadasRecentes) {
   if (!filtroCompetencia) return true;
   const ref = referenciaAluguelExtrato(t, vinculosPorLancamento, mesReferenciaLancamentoParaRelatorio);
   if (ref?.chave === filtroCompetencia) return true;
   const mesPag = mesDaDataBr(t?.data);
   if (mesPag !== filtroCompetencia) return false;
   return (
-    linhaEhAluguelCandidato(t, vinculosPorLancamento) ||
-    linhaEhRepasseCandidato(t, vinculosPorLancamento)
+    linhaEhAluguelCandidato(t, vinculosPorLancamento, linhasDesvinculadasRecentes) ||
+    linhaEhRepasseCandidato(t, vinculosPorLancamento, linhasDesvinculadasRecentes)
   );
 }
 
-function linhaClassificacaoManual(t, vinculosPorLancamento) {
+function linhaClassificacaoManual(t, vinculosPorLancamento, linhasDesvinculadasRecentes) {
   const id = Number(t?.apiId);
   if (Number.isFinite(id) && vinculosPorLancamento.get(id)) return false;
-  if (linhaEhAluguelCandidato(t, vinculosPorLancamento)) return false;
-  if (linhaEhRepasseCandidato(t, vinculosPorLancamento)) return false;
+  if (linhaDesvinculadaRecentemente(id, linhasDesvinculadasRecentes)) return true;
+  if (linhaEhAluguelCandidato(t, vinculosPorLancamento, linhasDesvinculadasRecentes)) return false;
+  if (linhaEhRepasseCandidato(t, vinculosPorLancamento, linhasDesvinculadasRecentes)) return false;
   const p = t?.classificacao?.papel;
   return (
     p === PAPEL_DEBITO ||
@@ -176,6 +183,7 @@ export function ImoveisContaCorrenteTrabalho({
   vinculosPorLancamento,
   vinculandoLancamentoId = null,
   linhasVinculadasRecentes,
+  linhasDesvinculadasRecentes,
   filtroCompetencia,
   onLimparFiltro,
   competenciaMin,
@@ -275,7 +283,7 @@ export function ImoveisContaCorrenteTrabalho({
           delete merged[id];
           continue;
         }
-        if (!linhaClassificacaoManual(t, vinculosPorLancamento)) {
+        if (!linhaClassificacaoManual(t, vinculosPorLancamento, linhasDesvinculadasRecentes)) {
           delete merged[id];
           continue;
         }
@@ -286,12 +294,14 @@ export function ImoveisContaCorrenteTrabalho({
       }
       return merged;
     });
-  }, [listaEfetiva, vinculosPorLancamento, filtroCompetencia]);
+  }, [listaEfetiva, vinculosPorLancamento, filtroCompetencia, linhasDesvinculadasRecentes]);
 
   const visiveis = useMemo(() => {
     let rows = listaEfetiva;
     if (!mostrarTodos && filtroCompetencia) {
-      rows = rows.filter((t) => linhaPassaFiltroCompetencia(t, filtroCompetencia, vinculosPorLancamento));
+      rows = rows.filter((t) =>
+        linhaPassaFiltroCompetencia(t, filtroCompetencia, vinculosPorLancamento, linhasDesvinculadasRecentes),
+      );
     }
     const q = busca.trim().toLowerCase();
     if (q) {
@@ -301,7 +311,7 @@ export function ImoveisContaCorrenteTrabalho({
       });
     }
     return rows;
-  }, [listaEfetiva, mostrarTodos, filtroCompetencia, vinculosPorLancamento, busca]);
+  }, [listaEfetiva, mostrarTodos, filtroCompetencia, vinculosPorLancamento, busca, linhasDesvinculadasRecentes]);
 
   const pendentesAluguel = useMemo(() => {
     let n = 0;
@@ -353,18 +363,21 @@ export function ImoveisContaCorrenteTrabalho({
     const ref = referenciaAluguelExtrato(t, vinculosPorLancamento, mesReferenciaLancamentoParaRelatorio);
     const refMes = refPorLancamento[id] ?? ref?.chave ?? '';
 
-    if (vinc?.papel === 'ALUGUEL' || vinc?.papel === 'REPASSE' || vinc?.papel === 'DESPESA') {
+    if (vinc?.papel) {
+      const refAtual = refPorLancamento[id] ?? vinc.competenciaMes ?? refMes ?? '';
       return (
         <input
           type="month"
-          value={vinc.competenciaMes || refMes}
+          value={refAtual}
           min={competenciaMin}
           max={competenciaMax}
           disabled={salvando}
           onChange={(e) => {
             const nova = e.target.value;
-            if (!competenciaValida(nova) || nova === vinc.competenciaMes) return;
-            onMoverCompetencia(
+            setRefPorLancamento((prev) => ({ ...prev, [id]: nova }));
+            const base = vinc.competenciaMes || refMes || '';
+            if (!competenciaValida(nova) || nova === base) return;
+            onMoverCompetencia?.(
               { vinculoId: vinc.vinculoId, lancamentoFinanceiroId: id, papel: vinc.papel },
               nova,
             );
@@ -381,7 +394,7 @@ export function ImoveisContaCorrenteTrabalho({
       );
     }
 
-    const manual = linhaClassificacaoManual(t, vinculosPorLancamento);
+    const manual = linhaClassificacaoManual(t, vinculosPorLancamento, linhasDesvinculadasRecentes);
     const escolhido = papelEscolhidoPorLancamento[id] ?? papelManualInicial(t);
     const descricaoOutros = descricaoOutrosPorLancamento[id] ?? '';
 
@@ -409,7 +422,7 @@ export function ImoveisContaCorrenteTrabalho({
       );
     }
 
-    if (linhaEhRepasseCandidato(t, vinculosPorLancamento)) {
+    if (linhaEhRepasseCandidato(t, vinculosPorLancamento, linhasDesvinculadasRecentes)) {
       return (
         <input
           type="month"
@@ -424,7 +437,7 @@ export function ImoveisContaCorrenteTrabalho({
       );
     }
 
-    if (linhaEhAluguelCandidato(t, vinculosPorLancamento)) {
+    if (linhaEhAluguelCandidato(t, vinculosPorLancamento, linhasDesvinculadasRecentes)) {
       return (
         <input
           type="month"
@@ -479,7 +492,7 @@ export function ImoveisContaCorrenteTrabalho({
       );
     }
 
-    const manual = linhaClassificacaoManual(t, vinculosPorLancamento);
+    const manual = linhaClassificacaoManual(t, vinculosPorLancamento, linhasDesvinculadasRecentes);
     const escolhido = papelEscolhidoPorLancamento[id] ?? papelManualInicial(t);
     const descricaoOutros = descricaoOutrosPorLancamento[id] ?? '';
     const resolved = resolveEscolhaManual(escolhido, descricaoOutros, t);
@@ -508,7 +521,7 @@ export function ImoveisContaCorrenteTrabalho({
       );
     }
 
-    if (linhaEhRepasseCandidato(t, vinculosPorLancamento)) {
+    if (linhaEhRepasseCandidato(t, vinculosPorLancamento, linhasDesvinculadasRecentes)) {
       const adocao = !vinc && t.classificacao?.papel === PAPEL_REPASSE;
       return (
         <button
@@ -525,7 +538,7 @@ export function ImoveisContaCorrenteTrabalho({
       );
     }
 
-    if (linhaEhAluguelCandidato(t, vinculosPorLancamento)) {
+    if (linhaEhAluguelCandidato(t, vinculosPorLancamento, linhasDesvinculadasRecentes)) {
       const adocao = !vinc && t.classificacao?.papel === PAPEL_ALUGUEL;
       return (
         <button
@@ -562,7 +575,7 @@ export function ImoveisContaCorrenteTrabalho({
       );
     }
 
-    if (linhaClassificacaoManual(t, vinculosPorLancamento)) {
+    if (linhaClassificacaoManual(t, vinculosPorLancamento, linhasDesvinculadasRecentes)) {
       const opcoes = opcoesPapelManual(t);
       const escolhido = papelEscolhidoPorLancamento[id] ?? papelManualInicial(t);
       const descricaoOutros = descricaoOutrosPorLancamento[id] ?? '';
@@ -762,7 +775,14 @@ export function ImoveisContaCorrenteTrabalho({
                   mesReferenciaLancamentoParaRelatorio,
                 );
                 const id = Number(t?.apiId);
-                const destacado = filtroCompetencia && linhaPassaFiltroCompetencia(t, filtroCompetencia, vinculosPorLancamento);
+                const destacado =
+                  filtroCompetencia &&
+                  linhaPassaFiltroCompetencia(
+                    t,
+                    filtroCompetencia,
+                    vinculosPorLancamento,
+                    linhasDesvinculadasRecentes,
+                  );
                 const recémVinculado = linhasVinculadasRecentes?.has?.(id);
                 const rowClass = recémVinculado
                   ? 'bg-emerald-100/90 ring-2 ring-emerald-400 ring-inset transition-colors duration-500'

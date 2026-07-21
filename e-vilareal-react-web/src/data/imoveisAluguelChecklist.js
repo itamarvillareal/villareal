@@ -73,7 +73,7 @@ export function referenciaAluguelExtrato(transacao, vinculosPorLancamento, mesRe
   const v = Number.isFinite(id) ? vinculosPorLancamento?.get(id) : null;
   const papelVinc = String(v?.papel ?? '').toUpperCase();
 
-  if (v?.competenciaMes && (papelVinc === 'ALUGUEL' || papelVinc === 'REPASSE')) {
+  if (v?.competenciaMes && (papelVinc === 'ALUGUEL' || papelVinc === 'REPASSE' || papelVinc === 'DESPESA')) {
     return {
       chave: v.competenciaMes,
       rotulo: rotuloCompetenciaCurta(v.competenciaMes),

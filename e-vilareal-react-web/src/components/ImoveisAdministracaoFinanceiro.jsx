@@ -136,6 +136,7 @@ export function ImoveisAdministracaoFinanceiro({
   const [filtroCompetencia, setFiltroCompetencia] = useState(null);
   const [vinculandoLancamentoId, setVinculandoLancamentoId] = useState(null);
   const [linhasVinculadasRecentes, setLinhasVinculadasRecentes] = useState(() => new Set());
+  const [linhasDesvinculadasRecentes, setLinhasDesvinculadasRecentes] = useState(() => new Set());
   const [conferidoPorCompetencia, setConferidoPorCompetencia] = useState({});
   const [conferindoCompetencia, setConferindoCompetencia] = useState(null);
 
@@ -212,6 +213,12 @@ export function ImoveisAdministracaoFinanceiro({
     const id = Number(lancamentoId);
     if (!Number.isFinite(id)) return;
     setLinhasVinculadasRecentes((prev) => new Set(prev).add(id));
+    setLinhasDesvinculadasRecentes((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
     window.setTimeout(() => {
       setLinhasVinculadasRecentes((prev) => {
         const next = new Set(prev);
@@ -219,6 +226,12 @@ export function ImoveisAdministracaoFinanceiro({
         return next;
       });
     }, 5000);
+  }, []);
+
+  const marcarLinhaDesvinculada = useCallback((lancamentoId) => {
+    const id = Number(lancamentoId);
+    if (!Number.isFinite(id)) return;
+    setLinhasDesvinculadasRecentes((prev) => new Set(prev).add(id));
   }, []);
 
   const pendenciasMatriz = useMemo(() => contarPendenciasMatriz(matriz?.meses), [matriz?.meses]);
@@ -542,13 +555,14 @@ export function ImoveisAdministracaoFinanceiro({
     setErroReconc('');
     setSucesso('');
     try {
-      await vincularReconciliacaoApi(contratoId, [
+      const saved = await vincularReconciliacaoApi(contratoId, [
         {
           lancamentoFinanceiroId: vinc.lancamentoFinanceiroId,
           papel,
           competenciaMes: novaCompetencia,
         },
       ]);
+      setVinculosContrato((prev) => mergeVinculosRespostaApi(prev, saved));
       setSucesso(`Referência movida para ${novaCompetencia}.`);
       setCompetencia(novaCompetencia);
       setFiltroCompetencia(novaCompetencia);
@@ -563,10 +577,15 @@ export function ImoveisAdministracaoFinanceiro({
 
   async function desvincularAluguel(vinculoId) {
     if (!contratoId || !vinculoId) return;
+    const vid = Number(vinculoId);
+    const vinc = (vinculosContrato || []).find((v) => Number(v?.id) === vid);
+    const lancId =
+      vinc?.lancamentoFinanceiroId != null ? Number(v.lancamentoFinanceiroId) : NaN;
     setSalvandoReconc(true);
     setErroReconc('');
     try {
       await desvincularReconciliacaoApi(contratoId, vinculoId);
+      if (Number.isFinite(lancId)) marcarLinhaDesvinculada(lancId);
       setSucesso('Vínculo removido.');
       recarregarReconciliacao();
       recarregar();
@@ -827,6 +846,7 @@ export function ImoveisAdministracaoFinanceiro({
                     vinculosPorLancamento={vinculosPorLancamento}
                     vinculandoLancamentoId={vinculandoLancamentoId}
                     linhasVinculadasRecentes={linhasVinculadasRecentes}
+                    linhasDesvinculadasRecentes={linhasDesvinculadasRecentes}
                     filtroCompetencia={filtroCompetencia}
                     onLimparFiltro={() => setFiltroCompetencia(null)}
                     competenciaMin={competenciaRange.min}

@@ -451,7 +451,24 @@ public class LocacaoReconciliacaoService {
                 .findByContratoLocacao_IdAndLancamentoFinanceiro_IdAndPapel(
                         contrato.getId(), lancamento.getId(), papel);
         if (existente.isPresent()) {
-            return existente.get();
+            LocacaoRepasseLancamentoEntity entity = existente.get();
+            boolean dirty = false;
+            String novaCompetencia = trimToNull(competenciaMes);
+            if (StringUtils.hasText(novaCompetencia) && !novaCompetencia.equals(entity.getCompetenciaMes())) {
+                entity.setCompetenciaMes(novaCompetencia);
+                dirty = true;
+            }
+            if (rotuloClassificacao != null) {
+                String novoRotulo = trimToNull(rotuloClassificacao);
+                if (!java.util.Objects.equals(novoRotulo, entity.getRotuloClassificacao())) {
+                    entity.setRotuloClassificacao(novoRotulo);
+                    dirty = true;
+                }
+            }
+            if (dirty) {
+                entity = vinculoRepository.save(entity);
+            }
+            return entity;
         }
 
         LocacaoRepasseLancamentoEntity entity = new LocacaoRepasseLancamentoEntity();
