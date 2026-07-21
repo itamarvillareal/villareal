@@ -152,6 +152,7 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
   const autosaveEmCursoRef = useRef(false);
   const autosaveReagendarRef = useRef(false);
   const ultimoSnapshotSalvoRef = useRef(null);
+  const autosaveSnapshotErroRef = useRef(null);
   const unidadeAlvo =
     !modoModal && location.state && typeof location.state === 'object' ? location.state.unidade : null;
 
@@ -888,6 +889,8 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
             ...derivarCamposLegadoInquilino(overrides.inquilinos),
           };
         }
+        autosaveSnapshotErroRef.current = null;
+        setApiError(r.avisoContrato || '');
         if (silent) {
           aplicarMetadadosPosSaveSilencioso(itemForm);
           ultimoSnapshotSalvoRef.current = buildSnapshotImovelCadastro(montarDadosCadastroImovel(overrides));
@@ -926,7 +929,11 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
       }
       if (!silent) onCadastroSalvo?.();
     } catch (e) {
-      setApiError(e?.message || 'Falha ao salvar cadastro do imóvel.');
+      const msg = e?.message || 'Falha ao salvar cadastro do imóvel.';
+      setApiError(msg);
+      if (silent) {
+        autosaveSnapshotErroRef.current = buildSnapshotImovelCadastro(montarDadosCadastroImovel(overrides));
+      }
     } finally {
       setApiSaving(false);
     }
@@ -1022,6 +1029,11 @@ export function Imoveis({ modoModal = false, imovelIdInicial, onFecharModal, onC
     if (ultimoSnapshotSalvoRef.current === null) return undefined;
 
     if (ultimoSnapshotSalvoRef.current === cadastroSnapshot) {
+      setAutosavePendente(false);
+      return undefined;
+    }
+
+    if (autosaveSnapshotErroRef.current === cadastroSnapshot) {
       setAutosavePendente(false);
       return undefined;
     }

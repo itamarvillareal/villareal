@@ -982,9 +982,13 @@ function montarPayloadContratoFromUi(ui, imovelId) {
       : null;
   const dataInicio = isoDataContratoFromForm(ui.dataInicioContrato, orig?.dataInicio);
   const dataFim = isoDataContratoFromForm(ui.dataFimContrato, orig?.dataFim);
-  const valorAluguel =
+  let valorAluguel =
     toNumberOrNull(ui.valorLocacao) ??
     (orig?.valorAluguel != null ? Number(orig.valorAluguel) : null);
+  // Backend exige valor na criação; placeholder 0 quando há data de início sem aluguel informado.
+  if (valorAluguel == null && dataInicio) {
+    valorAluguel = 0;
+  }
   const taxaUi = toNumberOrNull(String(ui.taxaAdministracaoPercent ?? '').replace(',', '.'));
   const taxaOrig =
     orig?.taxaAdministracaoPercent != null ? Number(orig.taxaAdministracaoPercent) : null;
@@ -1041,10 +1045,44 @@ function montarPayloadContratoFromUi(ui, imovelId) {
   };
 }
 
-function contratoProntoParaPersistir(contratoBody, contratoId, uiPayload) {
+/** Indica se o formulário tem campos que dependem do contrato na API (vigência, repasse, locação). */
+export function contratoTemDadosSignificativos(contratoBody, uiPayload = {}) {
+  if (contratoBody?.dataInicio || contratoBody?.dataFim) return true;
+  if (contratoBody?.valorAluguel != null && Number(contratoBody.valorAluguel) !== 0) return true;
+  if (contratoBody?.diaRepasse != null) return true;
+  if (contratoBody?.diaVencimentoAluguel != null) return true;
+  if (String(contratoBody?.formaPagamentoAluguel ?? '').trim()) return true;
+  if (String(contratoBody?.garantiaTipo ?? '').trim()) return true;
+  if (contratoBody?.valorGarantia != null) return true;
+  const ui = uiPayload ?? {};
+  if (String(ui.dataInicioContrato ?? '').trim()) return true;
+  if (String(ui.dataFimContrato ?? '').trim()) return true;
+  if (String(ui.valorLocacao ?? '').trim()) return true;
+  if (String(ui.diaRepasse ?? '').trim()) return true;
+  if (String(ui.diaPagAluguel ?? '').trim()) return true;
+  if (String(ui.formaPagamentoAluguel ?? '').trim()) return true;
+  if (String(ui.garantia ?? '').trim()) return true;
+  return false;
+}
+
+export function contratoProntoParaPersistir(contratoBody, contratoId, uiPayload) {
   if (contratoId) return true;
-  const temContratoMinimo = Boolean(contratoBody.dataInicio && contratoBody.valorAluguel != null);
-  return temContratoMinimo;
+  if (!contratoTemDadosSignificativos(contratoBody, uiPayload)) return false;
+  return Boolean(contratoBody.dataInicio && contratoBody.valorAluguel != null);
+}
+
+export function avisoContratoNaoPersistido(contratoBody, contratoId, uiPayload) {
+  if (contratoId) return null;
+  if (!contratoTemDadosSignificativos(contratoBody, uiPayload)) return null;
+  if (contratoProntoParaPersistir(contratoBody, contratoId, uiPayload)) return null;
+  const ui = uiPayload ?? {};
+  if (!contratoBody.dataInicio && String(ui.dataFimContrato ?? '').trim()) {
+    return 'Informe também a data de início do contrato — sem ela, vigência e dia de repasse (condomínio) não são gravados.';
+  }
+  if (!contratoBody.dataInicio && (contratoBody.diaRepasse != null || String(ui.diaRepasse ?? '').trim())) {
+    return 'Informe a data de início do contrato para gravar o dia de repasse do condomínio.';
+  }
+  return 'Preencha a data de início do contrato para salvar vigência e dados ligados ao contrato.';
 }
 
 /** Lista imóveis da API (cada item tem `id` interno e opcionalmente `numeroPlanilha`, col. A). */
@@ -1911,7 +1949,13 @@ export async function salvarImovelCadastro(uiPayload) {
     clienteId = Number(uiPayload._apiClienteId);
   }
 
-  const bodyImovel = montarPayloadImovelFromUi(uiPayload, clienteId, vinculo.processoIdPayload, {
+  const processoIdEfetivo =
+    vinculo.processoIdPayload ??
+    (uiPayload._apiProcessoId != null && Number(uiPayload._apiProcessoId) > 0
+      ? Number(uiPayload._apiProcessoId)
+      : null);
+
+  const bodyImovel = montarPayloadImovelFromUi(uiPayload, clienteId, processoIdEfetivo, {
     codigo: vinculo.espelhoCodigo,
     proc: vinculo.espelhoProc,
   });
@@ -1923,12 +1967,6 @@ export async function salvarImovelCadastro(uiPayload) {
   const imovelSalvo = idPersistencia
     ? await request(`/api/imoveis/${idPersistencia}`, { method: 'PUT', body: bodyImovel })
     : await request('/api/imoveis', { method: 'POST', body: bodyImovel });
-
-  const processoIdEfetivo =
-    vinculo.processoIdPayload ??
-    (uiPayload._apiProcessoId != null && Number(uiPayload._apiProcessoId) > 0
-      ? Number(uiPayload._apiProcessoId)
-      : null);
 
   if (vinculo.espelhoCodigo && vinculo.espelhoProc && bodyImovel.numeroPlanilha) {
     await salvarVinculoLocatarioImovel({
@@ -1958,6 +1996,7 @@ export async function salvarImovelCadastro(uiPayload) {
   if (processoIdEfetivo != null && Number(processoIdEfetivo) > 0) {
     contratoBody.processoId = Number(processoIdEfetivo);
   }
+  const avisoContrato = avisoContratoNaoPersistido(contratoBody, contratoId, uiContrato);
   let contratoSalvo = null;
   if (contratoProntoParaPersistir(contratoBody, contratoId, uiContrato)) {
     contratoSalvo = contratoId
@@ -2019,6 +2058,7 @@ export async function salvarImovelCadastro(uiPayload) {
   return {
     fonte: 'api',
     salvo: true,
+    avisoContrato,
     item: {
       ...item,
       _vinculoCodigoOriginal: vinculo.espelhoCodigo || item.codigo,
