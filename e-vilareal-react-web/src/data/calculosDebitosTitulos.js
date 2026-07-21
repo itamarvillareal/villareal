@@ -204,10 +204,21 @@ export function patchRodadaAoAceitarPagamento(rodada, dataCalculoAtual, parcelas
   }
 
   const copia = snap.map((t) => ({ ...t }));
+  const custasEstado = Array.isArray(cur.custas) ? cur.custas : [];
+  const custasGravadas = Array.isArray(cur.custasGravadasAceito) ? cur.custasGravadasAceito : [];
+  const temValorCustas = custasEstado.some((c) => String(c?.valor ?? '').trim() !== '');
+  const snapCustas = temValorCustas ? custasEstado : custasGravadas;
+  const copiaCustas = snapCustas.length ? snapCustas.map((c) => ({ ...c })) : [];
   return {
     parcelamentoAceito: true,
     titulosGravadosAceito: copia,
     titulos: copia.map((t) => ({ ...t })),
+    ...(copiaCustas.length
+      ? {
+          custasGravadasAceito: copiaCustas,
+          custas: copiaCustas.map((c) => ({ ...c })),
+        }
+      : {}),
     ...planoSnap,
     ...(dc ? { dataCalculoRodada: dc } : {}),
   };
@@ -251,6 +262,7 @@ export function patchRodadaAoDesfazerAceitarPagamento(rodada, titulosExibidos) {
     parcelamentoAceito: false,
     titulos,
     titulosGravadosAceito: [],
+    custasGravadasAceito: [],
     parcelasGravadasAceito: [],
     parcelamentoPlanoAceito: null,
     parcelas: [],

@@ -1,6 +1,8 @@
 package br.com.vilareal.projudi.pipeline;
 
 import br.com.vilareal.documento.GoogleDriveService;
+import br.com.vilareal.processo.application.rag.RagArquivoDriveEnviado;
+import br.com.vilareal.processo.application.rag.RagIndexacaoService;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.application.ProcessoMovimentacoesConsolidadoDriveAutoService;
 import br.com.vilareal.projudi.ProjudiDriveProgressivoUtil;
@@ -37,6 +39,7 @@ public class ProjudiSomenteDrivePassadaService {
     private final PublicacaoDriveAndamentosService publicacaoDriveAndamentosService;
     private final ProcessoMovimentacoesConsolidadoDriveAutoService consolidadoDriveAutoService;
     private final ProjudiOrquestradorGate orquestradorGate;
+    private final RagIndexacaoService ragIndexacaoService;
     private final int passoBackfill;
     private final long delayMsDownload;
 
@@ -48,6 +51,7 @@ public class ProjudiSomenteDrivePassadaService {
             PublicacaoDriveAndamentosService publicacaoDriveAndamentosService,
             ProcessoMovimentacoesConsolidadoDriveAutoService consolidadoDriveAutoService,
             ProjudiOrquestradorGate orquestradorGate,
+            RagIndexacaoService ragIndexacaoService,
             @Value("${projudi.orquestrador.passo-backfill:10}") int passoBackfill,
             @Value("${projudi.orquestrador.delay-ms-download:2000}") long delayMsDownload) {
         this.movimentacoesListagemService = movimentacoesListagemService;
@@ -57,6 +61,7 @@ public class ProjudiSomenteDrivePassadaService {
         this.publicacaoDriveAndamentosService = publicacaoDriveAndamentosService;
         this.consolidadoDriveAutoService = consolidadoDriveAutoService;
         this.orquestradorGate = orquestradorGate;
+        this.ragIndexacaoService = ragIndexacaoService;
         this.passoBackfill = passoBackfill > 0 ? passoBackfill : 10;
         this.delayMsDownload = delayMsDownload >= 0 ? delayMsDownload : 2000;
     }
@@ -122,6 +127,7 @@ public class ProjudiSomenteDrivePassadaService {
 
             int arquivosEnviados = 0;
             int idxMov = 0;
+            List<RagArquivoDriveEnviado> novosParaRag = new ArrayList<>();
             for (ProjudiTeorService.MovimentacaoProjudi mov : selecao.baixar()) {
                 // Prioridade do utilizador (ex.: protocolo): cede o robô num ponto seguro. O restante
                 // é progressivo e será arquivado na próxima passada.
@@ -140,8 +146,12 @@ public class ProjudiSomenteDrivePassadaService {
                         .map(ProjudiTeorService.ArquivoTeor::nomeArquivo)
                         .collect(Collectors.joining(", "));
                 arquivosEnviados += driveArquivamentoService.enviarArquivosMovimentacaoAoDrive(
-                        processo, numeroCnj, mov, arquivos, nomes, pastaMovimentacoesId, logDetalhes);
+                        processo, numeroCnj, mov, arquivos, nomes, pastaMovimentacoesId, logDetalhes, novosParaRag);
                 idxMov++;
+            }
+
+            if (!novosParaRag.isEmpty()) {
+                ragIndexacaoService.indexarArquivosNovos(numeroCnj, List.copyOf(novosParaRag));
             }
 
             publicacaoDriveAndamentosService.tentarMarcarAndamentosNoDrivePorCnj(

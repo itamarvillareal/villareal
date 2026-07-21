@@ -5,6 +5,7 @@ import br.com.vilareal.documento.DriveArquivoDto;
 import br.com.vilareal.documento.DrivePastaProcessoDto;
 import br.com.vilareal.documento.GoogleDriveService;
 import br.com.vilareal.documento.OcrService;
+import br.com.vilareal.processo.application.rag.RagArquivoDriveEnviado;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.projudi.ProjudiTeorService;
 import br.com.vilareal.projudi.ProjudiTeorService.ArquivoTeor;
@@ -73,6 +74,28 @@ class ProjudiDriveArquivamentoServiceTest {
         assertThat(detalhes).anyMatch(d -> d.startsWith("já existe no Drive, pulado: "));
         verify(googleDriveService, never()).uploadArquivo(any(), anyString(), anyString(), anyString());
         assertThat(detalhes).anyMatch(d -> d.contains("-> 0 arquivo(s) em Movimentações:"));
+    }
+
+    @Test
+    void enviar_arquivoNovo_coletorRag_recebeMetadados() throws Exception {
+        List<String> detalhes = new ArrayList<>();
+        List<RagArquivoDriveEnviado> coletor = new ArrayList<>();
+        MovimentacaoProjudi mov = mov("26");
+        doReturn(false).when(googleDriveService).existeArquivoComNomeNaPasta(eq(PASTA_ID), anyString());
+        when(ocrService.processarPdfSeNecessario(any()))
+                .thenReturn(new OcrService.ResultadoOcr(new byte[] {1}, "", false, false, null));
+        when(googleDriveService.uploadArquivo(any(), anyString(), anyString(), eq(PASTA_ID)))
+                .thenReturn(new DriveArquivoDto("drive-99", "n", null, null, null, null, null, null, null));
+
+        int n = service.enviarArquivosMovimentacaoAoDrive(
+                processoComInterno(1), CNJ, mov, List.of(arquivoPdf()), "doc.pdf", PASTA_ID, detalhes, coletor);
+
+        assertThat(n).isEqualTo(1);
+        assertThat(coletor).hasSize(1);
+        assertThat(coletor.get(0).driveFileId()).isEqualTo("drive-99");
+        assertThat(coletor.get(0).fonteId()).isEqualTo("drive:drive-99");
+        assertThat(coletor.get(0).tipoPeca()).isEqualTo("despacho");
+        assertThat(coletor.get(0).dataMov()).isEqualTo("2026-01-01");
     }
 
     @Test

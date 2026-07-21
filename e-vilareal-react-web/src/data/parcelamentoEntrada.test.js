@@ -146,4 +146,23 @@ describe('parcelamentoEntrada', () => {
   it('gerarDatasParcelasSubsequentes ignora linha que não é Parcela 01', () => {
     expect(gerarDatasParcelasSubsequentes('13/07/2026', 2, 5, false)).toEqual([]);
   });
+
+  it('montarLinhasPlanoPagamento inclui custas no débito total', () => {
+    const res = montarLinhasPlanoPagamento({
+      resumoDebito: { total: '1.000,00', honorarios: '100,00' },
+      resumoCustas: { total: '200,00' },
+      entradaModo: 'nenhuma',
+      entradaValor: '',
+      entradaPercentual: '',
+      dataEntrada: '',
+      nParcelas: 2,
+      taxaPercent: 0,
+      dataBaseParcelas: '01/08/2026',
+      gerarDataParcela: (_base, i) => `0${i + 2}/09/2026`,
+    });
+    expect(res.erro).toBeNull();
+    expect(res.debitoTotalCentavos).toBe(120_000);
+    expect(res.linhas).toHaveLength(2);
+    expect(res.linhas[0].valorParcela).toBe('R$ 600,00');
+  });
 });

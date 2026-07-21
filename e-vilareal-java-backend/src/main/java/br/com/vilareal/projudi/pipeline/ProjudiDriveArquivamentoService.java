@@ -4,6 +4,8 @@ import br.com.vilareal.documento.DocumentoDrivePastaService;
 import br.com.vilareal.documento.DrivePastaProcessoDto;
 import br.com.vilareal.documento.GoogleDriveService;
 import br.com.vilareal.documento.OcrService;
+import br.com.vilareal.processo.application.rag.RagArquivoDriveEnviado;
+import br.com.vilareal.processo.application.rag.RagIndexacaoService;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.projudi.ProjudiHtmlDocumentoUtil;
 import br.com.vilareal.projudi.ProjudiTeorService;
@@ -87,6 +89,22 @@ public class ProjudiDriveArquivamentoService {
             String nomes,
             String pastaMovimentacoesId,
             List<String> detalhes) {
+        return enviarArquivosMovimentacaoAoDrive(
+                processo, numeroCnj, mov, arquivos, nomes, pastaMovimentacoesId, detalhes, null);
+    }
+
+    /**
+     * @param coletorRag quando não nulo, recebe metadados dos arquivos novos enviados (indexação RAG).
+     */
+    public int enviarArquivosMovimentacaoAoDrive(
+            ProcessoEntity processo,
+            String numeroCnj,
+            ProjudiTeorService.MovimentacaoProjudi mov,
+            List<ProjudiTeorService.ArquivoTeor> arquivos,
+            String nomes,
+            String pastaMovimentacoesId,
+            List<String> detalhes,
+            List<RagArquivoDriveEnviado> coletorRag) {
         String prefixo = numeroCnj + " | mov " + mov.numero() + " [" + mov.tipo() + "] "
                 + mov.dataHora() + " -> " + arquivos.size() + " arquivo(s): " + nomes;
 
@@ -138,6 +156,14 @@ public class ProjudiDriveArquivamentoService {
                         conteudoUpload, prep.nomeDrive(), mimeUpload, pastaMovimentacoesId);
                 if (uploadDto != null) {
                     uploads.add(prep.nomeDrive());
+                    if (coletorRag != null && StringUtils.hasText(uploadDto.id())) {
+                        coletorRag.add(new RagArquivoDriveEnviado(
+                                uploadDto.id(),
+                                prep.nomeDrive(),
+                                RagIndexacaoService.normalizarTipoPeca(mov.tipo()),
+                                RagIndexacaoService.extrairDataMovIso(mov.dataHora()),
+                                mov.idMovimentacaoArquivo()));
+                    }
                 } else {
                     detalhes.add(prefixo + " | ERRO Drive: falha ao enviar " + prep.nomeDrive()
                             + " (verifique permissões/quota do Google Drive).");

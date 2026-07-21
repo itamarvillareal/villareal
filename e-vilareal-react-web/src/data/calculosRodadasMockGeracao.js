@@ -2,6 +2,7 @@
  * Geração de rodadas mock alinhada à tela {@link Calculos} (títulos, parcelas, cabeçalho).
  * Usada pelo Relatório Cálculos para consolidar linhas sem depender de cada combinação já ter sido aberta.
  */
+import { gerarCustasMock } from './calculosCustasJudiciais.js';
 import { padCliente, normalizarProcesso } from './processosDadosRelatorio.js';
 
 export const PARCELAS_POR_PAGINA_MOCK = 20;
@@ -52,6 +53,7 @@ export function criarRodadaMockCalculos(codClienteRaw, procRaw, dimensaoRaw, ove
     pagina: 1,
     paginaParcelamento: 1,
     titulos: gerarTitulosMock(cod8, proc, dim),
+    custas: gerarCustasMock(),
     parcelas: gerarParcelasMock(),
     quantidadeParcelasInformada: '00',
     taxaJurosParcelamento: '0,00',

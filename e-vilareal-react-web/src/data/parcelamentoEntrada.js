@@ -3,6 +3,7 @@
  */
 
 import { formatBRL, parseBRL, normalizarTextoDataBRparaSalvar, sugerirProximaDataVencimento } from '../components/calculos/calculosTitulosGridUtils.js';
+import { calcularValorCustasParcelaLegado } from './calculosCustasJudiciais.js';
 import { parseBRLToCentavos } from '../utils/moneyBr.js';
 
 export const ENTRADA_MODOS = ['nenhuma', 'reais', 'percentual'];
@@ -188,11 +189,13 @@ export function gerarDatasParcelasSubsequentes(dataBaseBr, indicePrimeira, quant
  * Monta linhas do plano (entrada opcional + N parcelas Price).
  * @param {object} p
  * @param {{ total: string, honorarios: string }} p.resumoDebito — resumo calcularResumoTitulosGrade
+ * @param {{ total?: string }} [p.resumoCustas] — resumo calcularResumoCustasGrade
  * @param {string} p.dataBaseParcelas — data de referência para 1ª parcela (+1 mês)
  * @param {(dataBase: string, idx: number) => string} p.gerarDataParcela
  */
 export function montarLinhasPlanoPagamento({
   resumoDebito,
+  resumoCustas,
   entradaModo,
   entradaValor,
   entradaPercentual,
@@ -202,7 +205,9 @@ export function montarLinhasPlanoPagamento({
   dataBaseParcelas,
   gerarDataParcela,
 }) {
-  const debitoTotalCent = parseBRLToCentavos(resumoDebito?.total) ?? 0;
+  const debitoTitulosCent = parseBRLToCentavos(resumoDebito?.total) ?? 0;
+  const custasCent = parseBRLToCentavos(resumoCustas?.total) ?? 0;
+  const debitoTotalCent = debitoTitulosCent + custasCent;
   const honorCent = parseBRLToCentavos(resumoDebito?.honorarios) ?? 0;
   const nParc = Math.max(0, Math.floor(Number(nParcelas) || 0));
   const taxaM = Number.isFinite(Number(taxaPercent)) ? Number(taxaPercent) : parsePercentualBR(taxaPercent);
@@ -308,8 +313,10 @@ export function aplicarMigracaoValorParcelaTotal(linhasSalvas, linhasGeradas) {
 /**
  * Soma valores do plano (entrada + N parcelas).
  * Coluna valorParcela = total pago; honorariosParcela é apenas informativo (não somar).
+ * @param {{ total?: string }} [resumoCustas]
+ * @param {{ total?: string }} [resumoDebitoTitulos]
  */
-export function calcularResumoPlanoPagamento(linhas, nParcelas, temEntrada) {
+export function calcularResumoPlanoPagamento(linhas, nParcelas, temEntrada, resumoCustas, resumoDebitoTitulos) {
   const nParc = Math.max(0, Math.floor(Number(nParcelas) || 0));
   const start = temEntrada ? 1 : 0;
   let valorParcelasTotal = 0;
@@ -331,6 +338,21 @@ export function calcularResumoPlanoPagamento(linhas, nParcelas, temEntrada) {
   entradaTotal = trunc2(entradaTotal);
   const valorFinalParcelas = valorParcelasTotal;
   const valorTotalPagar = trunc2(entradaTotal + valorFinalParcelas);
+
+  const valorFinalCustasAtualizado = parseBRL(resumoCustas?.total);
+  const valorFinalTaxas = parseBRL(resumoDebitoTitulos?.total);
+  const valorParcelaMedia = nParc > 0 ? trunc2(valorFinalParcelas / nParc) : 0;
+  const valorCustasParcelaNum =
+    nParc > 0 && valorFinalCustasAtualizado > 0
+      ? calcularValorCustasParcelaLegado(
+          valorFinalCustasAtualizado,
+          valorFinalTaxas,
+          valorParcelaMedia,
+          nParc
+        )
+      : 0;
+  const valorFinalCustasApos = nParc > 0 ? trunc2(valorCustasParcelaNum * nParc) : valorFinalCustasAtualizado;
+
   return {
     parcelasComValor: nParc,
     temEntrada,
@@ -340,7 +362,7 @@ export function calcularResumoPlanoPagamento(linhas, nParcelas, temEntrada) {
     valorTotalPagar: formatBRL(valorTotalPagar),
     valorFinalHonorarios: formatBRL(trunc2(honEntrada + valorHonorariosParcelas)),
     valorHonorariosParcela: nParc > 0 ? formatBRL(trunc2(valorHonorariosParcelas / nParc)) : formatBRL(0),
-    valorCustasParcela: formatBRL(0),
-    valorFinalCustas: formatBRL(0),
+    valorCustasParcela: formatBRL(valorCustasParcelaNum),
+    valorFinalCustas: formatBRL(valorFinalCustasApos),
   };
 }

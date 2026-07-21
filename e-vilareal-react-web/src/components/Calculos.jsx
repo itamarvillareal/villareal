@@ -84,6 +84,7 @@ import {
   titulosGradeTemValor,
 } from '../data/calculosDebitosTitulos.js';
 import TitulosGrid from './calculos/TitulosGrid.jsx';
+import CustasGrid from './calculos/CustasGrid.jsx';
 import { ModalCobrancaWhatsAppCalculos } from './calculos/ModalCobrancaWhatsAppCalculos.jsx';
 import { sugerirProximaDataVencimento } from './calculos/calculosTitulosGridUtils.js';
 import { IndicesAtualizacaoConferenciaModal } from './calculos/IndicesAtualizacaoConferenciaModal.jsx';
@@ -91,6 +92,15 @@ import { parseValorMonetarioBr } from '../utils/parseValorMonetarioBr.js';
 import { formatValorMoedaCampo } from '../utils/moneyBr.js';
 import { salvarValorCausaDoProcesso } from '../data/processosHistoricoData.js';
 import { atualizarValorCausaProcesso } from '../repositories/processosRepository.js';
+import {
+  calcularResumoCustasGrade,
+  calcularTotalLinhaCustas,
+  CUSTAS_POR_PAGINA,
+  custasGradeTemValor,
+  garantirArrayCustas,
+  gerarCustasMock,
+  linhaCustasVaziaCalculos,
+} from '../data/calculosCustasJudiciais.js';
 import {
   enriquecerTitulosAPartirDeParcelasNaRodada,
   linhaTituloVaziaCalculos,
@@ -913,7 +923,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     const anterior = tabAnteriorRef.current;
     tabAnteriorRef.current = tabAtiva;
     if (anterior === tabAtiva) return;
-    if (tabAtiva !== 'Parcelamento' && tabAtiva !== 'Títulos') return;
+    if (tabAtiva !== 'Parcelamento' && tabAtiva !== 'Títulos' && tabAtiva !== 'Custas Judiciais') return;
     const cod = padCliente8(codClienteManual);
     const p = normalizarProc(procManual);
     const curCod = padCliente8(codigoCliente);
@@ -941,6 +951,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
           pagina: 1,
           paginaParcelamento: 1,
           titulos: gerarTitulosMock(codigoClienteNorm, procNorm, dimensaoNorm),
+          custas: gerarCustasMock(),
           parcelas: gerarParcelasMock(),
           quantidadeParcelasInformada: '00',
           taxaJurosParcelamento: '0,00',
@@ -1026,6 +1037,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                 pagina: 1,
                 paginaParcelamento: 1,
                 titulos: gerarTitulosMock(codigoClienteNorm, procNorm, dimensaoNorm),
+                custas: gerarCustasMock(),
                 parcelas: gerarParcelasMock(),
                 quantidadeParcelasInformada: '00',
                 taxaJurosParcelamento: '0,00',
@@ -1119,6 +1131,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     pagina: 1,
     paginaParcelamento: 1,
     titulos: gerarTitulosMock(codigoClienteNorm, procNorm, dimensaoNorm),
+    custas: gerarCustasMock(),
     parcelas: gerarParcelasMock(),
     quantidadeParcelasInformada: '00',
     taxaJurosParcelamento: '0,00',
@@ -1287,6 +1300,39 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     const t = enriquecida.titulos;
     return Array.isArray(t) ? t : [];
   }, [rodadaAtual, calculoTravadoAceito, aceitarPagamento]);
+
+  const custas = useMemo(() => {
+    const gravados = rodadaAtual.custasGravadasAceito;
+    const fromEstado = garantirArrayCustas(rodadaAtual.custas);
+    if (Array.isArray(gravados) && gravados.length > 0 && calculoTravadoAceito) {
+      return garantirArrayCustas(gravados);
+    }
+    return fromEstado;
+  }, [rodadaAtual, calculoTravadoAceito]);
+
+  const custasChaveRecalculo = useMemo(() => {
+    const arr = Array.isArray(custas) ? custas : [];
+    return arr
+      .map((c) => `${String(c?.valor ?? '').trim()}\t${String(c?.dataPagamento ?? '').trim()}`)
+      .join('\f');
+  }, [custas]);
+
+  const temCustasCadastradas = useMemo(() => custasGradeTemValor(custas), [custas]);
+
+  const resumoCustasGeral = useMemo(() => calcularResumoCustasGrade(custas), [custas]);
+
+  const totalPaginasCustas = Math.max(1, Math.ceil(custas.length / CUSTAS_POR_PAGINA));
+  const inicioCustas = (pagina - 1) * CUSTAS_POR_PAGINA;
+  const fimCustas = inicioCustas + CUSTAS_POR_PAGINA;
+  const custasPaginaCompletos = useMemo(
+    () => custas.slice(inicioCustas, fimCustas),
+    [custas, inicioCustas, fimCustas]
+  );
+  const resumoCustasPagina = useMemo(
+    () => calcularResumoCustasGrade(custasPaginaCompletos),
+    [custasPaginaCompletos]
+  );
+  const rodadaCustasLength = (rodadaAtual.custas || []).filter((c) => String(c?.valor ?? '').trim() !== '').length;
 
   // Mantém vencimento/valor do txt; encargos vêm do recálculo (não do snapshot gravado).
   useEffect(() => {
@@ -1464,6 +1510,14 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [rodadaKey, calculoTravadoAceito, aceitarPagamento, indicesMensaisINPC, indicesMensaisIPCA, pagina]
+  );
+
+  const handleCustasFieldChange = useCallback(
+    (globalIdx, patch) => {
+      atualizarCustasNaRodada(globalIdx, patch);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rodadaKey, calculoAceito, aceitarPagamento, indicesMensaisINPC, indicesMensaisIPCA, pagina]
   );
 
   const handleAbrirDatasEspeciais = useCallback((globalIdx) => {
@@ -1972,6 +2026,68 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     return { next, changed };
   }
 
+  function recalcularCustas(lista, indicesMensaisINPCMap, indicesMensaisIPCAMap, dataOverride) {
+    const jurosPct = parsePercent(juros);
+    const dataCalcGlobal =
+      dataOverride ?? parseDateBR(dataCalculo) ?? parseDateBR(hojeBR());
+    const idxUpperGeral = String(indice).toUpperCase();
+
+    let changed = false;
+    const next = lista.map((row) => {
+      const principalStr = String(row.valor ?? '').trim();
+      const dataPagStr = String(row.dataPagamento ?? '').trim();
+      const principal = parseBRL(row.valor);
+      const dataPag = parseDateBR(row.dataPagamento);
+
+      if (!dataCalcGlobal || principalStr === '' || dataPagStr === '') {
+        return {
+          ...row,
+          atualizacaoMonetaria: '',
+          juros: '',
+          total: '',
+        };
+      }
+
+      let atualizado = principal;
+      let atualizacaoMonetariaValor = null;
+
+      if (idxUpperGeral === 'INPC' && indicesMensaisINPCMap) {
+        atualizado = calcularAtualizacaoMonetariaINPC(principal, dataPag, dataCalcGlobal, indicesMensaisINPCMap);
+      } else if ((idxUpperGeral === 'IPCA-E' || idxUpperGeral === 'IPCA') && indicesMensaisIPCAMap) {
+        atualizacaoMonetariaValor = calcularAtualizacaoMonetariaIPCA(principal, dataPag, dataCalcGlobal, indicesMensaisIPCAMap);
+        atualizado = principal + atualizacaoMonetariaValor;
+      } else if (idxUpperGeral !== 'NENHUM') {
+        atualizado = trunc2(principal * fatorIndiceSelecionado(indice));
+      }
+
+      if (atualizacaoMonetariaValor == null) {
+        const atualizacaoBruta = atualizado - principal;
+        const t = trunc2(atualizacaoBruta);
+        atualizacaoMonetariaValor = t < 0 ? 0 : t;
+      }
+
+      const dias = diffDays(dataPag, dataCalcGlobal);
+      const meses = dias <= 0 ? 0 : mesesJurosLegacy(dataPag, dataCalcGlobal);
+      const jurosValor = dias <= 0 ? 0 : trunc2(atualizado * jurosPct * meses);
+
+      const nextRow = calcularTotalLinhaCustas({
+        ...row,
+        atualizacaoMonetaria: formatBRL(trunc2(atualizacaoMonetariaValor)),
+        juros: formatBRL(jurosValor),
+      });
+
+      if (
+        nextRow.atualizacaoMonetaria !== row.atualizacaoMonetaria ||
+        nextRow.juros !== row.juros ||
+        nextRow.total !== row.total
+      ) {
+        changed = true;
+      }
+      return nextRow;
+    });
+    return { next, changed };
+  }
+
   // Recalcula ao abrir e a cada mudança, exceto quando o cálculo está aceito/travado.
   useEffect(() => {
     if (calculoAceito) return;
@@ -2029,6 +2145,44 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     titulosChaveRecalculo,
   ]);
 
+  useEffect(() => {
+    if (calculoAceito) return;
+    if (featureFlags.useApiCalculos && !rodadaExisteNoEstado) return;
+    const idxUpperGeral = String(indice).toUpperCase();
+    const precisaINPC = idxUpperGeral === 'INPC';
+    const precisaIPCA = idxUpperGeral === 'IPCA-E' || idxUpperGeral === 'IPCA';
+    if (precisaINPC && indicesMensaisINPC == null) return;
+    if (precisaIPCA && indicesMensaisIPCA == null) return;
+    const gravados = rodadaAtual.custasGravadasAceito;
+    const temGravadosImutaveis = Array.isArray(gravados) && gravados.length > 0;
+    setRodadasState((prev) => {
+      const cur = prev[rodadaKey] || { ...rodadaAtual };
+      const baseCustas = garantirArrayCustas(Array.isArray(cur.custas) ? cur.custas : []);
+      const listaFull = temGravadosImutaveis ? garantirArrayCustas(gravados) : baseCustas;
+      const { next, changed } = recalcularCustas(listaFull, indicesMensaisINPC, indicesMensaisIPCA);
+      if (!changed) return prev;
+      isDirtyRodadaRef.current = true;
+      return {
+        ...prev,
+        [rodadaKey]: {
+          ...cur,
+          custas: next,
+        },
+      };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    calculoAceito,
+    rodadaExisteNoEstado,
+    indice,
+    juros,
+    dataCalculo,
+    rodadaKey,
+    indicesMensaisINPC,
+    indicesMensaisIPCA,
+    custasChaveRecalculo,
+  ]);
+
   // Carrega índices mensais do INPC antes de recalcular.
   useEffect(() => {
     if (calculoAceito && !modoAlteracao) return;
@@ -2058,6 +2212,12 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       if (diAtual && (!minDataInicialAtual || diAtual < minDataInicialAtual)) minDataInicialAtual = diAtual;
       if (dfAtual && dfAtual > maxDataFinalAtual) maxDataFinalAtual = dfAtual;
     }
+    for (const c of garantirArrayCustas(rodadaAtual.custas)) {
+      const dataPag = parseDateBR(c.dataPagamento);
+      if (!dataPag) continue;
+      if (!minDataInicialAtual || dataPag < minDataInicialAtual) minDataInicialAtual = dataPag;
+      if (dataCalcDate > maxDataFinalAtual) maxDataFinalAtual = dataCalcDate;
+    }
     const inicio = minDataInicialAtual || dataCalcDate;
     const fim = maxDataFinalAtual || dataCalcDate;
 
@@ -2077,7 +2237,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calculoAceito, modoAlteracao, indice, dataCalculo, rodadaKey, indicesRefreshToken, titulosChaveRecalculo]);
+  }, [calculoAceito, modoAlteracao, indice, dataCalculo, rodadaKey, indicesRefreshToken, titulosChaveRecalculo, custasChaveRecalculo]);
 
   // Carrega índices mensais do IPCA (IPCA / “IPCA-E”) antes de recalcular.
   useEffect(() => {
@@ -2112,6 +2272,12 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       if (diAtual && (!minDataInicialAtual || diAtual < minDataInicialAtual)) minDataInicialAtual = diAtual;
       if (dfAtual && dfAtual > maxDataFinalAtual) maxDataFinalAtual = dfAtual;
     }
+    for (const c of garantirArrayCustas(rodadaAtual.custas)) {
+      const dataPag = parseDateBR(c.dataPagamento);
+      if (!dataPag) continue;
+      if (!minDataInicialAtual || dataPag < minDataInicialAtual) minDataInicialAtual = dataPag;
+      if (dataCalcDate > maxDataFinalAtual) maxDataFinalAtual = dataCalcDate;
+    }
     const inicio = minDataInicialAtual || dataCalcDate;
 
     // “até mm/aaaa” (do relatório) = mês anterior ao mês da data final atual.
@@ -2133,7 +2299,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calculoAceito, modoAlteracao, indice, dataCalculo, rodadaKey, indicesRefreshToken, titulosChaveRecalculo]);
+  }, [calculoAceito, modoAlteracao, indice, dataCalculo, rodadaKey, indicesRefreshToken, titulosChaveRecalculo, custasChaveRecalculo]);
 
   function abrirModalDatasEspeciais(indexGlobal) {
     const linha = (rodadaAtual.titulos || [])[indexGlobal];
@@ -2234,6 +2400,52 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
         [rodadaKey]: { ...cur, titulos: next },
       };
     });
+  }
+
+  function atualizarCustasNaRodada(indexGlobal, patch) {
+    setRodadasState((prev) => {
+      const cur = prev[rodadaKey];
+      if (!cur) return prev;
+      if (indexGlobal < 0) return prev;
+      const custasBase = garantirArrayCustas(Array.isArray(cur.custas) ? [...cur.custas] : []);
+      while (indexGlobal >= custasBase.length) {
+        custasBase.push(linhaCustasVaziaCalculos());
+      }
+      const custasAtualizadas = custasBase.map((r, i) => {
+        if (i !== indexGlobal) return r;
+        return { ...r, ...patch };
+      });
+      const next = calculoAceito
+        ? custasAtualizadas.map((row, i) => (i !== indexGlobal ? row : calcularTotalLinhaCustas(row)))
+        : recalcularCustas(custasAtualizadas, indicesMensaisINPC, indicesMensaisIPCA).next;
+      isDirtyRodadaRef.current = true;
+      return {
+        ...prev,
+        [rodadaKey]: { ...cur, custas: next },
+      };
+    });
+  }
+
+  function handleFocusCustasCampo(globalIdx, campo) {
+    if (globalIdx < 1) return;
+    const custasRodada = garantirArrayCustas(rodadaAtual.custas);
+    const prev = custasRodada[globalIdx - 1];
+    if (!prev) return;
+    const cur = custasRodada[globalIdx] ?? {};
+    if (campo === 'dataPagamento') {
+      if (String(cur.dataPagamento ?? '').trim()) return;
+      const prevData = normalizarTextoDataBRparaSalvar(String(prev.dataPagamento ?? '').trim());
+      if (!prevData) return;
+      const sugestao = sugerirProximaDataVencimento(prevData, periodicidade);
+      if (sugestao) atualizarCustasNaRodada(globalIdx, { dataPagamento: sugestao });
+      return;
+    }
+    if (campo === 'valor') {
+      if (String(cur.valor ?? '').trim()) return;
+      const prevValor = String(prev.valor ?? '').trim();
+      if (!prevValor) return;
+      atualizarCustasNaRodada(globalIdx, { valor: prevValor });
+    }
   }
 
   function parcelaTemValor(parcela) {
@@ -2432,18 +2644,53 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     indice,
   ]);
 
+  const resumoCustasParcelamento = useMemo(() => {
+    const modo = normalizarEntradaModo(entradaParcelamentoModo);
+    if (modo === 'nenhuma') return resumoCustasGeral;
+    const dataCalcNorm = normalizarTextoDataBRparaSalvar(dataCalculo);
+    const dataEntNorm =
+      normalizarTextoDataBRparaSalvar(String(entradaParcelamentoDataVenc || dataCalculo).trim()) || dataCalcNorm;
+    if (!dataEntNorm || dataEntNorm === dataCalcNorm) return resumoCustasGeral;
+    const gravados = rodadaAtual.custasGravadasAceito;
+    const temGravadosImutaveis = Array.isArray(gravados) && gravados.length > 0;
+    const baseCustas = temGravadosImutaveis ? garantirArrayCustas(gravados) : custas;
+    const { next } = recalcularCustas(baseCustas, indicesMensaisINPC, indicesMensaisIPCA, dataEntNorm);
+    return calcularResumoCustasGrade(next);
+  }, [
+    entradaParcelamentoModo,
+    entradaParcelamentoDataVenc,
+    dataCalculo,
+    resumoCustasGeral,
+    custas,
+    rodadaAtual.custasGravadasAceito,
+    indicesMensaisINPC,
+    indicesMensaisIPCA,
+    juros,
+    indice,
+  ]);
+
   const resumoParcelamento = useMemo(() => {
     const nParc = parseQuantidadeParcelasNumero(quantidadeParcelasInformada);
     const temEnt = temEntradaAtiva;
     const limite = temEnt ? nParc + 1 : nParc;
-    const baseResumo = calcularResumoPlanoPagamento(parcelas.slice(0, limite), nParc, temEnt);
+    const baseResumo = calcularResumoPlanoPagamento(
+      parcelas.slice(0, limite),
+      nParc,
+      temEnt,
+      resumoCustasParcelamento,
+      resumoDebitoParcelamento
+    );
     const dataCalcNorm = normalizarTextoDataBRparaSalvar(dataCalculo);
     const dataEntNorm =
       normalizarTextoDataBRparaSalvar(String(entradaParcelamentoDataVenc || dataCalculo).trim()) || dataCalcNorm;
+    const debitoMaisCustas = formatBRL(
+      parseBRL(resumoDebitoParcelamento.total) + parseBRL(resumoCustasParcelamento.total)
+    );
     return {
       ...baseResumo,
       valorFinalAtualizado: resumoDebitoParcelamento.total,
-      valorFinalAtualizadoCustas: formatBRL(0),
+      valorFinalAtualizadoCustas: resumoCustasParcelamento.total,
+      debitoMaisCustas,
       debitoDataCalculo: resumoGeral.total,
       debitoDataEntrada: resumoDebitoParcelamento.total,
       mostrarDoisDebitos: temEnt && dataEntNorm !== dataCalcNorm,
@@ -2453,6 +2700,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     quantidadeParcelasInformada,
     temEntradaAtiva,
     resumoDebitoParcelamento,
+    resumoCustasParcelamento,
     resumoGeral.total,
     dataCalculo,
     entradaParcelamentoDataVenc,
@@ -2538,6 +2786,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
 
       const montado = montarLinhasPlanoPagamento({
         resumoDebito: resumoDebitoParcelamento,
+        resumoCustas: resumoCustasParcelamento,
         entradaModo: entradaParcelamentoModo,
         entradaValor: entradaParcelamentoValor,
         entradaPercentual: entradaParcelamentoPercentual,
@@ -2601,6 +2850,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     quantidadeParcelasInformada,
     taxaJurosParcelamento,
     resumoDebitoParcelamento,
+    resumoCustasParcelamento,
     entradaParcelamentoModo,
     entradaParcelamentoValor,
     entradaParcelamentoPercentual,
@@ -2818,7 +3068,31 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
 
         <div className="order-first flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto p-2 sm:p-3 lg:pb-2 [-webkit-overflow-scrolling:touch]">
           {tabAtiva === 'Títulos' && (
-            <TitulosGrid
+            <>
+              {temCustasCadastradas && (
+                <div
+                  role="alert"
+                  className="mb-3 rounded-lg border-2 border-red-600 bg-gradient-to-r from-red-600 to-red-700 px-4 py-3 text-white shadow-lg"
+                >
+                  <p className="font-bold text-base tracking-tight">
+                    Atenção: existem custas judiciais cadastradas neste cálculo
+                  </p>
+                  <p className="text-sm mt-1.5 leading-snug text-red-50">
+                    Total atualizado das custas:{' '}
+                    <strong className="text-white">{resumoCustasGeral.total}</strong>. Inclua esse valor no acordo
+                    com o devedor — o parcelamento já soma títulos + custas. Consulte a aba{' '}
+                    <strong className="text-white">Custas Judiciais</strong> para detalhes.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setTabAtiva('Custas Judiciais')}
+                    className="mt-2 inline-flex items-center rounded-md bg-white px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-50"
+                  >
+                    Ver custas judiciais
+                  </button>
+                </div>
+              )}
+              <TitulosGrid
               titulosPaginaCompletos={titulosPaginaCompletos}
               resumoPagina={resumoPagina}
               resumoGeral={resumoGeral}
@@ -2838,11 +3112,32 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
               onPaginaAnterior={handlePaginaAnterior}
               onPaginaProxima={handlePaginaProxima}
             />
+            </>
+          )}
+          {tabAtiva === 'Custas Judiciais' && (
+            <CustasGrid
+              custasPaginaCompletos={custasPaginaCompletos}
+              resumoPagina={resumoCustasPagina}
+              resumoGeral={resumoCustasGeral}
+              pagina={pagina}
+              totalPaginas={totalPaginasCustas}
+              inicio={inicioCustas}
+              fim={fimCustas}
+              custasTotalLength={custas.length}
+              rodadaCustasLength={rodadaCustasLength}
+              aceitarPagamento={aceitarPagamento}
+              modoAlteracao={modoAlteracao}
+              isLoading={featureFlags.useApiCalculos && carregandoRodadaApi}
+              onCustasFieldChange={handleCustasFieldChange}
+              onFocusCustasCampo={handleFocusCustasCampo}
+              onPaginaAnterior={handlePaginaAnterior}
+              onPaginaProxima={handlePaginaProxima}
+            />
           )}
           {tabAtiva === 'Parcelamento' && (
             <div className="border border-slate-300 rounded bg-white p-3">
               <p className="text-xs text-slate-700 mb-2 rounded border border-slate-200 bg-slate-50 px-2 py-1.5 leading-snug">
-                O <strong>parcelamento</strong> acompanha os <strong>cálculos da aba Títulos</strong> para a{' '}
+                O <strong>parcelamento</strong> acompanha os <strong>cálculos das abas Títulos e Custas Judiciais</strong> para a{' '}
                 <strong>dimensão {dimensaoNorm}</strong> (cliente {codigoClienteNorm}, proc. {procNorm}). Ao mudar a{' '}
                 <strong>dimensão</strong>, os títulos e o parcelamento exibidos passam a ser os dessa dimensão — cada combinação
                 cliente/processo/dimensão mantém parcelamento e totais próprios.{' '}
@@ -3112,6 +3407,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                     <div className="space-y-1.5 text-sm">
                       <p className="flex justify-between gap-2"><span>Valor final Atualizado (débito):</span><b>{resumoParcelamento.valorFinalAtualizado}</b></p>
                       <p className="flex justify-between gap-2"><span>Valor Final Atualizado das Custas:</span><b>{resumoParcelamento.valorFinalAtualizadoCustas}</b></p>
+                      <p className="flex justify-between gap-2 border-t border-slate-200 pt-1"><span>Débito + custas (base do parcelamento):</span><b>{resumoParcelamento.debitoMaisCustas}</b></p>
                       <p className="flex justify-between gap-2"><span>Valor Total a ser Pago:</span><b>{resumoParcelamento.valorTotalPagar}</b></p>
                       <div className="flex justify-between items-center gap-2 pt-1 border-t border-slate-200">
                         <span className="leading-tight">Taxa de Juros de Parcelamento:</span>

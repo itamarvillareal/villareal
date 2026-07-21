@@ -1,0 +1,7 @@
+psycopg[binary]>=3.2
+pgvector>=0.3.6
+pymysql>=1.1
+voyageai>=0.3
+anthropic>=0.49
+pypdf>=5.0
+tiktoken>=0.9
