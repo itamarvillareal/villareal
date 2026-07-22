@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, PenLine, RefreshCw, Trash2, X } from 'lucide-react';
+import { FolderOpen, Loader2, PenLine, RefreshCw, Trash2, Upload, X } from 'lucide-react';
 import {
   assinarAutomaticoInicial,
   baixarP7sAssinadoInicial,
@@ -12,6 +12,7 @@ import {
 } from '../../api/iniciaisProjudiApi.js';
 import { listarPorProcesso } from '../../api/peticoesProjudiApi.js';
 import { chavePeticaoInicialDistribuicao } from '../../domain/peticaoInicialProjudi.js';
+import { isArquivoP7s } from '../../domain/peticaoArquivo.js';
 import { mensagemErroAmigavel } from '../../utils/mensagemErroAmigavel.js';
 import { processosBtnPrimary } from '../processos/ProcessosAdminLayout.jsx';
 import {
@@ -42,7 +43,7 @@ function nomeArquivoP7s(nomeOriginal, nomeP7s) {
  * @param {string} props.codigoCliente
  * @param {number|string} props.numeroInterno
  * @param {boolean} [props.disabled]
- * @param {(linhas: { key: string, file: File, idArquivoTipo: number }[]) => void} props.onArquivosAssinados
+ * @param {(linhas: { key: string, file: File, idArquivoTipo: number }[], opts?: { anexar?: boolean }) => void} props.onArquivosAssinados
  * @param {(msg: string) => void} [props.onToast]
  * @param {(msg: string) => void} [props.onErro]
  */
@@ -68,6 +69,7 @@ export function AssinaturaAutomaticaInicialPanel({
   const [carregandoFila, setCarregandoFila] = useState(false);
   const [operacaoFila, setOperacaoFila] = useState(null);
   const pollRef = useRef(null);
+  const inputMaquinaRef = useRef(null);
 
   const chaveInicial = useMemo(
     () => chavePeticaoInicialDistribuicao(codigoCliente, numeroInterno),
@@ -112,7 +114,15 @@ export function AssinaturaAutomaticaInicialPanel({
   }, [modalAberto, fase, erro, carregarFila]);
 
   const fecharModal = () => {
-    if (ativo && fase !== 'concluido' && fase !== 'erro' && fase !== 'cancelado') return;
+    if (
+      ativo &&
+      fase !== 'concluido' &&
+      fase !== 'erro' &&
+      fase !== 'cancelado' &&
+      fase !== 'escolha'
+    ) {
+      return;
+    }
     pararPoll();
     setModalAberto(false);
     setAtivo(false);
@@ -221,9 +231,39 @@ export function AssinaturaAutomaticaInicialPanel({
     }, POLL_MS);
   };
 
-  const iniciar = async () => {
+  const abrirModalEscolha = () => {
     if (disabled || ativo) return;
+    pararPoll();
     setModalAberto(true);
+    setFase('escolha');
+    setErro('');
+    setErroCodigo('');
+    setLoteId(null);
+    setPeticaoCount(0);
+    setAtivo(false);
+  };
+
+  const processarArquivosMaquina = (ev) => {
+    const files = Array.from(ev.target.files || []);
+    ev.target.value = '';
+    if (files.length === 0) return;
+    const invalidos = files.filter((f) => !isArquivoP7s(f));
+    if (invalidos.length) {
+      onErro?.('Selecione apenas arquivos .p7s.');
+      return;
+    }
+    const linhas = files.map((file) => ({
+      key: crypto.randomUUID(),
+      file,
+      idArquivoTipo: 16,
+    }));
+    onArquivosAssinados(linhas, { anexar: true });
+    onToast?.(`${linhas.length} arquivo(s) .p7s adicionado(s) da sua máquina.`);
+    fecharModal();
+  };
+
+  const executarAssinaturaDrive = async () => {
+    if (disabled || ativo) return;
     setFase('');
     setErro('');
     setErroCodigo('');
@@ -444,8 +484,8 @@ export function AssinaturaAutomaticaInicialPanel({
         type="button"
         className={`${processosBtnPrimary} inline-flex items-center gap-1.5 text-sm`}
         disabled={disabled || !processoOk || ativo}
-        onClick={() => void iniciar()}
-        title="Assina PDFs da pasta «Assinar» no Drive via token (assinador local)"
+        onClick={abrirModalEscolha}
+        title="Escolha entre assinar PDFs da pasta «Assinar» ou enviar .p7s da sua máquina"
       >
         {ativo ? (
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
@@ -465,11 +505,22 @@ export function AssinaturaAutomaticaInicialPanel({
       </button>
       </div>
 
+      <input
+        ref={inputMaquinaRef}
+        type="file"
+        accept=".p7s,.pdf.p7s,application/pkcs7-signature"
+        multiple
+        className="sr-only"
+        onChange={processarArquivosMaquina}
+      />
+
       {modalAberto ? (
         <div className="fixed inset-0 z-[67] flex items-center justify-center bg-black/45 backdrop-blur-[2px] p-4">
           <div className="w-full max-w-lg bg-white border border-slate-200 shadow-2xl rounded-2xl overflow-hidden flex flex-col">
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/20 bg-gradient-to-r from-violet-700 to-indigo-700 text-white">
-              <p className="text-base font-semibold">Assinatura automática — inicial</p>
+              <p className="text-base font-semibold">
+                {fase === 'escolha' ? 'Anexos para a inicial' : 'Assinatura automática — inicial'}
+              </p>
               <button
                 type="button"
                 onClick={fecharModal}
@@ -481,6 +532,69 @@ export function AssinaturaAutomaticaInicialPanel({
               </button>
             </div>
             <div className="px-4 py-5 space-y-4 text-sm text-slate-700">
+              {fase === 'escolha' ? (
+                <>
+                  <p className="text-sm text-slate-700">
+                    Processo{' '}
+                    <span className="font-mono font-medium">
+                      {codigoCliente}/{numeroInterno}
+                    </span>
+                    . Como deseja obter os anexos <span className="font-mono">.p7s</span>?
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-1">
+                    <button
+                      type="button"
+                      className="rounded-xl border-2 border-violet-200 bg-violet-50/80 px-4 py-4 text-left hover:border-violet-400 hover:bg-violet-50 transition-colors"
+                      onClick={() => void executarAssinaturaDrive()}
+                    >
+                      <span className="flex items-start gap-3">
+                        <span className="mt-0.5 rounded-lg bg-violet-600 p-2 text-white">
+                          <FolderOpen className="h-5 w-5" aria-hidden />
+                        </span>
+                        <span>
+                          <span className="block text-sm font-semibold text-violet-950">
+                            Pasta «Assinar» no sistema
+                          </span>
+                          <span className="mt-1 block text-xs leading-relaxed text-violet-900/90">
+                            Busca os PDFs na subpasta «Assinar» do Google Drive e assina automaticamente
+                            no token (assinador local).
+                          </span>
+                        </span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-xl border-2 border-slate-200 bg-slate-50 px-4 py-4 text-left hover:border-slate-400 hover:bg-white transition-colors"
+                      onClick={() => inputMaquinaRef.current?.click()}
+                    >
+                      <span className="flex items-start gap-3">
+                        <span className="mt-0.5 rounded-lg bg-slate-700 p-2 text-white">
+                          <Upload className="h-5 w-5" aria-hidden />
+                        </span>
+                        <span>
+                          <span className="block text-sm font-semibold text-slate-900">
+                            Enviar da minha máquina
+                          </span>
+                          <span className="mt-1 block text-xs leading-relaxed text-slate-600">
+                            Selecione no computador os arquivos <span className="font-mono">.p7s</span>{' '}
+                            já assinados, sem usar a pasta «Assinar».
+                          </span>
+                        </span>
+                      </span>
+                    </button>
+                  </div>
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="button"
+                      onClick={fecharModal}
+                      className="px-4 py-2 rounded-xl border border-slate-300 text-sm font-medium hover:bg-slate-50"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
               <p className="text-xs text-slate-500">
                 Processo <span className="font-mono">{codigoCliente}/{numeroInterno}</span> — PDFs
                 na subpasta «Assinar» do Google Drive.
@@ -671,6 +785,8 @@ export function AssinaturaAutomaticaInicialPanel({
                   </button>
                 )}
               </div>
+                </>
+              )}
             </div>
           </div>
         </div>

@@ -1039,7 +1039,11 @@ export function DistribuicaoInicialProjudi() {
                   codigoCliente={dadosProcesso.codigoCliente}
                   numeroInterno={dadosProcesso.numeroInterno}
                   disabled={!dadosProcesso || operacao != null}
-                  onArquivosAssinados={(linhas) => setLinhasP7s(linhas)}
+                  onArquivosAssinados={(linhas, opts) =>
+                    opts?.anexar
+                      ? setLinhasP7s((rows) => [...rows, ...linhas])
+                      : setLinhasP7s(linhas)
+                  }
                   onToast={setToast}
                   onErro={setApiError}
                 />
