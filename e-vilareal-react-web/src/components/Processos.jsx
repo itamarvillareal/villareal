@@ -115,7 +115,6 @@ import {
   Send,
   Receipt,
   MessageCircle,
-  ClipboardPen,
 } from 'lucide-react';
 import { ContaCorrenteVinculoAssist } from './processos/ContaCorrenteVinculoAssist.jsx';
 import {
@@ -162,21 +161,15 @@ import {
   ModalEscolherEnderecoParte,
   formatarEnderecoParteUi,
 } from './processos/ModalEscolherEnderecoParte.jsx';
-import { ModalDeclaracaoAtividadeRemunerada } from './processos/ModalDeclaracaoAtividadeRemunerada.jsx';
 import { carregarEnderecosPessoa } from '../repositories/pessoasEnderecosContatosRepository.js';
 import { ModalPeticionamentoProcesso } from './projudi/ModalPeticionamentoProcesso.jsx';
 import { PessoaEmbedModal } from './PessoaEmbedModal.jsx';
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 import { AutorUsuarioExibicao } from './ui/AutorUsuarioExibicao.jsx';
 import { buildContextFromProcesso, buildContextFromProcessoComPrazoFatal } from '../data/tarefasContextualPayload.js';
-import { montarDadosParaDocumentoFromProcesso, extrairDataIsoDeLocalData, LOCAL_DATA_PADRAO } from '../helpers/documentoHelper.js';
+import { montarDadosParaDocumentoFromProcesso } from '../helpers/documentoHelper.js';
 import { montarDadosDistribuicaoInicialFromProcesso } from '../helpers/distribuicaoInicialProjudiHelper.js';
 import { obterStatusDrive } from '../repositories/driveRepository.js';
-import {
-  downloadPdfBlob,
-  gerarDeclaracaoRendimentos,
-  nomeArquivoDeclaracaoPdf,
-} from '../repositories/documentosRepository.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { obterClienteCadastroPorCodigo } from '../repositories/clientesRepository.js';
 import { CampoNumeroComContador } from './ui/CampoNumeroComContador.jsx';
@@ -715,9 +708,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [clienteProcessoApiId, setClienteProcessoApiId] = useState(null);
   const [apiSaving, setApiSaving] = useState(false);
   const [gerandoDocNav, setGerandoDocNav] = useState(false);
-  const [gerandoDeclaracao, setGerandoDeclaracao] = useState(false);
-  const [modalDeclaracaoAberta, setModalDeclaracaoAberta] = useState(false);
-  const [ctxDeclaracao, setCtxDeclaracao] = useState(null);
   const [gerandoDistribuicaoInicial, setGerandoDistribuicaoInicial] = useState(false);
   const [driveExplorerAberto, setDriveExplorerAberto] = useState(false);
   const [driveConfigurado, setDriveConfigurado] = useState(false);
@@ -2261,101 +2251,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     navigate,
   ]);
 
-  const handleAbrirDeclaracaoRendimentos = useCallback(async () => {
-    if (!podeGerarDocumento || gerandoDeclaracao || gerandoDocNav) return;
-    setApiError('');
-    try {
-      const dadosProcesso = await montarDadosParaDocumentoFromProcesso({
-        processoApiId,
-        codigoCliente,
-        processo,
-        numeroInterno: processo,
-        numeroProcessoNovo,
-        numeroProcessoVelho,
-        naturezaAcao,
-        competencia,
-        orgaoJulgador: orgaoJulgadorSelecionado?.orgaoJulgador ?? null,
-        valorCausa,
-        cidade,
-        estado,
-        observacao,
-        papelParte,
-        textoParteCliente,
-        textoParteOposta,
-        parteCliente,
-        parteOposta,
-        pessoasVinculoCache,
-      });
-      const pessoaId = Number(dadosProcesso.pessoaIdOutorgante);
-      if (!Number.isFinite(pessoaId) || pessoaId <= 0) {
-        setApiError('Informe a parte cliente do processo para gerar a declaração.');
-        return;
-      }
-      setCtxDeclaracao({
-        pessoaId,
-        nomeDeclarante: dadosProcesso.nomeOutorgante || dadosProcesso.parteCliente,
-        cidadeEstado: dadosProcesso.cidadeEstado,
-        processoApiId: dadosProcesso.processoApiId,
-        codigoCliente: dadosProcesso.codigoCliente,
-        numeroInterno: dadosProcesso.numeroInterno,
-      });
-      setModalDeclaracaoAberta(true);
-    } catch (e) {
-      setApiError(e?.message || 'Falha ao preparar declaração de rendimentos.');
-    }
-  }, [
-    podeGerarDocumento,
-    gerandoDeclaracao,
-    gerandoDocNav,
-    processoApiId,
-    codigoCliente,
-    processo,
-    numeroProcessoNovo,
-    numeroProcessoVelho,
-    naturezaAcao,
-    competencia,
-    orgaoJulgadorSelecionado,
-    valorCausa,
-    cidade,
-    estado,
-    observacao,
-    papelParte,
-    textoParteCliente,
-    textoParteOposta,
-    parteCliente,
-    parteOposta,
-    pessoasVinculoCache,
-  ]);
-
-  const handleConfirmarDeclaracaoRendimentos = useCallback(
-    async (exerceAtividadeRemunerada) => {
-      if (!ctxDeclaracao || gerandoDeclaracao) return;
-      setGerandoDeclaracao(true);
-      setApiError('');
-      try {
-        const blob = await gerarDeclaracaoRendimentos({
-          pessoaId: ctxDeclaracao.pessoaId,
-          exerceAtividadeRemunerada,
-          cidadeEstado: ctxDeclaracao.cidadeEstado?.trim() || LOCAL_DATA_PADRAO,
-          data:
-            extrairDataIsoDeLocalData(ctxDeclaracao.cidadeEstado) ||
-            new Date().toISOString().split('T')[0],
-          processoId: ctxDeclaracao.processoApiId,
-          codigoCliente: ctxDeclaracao.codigoCliente,
-          numeroInterno: ctxDeclaracao.numeroInterno,
-        });
-        downloadPdfBlob(blob, nomeArquivoDeclaracaoPdf(ctxDeclaracao.nomeDeclarante));
-        setModalDeclaracaoAberta(false);
-        setCtxDeclaracao(null);
-      } catch (e) {
-        setApiError(e?.message || 'Falha ao gerar declaração de rendimentos.');
-      } finally {
-        setGerandoDeclaracao(false);
-      }
-    },
-    [ctxDeclaracao, gerandoDeclaracao],
-  );
-
   const handleAbrirGerarContratoHonorarios = useCallback(async () => {
     if (!podeGerarDocumento || gerandoDocNav) return;
     setGerandoDocNav(true);
@@ -2382,7 +2277,9 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         parteOposta,
         pessoasVinculoCache,
       });
-      navigate('/documentos/gerar', { state: { dadosProcesso, modoInicial: 'contrato' } });
+      navigate('/documentos/gerar', {
+        state: { dadosProcesso, modoInicial: 'documentos', documentoSubtipo: 'contrato' },
+      });
     } catch (e) {
       setApiError(e?.message || 'Falha ao preparar dados para gerar contrato.');
     } finally {
@@ -4196,20 +4093,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     </button>
                     <button
                       type="button"
-                      className={processosBtnToolbarOrange}
-                      disabled={!podeGerarDocumento || gerandoDeclaracao || gerandoDocNav || apiSaving}
-                      onClick={() => void handleAbrirDeclaracaoRendimentos()}
-                      title={
-                        podeGerarDocumento
-                          ? 'Gerar declaração de rendimentos (Lei 7.115/83) da parte cliente'
-                          : 'Informe o CNJ ou salve o processo na API'
-                      }
-                    >
-                      <ClipboardPen className="w-3.5 h-3.5" aria-hidden />
-                      {gerandoDeclaracao ? 'Gerando…' : 'Declaração'}
-                    </button>
-                    <button
-                      type="button"
                       className={processosBtnToolbarCyan}
                       disabled={
                         !podeGerarDocumento ||
@@ -6008,18 +5891,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         enderecoSelecionadoId={modalEscolhaEndereco?.enderecoSelecionadoId}
         onConfirmar={confirmarEscolhaEnderecoParte}
         onCancelar={cancelarEscolhaEnderecoParte}
-      />
-
-      <ModalDeclaracaoAtividadeRemunerada
-        aberto={modalDeclaracaoAberta}
-        nomeDeclarante={ctxDeclaracao?.nomeDeclarante}
-        gerando={gerandoDeclaracao}
-        onConfirmar={(exerce) => void handleConfirmarDeclaracaoRendimentos(exerce)}
-        onCancelar={() => {
-          if (gerandoDeclaracao) return;
-          setModalDeclaracaoAberta(false);
-          setCtxDeclaracao(null);
-        }}
       />
 
         </>

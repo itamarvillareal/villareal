@@ -5,6 +5,7 @@ import {
   FileSignature,
   FileText,
   FileUp,
+  Files,
   Handshake,
   Layers,
   Loader2,
@@ -172,13 +173,44 @@ const hojeBR = () => {
 
 const MODO_IA = 'ia';
 const MODO_MANUAL = 'manual';
-const MODO_PROCURACAO = 'procuracao';
-const MODO_DECLARACAO = 'declaracao';
-const MODO_CONTRATO = 'contrato';
+const MODO_DOCUMENTOS = 'documentos';
+const SUBDOC_PROCURACAO = 'procuracao';
+const SUBDOC_DECLARACAO = 'declaracao';
+const SUBDOC_CONTRATO = 'contrato';
 const MODO_MODELO = 'modelo';
 const MODO_ARQUIVO = 'arquivo';
 const MODO_EXECUCAO = 'execucao';
 const MODO_HOMOLOGACAO = 'homologacao';
+
+const SUBTIPOS_DOCUMENTO = [
+  { id: SUBDOC_PROCURACAO, label: 'Procuração', Icon: FileSignature },
+  { id: SUBDOC_DECLARACAO, label: 'Declaração de rendimentos', Icon: ClipboardPen },
+  { id: SUBDOC_CONTRATO, label: 'Contrato', Icon: ScrollText },
+];
+
+function resolverModoInicial(modoInicial) {
+  if (
+    modoInicial === 'documentos' ||
+    modoInicial === 'procuracao' ||
+    modoInicial === 'declaracao' ||
+    modoInicial === 'contrato'
+  ) {
+    return MODO_DOCUMENTOS;
+  }
+  if (modoInicial === 'arquivo') return MODO_ARQUIVO;
+  return MODO_IA;
+}
+
+function resolverSubtipoDocumentoInicial(modoInicial, documentoSubtipoInicial) {
+  const sub = String(documentoSubtipoInicial ?? '').trim();
+  if (sub === SUBDOC_PROCURACAO || sub === SUBDOC_DECLARACAO || sub === SUBDOC_CONTRATO) {
+    return sub;
+  }
+  if (modoInicial === 'declaracao') return SUBDOC_DECLARACAO;
+  if (modoInicial === 'contrato') return SUBDOC_CONTRATO;
+  if (modoInicial === 'procuracao') return SUBDOC_PROCURACAO;
+  return SUBDOC_PROCURACAO;
+}
 
 const estadoInicialIA = () => ({
   enderecamentoSelect: '',
@@ -331,6 +363,7 @@ export function GerarDocumento() {
     [dadosProcessoState],
   );
   const modoInicial = location.state?.modoInicial;
+  const documentoSubtipoInicial = location.state?.documentoSubtipo;
 
   useEffect(() => {
     if (dadosProcessoState) {
@@ -364,17 +397,16 @@ export function GerarDocumento() {
   );
   const vindoDoProcesso = Boolean(dadosProcesso);
 
-  const [modo, setModo] = useState(() => {
-    if (modoInicial === 'contrato') return MODO_CONTRATO;
-    if (modoInicial === 'declaracao') return MODO_DECLARACAO;
-    if (modoInicial === 'arquivo') return MODO_ARQUIVO;
-    return MODO_IA;
-  });
+  const [modo, setModo] = useState(() => resolverModoInicial(modoInicial));
+  const [documentoSubtipo, setDocumentoSubtipo] = useState(() =>
+    resolverSubtipoDocumentoInicial(modoInicial, documentoSubtipoInicial),
+  );
   const modoIA = modo === MODO_IA;
   const modoManual = modo === MODO_MANUAL;
-  const modoProcuracao = modo === MODO_PROCURACAO;
-  const modoDeclaracao = modo === MODO_DECLARACAO;
-  const modoContrato = modo === MODO_CONTRATO;
+  const modoDocumentos = modo === MODO_DOCUMENTOS;
+  const modoProcuracao = modoDocumentos && documentoSubtipo === SUBDOC_PROCURACAO;
+  const modoDeclaracao = modoDocumentos && documentoSubtipo === SUBDOC_DECLARACAO;
+  const modoContrato = modoDocumentos && documentoSubtipo === SUBDOC_CONTRATO;
   const modoModelo = modo === MODO_MODELO;
   const modoArquivo = modo === MODO_ARQUIVO;
   const modoExecucao = modo === MODO_EXECUCAO;
@@ -688,6 +720,7 @@ export function GerarDocumento() {
       nomeDeclarante: '',
     });
     setModalDeclaracaoAberta(false);
+    setDocumentoSubtipo(SUBDOC_PROCURACAO);
     setFormContrato({
       modelo: MODELO_CONTRATO_HONORARIOS,
       pessoaId: '',
@@ -1371,56 +1404,20 @@ export function GerarDocumento() {
           <button
             type="button"
             role="tab"
-            aria-selected={modoProcuracao}
+            aria-selected={modoDocumentos}
             className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${
-              modoProcuracao
+              modoDocumentos
                 ? 'bg-white text-cyan-700 shadow-sm dark:bg-slate-900 dark:text-cyan-300'
                 : 'text-slate-600 hover:text-slate-900 dark:text-slate-400'
             }`}
             onClick={() => {
-              setModo(MODO_PROCURACAO);
+              setModo(MODO_DOCUMENTOS);
               setErrors({});
               setMensagemErro('');
             }}
           >
-            <FileSignature className="h-4 w-4" aria-hidden />
-            Procuração
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={modoDeclaracao}
-            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${
-              modoDeclaracao
-                ? 'bg-white text-cyan-700 shadow-sm dark:bg-slate-900 dark:text-cyan-300'
-                : 'text-slate-600 hover:text-slate-900 dark:text-slate-400'
-            }`}
-            onClick={() => {
-              setModo(MODO_DECLARACAO);
-              setErrors({});
-              setMensagemErro('');
-            }}
-          >
-            <ClipboardPen className="h-4 w-4" aria-hidden />
-            Declaração
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={modoContrato}
-            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${
-              modoContrato
-                ? 'bg-white text-cyan-700 shadow-sm dark:bg-slate-900 dark:text-cyan-300'
-                : 'text-slate-600 hover:text-slate-900 dark:text-slate-400'
-            }`}
-            onClick={() => {
-              setModo(MODO_CONTRATO);
-              setErrors({});
-              setMensagemErro('');
-            }}
-          >
-            <ScrollText className="h-4 w-4" aria-hidden />
-            Contrato
+            <Files className="h-4 w-4" aria-hidden />
+            Documentos
           </button>
           <button
             type="button"
@@ -1744,7 +1741,38 @@ export function GerarDocumento() {
               }}
             />
           </Suspense>
-        ) : modoProcuracao ? (
+        ) : modoDocumentos ? (
+          <>
+            <div
+              className="mb-4 inline-flex w-full flex-wrap rounded-lg border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-900/50 sm:w-auto"
+              role="tablist"
+              aria-label="Tipo de documento"
+            >
+              {SUBTIPOS_DOCUMENTO.map(({ id, label, Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={documentoSubtipo === id}
+                  className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${
+                    documentoSubtipo === id
+                      ? 'bg-white text-cyan-700 shadow-sm dark:bg-slate-800 dark:text-cyan-300'
+                      : 'text-slate-600 hover:text-slate-900 dark:text-slate-400'
+                  }`}
+                  onClick={() => {
+                    setDocumentoSubtipo(id);
+                    setErrors({});
+                    setMensagemErro('');
+                    setModalDeclaracaoAberta(false);
+                  }}
+                >
+                  <Icon className="h-4 w-4" aria-hidden />
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {modoProcuracao ? (
           <CollapsibleSection title="Procuração Ad Judicia" defaultOpen>
             <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
               Gera procuração com texto fixo dos poderes. Informe o ID da pessoa outorgante (dados
@@ -1785,7 +1813,9 @@ export function GerarDocumento() {
               </label>
             </div>
           </CollapsibleSection>
-        ) : modoDeclaracao ? (
+            ) : null}
+
+            {modoDeclaracao ? (
           <CollapsibleSection title="Declaração de rendimentos" defaultOpen>
             <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
               Gera declaração nos termos da Lei 7.115/83. Ao gerar, você informará se o declarante
@@ -1826,7 +1856,9 @@ export function GerarDocumento() {
               </label>
             </div>
           </CollapsibleSection>
-        ) : modoContrato ? (
+            ) : null}
+
+            {modoContrato ? (
           <CollapsibleSection title="Contrato" defaultOpen>
             <div className="mb-4 grid gap-4">
               <label className="block text-sm">
@@ -2025,6 +2057,8 @@ export function GerarDocumento() {
               />
             </label>
           </CollapsibleSection>
+            ) : null}
+          </>
         ) : modoIA ? (
           <>
             <CollapsibleSection title="1. Dados do processo" defaultOpen>

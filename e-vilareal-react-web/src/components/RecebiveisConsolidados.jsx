@@ -153,7 +153,9 @@ export function RecebiveisConsolidados({
           numeroInterno: ctx.numeroInterno ?? contextoProcesso?.numeroInterno,
           processo: ctx.numeroInterno ?? contextoProcesso?.numeroInterno,
         });
-        navigate('/documentos/gerar', { state: { dadosProcesso, modoInicial: 'contrato' } });
+        navigate('/documentos/gerar', {
+          state: { dadosProcesso, modoInicial: 'documentos', documentoSubtipo: 'contrato' },
+        });
       } catch (e) {
         setErro(e?.message || 'Falha ao abrir edição do contrato.');
       } finally {
