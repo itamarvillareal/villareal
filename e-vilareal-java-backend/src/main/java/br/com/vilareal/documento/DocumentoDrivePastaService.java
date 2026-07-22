@@ -36,6 +36,13 @@ public class DocumentoDrivePastaService {
             TipoDocumento.DECLARACAO.getPasta(),
             TipoDocumento.DOCUMENTO.getPasta());
 
+    private static final Set<String> PASTAS_TIPO_DOCUMENTO_PESSOA = Set.of(
+            TipoDocumentoPessoa.DOCUMENTOS.getPasta(),
+            TipoDocumentoPessoa.PROCURACOES.getPasta(),
+            TipoDocumentoPessoa.CONTRATOS.getPasta(),
+            TipoDocumentoPessoa.DECLARACOES.getPasta(),
+            TipoDocumentoPessoa.ASSINADOS.getPasta());
+
     private final ClienteResolverService clienteResolverService;
     private final ClienteCodigoPessoaResolver clienteCodigoPessoaResolver;
     private final PessoaRepository pessoaRepository;
@@ -309,6 +316,7 @@ public class DocumentoDrivePastaService {
 
     /**
      * Pasta da pessoa em {@code Pessoas/{id} - {nome}} (documentos pessoais, fora de clientes/).
+     * Garante as subpastas padrão ({@link TipoDocumentoPessoa}) na primeira resolução.
      */
     @Transactional(readOnly = true)
     public DrivePastaProcessoDto resolverPastaPessoa(Long pessoaId) throws Exception {
@@ -319,9 +327,39 @@ public class DocumentoDrivePastaService {
         String nomePasta = formatarNomePastaPessoa(pessoaId, nomePessoa);
         String pastaId = googleDriveService.encontrarOuCriarPastaPublic(
                 nomePasta, googleDriveService.getPessoasFolderId());
+        garantirSubpastasPessoa(pastaId);
         String webViewLink = googleDriveService.obterWebViewLink(pastaId);
         String caminho = "Pessoas / " + nomePasta;
         return new DrivePastaProcessoDto(pastaId, webViewLink, nomePasta, caminho);
+    }
+
+    /**
+     * Resolve subpasta de documento dentro de {@code Pessoas/{id8} - nome/{tipo}/}.
+     */
+    public String obterPastaDestinoPessoa(Long pessoaId, TipoDocumentoPessoa tipoDocumento) throws Exception {
+        if (!googleDriveService.isConfigurado() || pessoaId == null) {
+            return null;
+        }
+        TipoDocumentoPessoa tipo = tipoDocumento != null ? tipoDocumento : TipoDocumentoPessoa.DOCUMENTOS;
+        String nomePessoa = resolverNomePessoa(pessoaId);
+        String pastaPessoaId = googleDriveService.encontrarOuCriarPastaPublic(
+                formatarNomePastaPessoa(pessoaId, nomePessoa),
+                googleDriveService.getPessoasFolderId());
+        garantirSubpastasPessoa(pastaPessoaId);
+        return googleDriveService.encontrarOuCriarPastaPublic(tipo.getPasta(), pastaPessoaId);
+    }
+
+    void garantirSubpastasPessoa(String pastaPessoaId) throws Exception {
+        if (!StringUtils.hasText(pastaPessoaId)) {
+            return;
+        }
+        for (TipoDocumentoPessoa tipo : TipoDocumentoPessoa.values()) {
+            googleDriveService.encontrarOuCriarPastaPublic(tipo.getPasta(), pastaPessoaId);
+        }
+    }
+
+    static Set<String> pastasTipoDocumentoPessoa() {
+        return PASTAS_TIPO_DOCUMENTO_PESSOA;
     }
 
     @Transactional(readOnly = true)
