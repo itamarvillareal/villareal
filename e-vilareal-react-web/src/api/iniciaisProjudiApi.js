@@ -275,6 +275,26 @@ export async function baixarP7sAssinadoInicial({ arquivoId, codigoCliente, numer
   return blob;
 }
 
+/** @param {number} pessoaIdAutor @returns {Promise<Array<{ documentoId: number, pessoaId: number, pessoaNome: string, tipo: string, nomeArquivo: string, idArquivoTipo: number, origem: string }>>} */
+export async function listarDocumentosPessoaInicial(pessoaIdAutor) {
+  return request('/api/projudi/iniciais/documentos-pessoa', {
+    query: { pessoaIdAutor: Number(pessoaIdAutor) },
+  });
+}
+
+/** @param {{ documentoId: number, pessoaIdAutor: number, nomeFallback?: string }} params */
+export async function baixarP7sDocumentoPessoaInicial({ documentoId, pessoaIdAutor, nomeFallback }) {
+  const { blob } = await requestBlob(
+    `/api/projudi/iniciais/documentos-pessoa/${documentoId}/p7s`,
+    {
+      query: { pessoaIdAutor: Number(pessoaIdAutor) },
+      accept: 'application/octet-stream',
+      fallbackFilename: nomeFallback || 'documento.p7s',
+    },
+  );
+  return blob;
+}
+
 /** @param {{ peticaoId: number|string, codigoCliente: string, numeroInterno: number|string }} params */
 export async function excluirPeticaoFilaInicial({ peticaoId, codigoCliente, numeroInterno }) {
   return request(`/api/projudi/iniciais/fila-peticao/${peticaoId}`, {

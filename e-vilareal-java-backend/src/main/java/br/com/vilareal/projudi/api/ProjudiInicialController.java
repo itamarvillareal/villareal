@@ -4,7 +4,9 @@ import br.com.vilareal.processo.api.dto.AssinarAutomaticoResponse;
 import br.com.vilareal.processo.api.dto.LoteAssinaturaStatusResponse;
 import br.com.vilareal.processo.application.DiagnosticoAssinaturaAutomaticaService;
 import br.com.vilareal.projudi.api.dto.InicialArquivoAssinadoResponse;
+import br.com.vilareal.projudi.api.dto.InicialDocumentoPessoaResponse;
 import br.com.vilareal.projudi.application.ProjudiInicialAssinaturaService;
+import br.com.vilareal.projudi.application.ProjudiInicialDocumentosPessoaService;
 import br.com.vilareal.projudi.ProjudiClasseProcessoInicial;
 import br.com.vilareal.projudi.ProjudiInicialOpcoesPasso3;
 import br.com.vilareal.projudi.ProjudiAssuntoCatalogoService;
@@ -51,18 +53,21 @@ public class ProjudiInicialController {
     private final ProjudiAssuntoCatalogoService assuntoCatalogoService;
     private final ProjudiInicialAssinaturaService inicialAssinaturaService;
     private final DiagnosticoAssinaturaAutomaticaService assinaturaAutomaticaService;
+    private final ProjudiInicialDocumentosPessoaService documentosPessoaService;
 
     public ProjudiInicialController(
             ProjudiParteResolverService parteResolverService,
             ProjudiDistribuicaoService distribuicaoService,
             ProjudiAssuntoCatalogoService assuntoCatalogoService,
             ProjudiInicialAssinaturaService inicialAssinaturaService,
-            DiagnosticoAssinaturaAutomaticaService assinaturaAutomaticaService) {
+            DiagnosticoAssinaturaAutomaticaService assinaturaAutomaticaService,
+            ProjudiInicialDocumentosPessoaService documentosPessoaService) {
         this.parteResolverService = parteResolverService;
         this.distribuicaoService = distribuicaoService;
         this.assuntoCatalogoService = assuntoCatalogoService;
         this.inicialAssinaturaService = inicialAssinaturaService;
         this.assinaturaAutomaticaService = assinaturaAutomaticaService;
+        this.documentosPessoaService = documentosPessoaService;
     }
 
     @GetMapping("/resolver-parte")
@@ -284,6 +289,24 @@ public class ProjudiInicialController {
     @Operation(summary = "Cancela preparo assíncrono do lote (inicial)")
     public LoteAssinaturaStatusResponse cancelarLoteAssinatura(@PathVariable Long loteId) {
         return assinaturaAutomaticaService.cancelar(loteId);
+    }
+
+    @GetMapping("/documentos-pessoa")
+    @Operation(
+            summary = "Lista .p7s constitutivos na pasta Pessoas do autor (e representante, se PJ)",
+            description = "Procuração, contrato social, documentos pessoais etc. — fora da pasta «Assinar» do processo.")
+    public List<InicialDocumentoPessoaResponse> listarDocumentosPessoa(@RequestParam Long pessoaIdAutor) {
+        return documentosPessoaService.listarConstitutivos(pessoaIdAutor);
+    }
+
+    @GetMapping(value = "/documentos-pessoa/{documentoId}/p7s", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
+    @Operation(summary = "Baixa .p7s constitutivo da pasta Pessoas para anexar na inicial")
+    public ResponseEntity<byte[]> baixarP7sDocumentoPessoa(
+            @PathVariable Long documentoId, @RequestParam Long pessoaIdAutor) {
+        byte[] bytes = documentosPessoaService.baixarP7s(documentoId, pessoaIdAutor);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"documento.p7s\"")
+                .body(bytes);
     }
 
     @GetMapping("/arquivos-assinados")

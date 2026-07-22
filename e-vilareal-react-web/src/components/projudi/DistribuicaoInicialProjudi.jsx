@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Download,
+  FolderOpen,
   Info,
   Loader2,
   Scale,
@@ -13,10 +14,12 @@ import {
   XCircle,
 } from 'lucide-react';
 import {
+  baixarP7sDocumentoPessoaInicial,
   cadastrarAssuntoProjudi,
   distribuirInicial,
   listarAssuntosProjudi,
   listarClassesProjudi,
+  listarDocumentosPessoaInicial,
   prepararInicial,
   removerAssuntoProjudi,
   sugerirAssuntoProjudi,
@@ -291,6 +294,8 @@ export function DistribuicaoInicialProjudi() {
   const prioridadeAutoMarcadaRef = useRef(null);
   const sugestaoAplicadaRef = useRef(false);
   const [linhasP7s, setLinhasP7s] = useState([]);
+  const [docsPessoaDisponiveis, setDocsPessoaDisponiveis] = useState([]);
+  const [carregandoDocsPessoa, setCarregandoDocsPessoa] = useState(false);
 
   const [pessoaAutor, setPessoaAutor] = useState(null);
   const [pessoasReu, setPessoasReu] = useState([]);
@@ -529,6 +534,74 @@ export function DistribuicaoInicialProjudi() {
       prioridadeAutoMarcadaRef.current = autorId;
     }
   }, [pessoaAutor?.id, validacaoProntidao?.autorMaiorDe60Anos]);
+
+  useEffect(() => {
+    const autorId = pessoaAutor?.id ?? null;
+    if (!autorId) {
+      setDocsPessoaDisponiveis([]);
+      return undefined;
+    }
+    let cancelado = false;
+    void (async () => {
+      try {
+        const docs = await listarDocumentosPessoaInicial(autorId);
+        if (!cancelado) setDocsPessoaDisponiveis(Array.isArray(docs) ? docs : []);
+      } catch {
+        if (!cancelado) setDocsPessoaDisponiveis([]);
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [pessoaAutor?.id]);
+
+  async function carregarDocumentosConstitutivosPessoa() {
+    const autorId = pessoaAutor?.id ?? null;
+    if (!autorId) {
+      setApiError('Selecione o autor antes de carregar documentos da pasta Pessoas.');
+      return;
+    }
+    setCarregandoDocsPessoa(true);
+    setApiError('');
+    try {
+      const docs = await listarDocumentosPessoaInicial(autorId);
+      if (!Array.isArray(docs) || docs.length === 0) {
+        setToast('Nenhum .p7s constitutivo na pasta Pessoas do autor (procuração, contrato social, documentos pessoais…).');
+        return;
+      }
+      const chavesExistentes = new Set(linhasP7s.map((l) => l.key));
+      const novasLinhas = [];
+      for (const doc of docs) {
+        const key = `pessoa-doc-${doc.documentoId}`;
+        if (chavesExistentes.has(key)) continue;
+        const nome = String(doc.nomeArquivo ?? 'documento.p7s').trim() || 'documento.p7s';
+        const blob = await baixarP7sDocumentoPessoaInicial({
+          documentoId: doc.documentoId,
+          pessoaIdAutor: autorId,
+          nomeFallback: nome,
+        });
+        const file = new File([blob], nome, { type: 'application/pkcs7-signature' });
+        novasLinhas.push({
+          key,
+          file,
+          idArquivoTipo: doc.idArquivoTipo ?? 1,
+          origem: 'pessoa',
+          rotulo: `${doc.tipo ?? 'Documento'} · ${doc.pessoaNome ?? 'Pessoa'}`,
+        });
+        chavesExistentes.add(key);
+      }
+      if (novasLinhas.length === 0) {
+        setToast('Os documentos constitutivos da pasta Pessoas já estão na lista de anexos.');
+        return;
+      }
+      setLinhasP7s((rows) => [...rows, ...novasLinhas]);
+      setToast(`${novasLinhas.length} documento(s) constitutivo(s) adicionado(s) da pasta Pessoas.`);
+    } catch (err) {
+      setApiError(err?.message || 'Falha ao carregar documentos da pasta Pessoas.');
+    } finally {
+      setCarregandoDocsPessoa(false);
+    }
+  }
 
   const reusComPendencia = partesReu.some((p) => p && !p.prontaParaInserir);
   const todosReusInformados =
@@ -1027,11 +1100,29 @@ export function DistribuicaoInicialProjudi() {
 
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
             <h2 className="text-sm font-semibold text-slate-800">Anexos (.p7s)</h2>
-            <p className="text-xs text-slate-600">
-              Coloque os PDFs na subpasta <strong>«Assinar»</strong> do processo no Google Drive e use
-              assinatura automática, ou envie os <span className="font-mono">.p7s</span> já assinados
-              manualmente.
-            </p>
+            <div className="rounded-lg border border-sky-100 bg-sky-50/80 px-3 py-2 text-xs text-sky-950 space-y-1">
+              <p>
+                <strong>Pasta «Assinar» do processo:</strong> petição inicial e documentos específicos desta ação
+                (ex.: contrato de locação, comprovantes do imóvel).
+              </p>
+              <p>
+                <strong>Pasta «Pessoas» do autor</strong>
+                {pessoaAutor?.id ? (
+                  <>
+                    {' '}
+                    (<span className="font-mono">Pessoas/{String(pessoaAutor.id).padStart(8, '0')}</span>
+                    {docsPessoaDisponiveis.length > 0
+                      ? ` · ${docsPessoaDisponiveis.length} .p7s disponível(is)`
+                      : ''}
+                    ):
+                  </>
+                ) : (
+                  ':'
+                )}{' '}
+                documentos constitutivos reutilizáveis — procuração, contrato social, comprovante de endereço,
+                documento pessoal do representante etc.
+              </p>
+            </div>
             <div className="flex flex-wrap items-center gap-2">
               {dadosProcesso?.codigoCliente && dadosProcesso?.numeroInterno ? (
                 <AssinaturaAutomaticaInicialPanel
@@ -1047,6 +1138,22 @@ export function DistribuicaoInicialProjudi() {
                   onToast={setToast}
                   onErro={setApiError}
                 />
+              ) : null}
+              {pessoaAutor?.id ? (
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-900 hover:bg-indigo-100 disabled:opacity-60"
+                  disabled={!pessoaAutor?.id || carregandoDocsPessoa || operacao != null}
+                  onClick={() => void carregarDocumentosConstitutivosPessoa()}
+                  title="Busca .p7s na pasta Pessoas do autor (e do representante, se pessoa jurídica)"
+                >
+                  {carregandoDocsPessoa ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  ) : (
+                    <FolderOpen className="h-4 w-4" aria-hidden />
+                  )}
+                  Docs da pasta Pessoas
+                </button>
               ) : null}
               <input
                 id="inicial-p7s"
@@ -1078,6 +1185,15 @@ export function DistribuicaoInicialProjudi() {
                   <li key={linha.key} className="flex flex-wrap items-center gap-2 text-sm">
                     <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" aria-hidden />
                     <span className="truncate flex-1 min-w-0 font-medium">{linha.file?.name}</span>
+                    {linha.origem === 'pessoa' && linha.rotulo ? (
+                      <span className="text-[10px] rounded bg-indigo-100 px-1.5 py-0.5 text-indigo-900 shrink-0">
+                        Pessoas · {linha.rotulo}
+                      </span>
+                    ) : linha.origem !== 'pessoa' ? (
+                      <span className="text-[10px] rounded bg-rose-100 px-1.5 py-0.5 text-rose-900 shrink-0">
+                        Processo
+                      </span>
+                    ) : null}
                     <select
                       className={`${inputClass} w-auto text-xs py-1`}
                       value={linha.idArquivoTipo}
