@@ -174,12 +174,13 @@ public class DocumentoPdfService {
         if (!StringUtils.hasText(html)) {
             return html;
         }
-        return html.replace("&nbsp;", "\u00A0")
+        String normalizado = html.replace("&nbsp;", "\u00A0")
                 .replace("&ndash;", "\u2013")
                 .replace("&mdash;", "\u2014")
                 .replace("&hellip;", "\u2026")
                 .replace("&laquo;", "\u00AB")
                 .replace("&raquo;", "\u00BB");
+        return PortuguesHifenizacaoUtil.inserirHifensSilabicosNoHtml(normalizado);
     }
 
     /** Injeta logo, rodapé e advogado do timbrado no contexto Thymeleaf. */
