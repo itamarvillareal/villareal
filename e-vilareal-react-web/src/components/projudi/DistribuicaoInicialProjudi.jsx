@@ -32,6 +32,20 @@ import { ProcessosToast, processosBtnPrimary } from '../processos/ProcessosAdmin
 const inputClass =
   'w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white text-slate-900';
 
+/** Rótulo amigável quando a API ainda não envia destinoJustica (compatibilidade). */
+function destinoJusticaDaClasse(classe) {
+  if (!classe) return null;
+  if (classe.destinoJustica) return classe.destinoJustica;
+  const area = classe.areaDistribuicao ?? '';
+  if (area.includes('Juizado')) return 'Juizado Especial Cível';
+  if (area.includes('Cível')) return 'Justiça Comum (Vara Cível)';
+  return area || null;
+}
+
+function ehJuizadoEspecial(classe) {
+  return destinoJusticaDaClasse(classe)?.includes('Juizado') ?? false;
+}
+
 const TIPOS_ARQUIVO = [
   { id: 16, label: 'Petição' },
   { id: 1, label: 'Outros' },
@@ -748,7 +762,9 @@ export function DistribuicaoInicialProjudi() {
                         key={classe.id}
                         value={`${classe.idProcessoTipo}:${classe.processoTipoCodigo}`}
                       >
-                        {classe.rotulo} (Id {classe.idProcessoTipo} / código {classe.processoTipoCodigo})
+                        {classe.areaDistribuicao
+                          ? `${classe.rotulo} — ${classe.areaDistribuicao}`
+                          : `${classe.rotulo} (Id ${classe.idProcessoTipo} / código ${classe.processoTipoCodigo})`}
                       </option>
                     ))}
                   </select>
@@ -759,14 +775,44 @@ export function DistribuicaoInicialProjudi() {
                     value={`Id ${idProcessoTipo} / código ${processoTipoCodigo}`}
                   />
                 )}
-                <p className="text-xs text-sky-800 mt-1">
-                  Será enviada ao PROJUDI:{' '}
-                  <strong>{classeSelecionada?.rotulo ?? 'Procedimento do Juizado Especial Cível'}</strong>
-                  {modalidadeSugerida?.modalidadeRotulo
-                    ? ` — modalidade sugerida: ${modalidadeSugerida.modalidadeRotulo}.`
-                    : '.'}
-                </p>
               </label>
+              {classeSelecionada ? (
+                <div
+                  className={`sm:col-span-2 rounded-lg border-2 px-3 py-2.5 ${
+                    ehJuizadoEspecial(classeSelecionada)
+                      ? 'border-blue-300 bg-blue-50'
+                      : 'border-amber-400 bg-amber-50'
+                  }`}
+                >
+                  <p className="text-xs font-semibold text-slate-800 mb-1.5 flex items-center gap-1.5">
+                    <Scale className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                    Destino no PROJUDI — campo «Área Distribuição» (Passo 1)
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                        ehJuizadoEspecial(classeSelecionada)
+                          ? 'bg-blue-700 text-white'
+                          : 'bg-amber-700 text-white'
+                      }`}
+                    >
+                      {destinoJusticaDaClasse(classeSelecionada) ?? '—'}
+                    </span>
+                    <span className="text-sm font-semibold text-slate-900">
+                      {classeSelecionada.areaDistribuicao ?? 'Área não informada'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-700 mt-1.5">
+                    No PROJUDI, <strong>Área Distribuição</strong> define se a petição vai ao{' '}
+                    <strong>Juizado Especial Cível</strong> ou à{' '}
+                    <strong>Justiça Comum (Vara Cível)</strong>. Classe processual:{' '}
+                    <strong>{classeSelecionada.rotulo}</strong>
+                    {modalidadeSugerida?.modalidadeRotulo
+                      ? ` — modalidade sugerida: ${modalidadeSugerida.modalidadeRotulo}.`
+                      : '.'}
+                  </p>
+                </div>
+              ) : null}
               <div className="block sm:col-span-2 space-y-2">
                 <span className="text-xs text-slate-600">Assuntos (PROJUDI)</span>
                 {dadosProcesso?.naturezaAcao ? (

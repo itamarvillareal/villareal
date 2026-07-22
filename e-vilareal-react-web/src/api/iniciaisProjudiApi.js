@@ -91,6 +91,8 @@ export {
  * @property {number} idProcessoTipo
  * @property {number} processoTipoCodigo
  * @property {string} processoTipoLabel
+ * @property {string} [areaDistribuicao] Valor do campo «Área Distribuição» no PROJUDI (Passo 1).
+ * @property {string} [destinoJustica] Juizado Especial Cível ou Justiça Comum (Vara Cível).
  */
 
 /**

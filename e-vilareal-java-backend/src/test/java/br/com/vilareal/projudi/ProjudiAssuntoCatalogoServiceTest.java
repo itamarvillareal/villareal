@@ -47,6 +47,24 @@ class ProjudiAssuntoCatalogoServiceTest {
     }
 
     @Test
+    void listarClasses_expoeAreaDistribuicaoEDestinoJustica() {
+        var classes = service.listarClasses();
+        var jec = classes.stream()
+                .filter(c -> c.idProcessoTipo() == 162)
+                .findFirst()
+                .orElseThrow();
+        assertEquals("Anápolis - Juizados Especiais Cíveis", jec.areaDistribuicao());
+        assertEquals("Juizado Especial Cível", jec.destinoJustica());
+
+        var despejo = classes.stream()
+                .filter(c -> c.idProcessoTipo() == 109)
+                .findFirst()
+                .orElseThrow();
+        assertEquals("Anápolis - Cível", despejo.areaDistribuicao());
+        assertEquals("Justiça Comum (Vara Cível)", despejo.destinoJustica());
+    }
+
+    @Test
     void sugerir_cobrancaRetorna451Jec() {
         var res = service.sugerirModalidade("Ação de COBRANÇA");
         assertEquals(451, res.idAssuntoSugerido());

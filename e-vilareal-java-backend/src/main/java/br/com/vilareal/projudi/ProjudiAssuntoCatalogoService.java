@@ -35,7 +35,11 @@ public class ProjudiAssuntoCatalogoService {
             String rotulo,
             int idProcessoTipo,
             int processoTipoCodigo,
-            String processoTipoLabel) {}
+            String processoTipoLabel,
+            /** Valor enviado ao PROJUDI no campo «Área Distribuição» (Passo 1). */
+            String areaDistribuicao,
+            /** Rótulo amigável: Juizado Especial Cível vs Justiça Comum (Vara Cível). */
+            String destinoJustica) {}
 
     public record ModalidadeItem(String id, String rotulo, String classeId, int idAssuntoSugerido) {}
 
@@ -262,7 +266,23 @@ public class ProjudiAssuntoCatalogoService {
                 classe.rotulo(),
                 classe.idProcessoTipo(),
                 classe.processoTipoCodigo(),
-                classe.processoTipoLabel());
+                classe.processoTipoLabel(),
+                classe.areaDistribuicao(),
+                destinoJusticaDe(classe));
+    }
+
+    static String destinoJusticaDe(ProjudiClasseProcessoInicial classe) {
+        if (classe == null || !StringUtils.hasText(classe.areaDistribuicao())) {
+            return "—";
+        }
+        String area = classe.areaDistribuicao();
+        if (area.contains("Juizado")) {
+            return "Juizado Especial Cível";
+        }
+        if (area.contains("Cível")) {
+            return "Justiça Comum (Vara Cível)";
+        }
+        return area;
     }
 
     private static ProjudiClasseProcessoInicial toClasseProcesso(ClasseItem item) {
