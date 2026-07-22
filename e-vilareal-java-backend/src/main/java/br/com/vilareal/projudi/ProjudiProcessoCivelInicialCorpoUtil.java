@@ -28,23 +28,34 @@ final class ProjudiProcessoCivelInicialCorpoUtil {
 
     /** POST custas + sem dependência de outro processo ({@code custaTipo=3}, {@code dependenciaProcesso=2}). */
     static String montarCorpoCustasSemDependencia() {
-        return montarCorpoEstado("", "-1", "-1", "-1", "0", false, ProjudiClasseProcessoInicial.JEC);
+        return montarCorpoEstado("", "-1", "-1", "-1", "0", false, ProjudiClasseProcessoInicial.JEC, null);
     }
 
     static String montarCorpoPasso1Area(
-            String valorCausa, String paginaAtual, String paginaAnterior, ProjudiClasseProcessoInicial classe) {
-        return montarCorpoEstado(valorCausa, paginaAtual, paginaAnterior, "-1", "0", true, classeOuPadrao(classe))
+            String valorCausa,
+            String paginaAtual,
+            String paginaAnterior,
+            ProjudiClasseProcessoInicial classe,
+            ProjudiPrioridadeProcessoInicial prioridade) {
+        return montarCorpoEstado(
+                        valorCausa, paginaAtual, paginaAnterior, "-1", "0", true, classeOuPadrao(classe), prioridade)
                 + "&imaLocalizarAssunto=&posicaoLista=";
     }
 
-    static String montarCorpoAvancarAnexos(String valorCausa, ProjudiClasseProcessoInicial classe) {
-        return montarCorpoEstado(valorCausa, "-1", "-1", "5", "0", true, classeOuPadrao(classe))
+    static String montarCorpoAvancarAnexos(
+            String valorCausa, ProjudiClasseProcessoInicial classe, ProjudiPrioridadeProcessoInicial prioridade) {
+        return montarCorpoEstado(valorCausa, "-1", "-1", "5", "0", true, classeOuPadrao(classe), prioridade)
                 + "&imgInserir=Avan%E7ar";
     }
 
     static String montarCorpoAbrirBuscaParte(
-            String valorCausa, int parteTipo, String botaoLocalizar, ProjudiClasseProcessoInicial classe) {
-        return montarCorpoEstado(valorCausa, "-1", "-1", "7", String.valueOf(parteTipo), true, classeOuPadrao(classe))
+            String valorCausa,
+            int parteTipo,
+            String botaoLocalizar,
+            ProjudiClasseProcessoInicial classe,
+            ProjudiPrioridadeProcessoInicial prioridade) {
+        return montarCorpoEstado(
+                        valorCausa, "-1", "-1", "7", String.valueOf(parteTipo), true, classeOuPadrao(classe), prioridade)
                 + botaoLocalizar;
     }
 
@@ -79,8 +90,11 @@ final class ProjudiProcessoCivelInicialCorpoUtil {
             String passoEditar,
             String parteTipo,
             boolean comarcaPreenchida,
-            ProjudiClasseProcessoInicial classe) {
+            ProjudiClasseProcessoInicial classe,
+            ProjudiPrioridadeProcessoInicial prioridade) {
         ProjudiClasseProcessoInicial classeEfetiva = classeOuPadrao(classe);
+        ProjudiPrioridadeProcessoInicial prioridadeEfetiva =
+                prioridade != null ? prioridade : ProjudiPrioridadeProcessoInicial.NORMAL;
         StringBuilder sb = new StringBuilder();
         sb.append("PaginaAtual=").append(encIso(paginaAtual));
         sb.append("&PaginaAnterior=").append(encIso(paginaAnterior));
@@ -102,8 +116,8 @@ final class ProjudiProcessoCivelInicialCorpoUtil {
                     .append("&ProcessoTipoCodigo=")
                     .append(classeEfetiva.processoTipoCodigo())
                     .append("&posicaoLista=");
-            sb.append("&ProcessoPrioridade=").append(encIso(classeEfetiva.processoPrioridade()));
-            sb.append("&Id_ProcessoPrioridade=").append(classeEfetiva.idProcessoPrioridade());
+            sb.append("&ProcessoPrioridade=").append(encIso(prioridadeEfetiva.rotulo()));
+            sb.append("&Id_ProcessoPrioridade=").append(prioridadeEfetiva.idProcessoPrioridade());
             sb.append("&Valor=").append(encIso(valorCausa));
             sb.append("&TcoNumero=&Rai=&posicaoLista=");
         } else {

@@ -68,9 +68,21 @@ public class ProjudiInicialController {
     @GetMapping("/resolver-parte")
     @Operation(summary = "Resolve pessoa do cadastro para formato PROJUDI (estado/cidade/bairro)")
     public ParteProjudiResolvida resolverParte(
-            @RequestParam Long pessoaId, @RequestParam(defaultValue = "1") Long credencialId) {
-        log.info("resolver-parte pessoaId={} credencialId={}", pessoaId, credencialId);
-        return parteResolverService.resolver(pessoaId, credencialId);
+            @RequestParam Long pessoaId,
+            @RequestParam(defaultValue = "1") Long credencialId,
+            @RequestParam(required = false) Long pessoaEnderecoId,
+            @RequestParam(required = false) Long processoId) {
+        log.info(
+                "resolver-parte pessoaId={} credencialId={} pessoaEnderecoId={} processoId={}",
+                pessoaId,
+                credencialId,
+                pessoaEnderecoId,
+                processoId);
+        Long enderecoId = pessoaEnderecoId;
+        if (enderecoId == null && processoId != null) {
+            enderecoId = distribuicaoService.enderecoIdDaParteNoProcesso(processoId, pessoaId);
+        }
+        return parteResolverService.resolver(pessoaId, credencialId, enderecoId);
     }
 
     @GetMapping("/classes")
@@ -103,14 +115,16 @@ public class ProjudiInicialController {
             @RequestParam(required = false) Long pessoaIdReu,
             @RequestParam(required = false) String pessoaIdsReu,
             @RequestParam(required = false) List<Long> pessoaIdsReuList,
-            @RequestParam(defaultValue = "0") int quantidadeAnexos) {
+            @RequestParam(defaultValue = "0") int quantidadeAnexos,
+            @RequestParam(required = false) Long processoIdOrigem) {
         return distribuicaoService.validarProntidao(
                 credencialId,
                 valorCausa,
                 parseIdAssuntosCsv(idAssuntos),
                 pessoaIdAutor,
                 normalizarPessoaIdsReu(pessoaIdReu, pessoaIdsReu, pessoaIdsReuList),
-                quantidadeAnexos);
+                quantidadeAnexos,
+                processoIdOrigem);
     }
 
     /**
@@ -134,7 +148,9 @@ public class ProjudiInicialController {
             @RequestParam(required = false) Integer processoTipoCodigo,
             @RequestParam(required = false) Boolean segredoJustica,
             @RequestParam(required = false) Boolean naoMarcarAudiencia,
-            @RequestParam(required = false) Boolean juizo100Digital)
+            @RequestParam(required = false) Boolean juizo100Digital,
+            @RequestParam(required = false) Boolean prioridadeMaior60Anos,
+            @RequestParam(required = false) Long processoIdOrigem)
             throws IOException {
         List<Long> idsReu = normalizarPessoaIdsReu(pessoaIdReu, null, pessoaIdsReu);
         InicialRequest request = montarInicialRequest(
@@ -148,10 +164,13 @@ public class ProjudiInicialController {
                 processoTipoCodigo,
                 segredoJustica,
                 naoMarcarAudiencia,
-                juizo100Digital);
+                juizo100Digital,
+                prioridadeMaior60Anos,
+                processoIdOrigem);
         log.info(
-                "preparar-inicial credencialId={} assuntos={} autor={} reus={} arquivos={}",
+                "preparar-inicial credencialId={} processoIdOrigem={} assuntos={} autor={} reus={} arquivos={}",
                 credencialId,
+                processoIdOrigem,
                 request.idAssuntos(),
                 pessoaIdAutor,
                 idsReu,
@@ -182,7 +201,8 @@ public class ProjudiInicialController {
             @RequestParam(required = false) Integer processoTipoCodigo,
             @RequestParam(required = false) Boolean segredoJustica,
             @RequestParam(required = false) Boolean naoMarcarAudiencia,
-            @RequestParam(required = false) Boolean juizo100Digital)
+            @RequestParam(required = false) Boolean juizo100Digital,
+            @RequestParam(required = false) Boolean prioridadeMaior60Anos)
             throws IOException {
         List<Long> idsReu = normalizarPessoaIdsReu(pessoaIdReu, null, pessoaIdsReu);
         InicialRequest request = montarInicialRequest(
@@ -196,7 +216,9 @@ public class ProjudiInicialController {
                 processoTipoCodigo,
                 segredoJustica,
                 naoMarcarAudiencia,
-                juizo100Digital);
+                juizo100Digital,
+                prioridadeMaior60Anos,
+                processoIdOrigem);
         log.info(
                 "distribuir-inicial credencialId={} confirmar={} processoIdOrigem={} assuntos={} reus={} arquivos={}",
                 credencialId,
@@ -299,7 +321,9 @@ public class ProjudiInicialController {
             Integer processoTipoCodigo,
             Boolean segredoJustica,
             Boolean naoMarcarAudiencia,
-            Boolean juizo100Digital)
+            Boolean juizo100Digital,
+            Boolean prioridadeMaior60Anos,
+            Long processoIdOrigem)
             throws IOException {
         if (pessoaIdsReu == null || pessoaIdsReu.isEmpty()) {
             throw new IllegalArgumentException("pessoaIdsReu é obrigatório (ao menos um réu).");
@@ -324,8 +348,20 @@ public class ProjudiInicialController {
         ProjudiClasseProcessoInicial classe = assuntoCatalogoService.resolverClasse(idProcessoTipo, processoTipoCodigo);
         ProjudiInicialOpcoesPasso3 opcoesPasso3 =
                 ProjudiInicialOpcoesPasso3.of(segredoJustica, naoMarcarAudiencia, juizo100Digital);
+        Boolean prioridadeResolvida = prioridadeMaior60Anos;
+        if (prioridadeResolvida == null) {
+            prioridadeResolvida = parteResolverService.autorMaiorDe60Anos(pessoaIdAutor);
+        }
         return new InicialRequest(
-                valorCausa, assuntos, pessoaIdAutor, List.copyOf(pessoaIdsReu), arquivos, classe, opcoesPasso3);
+                valorCausa,
+                assuntos,
+                pessoaIdAutor,
+                List.copyOf(pessoaIdsReu),
+                arquivos,
+                classe,
+                opcoesPasso3,
+                prioridadeResolvida,
+                processoIdOrigem);
     }
 
     private static List<Long> normalizarPessoaIdsReu(

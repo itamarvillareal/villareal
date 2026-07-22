@@ -32,7 +32,7 @@ class ProjudiProcessoCivelInicialCorpoUtilTest {
     @Test
     void montarCorpoEstado_incluiDependenciaProcesso2() {
         String corpo = ProjudiProcessoCivelInicialCorpoUtil.montarCorpoAvancarAnexos(
-                "1.294,57", ProjudiClasseProcessoInicial.JEC);
+                "1.294,57", ProjudiClasseProcessoInicial.JEC, ProjudiPrioridadeProcessoInicial.NORMAL);
         assertTrue(corpo.contains("dependenciaProcesso=2"));
         assertTrue(corpo.contains("custaTipo=3"));
         assertTrue(corpo.contains("grauProcesso=1"));
@@ -47,7 +47,11 @@ class ProjudiProcessoCivelInicialCorpoUtilTest {
     @Test
     void montarCorpoPasso1Area_execucaoTituloExtrajudicial() {
         String corpo = ProjudiProcessoCivelInicialCorpoUtil.montarCorpoPasso1Area(
-                "4.516,85", "2852", "-1", ProjudiClasseProcessoInicial.EXECUCAO_TITULO_EXTRAJUDICIAL);
+                "4.516,85",
+                "2852",
+                "-1",
+                ProjudiClasseProcessoInicial.EXECUCAO_TITULO_EXTRAJUDICIAL,
+                ProjudiPrioridadeProcessoInicial.NORMAL);
         assertTrue(corpo.contains("Id_ProcessoTipo=114&ProcessoTipoCodigo=1159"));
         assertTrue(corpo.contains("Comarca=AN%C1POLIS"));
         assertTrue(corpo.contains("Id_AreaDistribuicao=19"));
@@ -58,7 +62,11 @@ class ProjudiProcessoCivelInicialCorpoUtilTest {
     @Test
     void montarCorpoPasso1Area_despejoVaraCivel() {
         String corpo = ProjudiProcessoCivelInicialCorpoUtil.montarCorpoPasso1Area(
-                "2.500,00", "2852", "-1", ProjudiClasseProcessoInicial.DESPEJO_VARA_CIVEL);
+                "2.500,00",
+                "2852",
+                "-1",
+                ProjudiClasseProcessoInicial.DESPEJO_VARA_CIVEL,
+                ProjudiPrioridadeProcessoInicial.MAIOR_60_ANOS);
         assertTrue(corpo.contains("Id_ProcessoTipo=109&ProcessoTipoCodigo=1093"));
         assertTrue(corpo.contains("AreaDistribuicao=An%E1polis+-+C%EDvel"));
         assertTrue(corpo.contains("Id_AreaDistribuicao=735"));

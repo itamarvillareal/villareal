@@ -46,7 +46,7 @@ public record ProjudiClasseProcessoInicial(
                     JEC.processoPrioridade(),
                     JEC.idProcessoPrioridade());
 
-    /** Despejo por falta de pagamento — Vara Cível de Anápolis (prioridade maior de 60 anos). */
+    /** Despejo por falta de pagamento — Vara Cível de Anápolis. Prioridade definida pelo autor (≥60 anos). */
     public static final ProjudiClasseProcessoInicial DESPEJO_VARA_CIVEL = new ProjudiClasseProcessoInicial(
             "DESPEJO_VARA_CIVEL",
             "Despejo por Falta de Pagamento (Vara Cível)",
@@ -58,8 +58,8 @@ public record ProjudiClasseProcessoInicial(
             "Anápolis - Cível",
             735,
             3,
-            "Maior de 60 Anos",
-            6);
+            ProjudiPrioridadeProcessoInicial.NORMAL.rotulo(),
+            ProjudiPrioridadeProcessoInicial.NORMAL.idProcessoPrioridade());
 
     private static final List<ProjudiClasseProcessoInicial> TODAS =
             List.of(JEC, EXECUCAO_TITULO_EXTRAJUDICIAL, DESPEJO_VARA_CIVEL);

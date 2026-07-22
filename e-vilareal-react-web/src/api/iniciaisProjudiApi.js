@@ -54,6 +54,7 @@ import { postFormData, request, requestBlob } from './httpClient.js';
  * @property {PendenciaParte[]} pendenciasPartes
  * @property {ParteProjudiResolvida|null} [autor]
  * @property {ParteProjudiResolvida[]} [reus]
+ * @property {boolean|null} [autorMaiorDe60Anos]
  */
 
 /**
@@ -146,7 +147,7 @@ export async function sugerirModalidadeProjudi(naturezaAcao) {
  * @param {number|null|undefined} [params.pessoaIdAutor]
  * @param {number[]|string} [params.pessoaIdsReu]
  * @param {number|null|undefined} [params.pessoaIdReu] legado — usa só o 1º réu
- * @param {number} [params.quantidadeAnexos]
+ * @param {number|string} [params.processoIdOrigem]
  * @returns {Promise<ValidacaoProntidaoInicial>}
  */
 export async function validarProntidaoInicial({
@@ -157,6 +158,7 @@ export async function validarProntidaoInicial({
   pessoaIdsReu,
   pessoaIdReu,
   quantidadeAnexos = 0,
+  processoIdOrigem,
 }) {
   const idsReu = normalizarPessoaIdsReu(pessoaIdsReu, pessoaIdReu);
   return request('/api/projudi/iniciais/validar-prontidao', {
@@ -167,6 +169,7 @@ export async function validarProntidaoInicial({
       pessoaIdAutor: pessoaIdAutor ?? '',
       pessoaIdsReu: idsReu.join(','),
       quantidadeAnexos,
+      processoIdOrigem: processoIdOrigem ?? '',
     },
   });
 }

@@ -85,6 +85,7 @@ function montarFormDataInicial({
   processoIdOrigem,
   confirmar,
   opcoesPasso3,
+  prioridadeMaior60Anos,
 }) {
   const fd = new FormData();
   fd.append('credencialId', String(credencialId).trim() || '1');
@@ -114,6 +115,9 @@ function montarFormDataInicial({
     fd.append('segredoJustica', opcoesPasso3.segredoJustica ? 'true' : 'false');
     fd.append('naoMarcarAudiencia', opcoesPasso3.naoMarcarAudiencia ? 'true' : 'false');
     fd.append('juizo100Digital', opcoesPasso3.juizo100Digital ? 'true' : 'false');
+  }
+  if (prioridadeMaior60Anos != null) {
+    fd.append('prioridadeMaior60Anos', prioridadeMaior60Anos ? 'true' : 'false');
   }
   return fd;
 }
@@ -269,6 +273,8 @@ export function DistribuicaoInicialProjudi() {
   const [segredoJustica, setSegredoJustica] = useState(false);
   const [naoMarcarAudiencia, setNaoMarcarAudiencia] = useState(false);
   const [juizo100Digital, setJuizo100Digital] = useState(false);
+  const [prioridadeMaior60Anos, setPrioridadeMaior60Anos] = useState(false);
+  const prioridadeAutoMarcadaRef = useRef(null);
   const sugestaoAplicadaRef = useRef(false);
   const [linhasP7s, setLinhasP7s] = useState([]);
 
@@ -451,6 +457,7 @@ export function DistribuicaoInicialProjudi() {
             pessoaIdAutor: pessoaAutor?.id,
             pessoaIdsReu: pessoasReu.map((p) => p?.id).filter(Boolean),
             quantidadeAnexos: linhasP7s.length,
+            processoIdOrigem: dadosProcesso?.processoApiId,
           });
           if (!cancelado) {
             setValidacaoProntidao(res);
@@ -465,6 +472,7 @@ export function DistribuicaoInicialProjudi() {
               pendenciasPartes: [],
               autor: null,
               reus: [],
+              autorMaiorDe60Anos: null,
             });
             setParteAutor(null);
             setPartesReu([]);
@@ -487,6 +495,26 @@ export function DistribuicaoInicialProjudi() {
     pessoasReu,
     linhasP7s.length,
   ]);
+
+  useEffect(() => {
+    const autorId = pessoaAutor?.id ?? null;
+    if (!autorId) {
+      setPrioridadeMaior60Anos(false);
+      prioridadeAutoMarcadaRef.current = null;
+      return;
+    }
+    if (prioridadeAutoMarcadaRef.current != null && prioridadeAutoMarcadaRef.current !== autorId) {
+      prioridadeAutoMarcadaRef.current = null;
+      setPrioridadeMaior60Anos(false);
+    }
+    if (
+      validacaoProntidao?.autorMaiorDe60Anos === true &&
+      prioridadeAutoMarcadaRef.current !== autorId
+    ) {
+      setPrioridadeMaior60Anos(true);
+      prioridadeAutoMarcadaRef.current = autorId;
+    }
+  }, [pessoaAutor?.id, validacaoProntidao?.autorMaiorDe60Anos]);
 
   const reusComPendencia = partesReu.some((p) => p && !p.prontaParaInserir);
   const todosReusInformados =
@@ -543,6 +571,7 @@ export function DistribuicaoInicialProjudi() {
         idProcessoTipo,
         processoTipoCodigo,
         opcoesPasso3,
+        prioridadeMaior60Anos,
       });
       const res = await prepararInicial(fd);
       setResultado(res);
@@ -578,6 +607,7 @@ export function DistribuicaoInicialProjudi() {
         processoIdOrigem: dadosProcesso?.processoApiId,
         confirmar: true,
         opcoesPasso3,
+        prioridadeMaior60Anos,
       });
       const res = await distribuirInicial(fd);
       setResultado(res);
@@ -1025,6 +1055,40 @@ export function DistribuicaoInicialProjudi() {
                 ))}
               </ul>
             ) : null}
+          </section>
+
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+            <h2 className="text-sm font-semibold text-slate-800">Prioridade processual</h2>
+            <p className="text-xs text-slate-600">
+              Enviada ao PROJUDI no Passo 1. Quando o cadastro do autor traz data de nascimento, o sistema
+              marca automaticamente se ele já completou 60 anos.
+            </p>
+            <label className="flex items-start gap-2 text-sm text-slate-800 cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={prioridadeMaior60Anos}
+                onChange={(ev) => setPrioridadeMaior60Anos(ev.target.checked)}
+              />
+              <span>
+                <strong>Maior de 60 Anos</strong>
+                {validacaoProntidao?.autorMaiorDe60Anos === true ? (
+                  <span className="ml-1.5 inline-flex rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-900">
+                    Detectado no autor
+                  </span>
+                ) : null}
+                {validacaoProntidao?.autorMaiorDe60Anos === false ? (
+                  <span className="block text-xs text-slate-500">
+                    Autor com data de nascimento no cadastro — ainda não completou 60 anos.
+                  </span>
+                ) : null}
+                {validacaoProntidao?.autorMaiorDe60Anos == null && pessoaAutor?.id ? (
+                  <span className="block text-xs text-slate-500">
+                    Sem data de nascimento no cadastro do autor — marque manualmente se aplicável.
+                  </span>
+                ) : null}
+              </span>
+            </label>
           </section>
 
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">

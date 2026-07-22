@@ -86,7 +86,28 @@ public class ProjudiParteResolverService {
     }
 
     @Transactional(readOnly = true)
+    public Boolean autorMaiorDe60Anos(Long pessoaId) {
+        if (pessoaId == null) {
+            return null;
+        }
+        return pessoaRepository
+                .findById(pessoaId)
+                .map(PessoaEntity::getDataNascimento)
+                .map(ProjudiIdadePessoaUtil::maiorDe60Anos)
+                .orElse(null);
+    }
+
+    @Transactional(readOnly = true)
     public ParteProjudiResolvida resolver(Long pessoaId, Long credencialId) {
+        return resolver(pessoaId, credencialId, null);
+    }
+
+    /**
+     * Resolve a parte para o PROJUDI. Quando {@code pessoaEnderecoId} é informado, usa esse endereço
+     * (ex.: o escolhido em «Detalhes das partes» do processo); caso contrário, usa o 1º por ordem.
+     */
+    @Transactional(readOnly = true)
+    public ParteProjudiResolvida resolver(Long pessoaId, Long credencialId, Long pessoaEnderecoId) {
         if (pessoaId == null) {
             throw new IllegalArgumentException("pessoaId é obrigatório.");
         }
@@ -98,8 +119,7 @@ public class ProjudiParteResolverService {
                 .findById(pessoaId)
                 .orElseThrow(() -> new ResourceNotFoundException("Pessoa não encontrada: " + pessoaId));
 
-        List<PessoaEnderecoEntity> enderecos = enderecoRepository.findByPessoa_IdOrderByNumeroOrdemAsc(pessoaId);
-        PessoaEnderecoEntity endereco = enderecos.isEmpty() ? null : enderecos.getFirst();
+        PessoaEnderecoEntity endereco = selecionarEndereco(pessoaId, pessoaEnderecoId);
 
         DocumentoTipo doc = resolverDocumento(pessoa.getCpf());
         Contatos contatos = carregarContatos(pessoa);
@@ -188,6 +208,22 @@ public class ProjudiParteResolverService {
                 bairroResolvido,
                 pronta,
                 List.copyOf(pendencias));
+    }
+
+    private PessoaEnderecoEntity selecionarEndereco(Long pessoaId, Long pessoaEnderecoId) {
+        if (pessoaEnderecoId != null) {
+            PessoaEnderecoEntity escolhido = enderecoRepository
+                    .findById(pessoaEnderecoId)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Endereço não encontrado: " + pessoaEnderecoId));
+            if (escolhido.getPessoa() == null || !pessoaId.equals(escolhido.getPessoa().getId())) {
+                throw new IllegalArgumentException(
+                        "Endereço " + pessoaEnderecoId + " não pertence à pessoa " + pessoaId + ".");
+            }
+            return escolhido;
+        }
+        List<PessoaEnderecoEntity> enderecos = enderecoRepository.findByPessoa_IdOrderByNumeroOrdemAsc(pessoaId);
+        return enderecos.isEmpty() ? null : enderecos.getFirst();
     }
 
     private CampoResolvido buscarEstado(Long credencialId, String ufSigla, String estadoBusca) {

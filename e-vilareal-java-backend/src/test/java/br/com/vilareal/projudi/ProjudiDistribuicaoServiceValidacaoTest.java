@@ -1,6 +1,10 @@
 package br.com.vilareal.projudi;
 
 import br.com.vilareal.common.exception.BusinessRuleException;
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEnderecoEntity;
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
+import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoParteEntity;
+import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoParteRepository;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.projudi.ProjudiParteResolverService.CampoResolvido;
 import br.com.vilareal.projudi.ProjudiParteResolverService.NivelResolucao;
@@ -19,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -33,17 +38,24 @@ class ProjudiDistribuicaoServiceValidacaoTest {
     @Mock
     private ProcessoRepository processoRepository;
 
+    @Mock
+    private ProcessoParteRepository processoParteRepository;
+
     private ProjudiDistribuicaoService service;
 
     @BeforeEach
     void setUp() {
         service = new ProjudiDistribuicaoService(
-                sessionService, parteResolverService, processoRepository, new ObjectMapper());
+                sessionService,
+                parteResolverService,
+                processoRepository,
+                processoParteRepository,
+                new ObjectMapper());
     }
 
     @Test
     void validarProntidao_listaTodosOsCamposObrigatorios() {
-        var res = service.validarProntidao(1L, "", List.of(), null, null, 0);
+        var res = service.validarProntidao(1L, "", List.of(), null, null, 0, null);
 
         assertFalse(res.pronta());
         assertTrue(res.bloqueios().contains("Valor da causa não informado."));
@@ -56,10 +68,10 @@ class ProjudiDistribuicaoServiceValidacaoTest {
     @Test
     void validarProntidao_incluiPendenciasDasPartes() {
         ParteProjudiResolvida autorPendente = partePendente("Bairro não encontrado no PROJUDI.");
-        when(parteResolverService.resolver(eq(10L), eq(1L))).thenReturn(autorPendente);
-        when(parteResolverService.resolver(eq(20L), eq(1L))).thenReturn(partePronta());
+        when(parteResolverService.resolver(eq(10L), eq(1L), isNull())).thenReturn(autorPendente);
+        when(parteResolverService.resolver(eq(20L), eq(1L), isNull())).thenReturn(partePronta());
 
-        var res = service.validarProntidao(1L, "1500,00", List.of(451), 10L, List.of(20L), 2);
+        var res = service.validarProntidao(1L, "1500,00", List.of(451), 10L, List.of(20L), 2, null);
 
         assertFalse(res.pronta());
         assertEquals(1, res.pendenciasPartes().size());
@@ -69,10 +81,10 @@ class ProjudiDistribuicaoServiceValidacaoTest {
 
     @Test
     void validarProntidao_prontaQuandoTudoOk() {
-        when(parteResolverService.resolver(eq(10L), eq(1L))).thenReturn(partePronta());
-        when(parteResolverService.resolver(eq(20L), eq(1L))).thenReturn(partePronta());
+        when(parteResolverService.resolver(eq(10L), eq(1L), isNull())).thenReturn(partePronta());
+        when(parteResolverService.resolver(eq(20L), eq(1L), isNull())).thenReturn(partePronta());
 
-        var res = service.validarProntidao(1L, "1500,00", List.of(451), 10L, List.of(20L), 1);
+        var res = service.validarProntidao(1L, "1500,00", List.of(451), 10L, List.of(20L), 1, null);
 
         assertTrue(res.pronta());
         assertTrue(res.bloqueios().isEmpty());
@@ -81,11 +93,11 @@ class ProjudiDistribuicaoServiceValidacaoTest {
 
     @Test
     void validarProntidao_validaVariosReus() {
-        when(parteResolverService.resolver(eq(10L), eq(1L))).thenReturn(partePronta());
-        when(parteResolverService.resolver(eq(20L), eq(1L))).thenReturn(partePronta());
-        when(parteResolverService.resolver(eq(30L), eq(1L))).thenReturn(partePendente("Cidade não encontrada."));
+        when(parteResolverService.resolver(eq(10L), eq(1L), isNull())).thenReturn(partePronta());
+        when(parteResolverService.resolver(eq(20L), eq(1L), isNull())).thenReturn(partePronta());
+        when(parteResolverService.resolver(eq(30L), eq(1L), isNull())).thenReturn(partePendente("Cidade não encontrada."));
 
-        var res = service.validarProntidao(1L, "1500,00", List.of(451), 10L, List.of(20L, 30L), 1);
+        var res = service.validarProntidao(1L, "1500,00", List.of(451), 10L, List.of(20L, 30L), 1, null);
 
         assertFalse(res.pronta());
         assertEquals(2, res.reus().size());
@@ -96,15 +108,34 @@ class ProjudiDistribuicaoServiceValidacaoTest {
 
     @Test
     void validarProntidao_converteExcecaoDoResolverEmBloqueio() {
-        when(parteResolverService.resolver(eq(10L), eq(1L)))
+        when(parteResolverService.resolver(eq(10L), eq(1L), isNull()))
                 .thenThrow(new BusinessRuleException("credencial PROJUDI inválida"));
-        when(parteResolverService.resolver(eq(20L), eq(1L))).thenReturn(partePronta());
+        when(parteResolverService.resolver(eq(20L), eq(1L), isNull())).thenReturn(partePronta());
 
-        var res = service.validarProntidao(1L, "1500,00", List.of(451), 10L, List.of(20L), 1);
+        var res = service.validarProntidao(1L, "1500,00", List.of(451), 10L, List.of(20L), 1, null);
 
         assertFalse(res.pronta());
         assertTrue(res.bloqueios().stream().anyMatch((b) -> b.contains("Autor:") && b.contains("credencial PROJUDI")));
         assertNull(res.autor());
+    }
+
+    @Test
+    void validarProntidao_usaEnderecoEscolhidoNoProcesso() {
+        PessoaEntity pessoa = new PessoaEntity();
+        pessoa.setId(10L);
+        PessoaEnderecoEntity endereco = new PessoaEnderecoEntity();
+        endereco.setId(30939L);
+        ProcessoParteEntity parte = new ProcessoParteEntity();
+        parte.setPessoa(pessoa);
+        parte.setPessoaEndereco(endereco);
+        when(processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(30028L)).thenReturn(List.of(parte));
+        when(parteResolverService.resolver(eq(10L), eq(1L), eq(30939L))).thenReturn(partePronta());
+        when(parteResolverService.resolver(eq(20L), eq(1L), isNull())).thenReturn(partePronta());
+
+        var res = service.validarProntidao(1L, "1500,00", List.of(451), 10L, List.of(20L), 1, 30028L);
+
+        assertTrue(res.pronta());
+        assertEquals(30939L, service.enderecoIdDaParteNoProcesso(30028L, 10L));
     }
 
     private static ParteProjudiResolvida partePronta() {

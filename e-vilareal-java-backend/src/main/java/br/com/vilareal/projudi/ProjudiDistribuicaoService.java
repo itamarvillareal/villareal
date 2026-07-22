@@ -1,6 +1,8 @@
 package br.com.vilareal.projudi;
 
+import br.com.vilareal.documento.QualificacaoPessoaUtil;
 import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
+import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoParteRepository;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.projudi.ProjudiParteResolverService.ParteProjudiResolvida;
 import br.com.vilareal.projudi.ProjudiPeticaoService.ArquivoPeticao;
@@ -47,16 +49,19 @@ public class ProjudiDistribuicaoService {
     private final ProjudiSessionService sessionService;
     private final ProjudiParteResolverService parteResolverService;
     private final ProcessoRepository processoRepository;
+    private final ProcessoParteRepository processoParteRepository;
     private final ObjectMapper objectMapper;
 
     public ProjudiDistribuicaoService(
             ProjudiSessionService sessionService,
             ProjudiParteResolverService parteResolverService,
             ProcessoRepository processoRepository,
+            ProcessoParteRepository processoParteRepository,
             ObjectMapper objectMapper) {
         this.sessionService = sessionService;
         this.parteResolverService = parteResolverService;
         this.processoRepository = processoRepository;
+        this.processoParteRepository = processoParteRepository;
         this.objectMapper = objectMapper;
     }
 
@@ -67,7 +72,9 @@ public class ProjudiDistribuicaoService {
             List<Long> pessoaIdsReu,
             List<ArquivoPeticao> arquivos,
             ProjudiClasseProcessoInicial classe,
-            ProjudiInicialOpcoesPasso3 opcoesPasso3) {
+            ProjudiInicialOpcoesPasso3 opcoesPasso3,
+            Boolean prioridadeMaior60Anos,
+            Long processoIdOrigem) {
 
         public ProjudiClasseProcessoInicial classeEfetiva() {
             return classe != null ? classe : ProjudiClasseProcessoInicial.JEC;
@@ -75,6 +82,10 @@ public class ProjudiDistribuicaoService {
 
         public ProjudiInicialOpcoesPasso3 opcoesPasso3Efetivas() {
             return opcoesPasso3 != null ? opcoesPasso3 : ProjudiInicialOpcoesPasso3.PADRAO;
+        }
+
+        public ProjudiPrioridadeProcessoInicial prioridadeEfetiva() {
+            return ProjudiPrioridadeProcessoInicial.deAutorMaiorDe60Anos(Boolean.TRUE.equals(prioridadeMaior60Anos));
         }
     }
 
@@ -114,7 +125,8 @@ public class ProjudiDistribuicaoService {
             List<String> bloqueios,
             List<PendenciaParte> pendenciasPartes,
             ParteProjudiResolvida autor,
-            List<ParteProjudiResolvida> reus) {}
+            List<ParteProjudiResolvida> reus,
+            Boolean autorMaiorDe60Anos) {}
 
     private static final class HtmlRevisaoHolder {
         String html;
@@ -184,7 +196,8 @@ public class ProjudiDistribuicaoService {
             List<Integer> idAssuntos,
             Long pessoaIdAutor,
             List<Long> pessoaIdsReu,
-            int quantidadeAnexos) {
+            int quantidadeAnexos,
+            Long processoIdOrigem) {
         List<String> bloqueios = new ArrayList<>();
         List<PendenciaParte> pendenciasPartes = new ArrayList<>();
         List<Long> idsReu = pessoaIdsReu != null ? pessoaIdsReu : List.of();
@@ -210,8 +223,16 @@ public class ProjudiDistribuicaoService {
 
         ParteProjudiResolvida autor = null;
         List<ParteProjudiResolvida> reus = new ArrayList<>();
+        Boolean autorMaiorDe60Anos = null;
         if (credencialId != null && pessoaIdAutor != null) {
-            autor = resolverParteComBloqueios(bloqueios, pendenciasPartes, "AUTOR", pessoaIdAutor, credencialId);
+            autorMaiorDe60Anos = parteResolverService.autorMaiorDe60Anos(pessoaIdAutor);
+            autor = resolverParteComBloqueios(
+                    bloqueios,
+                    pendenciasPartes,
+                    "AUTOR",
+                    pessoaIdAutor,
+                    credencialId,
+                    enderecoIdDaParteNoProcesso(processoIdOrigem, pessoaIdAutor));
         }
         if (credencialId != null && !idsReu.isEmpty()) {
             int totalReus = idsReu.size();
@@ -223,7 +244,12 @@ public class ProjudiDistribuicaoService {
                 }
                 ParteProjudiResolvida reu =
                         resolverParteComBloqueios(
-                                bloqueios, pendenciasPartes, papelReu(i, totalReus), pessoaIdReu, credencialId);
+                                bloqueios,
+                                pendenciasPartes,
+                                papelReu(i, totalReus),
+                                pessoaIdReu,
+                                credencialId,
+                                enderecoIdDaParteNoProcesso(processoIdOrigem, pessoaIdReu));
                 if (reu != null) {
                     reus.add(reu);
                 }
@@ -231,7 +257,25 @@ public class ProjudiDistribuicaoService {
         }
 
         return new ValidacaoProntidaoInicial(
-                bloqueios.isEmpty(), List.copyOf(bloqueios), List.copyOf(pendenciasPartes), autor, List.copyOf(reus));
+                bloqueios.isEmpty(),
+                List.copyOf(bloqueios),
+                List.copyOf(pendenciasPartes),
+                autor,
+                List.copyOf(reus),
+                autorMaiorDe60Anos);
+    }
+
+    /** Endereço escolhido em «Detalhes das partes» para a pessoa neste processo (petição/protocolo). */
+    public Long enderecoIdDaParteNoProcesso(Long processoId, Long pessoaId) {
+        if (processoId == null || pessoaId == null) {
+            return null;
+        }
+        return processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(processoId).stream()
+                .filter(parte -> parte.getPessoa() != null && pessoaId.equals(parte.getPessoa().getId()))
+                .map(QualificacaoPessoaUtil::enderecoIdDaParte)
+                .filter(java.util.Objects::nonNull)
+                .findFirst()
+                .orElse(null);
     }
 
     private ParteProjudiResolvida resolverParteComBloqueios(
@@ -239,9 +283,10 @@ public class ProjudiDistribuicaoService {
             List<PendenciaParte> pendenciasPartes,
             String papel,
             Long pessoaId,
-            Long credencialId) {
+            Long credencialId,
+            Long pessoaEnderecoId) {
         try {
-            ParteProjudiResolvida parte = parteResolverService.resolver(pessoaId, credencialId);
+            ParteProjudiResolvida parte = parteResolverService.resolver(pessoaId, credencialId, pessoaEnderecoId);
             if (!parte.prontaParaInserir()) {
                 pendenciasPartes.add(new PendenciaParte(papel, pessoaId, parte.pendencias()));
                 if (parte.pendencias() != null && !parte.pendencias().isEmpty()) {
@@ -301,6 +346,8 @@ public class ProjudiDistribuicaoService {
     @Transactional
     public ResultadoDistribuicaoInicial distribuirInicial(
             Long credencialId, InicialRequest request, boolean confirmar, Long processoIdOrigem) {
+        Long processoIdGravacao =
+                request.processoIdOrigem() != null ? request.processoIdOrigem() : processoIdOrigem;
         TrilhaExecucao trilha = new TrilhaExecucao();
         HtmlRevisaoHolder htmlOut = new HtmlRevisaoHolder();
         ResultadoPreparacaoInicial prep = prepararInicialInterno(credencialId, request, trilha, htmlOut);
@@ -368,7 +415,7 @@ public class ProjudiDistribuicaoService {
 
             if (pareceRedirectPost(statusDist)) {
                 return processarRedirectPosDistribuicao(
-                        trilha, credencialId, processoIdOrigem, respDist, statusDist, location);
+                        trilha, credencialId, processoIdGravacao, respDist, statusDist, location);
             }
 
             trilha.registrar(
@@ -405,12 +452,12 @@ public class ProjudiDistribuicaoService {
 
             ExtracaoNumero numero = numeroOpt.get();
             trilha.okSemResposta("Número extraído", numero.detalhe() + " → " + numero.numero());
-            boolean gravado = gravarNumeroNoProcesso(processoIdOrigem, numero.numero());
+            boolean gravado = gravarNumeroNoProcesso(processoIdGravacao, numero.numero());
             log.info(
                     "PROJUDI inicial DISTRIBUIDA (credencialId={}, numero={}, processoIdOrigem={}, gravado={}).",
                     credencialId,
                     numero.numero(),
-                    processoIdOrigem,
+                    processoIdGravacao,
                     gravado);
             String respostaBruta = corpoDist;
             return new ResultadoDistribuicaoInicial(
@@ -469,8 +516,12 @@ public class ProjudiDistribuicaoService {
                     null);
         }
 
+        Long processoIdOrigem = request.processoIdOrigem();
         List<PendenciaParte> pendenciasPartes = new ArrayList<>();
-        ParteProjudiResolvida autor = parteResolverService.resolver(request.pessoaIdAutor(), credencialId);
+        ParteProjudiResolvida autor = parteResolverService.resolver(
+                request.pessoaIdAutor(),
+                credencialId,
+                enderecoIdDaParteNoProcesso(processoIdOrigem, request.pessoaIdAutor()));
         if (!autor.prontaParaInserir()) {
             pendenciasPartes.add(new PendenciaParte("AUTOR", request.pessoaIdAutor(), autor.pendencias()));
         }
@@ -482,7 +533,10 @@ public class ProjudiDistribuicaoService {
                 pendenciasPartes.add(new PendenciaParte(papelReu(i, totalReus), null, List.of("Pessoa não informada.")));
                 continue;
             }
-            ParteProjudiResolvida reu = parteResolverService.resolver(pessoaIdReu, credencialId);
+            ParteProjudiResolvida reu = parteResolverService.resolver(
+                    pessoaIdReu,
+                    credencialId,
+                    enderecoIdDaParteNoProcesso(processoIdOrigem, pessoaIdReu));
             if (!reu.prontaParaInserir()) {
                 pendenciasPartes.add(new PendenciaParte(papelReu(i, totalReus), pessoaIdReu, reu.pendencias()));
             }
@@ -575,7 +629,7 @@ public class ProjudiDistribuicaoService {
             registrarHashFluxoHtml(trilha, "POST custas/dependência", corpo(navCustas));
 
             String corpoPasso1 = ProjudiProcessoCivelInicialCorpoUtil.montarCorpoPasso1Area(
-                    request.valorCausa(), "2852", "-1", request.classeEfetiva());
+                    request.valorCausa(), "2852", "-1", request.classeEfetiva(), request.prioridadeEfetiva());
             HttpResponse<String> pPasso1 = postProcessoCivelComTrilha(
                     trilha, "POST Passo1", credencialId, corpoPasso1, REF_PROCESSO_CIVEL);
             if (pareceFalhaPost(pPasso1)) {
@@ -620,7 +674,16 @@ public class ProjudiDistribuicaoService {
                 registrarHashFluxoHtml(trilha, nomeAssunto, corpo(pAssunto));
             }
 
-            tokens = inserirParte(credencialId, request.valorCausa(), request.classeEfetiva(), tokens, 1, autor, "AUTOR", trilha);
+            tokens = inserirParte(
+                    credencialId,
+                    request.valorCausa(),
+                    request.classeEfetiva(),
+                    request.prioridadeEfetiva(),
+                    tokens,
+                    1,
+                    autor,
+                    "AUTOR",
+                    trilha);
             if (tokens == null) {
                 return new ResultadoPreparacaoInicial(
                         false,
@@ -635,7 +698,15 @@ public class ProjudiDistribuicaoService {
                 ParteProjudiResolvida reu = reusResolvidos.get(i);
                 String papel = papelReu(i, totalReus);
                 tokens = inserirParte(
-                        credencialId, request.valorCausa(), request.classeEfetiva(), tokens, 0, reu, papel, trilha);
+                        credencialId,
+                        request.valorCausa(),
+                        request.classeEfetiva(),
+                        request.prioridadeEfetiva(),
+                        tokens,
+                        0,
+                        reu,
+                        papel,
+                        trilha);
                 if (tokens == null) {
                     return new ResultadoPreparacaoInicial(
                             false,
@@ -652,7 +723,7 @@ public class ProjudiDistribuicaoService {
                     "POST avançar anexos",
                     credencialId,
                     ProjudiProcessoCivelInicialCorpoUtil.montarCorpoAvancarAnexos(
-                            request.valorCausa(), request.classeEfetiva()),
+                            request.valorCausa(), request.classeEfetiva(), request.prioridadeEfetiva()),
                     REF_PROCESSO_CIVEL);
             if (pareceFalhaPost(pAnexos)) {
                 return falha(
@@ -817,6 +888,7 @@ public class ProjudiDistribuicaoService {
             Long credencialId,
             String valorCausa,
             ProjudiClasseProcessoInicial classe,
+            ProjudiPrioridadeProcessoInicial prioridade,
             TokensFluxo tokens,
             int parteTipo,
             ParteProjudiResolvida parte,
@@ -830,7 +902,7 @@ public class ProjudiDistribuicaoService {
                 "Parte " + papel + " abrir busca",
                 credencialId,
                 ProjudiProcessoCivelInicialCorpoUtil.montarCorpoAbrirBuscaParte(
-                        valorCausa, parteTipo, localizar, classe),
+                        valorCausa, parteTipo, localizar, classe, prioridade),
                 REF_PROCESSO_CIVEL);
         if (pareceFalhaPost(abrir)) {
             trilha.falha("Parte " + papel + " abrir busca", abrir, truncar(corpo(abrir)));
