@@ -73,6 +73,7 @@ export function AssinaturaAutomaticaInicialPanel({
   const inputMaquinaRef = useRef(null);
   const modoAssinaturaRef = useRef(null);
   const peticaoIdsLoteRef = useRef([]);
+  const arquivosUploadRef = useRef([]);
 
   const chaveInicial = useMemo(
     () => chavePeticaoInicialDistribuicao(codigoCliente, numeroInterno),
@@ -208,7 +209,8 @@ export function AssinaturaAutomaticaInicialPanel({
     }
     if (st === 'ERRO') {
       const msg = String(status?.mensagemUsuario || status?.erroMensagem || '').trim();
-      if (msg.includes('já constam na fila PROJUDI')) {
+      // No modo upload, nunca carregar .p7s antigos (seriam os da pasta «Assinar», não os enviados).
+      if (modoAssinaturaRef.current !== 'upload' && msg.includes('já constam na fila PROJUDI')) {
         try {
           if (await carregarJaAssinadosSeExistirem()) return;
         } catch {
@@ -277,7 +279,8 @@ export function AssinaturaAutomaticaInicialPanel({
 
   const tratarErroAssinatura = async (e, acao) => {
     const msg = mensagemErroAmigavel(e, acao);
-    if (msg.includes('já constam na fila PROJUDI')) {
+    // No modo upload, nunca carregar .p7s antigos (seriam os da pasta «Assinar», não os enviados).
+    if (modoAssinaturaRef.current !== 'upload' && msg.includes('já constam na fila PROJUDI')) {
       try {
         if (await carregarJaAssinadosSeExistirem()) return true;
       } catch {
@@ -307,6 +310,7 @@ export function AssinaturaAutomaticaInicialPanel({
     if (disabled || ativo) return;
     modoAssinaturaRef.current = 'upload';
     peticaoIdsLoteRef.current = [];
+    arquivosUploadRef.current = files;
     setFase('');
     setErro('');
     setErroCodigo('');
@@ -467,25 +471,20 @@ export function AssinaturaAutomaticaInicialPanel({
   };
 
   const tentarAssinarNovamente = async () => {
+    setFilaPeticoes([]);
+    // Repete o mesmo modo da tentativa anterior (upload local ou pasta «Assinar»).
+    if (modoAssinaturaRef.current === 'upload' && arquivosUploadRef.current.length > 0) {
+      await executarAssinaturaMaquina(arquivosUploadRef.current);
+      return;
+    }
     setErro('');
     setErroCodigo('');
     setFase('');
-    setFilaPeticoes([]);
     setAtivo(true);
     pararPoll();
     try {
       const resp = await assinarAutomaticoInicial({ credencialId, codigoCliente, numeroInterno });
-      const id = resp?.loteId;
-      if (id == null) throw new Error('Resposta sem loteId.');
-      setLoteId(id);
-      if (Array.isArray(resp?.peticaoIds) && resp.peticaoIds.length > 0) {
-        setPeticaoCount(resp.peticaoIds.length);
-      }
-      const status = await consultarLoteAssinaturaInicial(id);
-      await aplicarStatusLote(status);
-      if (String(status?.status ?? '').toUpperCase() !== 'CONCLUIDO') {
-        iniciarPoll(id);
-      }
+      await acompanharLoteAssinatura(resp);
     } catch (e) {
       const msg = mensagemErroAmigavel(e, 'iniciar a assinatura automática');
       if (msg.includes('já constam na fila PROJUDI')) {

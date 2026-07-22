@@ -271,28 +271,35 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
                 new ArrayList<>(resultado.peticaoIds()), List.of(resultado.resumo()), resultado.arquivosRegistrados());
     }
 
-    /** Remove fila PENDENTE anterior (ex.: PDFs da pasta Assinar) antes de enfileirar upload local. */
+    /**
+     * Remove o staging anterior da inicial (PENDENTE, ASSINADA ou ERRO — ex.: fila da pasta Assinar)
+     * antes de enfileirar o upload local: os anexos passam a ser exatamente os PDFs enviados.
+     * Petições em PROTOCOLANDO/PROTOCOLADA são preservadas (bloqueiam via dedup).
+     */
     private void limparPeticoesPendentesInicial(String chaveInicial) {
-        if (!StringUtils.hasText(chaveInicial)) {
+        if (!br.com.vilareal.projudi.application.ProjudiInicialAssinaturaService.ehChaveInicialDistribuicao(
+                chaveInicial)) {
             return;
         }
+        Set<String> statusRemoviveis = Set.of(STATUS_PETICAO_PENDENTE, STATUS_PETICAO_ASSINADA, "ERRO");
         List<ProjudiPeticaoEntity> peticoes = peticaoRepository.findByNumeroProcessoWithArquivos(chaveInicial);
         for (ProjudiPeticaoEntity peticao : peticoes) {
             if (peticao == null || peticao.getId() == null) {
                 continue;
             }
-            if (!STATUS_PETICAO_PENDENTE.equals(peticao.getStatus())) {
+            if (!statusRemoviveis.contains(peticao.getStatus())) {
                 continue;
             }
             try {
                 peticaoRegistroService.excluirPeticaoInicialDistribuicao(peticao.getId());
                 log.info(
-                        "Upload local: petição PENDENTE #{} removida antes de enfileirar PDFs enviados ({})",
+                        "Upload local: petição #{} ({}) removida antes de enfileirar PDFs enviados ({})",
                         peticao.getId(),
+                        peticao.getStatus(),
                         chaveInicial);
             } catch (Exception e) {
                 log.warn(
-                        "Upload local: falha ao remover petição PENDENTE #{} ({}): {}",
+                        "Upload local: falha ao remover petição #{} ({}): {}",
                         peticao.getId(),
                         chaveInicial,
                         e.getMessage());
