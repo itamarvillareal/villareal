@@ -31,6 +31,7 @@ public class DocumentoController {
     private final DocumentoPdfService pdfService;
     private final PeticaoAiService peticaoAiService;
     private final ProcuracaoService procuracaoService;
+    private final DeclaracaoRendimentosService declaracaoRendimentosService;
     private final ContratoHonorariosService contratoHonorariosService;
     private final ContratoHonorariosPersistenciaService contratoHonorariosPersistenciaService;
     private final ContratoAluguelService contratoAluguelService;
@@ -47,6 +48,7 @@ public class DocumentoController {
             DocumentoPdfService pdfService,
             PeticaoAiService peticaoAiService,
             ProcuracaoService procuracaoService,
+            DeclaracaoRendimentosService declaracaoRendimentosService,
             ContratoHonorariosService contratoHonorariosService,
             ContratoHonorariosPersistenciaService contratoHonorariosPersistenciaService,
             ContratoAluguelService contratoAluguelService,
@@ -61,6 +63,7 @@ public class DocumentoController {
         this.pdfService = pdfService;
         this.peticaoAiService = peticaoAiService;
         this.procuracaoService = procuracaoService;
+        this.declaracaoRendimentosService = declaracaoRendimentosService;
         this.contratoHonorariosService = contratoHonorariosService;
         this.contratoHonorariosPersistenciaService = contratoHonorariosPersistenciaService;
         this.contratoAluguelService = contratoAluguelService;
@@ -268,6 +271,22 @@ public class DocumentoController {
                 request.numeroInterno(),
                 request.pessoaId(),
                 TipoDocumento.PROCURACAO);
+        return respostaPdf(nomeArquivo, pdf);
+    }
+
+    @PostMapping("/declaracao-rendimentos")
+    public ResponseEntity<byte[]> gerarDeclaracaoRendimentos(@RequestBody DeclaracaoRendimentosRequest request) {
+        byte[] pdf = declaracaoRendimentosService.gerar(request);
+        LocalDate data = request.data() != null ? request.data() : LocalDate.now();
+        String nomePessoa = documentoDrivePastaService.resolverNomePessoa(request.pessoaId());
+        String nomeArquivo = DocumentoDrivePastaService.formatarNomeArquivoDeclaracao(nomePessoa, data);
+        salvarPdfNoDriveAsync(
+                pdf,
+                nomeArquivo,
+                request.codigoCliente(),
+                request.numeroInterno(),
+                request.pessoaId(),
+                TipoDocumento.DECLARACAO);
         return respostaPdf(nomeArquivo, pdf);
     }
 

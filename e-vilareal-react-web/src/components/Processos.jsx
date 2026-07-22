@@ -109,13 +109,13 @@ import {
   Clock,
   Trash2,
   FileText,
-  FileSignature,
   Download,
   CloudDownload,
   CalendarClock,
   Send,
   Receipt,
   MessageCircle,
+  ClipboardPen,
 } from 'lucide-react';
 import { ContaCorrenteVinculoAssist } from './processos/ContaCorrenteVinculoAssist.jsx';
 import {
@@ -162,20 +162,21 @@ import {
   ModalEscolherEnderecoParte,
   formatarEnderecoParteUi,
 } from './processos/ModalEscolherEnderecoParte.jsx';
+import { ModalDeclaracaoAtividadeRemunerada } from './processos/ModalDeclaracaoAtividadeRemunerada.jsx';
 import { carregarEnderecosPessoa } from '../repositories/pessoasEnderecosContatosRepository.js';
 import { ModalPeticionamentoProcesso } from './projudi/ModalPeticionamentoProcesso.jsx';
 import { PessoaEmbedModal } from './PessoaEmbedModal.jsx';
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 import { AutorUsuarioExibicao } from './ui/AutorUsuarioExibicao.jsx';
 import { buildContextFromProcesso, buildContextFromProcessoComPrazoFatal } from '../data/tarefasContextualPayload.js';
-import { montarDadosParaDocumentoFromProcesso } from '../helpers/documentoHelper.js';
+import { montarDadosParaDocumentoFromProcesso, extrairDataIsoDeLocalData, LOCAL_DATA_PADRAO } from '../helpers/documentoHelper.js';
 import { montarDadosDistribuicaoInicialFromProcesso } from '../helpers/distribuicaoInicialProjudiHelper.js';
+import { obterStatusDrive } from '../repositories/driveRepository.js';
 import {
   downloadPdfBlob,
-  gerarProcuracao,
-  nomeArquivoProcuracaoPdf,
+  gerarDeclaracaoRendimentos,
+  nomeArquivoDeclaracaoPdf,
 } from '../repositories/documentosRepository.js';
-import { obterStatusDrive } from '../repositories/driveRepository.js';
 import { featureFlags } from '../config/featureFlags.js';
 import { obterClienteCadastroPorCodigo } from '../repositories/clientesRepository.js';
 import { CampoNumeroComContador } from './ui/CampoNumeroComContador.jsx';
@@ -714,7 +715,9 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [clienteProcessoApiId, setClienteProcessoApiId] = useState(null);
   const [apiSaving, setApiSaving] = useState(false);
   const [gerandoDocNav, setGerandoDocNav] = useState(false);
-  const [gerandoProcuracao, setGerandoProcuracao] = useState(false);
+  const [gerandoDeclaracao, setGerandoDeclaracao] = useState(false);
+  const [modalDeclaracaoAberta, setModalDeclaracaoAberta] = useState(false);
+  const [ctxDeclaracao, setCtxDeclaracao] = useState(null);
   const [gerandoDistribuicaoInicial, setGerandoDistribuicaoInicial] = useState(false);
   const [driveExplorerAberto, setDriveExplorerAberto] = useState(false);
   const [driveConfigurado, setDriveConfigurado] = useState(false);
@@ -2258,6 +2261,101 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     navigate,
   ]);
 
+  const handleAbrirDeclaracaoRendimentos = useCallback(async () => {
+    if (!podeGerarDocumento || gerandoDeclaracao || gerandoDocNav) return;
+    setApiError('');
+    try {
+      const dadosProcesso = await montarDadosParaDocumentoFromProcesso({
+        processoApiId,
+        codigoCliente,
+        processo,
+        numeroInterno: processo,
+        numeroProcessoNovo,
+        numeroProcessoVelho,
+        naturezaAcao,
+        competencia,
+        orgaoJulgador: orgaoJulgadorSelecionado?.orgaoJulgador ?? null,
+        valorCausa,
+        cidade,
+        estado,
+        observacao,
+        papelParte,
+        textoParteCliente,
+        textoParteOposta,
+        parteCliente,
+        parteOposta,
+        pessoasVinculoCache,
+      });
+      const pessoaId = Number(dadosProcesso.pessoaIdOutorgante);
+      if (!Number.isFinite(pessoaId) || pessoaId <= 0) {
+        setApiError('Informe a parte cliente do processo para gerar a declaração.');
+        return;
+      }
+      setCtxDeclaracao({
+        pessoaId,
+        nomeDeclarante: dadosProcesso.nomeOutorgante || dadosProcesso.parteCliente,
+        cidadeEstado: dadosProcesso.cidadeEstado,
+        processoApiId: dadosProcesso.processoApiId,
+        codigoCliente: dadosProcesso.codigoCliente,
+        numeroInterno: dadosProcesso.numeroInterno,
+      });
+      setModalDeclaracaoAberta(true);
+    } catch (e) {
+      setApiError(e?.message || 'Falha ao preparar declaração de rendimentos.');
+    }
+  }, [
+    podeGerarDocumento,
+    gerandoDeclaracao,
+    gerandoDocNav,
+    processoApiId,
+    codigoCliente,
+    processo,
+    numeroProcessoNovo,
+    numeroProcessoVelho,
+    naturezaAcao,
+    competencia,
+    orgaoJulgadorSelecionado,
+    valorCausa,
+    cidade,
+    estado,
+    observacao,
+    papelParte,
+    textoParteCliente,
+    textoParteOposta,
+    parteCliente,
+    parteOposta,
+    pessoasVinculoCache,
+  ]);
+
+  const handleConfirmarDeclaracaoRendimentos = useCallback(
+    async (exerceAtividadeRemunerada) => {
+      if (!ctxDeclaracao || gerandoDeclaracao) return;
+      setGerandoDeclaracao(true);
+      setApiError('');
+      try {
+        const blob = await gerarDeclaracaoRendimentos({
+          pessoaId: ctxDeclaracao.pessoaId,
+          exerceAtividadeRemunerada,
+          cidadeEstado: ctxDeclaracao.cidadeEstado?.trim() || LOCAL_DATA_PADRAO,
+          data:
+            extrairDataIsoDeLocalData(ctxDeclaracao.cidadeEstado) ||
+            new Date().toISOString().split('T')[0],
+          processoId: ctxDeclaracao.processoApiId,
+          codigoCliente: ctxDeclaracao.codigoCliente,
+          numeroInterno: ctxDeclaracao.numeroInterno,
+        });
+        downloadPdfBlob(blob, nomeArquivoDeclaracaoPdf(ctxDeclaracao.nomeDeclarante));
+        setModalDeclaracaoAberta(false);
+        setCtxDeclaracao(null);
+      } catch (e) {
+        setApiError(e?.message || 'Falha ao gerar declaração de rendimentos.');
+      } finally {
+        setGerandoDeclaracao(false);
+      }
+    },
+    [ctxDeclaracao, gerandoDeclaracao],
+  );
+
   const handleAbrirGerarContratoHonorarios = useCallback(async () => {
     if (!podeGerarDocumento || gerandoDocNav) return;
     setGerandoDocNav(true);
@@ -2366,35 +2464,6 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     parteOpostaEntradas,
     pessoasPorId,
     navigate,
-  ]);
-
-  const handleGerarProcuracao = useCallback(async () => {
-    if (!podeGerarDocumento || gerandoProcuracao) return;
-    const entrada = (parteClienteEntradas || []).find((e) => Number(e?.pessoaId) > 0);
-    const pessoaId = entrada ? Number(entrada.pessoaId) : null;
-    if (!pessoaId) {
-      setApiError('Nenhuma parte cliente com pessoa cadastrada encontrada neste processo.');
-      return;
-    }
-    const pid = Number(entrada.pessoaId);
-    const pessoa = pessoasPorId.get(pid);
-    const nomeArquivo = nomeArquivoProcuracaoPdf(pessoa?.nome || textoParteCliente);
-    setGerandoProcuracao(true);
-    setApiError('');
-    try {
-      const blob = await gerarProcuracao({ pessoaId });
-      downloadPdfBlob(blob, nomeArquivo);
-    } catch (e) {
-      setApiError(e?.message || 'Falha ao gerar procuração.');
-    } finally {
-      setGerandoProcuracao(false);
-    }
-  }, [
-    podeGerarDocumento,
-    gerandoProcuracao,
-    parteClienteEntradas,
-    pessoasPorId,
-    textoParteCliente,
   ]);
 
   const handleBaixarAutosIntegral = useCallback(async () => {
@@ -4114,7 +4183,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     <button
                       type="button"
                       className={processosBtnToolbarOrange}
-                      disabled={!podeGerarDocumento || gerandoDocNav || gerandoProcuracao || apiSaving}
+                      disabled={!podeGerarDocumento || gerandoDocNav || apiSaving}
                       onClick={() => void handleGerarDocumento()}
                       title={
                         podeGerarDocumento
@@ -4127,17 +4196,17 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     </button>
                     <button
                       type="button"
-                      className={processosBtnToolbarIndigo}
-                      disabled={!podeGerarDocumento || gerandoProcuracao || gerandoDocNav || apiSaving}
-                      onClick={() => void handleGerarProcuracao()}
+                      className={processosBtnToolbarOrange}
+                      disabled={!podeGerarDocumento || gerandoDeclaracao || gerandoDocNav || apiSaving}
+                      onClick={() => void handleAbrirDeclaracaoRendimentos()}
                       title={
                         podeGerarDocumento
-                          ? 'Gerar procuração Ad Judicia da parte cliente'
+                          ? 'Gerar declaração de rendimentos (Lei 7.115/83) da parte cliente'
                           : 'Informe o CNJ ou salve o processo na API'
                       }
                     >
-                      <FileSignature className="w-3.5 h-3.5" aria-hidden />
-                      {gerandoProcuracao ? 'Gerando…' : 'Procuração'}
+                      <ClipboardPen className="w-3.5 h-3.5" aria-hidden />
+                      {gerandoDeclaracao ? 'Gerando…' : 'Declaração'}
                     </button>
                     <button
                       type="button"
@@ -4162,8 +4231,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                         !podeGerarDocumento ||
                         gerandoDistribuicaoInicial ||
                         apiSaving ||
-                        gerandoDocNav ||
-                        gerandoProcuracao
+                        gerandoDocNav
                       }
                       onClick={() => void handleDistribuirInicialProjudi()}
                       title={
@@ -5940,6 +6008,18 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         enderecoSelecionadoId={modalEscolhaEndereco?.enderecoSelecionadoId}
         onConfirmar={confirmarEscolhaEnderecoParte}
         onCancelar={cancelarEscolhaEnderecoParte}
+      />
+
+      <ModalDeclaracaoAtividadeRemunerada
+        aberto={modalDeclaracaoAberta}
+        nomeDeclarante={ctxDeclaracao?.nomeDeclarante}
+        gerando={gerandoDeclaracao}
+        onConfirmar={(exerce) => void handleConfirmarDeclaracaoRendimentos(exerce)}
+        onCancelar={() => {
+          if (gerandoDeclaracao) return;
+          setModalDeclaracaoAberta(false);
+          setCtxDeclaracao(null);
+        }}
       />
 
         </>

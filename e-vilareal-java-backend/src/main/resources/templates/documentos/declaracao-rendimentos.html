@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org" lang="pt-BR">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Declaração de Rendimentos</title>
+    <th:block th:replace="~{documentos/fragments-peca :: estiloTimbrado}"/>
+    <th:block th:replace="~{documentos/fragments-peca :: estiloCorpoPadrao}"/>
+    <style type="text/css">
+        @page {
+            size: A4;
+            margin: 28mm 15mm 15mm 15mm;
+            @top-center {
+                content: element(cabecalho-padrao);
+                vertical-align: top;
+            }
+            @bottom-center {
+                content: element(rodape);
+                vertical-align: bottom;
+            }
+        }
+
+        @page :first {
+            margin: 0 15mm 22mm 15mm;
+            @top-center {
+                content: none;
+            }
+            @bottom-center {
+                content: element(rodape-primeira);
+                vertical-align: bottom;
+            }
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: "Arial Unicode MS", Arial, sans-serif;
+            font-size: 12pt;
+            color: #000;
+        }
+
+        p {
+            margin: 0;
+            padding: 0;
+        }
+
+        .corpo-documento {
+            margin-left: 15mm;
+        }
+
+        .titulo-declaracao {
+            font-family: "Arial Unicode MS", Arial, sans-serif;
+            font-size: 14pt;
+            font-weight: bold;
+            font-style: italic;
+            text-align: center;
+            text-indent: 0;
+            margin-top: 24pt;
+            margin-bottom: 24pt;
+        }
+
+        .corpo-declaracao {
+            font-family: Arial, sans-serif;
+            font-size: 11pt;
+            text-align: justify;
+            text-indent: 4.0cm;
+            margin-top: 12pt;
+            margin-bottom: 12pt;
+        }
+
+        .fecho-declaracao {
+            font-family: Arial, sans-serif;
+            font-size: 11pt;
+            text-align: justify;
+            text-indent: 4.0cm;
+            margin-top: 12pt;
+            margin-bottom: 12pt;
+        }
+
+        .data-declaracao {
+            font-family: Arial, sans-serif;
+            font-size: 11pt;
+            text-align: center;
+            text-indent: 0;
+            margin-top: 24pt;
+            margin-bottom: 12pt;
+        }
+
+        .assinatura-declarante {
+            text-align: center;
+            margin-top: 48pt;
+            font-family: Arial, sans-serif;
+            font-size: 11pt;
+        }
+
+        .assinatura-declarante .nome {
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .assinatura-declarante .cpf {
+            margin-top: 4pt;
+        }
+    </style>
+</head>
+<body>
+
+<th:block th:replace="~{documentos/fragments-peca :: cabecalho}"/>
+
+<th:block th:replace="~{documentos/fragments-peca :: rodape}"/>
+
+<div class="corpo-documento">
+    <p class="titulo-declaracao">DECLARAÇÃO DE RENDIMENTOS</p>
+
+    <p class="corpo-declaracao">
+        Eu, <span th:text="${qualificacaoDeclarante}">NOME, qualificação...</span>, DECLARO nos
+        termos da Lei 7.115/83 <span th:text="${trechoAtividadeRemunerada}">trecho atividade</span>
+        Para tanto, responsabilizo-me, desde já, pelo conteúdo verdadeiro desta declaração, ciente de que
+        qualquer falsidade nela constante, importará em responsabilidade criminal conforme
+        legislação pertinente.
+    </p>
+
+    <p class="fecho-declaracao">É o que tenho a declarar.</p>
+
+    <p class="data-declaracao" th:text="${localData}">Anápolis, estado de Goiás, data.</p>
+
+    <div class="assinatura-declarante">
+        <p class="nome" th:text="${nomeDeclarante}">NOME DO DECLARANTE</p>
+        <p class="cpf" th:if="${cpfDeclarante != null and !cpfDeclarante.isEmpty()}">
+            CPF/MF nº <span th:text="${cpfDeclarante}">000.000.000-00</span>
+        </p>
+    </div>
+</div>
+
+</body>
+</html>
