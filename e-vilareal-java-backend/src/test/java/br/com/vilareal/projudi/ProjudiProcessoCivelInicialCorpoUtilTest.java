@@ -72,7 +72,7 @@ class ProjudiProcessoCivelInicialCorpoUtilTest {
         assertTrue(corpo.contains("Id_AreaDistribuicao=735"));
         assertTrue(corpo.contains("ForumCodigo=3"));
         assertTrue(corpo.contains("ProcessoPrioridade=Maior+de+60+Anos"));
-        assertTrue(corpo.contains("Id_ProcessoPrioridade=6"));
+        assertTrue(corpo.contains("Id_ProcessoPrioridade=2"));
     }
 
     @Test

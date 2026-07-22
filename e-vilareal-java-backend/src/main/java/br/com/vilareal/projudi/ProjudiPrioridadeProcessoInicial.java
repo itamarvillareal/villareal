@@ -6,8 +6,9 @@ public record ProjudiPrioridadeProcessoInicial(String rotulo, int idProcessoPrio
     public static final ProjudiPrioridadeProcessoInicial NORMAL =
             new ProjudiPrioridadeProcessoInicial("Normal", 1);
 
+    /** Fallback quando o id não vem do HTML/catálogo — {@code 2} na Vara Cível de Anápolis (não {@code 6}). */
     public static final ProjudiPrioridadeProcessoInicial MAIOR_60_ANOS =
-            new ProjudiPrioridadeProcessoInicial("Maior de 60 Anos", 6);
+            new ProjudiPrioridadeProcessoInicial("Maior de 60 Anos", 2);
 
     public static ProjudiPrioridadeProcessoInicial deAutorMaiorDe60Anos(boolean maiorDe60Anos) {
         return deAutorMaiorDe60Anos(maiorDe60Anos, null);

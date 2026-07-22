@@ -155,9 +155,6 @@ final class ProjudiProcessoCivelHtmlUtil {
                 adicionarOpcaoPrioridade(out, option.text(), option.attr("value"));
             }
         }
-        for (Element option : doc.select("option")) {
-            adicionarOpcaoPrioridade(out, option.text(), option.attr("value"));
-        }
         Matcher hidden = HIDDEN_PRIORIDADE.matcher(html);
         while (hidden.find()) {
             adicionarOpcaoPrioridade(out, extrairRotuloPrioridadeProximo(html, hidden.start()), hidden.group(1));
@@ -190,8 +187,13 @@ final class ProjudiProcessoCivelHtmlUtil {
         if (!StringUtils.hasText(rotulo) || !StringUtils.hasText(value)) {
             return;
         }
+        String rotuloTrim = rotulo.trim();
+        String valueTrim = value.trim();
+        if (rotuloTrim.equals(valueTrim) && rotuloTrim.matches("\\d+")) {
+            return;
+        }
         try {
-            out.putIfAbsent(rotulo.trim(), Integer.parseInt(value.trim()));
+            out.putIfAbsent(rotuloTrim, Integer.parseInt(valueTrim));
         } catch (NumberFormatException ignored) {
             // ignora opção sem id numérico
         }

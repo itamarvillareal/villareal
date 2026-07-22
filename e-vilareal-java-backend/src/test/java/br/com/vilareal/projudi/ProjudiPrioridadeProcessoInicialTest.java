@@ -12,7 +12,7 @@ class ProjudiPrioridadeProcessoInicialTest {
     }
 
     @Test
-    void deAutorMaiorDe60Anos_semHtmlCaiNoFallbackLegado() {
-        assertEquals(6, ProjudiPrioridadeProcessoInicial.deAutorMaiorDe60Anos(true).idProcessoPrioridade());
+    void deAutorMaiorDe60Anos_semHtmlCaiNoFallback() {
+        assertEquals(2, ProjudiPrioridadeProcessoInicial.deAutorMaiorDe60Anos(true).idProcessoPrioridade());
     }
 }

@@ -1073,6 +1073,19 @@ public class ProjudiDistribuicaoService {
         }
 
         if (idResolvido.isEmpty()) {
+            idResolvido = ProjudiPrioridadeAreaCatalogo.idMaiorDe60Anos(request.classeEfetiva().idAreaDistribuicao());
+            if (idResolvido.isPresent()) {
+                trilha.okSemResposta(
+                        "Prioridade Passo1 catálogo",
+                        "Área "
+                                + request.classeEfetiva().idAreaDistribuicao()
+                                + " → Id_ProcessoPrioridade="
+                                + idResolvido.get()
+                                + " («Maior de 60 Anos»)");
+            }
+        }
+
+        if (idResolvido.isEmpty()) {
             trilha.falhaSemResposta(
                     "Prioridade Passo1",
                     "Não foi possível mapear «Maior de 60 Anos» no select Id_ProcessoPrioridade do PROJUDI.");
