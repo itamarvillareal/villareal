@@ -1102,11 +1102,11 @@ export function DistribuicaoInicialProjudi() {
             <h2 className="text-sm font-semibold text-slate-800">Anexos (.p7s)</h2>
             <div className="rounded-lg border border-sky-100 bg-sky-50/80 px-3 py-2 text-xs text-sky-950 space-y-1">
               <p>
-                <strong>Pasta «Assinar» do processo:</strong> petição inicial e documentos específicos desta ação
-                (ex.: contrato de locação, comprovantes do imóvel).
+                <strong>Pasta «Assinar» do processo:</strong> petição inicial (
+                <span className="font-mono">01.PeticaoInicial.pdf</span>) e documentos específicos desta ação.
               </p>
               <p>
-                <strong>Pasta «Pessoas» do autor</strong>
+                <strong>Pasta «Pessoas/Assinados» do autor</strong>
                 {pessoaAutor?.id ? (
                   <>
                     {' '}
@@ -1119,8 +1119,8 @@ export function DistribuicaoInicialProjudi() {
                 ) : (
                   ':'
                 )}{' '}
-                documentos constitutivos reutilizáveis — procuração, contrato social, comprovante de endereço,
-                documento pessoal do representante etc.
+                documentos constitutivos numerados a partir de{' '}
+                <span className="font-mono">02.</span> (procuração, contrato social, docs. do representante em PJ…).
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">

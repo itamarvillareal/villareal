@@ -38,9 +38,6 @@ public class DocumentoDrivePastaService {
 
     private static final Set<String> PASTAS_TIPO_DOCUMENTO_PESSOA = Set.of(
             TipoDocumentoPessoa.DOCUMENTOS.getPasta(),
-            TipoDocumentoPessoa.PROCURACOES.getPasta(),
-            TipoDocumentoPessoa.CONTRATOS.getPasta(),
-            TipoDocumentoPessoa.DECLARACOES.getPasta(),
             TipoDocumentoPessoa.ASSINADOS.getPasta());
 
     private final ClienteResolverService clienteResolverService;
@@ -480,10 +477,7 @@ public class DocumentoDrivePastaService {
     }
 
     static String formatarNomeArquivoPeticao(String tipoPeca, java.time.LocalDate data) {
-        String tipo = StringUtils.hasText(tipoPeca) ? tipoPeca.trim() : "Peticao";
-        java.time.LocalDate dataArquivo = data != null ? data : java.time.LocalDate.now();
-        return GoogleDriveService.sanitizarNomeArquivo(
-                "Peticao - " + tipo + " - " + dataArquivo);
+        return DocumentoNomeNumeracaoUtil.formatarNomeArquivoPeticao(tipoPeca, data);
     }
 
     public String resolverCodigoClienteDoProcesso(ProcessoEntity processo) {

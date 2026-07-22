@@ -1,6 +1,7 @@
 package br.com.vilareal.pessoa.application;
 
 import br.com.vilareal.common.exception.ResourceNotFoundException;
+import br.com.vilareal.documento.DocumentoNomeNumeracaoUtil;
 import br.com.vilareal.documento.DocumentoDrivePastaService;
 import br.com.vilareal.documento.DriveArquivoDto;
 import br.com.vilareal.documento.GoogleDriveService;
@@ -17,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
@@ -57,6 +59,10 @@ public class PessoaDocumentoDriveService {
         return documentoRepository
                 .findByPessoaIdAndP7sDriveFileIdIsNotNullOrderByCreatedAtDescIdDesc(pessoaId)
                 .stream()
+                .sorted(Comparator.comparingInt(
+                                (PessoaDocumentoDriveEntity d) ->
+                                        DocumentoNomeNumeracaoUtil.extrairPrefixoNumerico(d.getNomeArquivo()))
+                        .thenComparing(PessoaDocumentoDriveEntity::getNomeArquivo))
                 .map(this::toResponse)
                 .toList();
     }
@@ -78,7 +84,7 @@ public class PessoaDocumentoDriveService {
                 : "application/octet-stream";
 
         if (nomeOriginal.toLowerCase(Locale.ROOT).endsWith(".p7s")) {
-            return registrarP7s(pessoaId, tipoEfetivo, bytes, nomeOriginal);
+            return registrarP7s(pessoaId, TipoDocumentoPessoa.ASSINADOS, bytes, nomeOriginal);
         }
 
         if (!googleDriveService.isConfigurado()) {
@@ -120,14 +126,27 @@ public class PessoaDocumentoDriveService {
                     validacao.motivo() != null ? validacao.motivo() : "Arquivo .p7s sem PDF embutido.");
         }
 
-        TipoDocumentoPessoa tipoEfetivo = tipo != null ? tipo : TipoDocumentoPessoa.ASSINADOS;
+        TipoDocumentoPessoa tipoEfetivo = TipoDocumentoPessoa.ASSINADOS;
         String pastaId = documentoDrivePastaService.obterPastaDestinoPessoa(pessoaId, tipoEfetivo);
 
         byte[] pdfBytes = validacao.pdfEmbutido();
         String pdfSha256 = validacao.sha256ConteudoEmbutido();
-        String nomeBase = normalizarNomeP7s(nomeOriginal);
-        String nomePdf = nomeBase.endsWith(".pdf") ? nomeBase : nomeBase + ".pdf";
-        String nomeP7s = nomePdf + ".p7s";
+
+        int prefixoExistente = DocumentoNomeNumeracaoUtil.extrairPrefixoNumerico(nomeOriginal);
+        int numero;
+        if (prefixoExistente >= 2) {
+            numero = prefixoExistente;
+        } else {
+            List<String> nomesExistentes = documentoRepository
+                    .findByPessoaIdAndTipoOrderByCreatedAtDescIdDesc(pessoaId, TipoDocumentoPessoa.ASSINADOS.name())
+                    .stream()
+                    .map(PessoaDocumentoDriveEntity::getNomeArquivo)
+                    .toList();
+            numero = DocumentoNomeNumeracaoUtil.calcularProximoNumeroPessoaAssinados(nomesExistentes);
+        }
+        String descricao = DocumentoNomeNumeracaoUtil.extrairDescricaoBase(nomeOriginal);
+        String nomePdf = DocumentoNomeNumeracaoUtil.formatarNomePessoaAssinadoPdf(numero, descricao);
+        String nomeP7s = DocumentoNomeNumeracaoUtil.formatarNomePessoaAssinado(numero, descricao);
 
         DriveArquivoDto pdfEnviado =
                 googleDriveService.uploadArquivo(pdfBytes, nomePdf, "application/pdf", pastaId);
@@ -182,23 +201,6 @@ public class PessoaDocumentoDriveService {
         if (!pessoaRepository.existsById(pessoaId)) {
             throw new ResourceNotFoundException("Pessoa não encontrada: " + pessoaId);
         }
-    }
-
-    private static String normalizarNomeP7s(String nomeOriginal) {
-        String nome = StringUtils.hasText(nomeOriginal) ? nomeOriginal.trim() : "documento";
-        if (nome.toLowerCase(Locale.ROOT).endsWith(".pdf.p7s")) {
-            nome = nome.substring(0, nome.length() - 4);
-        } else if (nome.toLowerCase(Locale.ROOT).endsWith(".p7s")) {
-            nome = nome.substring(0, nome.length() - 4);
-        }
-        if (!StringUtils.hasText(nome)) {
-            return "documento";
-        }
-        return sanitizarNomeBase(nome).replaceAll("(?i)\\.pdf$", "");
-    }
-
-    private static String sanitizarNomeBase(String nome) {
-        return nome.trim().replaceAll("[\\\\/:*?\"<>|]", " ").replaceAll("\\s+", " ");
     }
 
     private PessoaDocumentoDriveResponse toResponse(PessoaDocumentoDriveEntity entity) {

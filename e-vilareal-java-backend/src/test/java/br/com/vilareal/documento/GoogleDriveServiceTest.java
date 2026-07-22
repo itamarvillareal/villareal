@@ -24,12 +24,12 @@ class GoogleDriveServiceTest {
         assertThat(DocumentoDrivePastaService.formatarNomePastaPessoa(42L, "Maria Silva"))
                 .isEqualTo("00000042 - Maria Silva");
         assertThat(DocumentoDrivePastaService.formatarNomePastaPessoa(668L, "Empresa LTDA"))
-                .isEqualTo("00000668 - Empresa LTDA");
+                .isEqualTo("00000668 - Empresa Ltda");
     }
 
     @Test
-    void pastasTipoDocumentoPessoa_incluiAssinados() {
+    void pastasTipoDocumentoPessoa_incluiAssinadosEDocumentos() {
         assertThat(DocumentoDrivePastaService.pastasTipoDocumentoPessoa())
-                .contains("Documentos", "Procurações", "Contratos", "Declarações", "Assinados");
+                .containsExactlyInAnyOrder("Documentos", "Assinados");
     }
 }

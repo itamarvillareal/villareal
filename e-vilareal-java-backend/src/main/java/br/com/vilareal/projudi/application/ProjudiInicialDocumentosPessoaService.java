@@ -2,8 +2,8 @@ package br.com.vilareal.projudi.application;
 
 import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
+import br.com.vilareal.documento.DocumentoNomeNumeracaoUtil;
 import br.com.vilareal.documento.GoogleDriveService;
-import br.com.vilareal.documento.TipoDocumentoPessoa;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaDocumentoDriveEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaDocumentoDriveRepository;
@@ -57,7 +57,9 @@ public class ProjudiInicialDocumentosPessoaService {
                 out.add(toResponse(doc, ctx));
             }
         }
-        out.sort(Comparator.comparingInt(this::ordemTipo).thenComparing(InicialDocumentoPessoaResponse::nomeArquivo));
+        out.sort(Comparator.comparingInt((InicialDocumentoPessoaResponse d) ->
+                        DocumentoNomeNumeracaoUtil.extrairPrefixoNumerico(d.nomeArquivo()))
+                .thenComparing(InicialDocumentoPessoaResponse::nomeArquivo));
         return List.copyOf(out);
     }
 
@@ -114,21 +116,6 @@ public class ProjudiInicialDocumentosPessoaService {
                 doc.getNomeArquivo(),
                 ID_ARQUIVO_TIPO_OUTROS,
                 ctx.origem());
-    }
-
-    private int ordemTipo(InicialDocumentoPessoaResponse doc) {
-        try {
-            TipoDocumentoPessoa tipo = TipoDocumentoPessoa.valueOf(doc.tipo());
-            return switch (tipo) {
-                case PROCURACOES -> 1;
-                case CONTRATOS -> 2;
-                case DECLARACOES -> 3;
-                case DOCUMENTOS -> 4;
-                case ASSINADOS -> 5;
-            };
-        } catch (Exception e) {
-            return 99;
-        }
     }
 
     static boolean ehPessoaJuridica(String cpfCnpj) {

@@ -8,20 +8,23 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class TipoDocumentoPessoaTest {
 
     @Test
-    void deTipoDocumento_mapeiaProcuracaoContratoDeclaracao() {
+    void deTipoDocumento_sempreDocumentosParaPdfGerado() {
         assertThat(TipoDocumentoPessoa.deTipoDocumento(TipoDocumento.PROCURACAO))
-                .isEqualTo(TipoDocumentoPessoa.PROCURACOES);
-        assertThat(TipoDocumentoPessoa.deTipoDocumento(TipoDocumento.CONTRATO))
-                .isEqualTo(TipoDocumentoPessoa.CONTRATOS);
-        assertThat(TipoDocumentoPessoa.deTipoDocumento(TipoDocumento.DECLARACAO))
-                .isEqualTo(TipoDocumentoPessoa.DECLARACOES);
+                .isEqualTo(TipoDocumentoPessoa.DOCUMENTOS);
+        assertThat(TipoDocumentoPessoa.deTipoDocumento(TipoDocumento.PETICAO))
+                .isEqualTo(TipoDocumentoPessoa.DOCUMENTOS);
     }
 
     @Test
-    void parse_aceitaNomeEnumEPasta() {
+    void parse_aceitaAssinadosEDocumentos() {
         assertThat(TipoDocumentoPessoa.parse("ASSINADOS")).isEqualTo(TipoDocumentoPessoa.ASSINADOS);
-        assertThat(TipoDocumentoPessoa.parse("Assinados")).isEqualTo(TipoDocumentoPessoa.ASSINADOS);
-        assertThat(TipoDocumentoPessoa.parse("Procurações")).isEqualTo(TipoDocumentoPessoa.PROCURACOES);
+        assertThat(TipoDocumentoPessoa.parse("Documentos")).isEqualTo(TipoDocumentoPessoa.DOCUMENTOS);
+    }
+
+    @Test
+    void parse_mapeiaLegadoParaDocumentos() {
+        assertThat(TipoDocumentoPessoa.parse("Procurações")).isEqualTo(TipoDocumentoPessoa.DOCUMENTOS);
+        assertThat(TipoDocumentoPessoa.parse("CONTRATOS")).isEqualTo(TipoDocumentoPessoa.DOCUMENTOS);
     }
 
     @Test

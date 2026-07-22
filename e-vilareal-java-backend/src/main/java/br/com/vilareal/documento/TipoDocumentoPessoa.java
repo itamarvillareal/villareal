@@ -1,14 +1,11 @@
 package br.com.vilareal.documento;
 
 /**
- * Subpastas dentro de {@code Pessoas/{id8} - nome/} para documentos da pessoa,
- * independentes de processo/cliente.
+ * Subpastas dentro de {@code Pessoas/{id8} - nome/}:
+ * {@link #DOCUMENTOS} (PDFs e anexos) e {@link #ASSINADOS} (.p7s numerados a partir de 02).
  */
 public enum TipoDocumentoPessoa {
     DOCUMENTOS("Documentos"),
-    PROCURACOES("Procurações"),
-    CONTRATOS("Contratos"),
-    DECLARACOES("Declarações"),
     ASSINADOS("Assinados");
 
     private final String pasta;
@@ -22,15 +19,7 @@ public enum TipoDocumentoPessoa {
     }
 
     public static TipoDocumentoPessoa deTipoDocumento(TipoDocumento tipo) {
-        if (tipo == null) {
-            return DOCUMENTOS;
-        }
-        return switch (tipo) {
-            case PROCURACAO -> PROCURACOES;
-            case CONTRATO -> CONTRATOS;
-            case DECLARACAO -> DECLARACOES;
-            case PETICAO, DOCUMENTO -> DOCUMENTOS;
-        };
+        return DOCUMENTOS;
     }
 
     public static TipoDocumentoPessoa parse(String valor) {
@@ -38,6 +27,23 @@ public enum TipoDocumentoPessoa {
             return DOCUMENTOS;
         }
         String normalizado = valor.trim();
+        if (normalizado.equalsIgnoreCase("ASSINADOS")
+                || normalizado.equalsIgnoreCase("Assinados")) {
+            return ASSINADOS;
+        }
+        if (normalizado.equalsIgnoreCase("DOCUMENTOS")
+                || normalizado.equalsIgnoreCase("Documentos")) {
+            return DOCUMENTOS;
+        }
+        // Legado (subpastas antigas) → Documentos, exceto .p7s tratados em outro fluxo
+        if (normalizado.equalsIgnoreCase("PROCURACOES")
+                || normalizado.equalsIgnoreCase("Procurações")
+                || normalizado.equalsIgnoreCase("CONTRATOS")
+                || normalizado.equalsIgnoreCase("Contratos")
+                || normalizado.equalsIgnoreCase("DECLARACOES")
+                || normalizado.equalsIgnoreCase("Declarações")) {
+            return DOCUMENTOS;
+        }
         for (TipoDocumentoPessoa tipo : values()) {
             if (tipo.name().equalsIgnoreCase(normalizado) || tipo.pasta.equalsIgnoreCase(normalizado)) {
                 return tipo;

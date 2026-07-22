@@ -15,7 +15,7 @@ CREATE TABLE pessoa_documento_drive (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_pessoa_documento_drive_pessoa FOREIGN KEY (pessoa_id) REFERENCES pessoa (id),
     CONSTRAINT chk_pessoa_documento_drive_tipo CHECK (
-        tipo IN ('DOCUMENTOS', 'PROCURACOES', 'CONTRATOS', 'DECLARACOES', 'ASSINADOS')
+        tipo IN ('DOCUMENTOS', 'ASSINADOS')
     )
 );
 

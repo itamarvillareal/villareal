@@ -2256,8 +2256,8 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                             Pessoas/{String(editId).padStart(8, '0')}
                           </span>
                           {ehPessoaJuridica
-                            ? ' — contrato social, procuração e documentos do representante, reutilizáveis na inicial.'
-                            : ' — documentos assinados reutilizáveis em protocolos futuros.'}
+                            ? ' — .p7s numerados a partir de 02 (ex.: 02.Procuracao.pdf.p7s). Inclui pasta do representante na inicial.'
+                            : ' — .p7s numerados a partir de 02, reutilizáveis em protocolos futuros.'}
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
@@ -2320,7 +2320,7 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                       </p>
                     ) : documentosAssinadosDrive.length === 0 ? (
                       <p className="text-xs text-indigo-800/80">
-                        Nenhum documento .p7s registrado ainda. Use «Anexar .p7s» ou a pasta «Arquivos» → Assinados.
+                        Nenhum documento .p7s registrado ainda. Anexe na subpasta Assinados (numerados 02, 03…) ou use «Arquivos».
                       </p>
                     ) : (
                       <ul className="space-y-1.5 text-xs text-indigo-950">
