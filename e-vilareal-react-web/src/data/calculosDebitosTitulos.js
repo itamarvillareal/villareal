@@ -303,7 +303,15 @@ export function mesclarTitulosGravadosComRecalculo(gravados, recalculados, mapTi
         datasEspeciais: gravadoComValor.datasEspeciais ?? calcComValor.datasEspeciais,
       });
     } else if (gravadoComValor) {
-      out.push(gravadoComValor);
+      // Mantém vencimento/valor do txt; encargos vazios até o recálculo preencher a linha
+      // (evita exibir multa/honorários zerados do snapshot legado em dimensões > 0).
+      out.push({
+        ...linhaTituloVaziaCalculos(),
+        dataVencimento: gravadoComValor.dataVencimento,
+        valorInicial: gravadoComValor.valorInicial,
+        descricaoValor: gravadoComValor.descricaoValor,
+        datasEspeciais: gravadoComValor.datasEspeciais ?? null,
+      });
     } else if (calcComValor) {
       out.push(calcComValor);
     } else {

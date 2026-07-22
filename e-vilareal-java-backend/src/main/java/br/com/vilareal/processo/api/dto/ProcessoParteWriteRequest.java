@@ -25,6 +25,9 @@ public class ProcessoParteWriteRequest {
     /** UUID da importação em lote; opcional. */
     private String importacaoId;
 
+    /** Endereço da pessoa a usar nesta demanda; null = primeiro endereço cadastrado. */
+    private Long pessoaEnderecoId;
+
     public Long getPessoaId() {
         return pessoaId;
     }
@@ -79,5 +82,13 @@ public class ProcessoParteWriteRequest {
 
     public void setImportacaoId(String importacaoId) {
         this.importacaoId = importacaoId;
+    }
+
+    public Long getPessoaEnderecoId() {
+        return pessoaEnderecoId;
+    }
+
+    public void setPessoaEnderecoId(Long pessoaEnderecoId) {
+        this.pessoaEnderecoId = pessoaEnderecoId;
     }
 }

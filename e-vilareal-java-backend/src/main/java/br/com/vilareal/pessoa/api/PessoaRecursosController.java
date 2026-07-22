@@ -25,8 +25,10 @@ public class PessoaRecursosController {
     }
 
     @GetMapping("/{id}/qualificacao-juridica")
-    public QualificacaoJuridicaResponse qualificacaoJuridica(@PathVariable Long id) {
-        return qualificacaoPessoaUtil.gerarQualificacaoJuridicaResponse(id);
+    public QualificacaoJuridicaResponse qualificacaoJuridica(
+            @PathVariable Long id,
+            @RequestParam(required = false) Long pessoaEnderecoId) {
+        return qualificacaoPessoaUtil.gerarQualificacaoJuridicaResponse(id, pessoaEnderecoId);
     }
 
     @GetMapping("/{id}/complementares")

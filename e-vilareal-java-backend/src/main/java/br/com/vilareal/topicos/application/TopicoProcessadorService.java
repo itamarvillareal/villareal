@@ -316,13 +316,26 @@ public class TopicoProcessadorService {
         for (ProcessoParteEntity p : partes) {
             if (p.getPessoa() != null && p.getPessoa().getId() != null) {
                 qualificacoes.add(
-                        resolverQualificacaoPorPessoaId(
-                                p.getPessoa().getId(), locacao, qualificacaoCompletaPorParte ? false : semNome));
+                        resolverQualificacaoPorParte(p, locacao, qualificacaoCompletaPorParte ? false : semNome));
             } else if (StringUtils.hasText(p.getQualificacao())) {
                 qualificacoes.add(p.getQualificacao().trim());
             }
         }
         return locacao ? String.join(", e ", qualificacoes) : String.join("; ", qualificacoes);
+    }
+
+    private String resolverQualificacaoPorParte(
+            ProcessoParteEntity parte, boolean locacao, boolean semNome) {
+        Long pessoaId = parte.getPessoa().getId();
+        Long enderecoId = QualificacaoPessoaUtil.enderecoIdDaParte(parte);
+        if (locacao) {
+            return semNome
+                    ? qualificacaoPessoaUtil.gerarQualificacaoContratoLocacaoSemNomePorPessoaId(pessoaId, enderecoId)
+                    : qualificacaoPessoaUtil.gerarQualificacaoContratoLocacaoPorPessoaId(pessoaId, enderecoId);
+        }
+        return semNome
+                ? qualificacaoPessoaUtil.gerarQualificacaoSemNomePorPessoaId(pessoaId, enderecoId)
+                : qualificacaoPessoaUtil.gerarQualificacaoPorPessoaId(pessoaId, enderecoId, false);
     }
 
     private String resolverQualificacaoPorPessoaId(Long pessoaId, boolean locacao, boolean semNome) {

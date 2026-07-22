@@ -76,8 +76,7 @@ public class ContratoPartesProcessoResolver {
         List<String> out = new ArrayList<>(partes.size());
         for (ProcessoParteEntity parte : partes) {
             if (parte.getPessoa() != null && parte.getPessoa().getId() != null) {
-                out.add(qualificacaoPessoaUtil.gerarQualificacaoContratoContratantePorPessoaId(
-                        parte.getPessoa().getId()));
+                out.add(qualificacaoPessoaUtil.gerarQualificacaoContratoContratantePorProcessoParte(parte));
             } else {
                 out.add(escapeHtml(nomeParte(parte)));
             }

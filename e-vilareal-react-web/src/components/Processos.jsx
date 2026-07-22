@@ -158,6 +158,11 @@ import { ModalConsultaPeriodicaProcesso } from './consultas-periodicas/ModalCons
 import { ProcessoWhatsAppContatosSecao } from './whatsapp/ProcessoWhatsAppContatosSecao.jsx';
 import { ProcessoRemuneracaoSecao } from './processos/ProcessoRemuneracaoSecao.jsx';
 import { ProcessoCitacaoPainel } from './processos/ProcessoCitacaoPainel.jsx';
+import {
+  ModalEscolherEnderecoParte,
+  formatarEnderecoParteUi,
+} from './processos/ModalEscolherEnderecoParte.jsx';
+import { carregarEnderecosPessoa } from '../repositories/pessoasEnderecosContatosRepository.js';
 import { ModalPeticionamentoProcesso } from './projudi/ModalPeticionamentoProcesso.jsx';
 import { PessoaEmbedModal } from './PessoaEmbedModal.jsx';
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
@@ -450,6 +455,10 @@ function clonarLinhasParteProcesso(linhas) {
   return (linhas || [])
     .map((l) => ({
       pessoaId: Number(l.pessoaId),
+      pessoaEnderecoId:
+        l.pessoaEnderecoId != null && Number.isFinite(Number(l.pessoaEnderecoId)) && Number(l.pessoaEnderecoId) > 0
+          ? Number(l.pessoaEnderecoId)
+          : null,
       advogadoPessoaIds: Array.isArray(l.advogadoPessoaIds)
         ? l.advogadoPessoaIds.map(Number).filter((x) => Number.isFinite(x) && x > 0)
         : [],
@@ -461,7 +470,7 @@ function entradasParteDesdeRegistro(idsLegado, entradasSalvas) {
   const ent = clonarLinhasParteProcesso(entradasSalvas);
   if (ent.length) return ent;
   return (idsLegado || [])
-    .map((id) => ({ pessoaId: Number(id), advogadoPessoaIds: [] }))
+    .map((id) => ({ pessoaId: Number(id), pessoaEnderecoId: null, advogadoPessoaIds: [] }))
     .filter((l) => l.pessoaId > 0);
 }
 
@@ -617,6 +626,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [detalhesAbaPartes, setDetalhesAbaPartes] = useState('cliente');
   const draftParteClienteLinhasRef = useRef([]);
   const draftParteOpostaLinhasRef = useRef([]);
+  const [modalEscolhaEndereco, setModalEscolhaEndereco] = useState(null);
+  const [enderecosPorPessoaId, setEnderecosPorPessoaId] = useState({});
   const [numeroProcessoVelho, setNumeroProcessoVelho] = useState('');
   const [numeroProcessoNovo, setNumeroProcessoNovo] = useState('');
   const [hintCopiaNumeroProcessoNovo, setHintCopiaNumeroProcessoNovo] = useState('');
@@ -2676,11 +2687,25 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         cacheNomesPartes.push({ id: pessoaNum, nome: rotulo, cpf: '' });
       }
       if (alvoCliente && temPessoa) {
-        entradasCliente.push({ pessoaId: pessoaNum, advogadoPessoaIds: adv });
+        entradasCliente.push({
+          pessoaId: pessoaNum,
+          pessoaEnderecoId:
+            p.pessoaEnderecoId != null && Number.isFinite(Number(p.pessoaEnderecoId)) && Number(p.pessoaEnderecoId) > 0
+              ? Number(p.pessoaEnderecoId)
+              : null,
+          advogadoPessoaIds: adv,
+        });
         if (rotulo) nomesCliente.push(rotulo);
       }
       if (!alvoCliente && temPessoa) {
-        entradasOposta.push({ pessoaId: pessoaNum, advogadoPessoaIds: adv });
+        entradasOposta.push({
+          pessoaId: pessoaNum,
+          pessoaEnderecoId:
+            p.pessoaEnderecoId != null && Number.isFinite(Number(p.pessoaEnderecoId)) && Number(p.pessoaEnderecoId) > 0
+              ? Number(p.pessoaEnderecoId)
+              : null,
+          advogadoPessoaIds: adv,
+        });
         if (rotulo) nomesOposta.push(rotulo);
       }
     }
@@ -3022,6 +3047,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
             polo: poloCliente,
             qualificacao: qualCliente,
             ordem,
+            pessoaEnderecoId: row.pessoaEnderecoId ?? null,
             advogadoPessoaIds: row.advogadoPessoaIds || [],
           })),
           ...linhasOp.map((row, ordem) => ({
@@ -3030,6 +3056,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
             polo: poloOposta,
             qualificacao: qualOposta,
             ordem,
+            pessoaEnderecoId: row.pessoaEnderecoId ?? null,
             advogadoPessoaIds: row.advogadoPessoaIds || [],
           })),
           ...(linhasCli.length ? [] : [{
@@ -3296,7 +3323,7 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     setPessoasBuscaVinculoResultados([row]);
     setLinhasModalPartes((prev) => {
       if (prev.some((l) => l.pessoaId === id)) return prev;
-      return [...prev, { pessoaId: id, advogadoPessoaIds: [] }];
+      return [...prev, { pessoaId: id, pessoaEnderecoId: null, advogadoPessoaIds: [] }];
     });
     setBuscaPessoaVinculo(row.nome);
     setPessoaEmbed(null);
@@ -3312,6 +3339,12 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     setBuscaVinculoPessoasEmAndamento(false);
     buscaVinculoSeqRef.current += 1;
     setModalVinculoPartes('detalhes');
+    const ids = [...parteClienteEntradas, ...parteOpostaEntradas]
+      .map((l) => Number(l.pessoaId))
+      .filter((id) => Number.isFinite(id) && id > 0);
+    for (const id of [...new Set(ids)]) {
+      void carregarEnderecosPessoaParaParte(id);
+    }
   }
 
   function mudarAbaDetalhesPartes(nova) {
@@ -3329,16 +3362,124 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     );
   }
 
+  function cachearEnderecosPessoa(pessoaId, enderecos) {
+    const id = Number(pessoaId);
+    if (!Number.isFinite(id) || id < 1 || !Array.isArray(enderecos)) return;
+    setEnderecosPorPessoaId((prev) => ({ ...prev, [id]: enderecos }));
+  }
+
+  async function carregarEnderecosPessoaParaParte(pessoaId) {
+    const id = Number(pessoaId);
+    if (!Number.isFinite(id) || id < 1) return [];
+    if (Array.isArray(enderecosPorPessoaId[id])) return enderecosPorPessoaId[id];
+    try {
+      const enderecos = await carregarEnderecosPessoa(id);
+      cachearEnderecosPessoa(id, enderecos);
+      return enderecos;
+    } catch {
+      return [];
+    }
+  }
+
+  function adicionarLinhaModalParte(pessoaId, pessoaEnderecoId) {
+    const pid = Number(pessoaId);
+    if (!Number.isFinite(pid) || pid < 1) return;
+    setLinhasModalPartes((prev) => {
+      if (prev.some((l) => l.pessoaId === pid)) return prev;
+      return [
+        ...prev,
+        {
+          pessoaId: pid,
+          pessoaEnderecoId:
+            pessoaEnderecoId != null && Number.isFinite(Number(pessoaEnderecoId)) && Number(pessoaEnderecoId) > 0
+              ? Number(pessoaEnderecoId)
+              : null,
+          advogadoPessoaIds: [],
+        },
+      ];
+    });
+    setBuscaPessoaVinculo('');
+  }
+
+  async function iniciarInclusaoPessoaComEndereco(pessoaId) {
+    const pid = Number(pessoaId);
+    if (!Number.isFinite(pid) || pid < 1) return;
+    const enderecos = await carregarEnderecosPessoaParaParte(pid);
+    const lista = (enderecos || []).filter((e) => Number(e?.id) > 0);
+    if (lista.length <= 1) {
+      adicionarLinhaModalParte(pid, lista[0]?.id ?? null);
+      return;
+    }
+    const nome = pessoasPorId.get(pid)?.nome || `Pessoa #${pid}`;
+    setModalEscolhaEndereco({
+      modo: 'adicionar',
+      pessoaId: pid,
+      nomePessoa: nome,
+      enderecos: lista,
+      enderecoSelecionadoId: null,
+    });
+  }
+
+  async function abrirEscolhaEnderecoLinha(pessoaId, enderecoAtual) {
+    const pid = Number(pessoaId);
+    if (!Number.isFinite(pid) || pid < 1) return;
+    const enderecos = await carregarEnderecosPessoaParaParte(pid);
+    const lista = (enderecos || []).filter((e) => Number(e?.id) > 0);
+    if (lista.length <= 1) return;
+    const nome = pessoasPorId.get(pid)?.nome || `Pessoa #${pid}`;
+    setModalEscolhaEndereco({
+      modo: 'alterar',
+      pessoaId: pid,
+      nomePessoa: nome,
+      enderecos: lista,
+      enderecoSelecionadoId: enderecoAtual ?? null,
+    });
+  }
+
+  function confirmarEscolhaEnderecoParte(pessoaEnderecoId) {
+    const ctx = modalEscolhaEndereco;
+    if (!ctx) return;
+    const endId =
+      pessoaEnderecoId != null && Number.isFinite(Number(pessoaEnderecoId)) && Number(pessoaEnderecoId) > 0
+        ? Number(pessoaEnderecoId)
+        : null;
+    if (ctx.modo === 'adicionar') {
+      adicionarLinhaModalParte(ctx.pessoaId, endId);
+    } else {
+      setLinhasModalPartes((prev) =>
+        prev.map((l) => (l.pessoaId === ctx.pessoaId ? { ...l, pessoaEnderecoId: endId } : l)),
+      );
+    }
+    setModalEscolhaEndereco(null);
+  }
+
+  function cancelarEscolhaEnderecoParte() {
+    setModalEscolhaEndereco(null);
+  }
+
+  function textoEnderecoLinhaParte(linha) {
+    const pid = Number(linha?.pessoaId);
+    const endId = Number(linha?.pessoaEnderecoId);
+    const lista = enderecosPorPessoaId[pid];
+    if (Array.isArray(lista) && Number.isFinite(endId) && endId > 0) {
+      const escolhido = lista.find((e) => Number(e.id) === endId);
+      if (escolhido) return formatarEnderecoParteUi(escolhido);
+    }
+    if (Array.isArray(lista) && lista.length === 1) {
+      return formatarEnderecoParteUi(lista[0]);
+    }
+    if (Number.isFinite(endId) && endId > 0) return `Endereço #${endId}`;
+    return 'Primeiro endereço do cadastro';
+  }
+
   function alternarPessoaNaParteModal(pessoaId) {
     const pid = Number(pessoaId);
     if (!Number.isFinite(pid) || pid < 1) return;
-    const adicionando = !linhasModalPartes.some((l) => l.pessoaId === pid);
-    setLinhasModalPartes((prev) => {
-      const i = prev.findIndex((l) => l.pessoaId === pid);
-      if (i >= 0) return prev.filter((_, j) => j !== i);
-      return [...prev, { pessoaId: pid, advogadoPessoaIds: [] }];
-    });
-    if (adicionando) setBuscaPessoaVinculo('');
+    if (linhasModalPartes.some((l) => l.pessoaId === pid)) {
+      setLinhasModalPartes((prev) => prev.filter((l) => l.pessoaId !== pid));
+      return;
+    }
+    void iniciarInclusaoPessoaComEndereco(pid);
   }
 
   function adicionarAdvogadoLinhaModal(pessoaParteId, advogadoPessoaId) {
@@ -5708,6 +5849,21 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                                   Remover
                                 </button>
                               </div>
+                              <div className="mt-1.5 text-slate-600">
+                                <span className="text-slate-500">Endereço nesta demanda: </span>
+                                <span className="text-slate-700">{textoEnderecoLinhaParte(linha)}</span>
+                                {(enderecosPorPessoaId[linha.pessoaId] || []).length > 1 ? (
+                                  <button
+                                    type="button"
+                                    className="ml-2 text-blue-700 hover:underline"
+                                    onClick={() =>
+                                      void abrirEscolhaEnderecoLinha(linha.pessoaId, linha.pessoaEnderecoId)
+                                    }
+                                  >
+                                    Trocar
+                                  </button>
+                                ) : null}
+                              </div>
                               <div className="mt-1.5 flex flex-wrap items-center gap-1">
                                 <span className="text-slate-500">Advogados:</span>
                                 {linha.advogadoPessoaIds.length === 0 ? (
@@ -5776,6 +5932,15 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
           </div>
         </div>
       )}
+
+      <ModalEscolherEnderecoParte
+        aberto={!!modalEscolhaEndereco}
+        nomePessoa={modalEscolhaEndereco?.nomePessoa}
+        enderecos={modalEscolhaEndereco?.enderecos || []}
+        enderecoSelecionadoId={modalEscolhaEndereco?.enderecoSelecionadoId}
+        onConfirmar={confirmarEscolhaEnderecoParte}
+        onCancelar={cancelarEscolhaEnderecoParte}
+      />
 
         </>
         ) : null}

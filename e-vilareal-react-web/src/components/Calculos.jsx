@@ -83,6 +83,10 @@ import {
   snapshotPlanoPagamentoAceito,
   titulosGradeTemValor,
 } from '../data/calculosDebitosTitulos.js';
+import {
+  resolveHonorariosConfigLinha,
+  resolveMultaPctLinha,
+} from '../data/calculosEncargosPainel.js';
 import TitulosGrid from './calculos/TitulosGrid.jsx';
 import CustasGrid from './calculos/CustasGrid.jsx';
 import { ModalCobrancaWhatsAppCalculos } from './calculos/ModalCobrancaWhatsAppCalculos.jsx';
@@ -1429,40 +1433,24 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   const inicio = (pagina - 1) * TITULOS_POR_PAGINA;
   const fim = inicio + TITULOS_POR_PAGINA;
 
-  const titulosPaginaVisiveis = useMemo(() => titulos.slice(inicio, fim), [titulos, inicio, fim]);
-
-  const titulosDimensao = useMemo(
-    () =>
-      montarTitulosDimensaoParaResumo(
-        titulos,
-        titulosPaginationMeta?.total,
-        paginasRodadaCacheRef.current.entries(),
-        rodadaKey
-      ),
-    [titulos, titulosPaginationMeta?.total, rodadaKey, pagina]
-  );
-
-  const titulosPaginaCompletos = useMemo(() => {
-    const titulosPagina = titulos.slice(inicio, fim);
-    if (titulosPagina.length < TITULOS_POR_PAGINA) {
-      return [
-        ...titulosPagina,
-        ...Array.from({ length: TITULOS_POR_PAGINA - titulosPagina.length }, () => ({
-          dataVencimento: '',
-          valorInicial: '',
-          datasEspeciais: null,
-          atualizacaoMonetaria: '',
-          diasAtraso: '',
-          juros: '',
-          multa: '',
-          honorarios: '',
-          total: '',
-          descricaoValor: '',
-        })),
-      ];
-    }
-    return titulosPagina;
-  }, [titulos, inicio, fim]);
+  /** Encargos vindos da API/snapshot — mudanças aqui re-disparam persistência do recálculo. */
+  const titulosEncargosSnapshot = useMemo(() => {
+    const arr = Array.isArray(rodadaAtual.titulos) ? rodadaAtual.titulos : [];
+    return arr
+      .map((t) =>
+        [
+          t?.atualizacaoMonetaria,
+          t?.juros,
+          t?.multa,
+          t?.honorarios,
+          t?.total,
+          t?.diasAtraso,
+        ]
+          .map((v) => String(v ?? '').trim())
+          .join('|'),
+      )
+      .join('\f');
+  }, [rodadaAtual.titulos]);
 
   const totalPaginasParcelas = Math.max(1, Math.ceil(parcelas.length / PARCELAS_POR_PAGINA));
   useEffect(() => {
@@ -1479,17 +1467,6 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
         ...Array.from({ length: PARCELAS_POR_PAGINA - parcelasPagina.length }, () => linhaVaziaParcela()),
       ]
       : parcelasPagina;
-
-  // 1ª linha do rodapé: soma só os títulos visíveis na página atual.
-  const resumoPagina = useMemo(
-    () => calcularResumoTitulosGrade(titulosPaginaVisiveis),
-    [titulosPaginaVisiveis]
-  );
-  // 2ª linha: soma todos os títulos da dimensão (todas as páginas), a partir do estado + cache de páginas.
-  const resumoGeral = useMemo(
-    () => calcularResumoTitulosGrade(titulosDimensao),
-    [titulosDimensao]
-  );
 
   const showAvisoParcelasTitulosVazios = useMemo(
     () =>
@@ -1961,11 +1938,12 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       }
 
       const dias = diffDays(dataInicialJuros, dataFinalJuros);
-      const multaPctUsada = String(esp.multaEspecial ?? '').trim() !== '' ? parsePercent(esp.multaEspecial) : multaPct;
-      const honorariosTipoUsado =
-        String(esp.honorariosTipoEspecial ?? '').trim() !== '' ? esp.honorariosTipoEspecial : honorariosTipo;
-      const honorPctFixoUsado =
-        String(esp.honorariosValorEspecial ?? '').trim() !== '' ? parsePercent(esp.honorariosValorEspecial) : honorPctFixo;
+      const multaPctUsada = resolveMultaPctLinha(esp, multaPct);
+      const { honorariosTipoUsado, honorPctFixoUsado } = resolveHonorariosConfigLinha(
+        esp,
+        honorariosTipo,
+        honorPctFixo,
+      );
 
       // Legado: atualização monetária trabalha com o "valor atualizado total" do último mês.
       let atualizado = principal;
@@ -1995,7 +1973,8 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       const jurosValor = dias <= 0 ? 0 : trunc2(atualizado * jurosPctUsado * meses);
       // Legado: multa incide após juros, base = principal + atualização + juros
       const baseMulta = principal + atualizacaoMonetariaValor + jurosValor;
-      const multaValor = trunc2(baseMulta * multaPctUsada);
+      const tituloVencido = venc && dataCalcGlobal && venc < dataCalcGlobal;
+      const multaValor = tituloVencido ? trunc2(baseMulta * multaPctUsada) : 0;
       // Legado: honorários por último, base = principal + atualização + juros + multa
       const honorPctVariavel = dias > 60 ? 0.2 : dias > 30 ? 0.1 : 0;
       const honorPct = honorariosTipoUsado === 'variaveis' ? honorPctVariavel : honorPctFixoUsado;
@@ -2025,6 +2004,93 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     });
     return { next, changed };
   }
+
+  function indicesProntosParaRecalcTitulos(lista) {
+    const arr = Array.isArray(lista) ? lista : [];
+    const idxUpperGeral = String(indice).toUpperCase();
+    const precisaINPC =
+      idxUpperGeral === 'INPC' ||
+      arr.some((t) => String(t?.datasEspeciais?.indiceEspecial ?? '').toUpperCase() === 'INPC');
+    const precisaIPCA =
+      idxUpperGeral === 'IPCA-E' ||
+      idxUpperGeral === 'IPCA' ||
+      arr.some((t) => {
+        const v = String(t?.datasEspeciais?.indiceEspecial ?? '').toUpperCase();
+        return v === 'IPCA-E' || v === 'IPCA';
+      });
+    if (precisaINPC && indicesMensaisINPC == null) return false;
+    if (precisaIPCA && indicesMensaisIPCA == null) return false;
+    return true;
+  }
+
+  /** Encargos sempre derivados do painel (multa, honorários, juros…) — independente do snapshot txt/API por dimensão. */
+  const titulosDimensaoBruto = useMemo(
+    () =>
+      montarTitulosDimensaoParaResumo(
+        titulos,
+        titulosPaginationMeta?.total,
+        paginasRodadaCacheRef.current.entries(),
+        rodadaKey,
+      ),
+    [titulos, titulosPaginationMeta?.total, rodadaKey, pagina],
+  );
+
+  const titulosDimensao = useMemo(() => {
+    if (calculoAceito && !modoAlteracao) return titulosDimensaoBruto;
+    if (!indicesProntosParaRecalcTitulos(titulosDimensaoBruto)) return titulosDimensaoBruto;
+    return recalcularTitulos(titulosDimensaoBruto, indicesMensaisINPC, indicesMensaisIPCA).next;
+  }, [
+    titulosDimensaoBruto,
+    titulos,
+    calculoAceito,
+    modoAlteracao,
+    indice,
+    juros,
+    multa,
+    honorariosTipo,
+    honorariosValor,
+    dataCalculo,
+    indicesMensaisINPC,
+    indicesMensaisIPCA,
+  ]);
+
+  const titulosPaginaVisiveis = useMemo(
+    () => titulosDimensao.slice(inicio, fim),
+    [titulosDimensao, inicio, fim],
+  );
+
+  const titulosPaginaCompletos = useMemo(() => {
+    const titulosPagina = titulosDimensao.slice(inicio, fim);
+    if (titulosPagina.length < TITULOS_POR_PAGINA) {
+      return [
+        ...titulosPagina,
+        ...Array.from({ length: TITULOS_POR_PAGINA - titulosPagina.length }, () => ({
+          dataVencimento: '',
+          valorInicial: '',
+          datasEspeciais: null,
+          atualizacaoMonetaria: '',
+          diasAtraso: '',
+          juros: '',
+          multa: '',
+          honorarios: '',
+          total: '',
+          descricaoValor: '',
+        })),
+      ];
+    }
+    return titulosPagina;
+  }, [titulosDimensao, inicio, fim]);
+
+  // 1ª linha do rodapé: soma só os títulos visíveis na página atual.
+  const resumoPagina = useMemo(
+    () => calcularResumoTitulosGrade(titulosPaginaVisiveis),
+    [titulosPaginaVisiveis],
+  );
+  // 2ª linha: soma todos os títulos da dimensão (todas as páginas), a partir do estado + cache de páginas.
+  const resumoGeral = useMemo(
+    () => calcularResumoTitulosGrade(titulosDimensao),
+    [titulosDimensao],
+  );
 
   function recalcularCustas(lista, indicesMensaisINPCMap, indicesMensaisIPCAMap, dataOverride) {
     const jurosPct = parsePercent(juros);
@@ -2088,9 +2154,10 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     return { next, changed };
   }
 
-  // Recalcula ao abrir e a cada mudança, exceto quando o cálculo está aceito/travado.
+  // Recalcula ao abrir e a cada mudança, exceto quando o cálculo está aceito/travado
+  // (no «Modo de Alteração» recalcula mesmo aceito — paridade com carregamento de índices).
   useEffect(() => {
-    if (calculoAceito) return;
+    if (calculoAceito && !modoAlteracao) return;
     if (featureFlags.useApiCalculos && !rodadaExisteNoEstado) return;
     const idxUpperGeral = String(indice).toUpperCase();
     const precisaINPC =
@@ -2131,6 +2198,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     calculoAceito,
+    modoAlteracao,
     rodadaExisteNoEstado,
     indice,
     juros,
@@ -2143,10 +2211,12 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     indicesMensaisINPC,
     indicesMensaisIPCA,
     titulosChaveRecalculo,
+    titulosEncargosSnapshot,
+    carregandoRodadaApi,
   ]);
 
   useEffect(() => {
-    if (calculoAceito) return;
+    if (calculoAceito && !modoAlteracao) return;
     if (featureFlags.useApiCalculos && !rodadaExisteNoEstado) return;
     const idxUpperGeral = String(indice).toUpperCase();
     const precisaINPC = idxUpperGeral === 'INPC';
@@ -2173,6 +2243,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     calculoAceito,
+    modoAlteracao,
     rodadaExisteNoEstado,
     indice,
     juros,

@@ -6,6 +6,8 @@ import br.com.vilareal.documento.tema.DocumentoTemaResolver;
 import br.com.vilareal.documento.tema.TemaDocumento;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
+import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoParteEntity;
+import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoParteRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -23,6 +25,7 @@ public class ContratoHonorariosService {
 
     private final DocumentoPdfService pdfService;
     private final PessoaRepository pessoaRepository;
+    private final ProcessoParteRepository processoParteRepository;
     private final QualificacaoPessoaUtil qualificacaoPessoaUtil;
     private final DocumentoTemaResolver temaResolver;
     private final ContratoHonorariosPersistenciaService persistenciaService;
@@ -31,12 +34,14 @@ public class ContratoHonorariosService {
     public ContratoHonorariosService(
             DocumentoPdfService pdfService,
             PessoaRepository pessoaRepository,
+            ProcessoParteRepository processoParteRepository,
             QualificacaoPessoaUtil qualificacaoPessoaUtil,
             DocumentoTemaResolver temaResolver,
             ContratoHonorariosPersistenciaService persistenciaService,
             ContratoContratanteFlexaoResolver flexaoContratanteResolver) {
         this.pdfService = pdfService;
         this.pessoaRepository = pessoaRepository;
+        this.processoParteRepository = processoParteRepository;
         this.qualificacaoPessoaUtil = qualificacaoPessoaUtil;
         this.temaResolver = temaResolver;
         this.persistenciaService = persistenciaService;
@@ -87,7 +92,7 @@ public class ContratoHonorariosService {
                 flexaoContratanteResolver.resolver(pessoaId, request.contratantePessoaIds());
         String clausula3Texto = resolverClausula3Texto(request, flexao);
 
-        String qualificacaoContratante = qualificacaoPessoaUtil.gerarQualificacaoContratoContratantePorPessoaId(pessoaId);
+        String qualificacaoContratante = resolverQualificacaoContratante(pessoaId, request.processoId());
         String qualificacaoContratado = QualificacaoPessoaUtil.montarQualificacaoContratoContratado(
                 ContratoAdvogadoPadrao.NOME, ContratoAdvogadoPadrao.OAB);
 
@@ -200,5 +205,18 @@ public class ContratoHonorariosService {
             return nome.substring(5).trim();
         }
         return nome;
+    }
+
+    private String resolverQualificacaoContratante(Long pessoaId, Long processoId) {
+        if (processoId != null) {
+            List<ProcessoParteEntity> partes =
+                    processoParteRepository.findByProcesso_IdOrderByOrdemAscIdAsc(processoId);
+            for (ProcessoParteEntity parte : partes) {
+                if (parte.getPessoa() != null && pessoaId.equals(parte.getPessoa().getId())) {
+                    return qualificacaoPessoaUtil.gerarQualificacaoContratoContratantePorProcessoParte(parte);
+                }
+            }
+        }
+        return qualificacaoPessoaUtil.gerarQualificacaoContratoContratantePorPessoaId(pessoaId);
     }
 }

@@ -1,5 +1,6 @@
 package br.com.vilareal.processo.infrastructure.persistence.entity;
 
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEnderecoEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -37,4 +38,9 @@ public class ProcessoParteEntity {
 
     @Column(name = "importacao_id", length = 36)
     private String importacaoId;
+
+    /** Endereço escolhido para esta parte nesta demanda (petições, procuração, etc.). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "pessoa_endereco_id")
+    private PessoaEnderecoEntity pessoaEndereco;
 }
