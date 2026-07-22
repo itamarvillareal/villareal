@@ -4,8 +4,10 @@ import {
   calcularTotalLinhaTitulo,
   garantirArrayTitulosTamanho,
   mesclarTitulosPaginaNoArray,
+  contarTitulosComValorInicial,
   montarTitulosDimensaoParaResumo,
   resumoTitulosFromApi,
+  resolverResumoGeralTitulos,
 } from './calculosRodadaTitulosPaginacao.js';
 
 describe('calculosRodadaTitulosPaginacao', () => {
@@ -84,6 +86,40 @@ describe('calculosRodadaTitulosPaginacao', () => {
     const resumo = calcularResumoTitulosGrade(merged);
     expect(resumo.qtd).toContain('06');
     expect(resumo.valorInicial).toBe('R$ 2.100,00');
+  });
+
+  it('contarTitulosComValorInicial ignora linhas vazias', () => {
+    expect(contarTitulosComValorInicial([{ valorInicial: 'R$ 1,00' }, { valorInicial: '' }])).toBe(1);
+  });
+
+  it('resolverResumoGeralTitulos usa titulosResumo da API enquanto a dimensão está incompleta', () => {
+    const pagina = [{ valorInicial: 'R$ 100,00', juros: 'R$ 10,00' }];
+    const resumo = resolverResumoGeralTitulos(pagina, 64, {
+      quantidadeTitulos: 64,
+      totalValorInicial: 6400,
+      totalJuros: 640,
+      totalMulta: 0,
+      totalAtualizacao: 320,
+      totalHonorarios: 0,
+      totalGeral: 7360,
+      totalDiasAtraso: 1000,
+    });
+    expect(resumo.qtd).toContain('64');
+    expect(resumo.total).toContain('7.360,00');
+  });
+
+  it('resolverResumoGeralTitulos prefere soma local quando todos os títulos estão carregados', () => {
+    const dimensao = [
+      { valorInicial: 'R$ 100,00', juros: 'R$ 10,00' },
+      { valorInicial: 'R$ 200,00', juros: 'R$ 20,00' },
+    ];
+    const resumo = resolverResumoGeralTitulos(dimensao, 2, {
+      quantidadeTitulos: 99,
+      totalValorInicial: 9999,
+      totalGeral: 9999,
+    });
+    expect(resumo.valorInicial).toBe('R$ 300,00');
+    expect(resumo.qtd).toContain('02');
   });
 
   it('resumoTitulosFromApi formata totais', () => {

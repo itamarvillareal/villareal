@@ -24,9 +24,11 @@ import {
 import {
   calcularResumoTitulosGrade,
   calcularTotalLinhaTitulo,
+  contarTitulosComValorInicial,
   garantirArrayTitulosTamanho,
   mesclarTitulosPaginaNoArray,
   montarTitulosDimensaoParaResumo,
+  resolverResumoGeralTitulos,
   TITULOS_POR_PAGINA_API,
 } from '../data/calculosRodadaTitulosPaginacao.js';
 import { fetchCalculoRodada } from '../repositories/calculosRepository.js';
@@ -437,6 +439,8 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   const fetchRodadaAbortRef = useRef(null);
   /** `${rodadaKey}:page:${n}` → payload normalizado da página */
   const paginasRodadaCacheRef = useRef(new Map());
+  /** Evita prefetch duplicado da rodada inteira para resumo geral / recálculo completo. */
+  const prefetchTitulosRodadaRef = useRef(null);
   const isDirtyRodadaRef = useRef(false);
   /** Chaves extras para PUT após propagar panelConfig entre dimensões. */
   const persistRodadaKeysRef = useRef(null);
@@ -1110,6 +1114,8 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
               ...one,
               titulos: titulosMerged,
               pagina: paginaFetch,
+              titulosPagination: paginationFinal ?? cur?.titulosPagination,
+              titulosResumo: rawFinal.titulosResumo ?? cur?.titulosResumo,
             },
           };
         });
@@ -1257,6 +1263,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     setPagina(1);
     setPaginaParcelamento(1);
     paginasRodadaCacheRef.current = new Map();
+    prefetchTitulosRodadaRef.current = null;
   }, [rodadaKey]);
 
   // Mantém a página (Títulos) sincronizada no estado da rodada atual
@@ -1422,6 +1429,97 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   }, [titulos]);
 
   const titulosPaginationMeta = rodadaAtual.titulosPagination;
+
+  // Materializa todos os títulos no cliente (recálculo + 2ª linha do rodapé), sem depender da página exibida.
+  useEffect(() => {
+    if (!featureFlags.useApiCalculos || !hidratacaoConcluida) return undefined;
+    if (calculoTravadoAceito) return undefined;
+
+    const total = titulosPaginationMeta?.total;
+    const totalPages = titulosPaginationMeta?.totalPages;
+    if (!total || !totalPages || totalPages <= 1) return undefined;
+
+    const qtdCarregada = contarTitulosComValorInicial(rodadaAtual.titulos);
+    if (qtdCarregada >= Number(total)) return undefined;
+
+    const key = rodadaKey;
+    if (prefetchTitulosRodadaRef.current === key) return undefined;
+    prefetchTitulosRodadaRef.current = key;
+
+    const controller = new AbortController();
+    const parts = key.split(':');
+    const sc = parts[0];
+    const sp = Number(parts[1]);
+    const sd = Number(parts[2]);
+
+    (async () => {
+      try {
+        const rawFull = await fetchCalculoRodada(sc, sp, sd, { signal: controller.signal });
+        if (controller.signal.aborted || !rawFull?.titulos || !Array.isArray(rawFull.titulos)) return;
+
+        const one = normalizarRodadaRecebidaApi(key, rawFull);
+        if (!one) return;
+
+        const allTitulos = one.titulos;
+        const pages = Math.max(1, Number(totalPages) || 1);
+
+        for (let pg = 1; pg <= pages; pg++) {
+          const start = (pg - 1) * TITULOS_POR_PAGINA_API;
+          const slice = allTitulos.slice(start, start + TITULOS_POR_PAGINA_API);
+          paginasRodadaCacheRef.current.set(`${key}:page:${pg}`, {
+            ...one,
+            titulos: slice,
+          });
+        }
+
+        setRodadasState((prev) => {
+          const cur = prev[key];
+          if (!cur) return prev;
+
+          let titulosMerged = garantirArrayTitulosTamanho(cur.titulos, Number(total));
+          for (let pg = 1; pg <= pages; pg++) {
+            const start = (pg - 1) * TITULOS_POR_PAGINA_API;
+            const slice = allTitulos.slice(start, start + TITULOS_POR_PAGINA_API);
+            titulosMerged = mesclarTitulosPaginaNoArray(
+              titulosMerged,
+              slice,
+              pg,
+              TITULOS_POR_PAGINA_API,
+            );
+          }
+
+          return {
+            ...prev,
+            [key]: {
+              ...cur,
+              titulos: titulosMerged,
+              titulosResumo: rawFull.titulosResumo ?? cur.titulosResumo,
+            },
+          };
+        });
+      } catch (e) {
+        if (e?.name !== 'AbortError') {
+          console.warn('[vilareal] Prefetch de títulos para resumo geral falhou:', e);
+        }
+        if (prefetchTitulosRodadaRef.current === key) {
+          prefetchTitulosRodadaRef.current = null;
+        }
+      }
+    })();
+
+    return () => controller.abort();
+  }, [
+    rodadaKey,
+    hidratacaoConcluida,
+    calculoTravadoAceito,
+    titulosPaginationMeta?.total,
+    titulosPaginationMeta?.totalPages,
+    codigoClienteNorm,
+    procNorm,
+    dimensaoNorm,
+    rodadaAtual.titulos,
+  ]);
+
   const totalPaginas =
     titulosPaginationMeta?.totalPages != null
       ? Math.max(1, Number(titulosPaginationMeta.totalPages) || 1)
@@ -2086,10 +2184,15 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     () => calcularResumoTitulosGrade(titulosPaginaVisiveis),
     [titulosPaginaVisiveis],
   );
-  // 2ª linha: soma todos os títulos da dimensão (todas as páginas), a partir do estado + cache de páginas.
+  // 2ª linha: soma todos os títulos da dimensão (todas as páginas), com recálculo local completo.
   const resumoGeral = useMemo(
-    () => calcularResumoTitulosGrade(titulosDimensao),
-    [titulosDimensao],
+    () =>
+      resolverResumoGeralTitulos(
+        titulosDimensao,
+        titulosPaginationMeta?.total,
+        rodadaAtual.titulosResumo,
+      ),
+    [titulosDimensao, titulosPaginationMeta?.total, rodadaAtual.titulosResumo],
   );
 
   function recalcularCustas(lista, indicesMensaisINPCMap, indicesMensaisIPCAMap, dataOverride) {

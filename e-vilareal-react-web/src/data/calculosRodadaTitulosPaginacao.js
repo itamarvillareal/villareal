@@ -173,6 +173,11 @@ export function montarTitulosDimensaoParaResumo(titulosAtual, totalEsperado, pag
   return base;
 }
 
+/** Linhas com {@code valorInicial} preenchido (usado para saber se a dimensão está totalmente carregada). */
+export function contarTitulosComValorInicial(lista) {
+  return (lista || []).filter((r) => String(r?.valorInicial ?? '').trim() !== '').length;
+}
+
 /**
  * Converte {@code titulosResumo} da API para o formato de {@code calcularResumoTitulosGrade} na UI.
  * @param {Record<string, unknown> | null | undefined} apiResumo
@@ -194,4 +199,19 @@ export function resumoTitulosFromApi(apiResumo) {
     honorarios: fmt(apiResumo.totalHonorarios),
     total: fmt(apiResumo.totalGeral),
   };
+}
+
+/**
+ * Resumo geral da grade: soma local quando todos os títulos estão materializados;
+ * enquanto a paginação da API ainda não trouxe todas as páginas, usa {@code titulosResumo} da API.
+ * @param {Array<Record<string, unknown>> | undefined} titulosDimensao
+ * @param {number | null | undefined} totalEsperado
+ * @param {Record<string, unknown> | null | undefined} titulosResumoApi
+ */
+export function resolverResumoGeralTitulos(titulosDimensao, totalEsperado, titulosResumoApi) {
+  const local = calcularResumoTitulosGrade(titulosDimensao);
+  const total = totalEsperado != null ? Number(totalEsperado) : NaN;
+  if (!Number.isFinite(total) || total <= 0) return local;
+  if (contarTitulosComValorInicial(titulosDimensao) >= total) return local;
+  return resumoTitulosFromApi(titulosResumoApi) ?? local;
 }
