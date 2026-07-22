@@ -305,7 +305,7 @@ public class ContratoLocacaoDocumentoService {
         String cidadeEstado = StringUtils.hasText(request.cidadeEstado())
                 ? request.cidadeEstado().trim()
                 : CIDADE_ESTADO_PADRAO;
-        String localData = pdfService.montarLocalData(cidadeEstado, dados.data());
+        String localData = pdfService.resolverLocalDataFormulario(cidadeEstado, dados.data());
         String fechoHtml = ContratoFechoTexto.montarFechoAluguel(ContratoFormaAssinatura.resolver(request.formaAssinatura()));
 
         return new ContratoLocacaoConteudoPreview(tituloContrato, preambuloHtml, clausulasHtml, fechoHtml, localData);
@@ -375,7 +375,7 @@ public class ContratoLocacaoDocumentoService {
                 "localData",
                 StringUtils.hasText(conteudo.localData())
                         ? conteudo.localData()
-                        : pdfService.montarLocalData(
+                        : pdfService.resolverLocalDataFormulario(
                                 StringUtils.hasText(request.cidadeEstado())
                                         ? request.cidadeEstado().trim()
                                         : CIDADE_ESTADO_PADRAO,

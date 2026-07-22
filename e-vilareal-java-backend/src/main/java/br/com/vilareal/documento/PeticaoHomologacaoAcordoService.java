@@ -149,7 +149,7 @@ public class PeticaoHomologacaoAcordoService {
 
         String cidadeEstado = PeticaoExecucaoService.formatarCidadeLocalData(processo.getCidade());
         LocalDate data = req.data() != null ? req.data() : LocalDate.now();
-        String localData = pdfService.montarLocalData(cidadeEstado, data);
+        String localData = pdfService.resolverLocalDataFormulario(cidadeEstado, data);
         String advogadoNome = tema.advogadoNomeEfetivo();
         String advogadoOab = tema.advogadoOabEfetivo();
 

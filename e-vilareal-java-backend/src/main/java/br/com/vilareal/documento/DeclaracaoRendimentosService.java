@@ -1,6 +1,5 @@
 package br.com.vilareal.documento;
 
-import br.com.vilareal.documento.parse.DocumentoLocalDataResolver;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
 import br.com.vilareal.documento.tema.DocumentoTemaResolver;
 import br.com.vilareal.documento.tema.TemaDocumento;
@@ -74,11 +73,7 @@ public class DeclaracaoRendimentosService {
         String cidadeEstado = request.cidadeEstado() != null && !request.cidadeEstado().isBlank()
                 ? request.cidadeEstado().trim()
                 : CIDADE_ESTADO_PADRAO;
-        String localData = DocumentoLocalDataResolver.resolver(
-                cidadeEstado,
-                data.toString(),
-                null,
-                pdfService);
+        String localData = pdfService.resolverLocalDataFormulario(cidadeEstado, data);
         String trechoAtividade =
                 Boolean.TRUE.equals(request.exerceAtividadeRemunerada()) ? TRECHO_COM_ATIVIDADE : TRECHO_SEM_ATIVIDADE;
 

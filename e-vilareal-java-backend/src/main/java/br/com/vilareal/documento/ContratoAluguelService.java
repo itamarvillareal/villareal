@@ -55,7 +55,7 @@ public class ContratoAluguelService {
         String cidadeEstado = request.cidadeEstado() != null && !request.cidadeEstado().isBlank()
                 ? request.cidadeEstado().trim()
                 : CIDADE_ESTADO_PADRAO;
-        String localData = pdfService.montarLocalData(cidadeEstado, data);
+        String localData = pdfService.resolverLocalDataFormulario(cidadeEstado, data);
 
         TemaDocumento tema = temaResolver.resolverPorProcessoId(request.processoId());
 

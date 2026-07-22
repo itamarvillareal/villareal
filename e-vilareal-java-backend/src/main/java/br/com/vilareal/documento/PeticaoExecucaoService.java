@@ -169,7 +169,7 @@ public class PeticaoExecucaoService {
                         + " - " + nz(processo.getUf());
 
         String cidadeEstado = montarCidadeEstado(processo);
-        String localData = pdfService.montarLocalData(cidadeEstado, req.data());
+        String localData = pdfService.resolverLocalDataFormulario(cidadeEstado, req.data());
         String advogadoNome = tema.advogadoNomeEfetivo();
         String advogadoOab = tema.advogadoOabEfetivo();
         String fechoHtml = "<p class=\"fecho-termos\">Nestes termos,<br/>Pede deferimento.</p>"

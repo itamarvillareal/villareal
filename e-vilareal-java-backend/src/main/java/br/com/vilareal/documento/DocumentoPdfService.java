@@ -130,6 +130,12 @@ public class DocumentoPdfService {
         return local + ", " + formatarDataExtenso(d) + ".";
     }
 
+    /** Formulário web: aceita só cidade/estado ou local e data já completos (evita duplicar a data). */
+    public String resolverLocalDataFormulario(String cidadeEstado, LocalDate data) {
+        return DocumentoLocalDataResolver.resolver(
+                cidadeEstado, data != null ? data.toString() : null, null, this);
+    }
+
     /** «Anápolis, estado de Goiás» — cidade em título, não MAIÚSCULAS (ex.: processo com ANÁPOLIS). */
     public static String normalizarCidadeEstadoLocal(String texto) {
         if (!StringUtils.hasText(texto)) {

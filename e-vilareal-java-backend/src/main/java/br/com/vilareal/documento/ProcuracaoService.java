@@ -58,7 +58,7 @@ public class ProcuracaoService {
         String cidadeEstado = request.cidadeEstado() != null && !request.cidadeEstado().isBlank()
                 ? request.cidadeEstado().trim()
                 : CIDADE_ESTADO_PADRAO;
-        String localData = pdfService.montarLocalData(cidadeEstado, data);
+        String localData = pdfService.resolverLocalDataFormulario(cidadeEstado, data);
 
         Map<String, Object> variables = new HashMap<>();
         variables.put("qualificacaoOutorgante", qualificacao);

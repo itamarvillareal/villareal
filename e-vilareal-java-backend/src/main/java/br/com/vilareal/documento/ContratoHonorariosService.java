@@ -105,7 +105,7 @@ public class ContratoHonorariosService {
                 QualificacaoPessoaUtil.montarPreambuloContratoHonorarios(qualificacaoContratante, qualificacaoContratado),
                 ContratoHonorariosClausulas.montarClausulas(request.objetoContrato(), clausula3Texto),
                 ContratoFechoTexto.montarFechoHonorarios(ContratoFormaAssinatura.resolver(request.formaAssinatura())),
-                pdfService.montarLocalData(cidadeEstado, data),
+                pdfService.resolverLocalDataFormulario(cidadeEstado, data),
                 ContratoHonorariosClausulas.normalizarNomeAssinatura(pessoa.getNome()),
                 ContratoHonorariosClausulas.normalizarNomeAssinatura(
                         extrairNomeAdvogadoSemTitulo(ContratoAdvogadoPadrao.NOME)));
