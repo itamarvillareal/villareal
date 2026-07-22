@@ -84,15 +84,31 @@ public class ProjudiInicialAssinaturaService {
     @Transactional(readOnly = true)
     public List<InicialArquivoAssinadoResponse> listarArquivosAssinados(
             String codigoCliente, Integer numeroInterno) {
+        return listarArquivosAssinados(codigoCliente, numeroInterno, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<InicialArquivoAssinadoResponse> listarArquivosAssinados(
+            String codigoCliente, Integer numeroInterno, Long peticaoId) {
         validarProcesso(codigoCliente, numeroInterno);
         String chave = chaveNumeroProcessoInicial(codigoCliente, numeroInterno);
-        Optional<ProjudiPeticaoEntity> peticaoOpt = peticaoRepository.findByNumeroProcessoWithArquivos(chave).stream()
-                .filter(p -> STATUS_PETICAO_ASSINADA.equals(p.getStatus()))
-                .max(Comparator.comparing(ProjudiPeticaoEntity::getCriadoEm));
+        Optional<ProjudiPeticaoEntity> peticaoOpt;
+        if (peticaoId != null) {
+            peticaoOpt = peticaoRepository.findById(peticaoId).filter(p -> chave.equals(p.getNumeroProcesso()));
+            if (peticaoOpt.isPresent() && !STATUS_PETICAO_ASSINADA.equals(peticaoOpt.get().getStatus())) {
+                return List.of();
+            }
+        } else {
+            peticaoOpt = peticaoRepository.findByNumeroProcessoWithArquivos(chave).stream()
+                    .filter(p -> STATUS_PETICAO_ASSINADA.equals(p.getStatus()))
+                    .max(Comparator.comparing(ProjudiPeticaoEntity::getCriadoEm));
+        }
         if (peticaoOpt.isEmpty()) {
             return List.of();
         }
-        ProjudiPeticaoEntity peticao = peticaoOpt.get();
+        ProjudiPeticaoEntity peticao = peticaoRepository
+                .findByIdWithArquivos(peticaoOpt.get().getId())
+                .orElse(peticaoOpt.get());
         List<InicialArquivoAssinadoResponse> out = new ArrayList<>();
         for (ProjudiPeticaoArquivoEntity arquivo : peticao.getArquivos()) {
             if (arquivo == null || !STATUS_ARQUIVO_ASSINADO.equals(arquivo.getStatus())) {

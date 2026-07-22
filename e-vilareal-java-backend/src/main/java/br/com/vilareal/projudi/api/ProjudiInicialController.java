@@ -291,8 +291,10 @@ public class ProjudiInicialController {
             summary = "Lista .p7s assinados prontos para anexar na inicial",
             description = "Retorna arquivos da petição INICIAL-{cod}-{proc} com status ASSINADA.")
     public List<InicialArquivoAssinadoResponse> listarArquivosAssinados(
-            @RequestParam String codigoCliente, @RequestParam Integer numeroInterno) {
-        return inicialAssinaturaService.listarArquivosAssinados(codigoCliente, numeroInterno);
+            @RequestParam String codigoCliente,
+            @RequestParam Integer numeroInterno,
+            @RequestParam(required = false) Long peticaoId) {
+        return inicialAssinaturaService.listarArquivosAssinados(codigoCliente, numeroInterno, peticaoId);
     }
 
     @GetMapping(value = "/arquivos-assinados/{arquivoId}/p7s", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)

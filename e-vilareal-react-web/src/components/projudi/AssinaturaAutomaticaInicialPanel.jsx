@@ -71,6 +71,8 @@ export function AssinaturaAutomaticaInicialPanel({
   const [operacaoFila, setOperacaoFila] = useState(null);
   const pollRef = useRef(null);
   const inputMaquinaRef = useRef(null);
+  const modoAssinaturaRef = useRef(null);
+  const peticaoIdsLoteRef = useRef([]);
 
   const chaveInicial = useMemo(
     () => chavePeticaoInicialDistribuicao(codigoCliente, numeroInterno),
@@ -144,8 +146,12 @@ export function AssinaturaAutomaticaInicialPanel({
     return true;
   };
 
-  const carregarP7sAssinados = async () => {
-    const arquivos = await listarArquivosAssinadosInicial({ codigoCliente, numeroInterno });
+  const carregarP7sAssinados = async (peticaoIdFiltro = null) => {
+    const arquivos = await listarArquivosAssinadosInicial({
+      codigoCliente,
+      numeroInterno,
+      peticaoId: peticaoIdFiltro ?? undefined,
+    });
     if (!Array.isArray(arquivos) || arquivos.length === 0) {
       throw new Error('Nenhum .p7s assinado encontrado para este processo.');
     }
@@ -187,7 +193,13 @@ export function AssinaturaAutomaticaInicialPanel({
       setAtivo(false);
       pararPoll();
       try {
-        await carregarP7sAssinados();
+        const peticaoIdUpload =
+          modoAssinaturaRef.current === 'upload'
+            ? (Array.isArray(status?.peticaoIds) && status.peticaoIds.length > 0
+                ? status.peticaoIds[0]
+                : peticaoIdsLoteRef.current[0])
+            : null;
+        await carregarP7sAssinados(peticaoIdUpload);
       } catch (e) {
         setFase('erro');
         setErro(mensagemErroAmigavel(e, 'carregar os .p7s assinados'));
@@ -214,6 +226,7 @@ export function AssinaturaAutomaticaInicialPanel({
       setFase('aguardando');
       if (Array.isArray(status?.peticaoIds)) {
         setPeticaoCount(status.peticaoIds.length);
+        peticaoIdsLoteRef.current = status.peticaoIds;
       }
     }
   };
@@ -250,8 +263,12 @@ export function AssinaturaAutomaticaInicialPanel({
     setLoteId(id);
     if (Array.isArray(resp?.peticaoIds) && resp.peticaoIds.length > 0) {
       setPeticaoCount(resp.peticaoIds.length);
+      peticaoIdsLoteRef.current = resp.peticaoIds;
     }
     const status = await consultarLoteAssinaturaInicial(id);
+    if (Array.isArray(status?.peticaoIds) && status.peticaoIds.length > 0) {
+      peticaoIdsLoteRef.current = status.peticaoIds;
+    }
     await aplicarStatusLote(status);
     if (String(status?.status ?? '').toUpperCase() !== 'CONCLUIDO') {
       iniciarPoll(id);
@@ -288,6 +305,8 @@ export function AssinaturaAutomaticaInicialPanel({
 
   const executarAssinaturaMaquina = async (files) => {
     if (disabled || ativo) return;
+    modoAssinaturaRef.current = 'upload';
+    peticaoIdsLoteRef.current = [];
     setFase('');
     setErro('');
     setErroCodigo('');
@@ -296,8 +315,6 @@ export function AssinaturaAutomaticaInicialPanel({
     setAtivo(true);
     pararPoll();
     try {
-      if (await carregarJaAssinadosSeExistirem()) return;
-
       const formData = new FormData();
       formData.append('credencialId', credencialId);
       formData.append('codigoCliente', codigoCliente);
@@ -314,6 +331,8 @@ export function AssinaturaAutomaticaInicialPanel({
 
   const executarAssinaturaDrive = async () => {
     if (disabled || ativo) return;
+    modoAssinaturaRef.current = 'drive';
+    peticaoIdsLoteRef.current = [];
     setFase('');
     setErro('');
     setErroCodigo('');
@@ -625,8 +644,10 @@ export function AssinaturaAutomaticaInicialPanel({
               ) : (
                 <>
               <p className="text-xs text-slate-500">
-                Processo <span className="font-mono">{codigoCliente}/{numeroInterno}</span> — PDFs
-                na subpasta «Assinar» do Google Drive.
+                Processo <span className="font-mono">{codigoCliente}/{numeroInterno}</span>
+                {modoAssinaturaRef.current === 'upload'
+                  ? ' — assinando os PDFs enviados da sua máquina.'
+                  : ' — PDFs na subpasta «Assinar» do Google Drive.'}
               </p>
 
               {(fase === 'preparando' || (!fase && ativo)) && (

@@ -251,10 +251,14 @@ export async function cancelarLoteAssinaturaInicial(loteId) {
   return request(`/api/projudi/iniciais/lote-assinatura/${loteId}/cancelar`, { method: 'POST' });
 }
 
-/** @param {{ codigoCliente: string, numeroInterno: number|string }} params @returns {Promise<InicialArquivoAssinado[]>} */
-export async function listarArquivosAssinadosInicial({ codigoCliente, numeroInterno }) {
+/** @param {{ codigoCliente: string, numeroInterno: number|string, peticaoId?: number|string }} params @returns {Promise<InicialArquivoAssinado[]>} */
+export async function listarArquivosAssinadosInicial({ codigoCliente, numeroInterno, peticaoId }) {
   return request('/api/projudi/iniciais/arquivos-assinados', {
-    query: { codigoCliente, numeroInterno },
+    query: {
+      codigoCliente,
+      numeroInterno,
+      peticaoId: peticaoId ?? '',
+    },
   });
 }
 

@@ -254,17 +254,50 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
             throw new BusinessRuleException("codigoCliente e numeroInterno são obrigatórios.");
         }
 
+        limparPeticoesPendentesInicial(cnj);
+
         List<PdfDriveItem> pdfs =
                 pdfsLocais.stream().map(p -> new PdfDriveItem(p.nomeOriginal(), p.bytes())).toList();
         ResultadoUmProcesso resultado =
-                registrarPdfsParaAssinatura(credencialId, cod, proc, cnj, pdfs, false, refsLocaisEscritos);
+                registrarPdfsUploadParaAssinatura(credencialId, cod, proc, cnj, pdfs, refsLocaisEscritos);
 
-        if (resultado.arquivosRegistrados() == 0 && resultado.peticaoIds().isEmpty()) {
-            throw new BusinessRuleException(montarMensagemNenhumPdfPreparado(List.of(resultado.resumo())));
+        if (resultado.arquivosRegistrados() == 0 || resultado.peticaoIds().isEmpty()) {
+            throw new BusinessRuleException(
+                    "Nenhum PDF enviado pôde ser enfileirado para assinatura. "
+                            + "Verifique se os arquivos já não foram protocolados.");
         }
 
         return new PrepararAssinarResultado(
                 new ArrayList<>(resultado.peticaoIds()), List.of(resultado.resumo()), resultado.arquivosRegistrados());
+    }
+
+    /** Remove fila PENDENTE anterior (ex.: PDFs da pasta Assinar) antes de enfileirar upload local. */
+    private void limparPeticoesPendentesInicial(String chaveInicial) {
+        if (!StringUtils.hasText(chaveInicial)) {
+            return;
+        }
+        List<ProjudiPeticaoEntity> peticoes = peticaoRepository.findByNumeroProcessoWithArquivos(chaveInicial);
+        for (ProjudiPeticaoEntity peticao : peticoes) {
+            if (peticao == null || peticao.getId() == null) {
+                continue;
+            }
+            if (!STATUS_PETICAO_PENDENTE.equals(peticao.getStatus())) {
+                continue;
+            }
+            try {
+                peticaoRegistroService.excluirPeticaoInicialDistribuicao(peticao.getId());
+                log.info(
+                        "Upload local: petição PENDENTE #{} removida antes de enfileirar PDFs enviados ({})",
+                        peticao.getId(),
+                        chaveInicial);
+            } catch (Exception e) {
+                log.warn(
+                        "Upload local: falha ao remover petição PENDENTE #{} ({}): {}",
+                        peticao.getId(),
+                        chaveInicial,
+                        e.getMessage());
+            }
+        }
     }
 
     public static List<PdfUploadItem> lerPdfsUpload(List<MultipartFile> arquivos) {
@@ -496,6 +529,82 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
                 resumoOk(cnj, cod, registradas, reutilizadas, ignoradasJaAssinadas, semArquivos),
                 List.of(peticao.getId()),
                 registradas);
+    }
+
+    /**
+     * Enfileira exatamente os PDFs enviados pelo usuário — sem reutilizar petição da pasta Assinar.
+     */
+    private ResultadoUmProcesso registrarPdfsUploadParaAssinatura(
+            Long credencialId,
+            String cod,
+            Integer proc,
+            String cnj,
+            List<PdfDriveItem> pdfs,
+            List<String> refsLocaisEscritos) {
+        int registradas = 0;
+        int ignoradasJaAssinadas = 0;
+        boolean semArquivos = false;
+
+        String cnjDigitos = ProjudiNumeroReduzidoUtil.somenteDigitos(cnj);
+        List<ArquivoParaAssinar> paraRegistrar = new ArrayList<>();
+        Set<String> sha256VistosNaPassagem = new HashSet<>();
+
+        for (PdfDriveItem pdf : pdfs) {
+            String sha256 = ProjudiAssinaturaP7sUtil.sha256(pdf.bytes());
+            if (!sha256VistosNaPassagem.add(sha256)) {
+                continue;
+            }
+            DedupResultado dedup = classificarDedupUpload(sha256, cnjDigitos);
+            if (dedup.shouldIgnore()) {
+                ignoradasJaAssinadas++;
+                continue;
+            }
+            paraRegistrar.add(new ArquivoParaAssinar(
+                    pdf.bytes(), inferirIdArquivoTipo(pdf.nomeOriginal()), pdf.nomeOriginal()));
+        }
+
+        if (paraRegistrar.isEmpty()) {
+            if (ignoradasJaAssinadas > 0) {
+                throw new BusinessRuleException(
+                        "Os PDFs enviados já constam na fila PROJUDI (assinados ou em protocolo). "
+                                + "Exclua os bloqueios na fila e tente novamente.");
+            }
+            return new ResultadoUmProcesso(
+                    resumoOk(cnj, cod, registradas, 0, ignoradasJaAssinadas, semArquivos),
+                    List.of(),
+                    0);
+        }
+
+        ProjudiPeticaoEntity peticao = peticaoRegistroService.registrarPeticao(
+                credencialId, cnj, null, paraRegistrar, false);
+        for (ProjudiPeticaoArquivoEntity arquivo : peticao.getArquivos()) {
+            if (StringUtils.hasText(arquivo.getPdfRef())) {
+                refsLocaisEscritos.add(arquivo.getPdfRef());
+            }
+        }
+        registradas = paraRegistrar.size();
+        return new ResultadoUmProcesso(
+                resumoOk(cnj, cod, registradas, 0, ignoradasJaAssinadas, semArquivos),
+                List.of(peticao.getId()),
+                registradas);
+    }
+
+    private DedupResultado classificarDedupUpload(String sha256, String cnjDigitos) {
+        List<ProjudiPeticaoArquivoEntity> existentes =
+                arquivoRepository.findAllByPdfSha256WithPeticao(sha256);
+        for (ProjudiPeticaoArquivoEntity arq : existentes) {
+            ProjudiPeticaoEntity peticao = arq.getPeticao();
+            if (peticao == null || !cnjCoincide(peticao.getNumeroProcesso(), cnjDigitos)) {
+                continue;
+            }
+            String petStatus = peticao.getStatus();
+            if (STATUS_PETICAO_PROTOCOLANDO.equals(petStatus)
+                    || STATUS_PETICAO_PROTOCOLADA.equals(petStatus)
+                    || STATUS_PETICAO_ASSINADA.equals(petStatus)) {
+                return DedupResultado.bloqueado();
+            }
+        }
+        return DedupResultado.novo();
     }
 
     private static ResumoProcessoPrepararAssinar resumoSemArquivos(String cnj, String cod) {
