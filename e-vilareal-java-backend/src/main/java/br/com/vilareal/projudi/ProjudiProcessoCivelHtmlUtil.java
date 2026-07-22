@@ -134,6 +134,15 @@ final class ProjudiProcessoCivelHtmlUtil {
         return StringUtils.hasText(v) ? Optional.of(v.trim()) : Optional.empty();
     }
 
+    private static final Pattern HIDDEN_PRIORIDADE =
+            Pattern.compile(
+                    "name=[\"']Id_ProcessoPrioridade[\"'][^>]*value=[\"'](\\d+)[\"']",
+                    Pattern.CASE_INSENSITIVE);
+
+    private static final Pattern LABEL_PRIORIDADE_JS = Pattern.compile(
+            "(\\d+)\\s*[=:]\\s*[\"']?[^\"'\\n]{0,80}Maior[^\"'\\n]{0,40}60[^\"'\\n]{0,40}Anos",
+            Pattern.CASE_INSENSITIVE);
+
     /** Rótulos visíveis → {@code value} do {@code <select name=Id_ProcessoPrioridade>}. */
     static Map<String, Integer> extrairOpcoesProcessoPrioridade(String html) {
         Map<String, Integer> out = new LinkedHashMap<>();
@@ -143,19 +152,61 @@ final class ProjudiProcessoCivelHtmlUtil {
         Document doc = Jsoup.parse(html);
         for (Element select : doc.select("select[name=Id_ProcessoPrioridade], select#Id_ProcessoPrioridade")) {
             for (Element option : select.select("option")) {
-                String rotulo = option.text();
-                String value = option.attr("value");
-                if (!StringUtils.hasText(rotulo) || !StringUtils.hasText(value)) {
-                    continue;
-                }
-                try {
-                    out.putIfAbsent(rotulo.trim(), Integer.parseInt(value.trim()));
-                } catch (NumberFormatException ignored) {
-                    // ignora opção sem id numérico
-                }
+                adicionarOpcaoPrioridade(out, option.text(), option.attr("value"));
             }
         }
+        for (Element option : doc.select("option")) {
+            adicionarOpcaoPrioridade(out, option.text(), option.attr("value"));
+        }
+        Matcher hidden = HIDDEN_PRIORIDADE.matcher(html);
+        while (hidden.find()) {
+            adicionarOpcaoPrioridade(out, extrairRotuloPrioridadeProximo(html, hidden.start()), hidden.group(1));
+        }
+        Matcher js = LABEL_PRIORIDADE_JS.matcher(html);
+        while (js.find()) {
+            adicionarOpcaoPrioridade(out, ProjudiPrioridadeProcessoInicial.MAIOR_60_ANOS.rotulo(), js.group(1));
+        }
         return out;
+    }
+
+    static String extrairTrechoPrioridade(String html) {
+        if (!StringUtils.hasText(html)) {
+            return "(html vazio)";
+        }
+        String lower = html.toLowerCase(Locale.ROOT);
+        int idx = lower.indexOf("processoprioridade");
+        if (idx < 0) {
+            idx = lower.indexOf("prioridade");
+        }
+        if (idx < 0) {
+            return "(sem 'prioridade' no html)";
+        }
+        int ini = Math.max(0, idx - 120);
+        int fim = Math.min(html.length(), idx + 280);
+        return html.substring(ini, fim).replaceAll("\\s+", " ").trim();
+    }
+
+    private static void adicionarOpcaoPrioridade(Map<String, Integer> out, String rotulo, String value) {
+        if (!StringUtils.hasText(rotulo) || !StringUtils.hasText(value)) {
+            return;
+        }
+        try {
+            out.putIfAbsent(rotulo.trim(), Integer.parseInt(value.trim()));
+        } catch (NumberFormatException ignored) {
+            // ignora opção sem id numérico
+        }
+    }
+
+    private static String extrairRotuloPrioridadeProximo(String html, int posHidden) {
+        int ini = Math.max(0, posHidden - 400);
+        int fim = Math.min(html.length(), posHidden + 400);
+        String trecho = html.substring(ini, fim);
+        Matcher m = Pattern.compile("ProcessoPrioridade[\"'][^>]*value=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE)
+                .matcher(trecho);
+        if (m.find()) {
+            return decUrlSafe(m.group(1));
+        }
+        return "";
     }
 
     static Optional<Integer> idProcessoPrioridadePorRotulo(String html, String rotuloAlvo) {

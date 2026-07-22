@@ -1062,7 +1062,9 @@ public class ProjudiDistribuicaoService {
                 String htmlProbe = corpo(probePasso1);
                 trilha.registrarInstrumentacao(
                         "Prioridades HTML probe Passo1",
-                        ProjudiProcessoCivelHtmlUtil.formatarOpcoesProcessoPrioridade(htmlProbe));
+                        ProjudiProcessoCivelHtmlUtil.formatarOpcoesProcessoPrioridade(htmlProbe)
+                                + " | trecho="
+                                + ProjudiProcessoCivelHtmlUtil.extrairTrechoPrioridade(htmlProbe));
                 idResolvido = ProjudiProcessoCivelHtmlUtil.idProcessoPrioridadePorRotulo(
                         htmlProbe, ProjudiPrioridadeProcessoInicial.MAIOR_60_ANOS.rotulo());
             } else {
