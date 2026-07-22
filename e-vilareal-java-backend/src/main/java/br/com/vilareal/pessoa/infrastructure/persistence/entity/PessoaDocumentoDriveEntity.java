@@ -26,10 +26,10 @@ public class PessoaDocumentoDriveEntity {
     @Column(name = "p7s_drive_file_id", length = 120)
     private String p7sDriveFileId;
 
-    @Column(name = "pdf_sha256", length = 64)
+    @Column(name = "pdf_sha256", columnDefinition = "CHAR(64)")
     private String pdfSha256;
 
-    @Column(name = "p7s_sha256", length = 64)
+    @Column(name = "p7s_sha256", columnDefinition = "CHAR(64)")
     private String p7sSha256;
 
     @Column(name = "mime_type", length = 120)
