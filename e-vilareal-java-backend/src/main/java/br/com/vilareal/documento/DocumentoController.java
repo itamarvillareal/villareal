@@ -1,5 +1,6 @@
 package br.com.vilareal.documento;
 
+import br.com.vilareal.pessoa.application.PessoaDocumentoDriveService;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,6 +44,7 @@ public class DocumentoController {
     private final PeticaoExecucaoService peticaoExecucaoService;
     private final PeticaoHomologacaoAcordoService peticaoHomologacaoAcordoService;
     private final DocumentoPastaAssinarService pastaAssinarService;
+    private final PessoaDocumentoDriveService pessoaDocumentoDriveService;
 
     public DocumentoController(
             DocumentoPdfService pdfService,
@@ -59,7 +61,8 @@ public class DocumentoController {
             DocumentoReformatarService reformatarService,
             PeticaoExecucaoService peticaoExecucaoService,
             PeticaoHomologacaoAcordoService peticaoHomologacaoAcordoService,
-            DocumentoPastaAssinarService pastaAssinarService) {
+            DocumentoPastaAssinarService pastaAssinarService,
+            PessoaDocumentoDriveService pessoaDocumentoDriveService) {
         this.pdfService = pdfService;
         this.peticaoAiService = peticaoAiService;
         this.procuracaoService = procuracaoService;
@@ -75,6 +78,7 @@ public class DocumentoController {
         this.peticaoExecucaoService = peticaoExecucaoService;
         this.peticaoHomologacaoAcordoService = peticaoHomologacaoAcordoService;
         this.pastaAssinarService = pastaAssinarService;
+        this.pessoaDocumentoDriveService = pessoaDocumentoDriveService;
     }
 
     @PostMapping("/gerar-pdf")
@@ -574,6 +578,13 @@ public class DocumentoController {
                 log.warn("Erro ao salvar no Drive: {}", e.getMessage());
             }
         });
+        if (pessoaIdFallback != null) {
+            pessoaDocumentoDriveService.salvarPdfNaPastaPessoaAsync(
+                    pessoaIdFallback,
+                    TipoDocumentoPessoa.deTipoDocumento(tipoDocumento),
+                    pdf,
+                    nomeArquivo);
+        }
     }
 
     private static ResponseEntity<byte[]> respostaPdf(String nomeArquivo, byte[] pdf) {

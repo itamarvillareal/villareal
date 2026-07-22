@@ -164,14 +164,11 @@ public class PessoaDocumentoDriveService {
                 if (enviado == null || !StringUtils.hasText(enviado.id())) {
                     return;
                 }
-                PessoaDocumentoDriveEntity entity = new PessoaDocumentoDriveEntity();
-                entity.setPessoaId(pessoaId);
-                entity.setTipo((tipo != null ? tipo : TipoDocumentoPessoa.DOCUMENTOS).name());
-                entity.setNomeArquivo(enviado.nome() != null ? enviado.nome() : nomeArquivo + ".pdf");
-                entity.setDriveFileId(enviado.id());
-                entity.setMimeType("application/pdf");
-                entity.setPdfSha256(ProjudiAssinaturaP7sUtil.sha256(pdfBytes));
-                documentoRepository.save(entity);
+                log.debug(
+                        "PDF salvo na pasta Pessoas (pessoaId={}, tipo={}, arquivo={})",
+                        pessoaId,
+                        (tipo != null ? tipo : TipoDocumentoPessoa.DOCUMENTOS).name(),
+                        enviado.nome());
             } catch (Exception e) {
                 log.warn("Erro ao salvar PDF na pasta Pessoas (pessoaId={}): {}", pessoaId, e.getMessage());
             }
@@ -190,14 +187,18 @@ public class PessoaDocumentoDriveService {
     private static String normalizarNomeP7s(String nomeOriginal) {
         String nome = StringUtils.hasText(nomeOriginal) ? nomeOriginal.trim() : "documento";
         if (nome.toLowerCase(Locale.ROOT).endsWith(".pdf.p7s")) {
-            nome = nome.substring(0, nome.length - 4);
+            nome = nome.substring(0, nome.length() - 4);
         } else if (nome.toLowerCase(Locale.ROOT).endsWith(".p7s")) {
-            nome = nome.substring(0, nome.length - 4);
+            nome = nome.substring(0, nome.length() - 4);
         }
         if (!StringUtils.hasText(nome)) {
             return "documento";
         }
-        return GoogleDriveService.sanitizarNomeArquivo(nome).replaceAll("(?i)\\.pdf$", "");
+        return sanitizarNomeBase(nome).replaceAll("(?i)\\.pdf$", "");
+    }
+
+    private static String sanitizarNomeBase(String nome) {
+        return nome.trim().replaceAll("[\\\\/:*?\"<>|]", " ").replaceAll("\\s+", " ");
     }
 
     private PessoaDocumentoDriveResponse toResponse(PessoaDocumentoDriveEntity entity) {

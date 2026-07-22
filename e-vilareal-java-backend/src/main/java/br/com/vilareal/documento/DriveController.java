@@ -155,7 +155,7 @@ public class DriveController {
             return ResponseEntity.badRequest().build();
         }
         try {
-            String pastaDestino = resolverPastaIdPessoa(pessoaId, pastaId);
+            String pastaDestino = resolverPastaIdPessoa(pessoaId, pastaId, null);
             if (!StringUtils.hasText(pastaDestino)) {
                 return ResponseEntity.ok(List.of());
             }
@@ -169,10 +169,11 @@ public class DriveController {
     }
 
     @PostMapping(value = "/upload-pessoa", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "Envia arquivo para a pasta da pessoa no Drive")
+    @Operation(summary = "Envia arquivo para subpasta da pessoa no Drive")
     public ResponseEntity<DriveArquivoDto> uploadArquivoPessoa(
             @RequestParam Long pessoaId,
             @RequestParam(required = false) String pastaId,
+            @RequestParam(required = false) String tipoDocumento,
             @RequestParam("arquivo") MultipartFile arquivo) throws Exception {
         if (!googleDriveService.isConfigurado()) {
             return ResponseEntity.status(503).build();
@@ -183,7 +184,7 @@ public class DriveController {
         if (arquivo == null || arquivo.isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
-        String pastaDestino = resolverPastaIdPessoa(pessoaId, pastaId);
+        String pastaDestino = resolverPastaIdPessoa(pessoaId, pastaId, tipoDocumento);
         if (!StringUtils.hasText(pastaDestino)) {
             return ResponseEntity.notFound().build();
         }
@@ -265,9 +266,13 @@ public class DriveController {
         return pasta != null ? pasta.pastaId() : null;
     }
 
-    private String resolverPastaIdPessoa(Long pessoaId, String pastaId) throws Exception {
+    private String resolverPastaIdPessoa(Long pessoaId, String pastaId, String tipoDocumento) throws Exception {
         if (StringUtils.hasText(pastaId)) {
             return pastaId.trim();
+        }
+        if (StringUtils.hasText(tipoDocumento)) {
+            TipoDocumentoPessoa tipo = TipoDocumentoPessoa.parse(tipoDocumento.trim());
+            return documentoDrivePastaService.obterPastaDestinoPessoa(pessoaId, tipo);
         }
         DrivePastaProcessoDto pasta = documentoDrivePastaService.resolverPastaPessoa(pessoaId);
         return pasta != null ? pasta.pastaId() : null;

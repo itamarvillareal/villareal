@@ -65,6 +65,10 @@ import {
 } from '../../repositories/pessoasEnderecosContatosRepository.js';
 import { featureFlags } from '../../config/featureFlags.js';
 import { obterStatusDrive } from '../../repositories/driveRepository.js';
+import {
+  listarDocumentosAssinadosPessoa,
+  uploadDocumentoDrivePessoa,
+} from '../../repositories/pessoaDocumentoDriveRepository.js';
 
 const DriveExplorerLazy = lazy(() => import('../DriveExplorer.jsx'));
 
@@ -232,9 +236,14 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
   const [erroComplementar, setErroComplementar] = useState('');
   const [driveExplorerAberto, setDriveExplorerAberto] = useState(false);
   const [driveConfigurado, setDriveConfigurado] = useState(false);
+  const [documentosAssinadosDrive, setDocumentosAssinadosDrive] = useState([]);
+  const [carregandoDocumentosAssinados, setCarregandoDocumentosAssinados] = useState(false);
+  const [uploadP7sEnviando, setUploadP7sEnviando] = useState(false);
+  const [erroDocumentosAssinados, setErroDocumentosAssinados] = useState('');
   /** Dispara autosave quando complementares/endereços terminam de carregar da API. */
   const [fichaProntaAutosave, setFichaProntaAutosave] = useState(false);
   const inputDocRef = useRef(null);
+  const inputP7sRef = useRef(null);
   /** Evita reabrir o modal de contatos logo ao fechar, quando o foco volta ao campo Contato. */
   const ignorarProximoFocusContatoRef = useRef(false);
   const [textoColagemPessoa, setTextoColagemPessoa] = useState('');
@@ -530,6 +539,28 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
       cancelado = true;
     };
   }, []);
+
+  const carregarDocumentosAssinadosDrive = useCallback(async () => {
+    if (!driveConfigurado || editId == null) {
+      setDocumentosAssinadosDrive([]);
+      return;
+    }
+    setCarregandoDocumentosAssinados(true);
+    setErroDocumentosAssinados('');
+    try {
+      const lista = await listarDocumentosAssinadosPessoa(editId);
+      setDocumentosAssinadosDrive(Array.isArray(lista) ? lista : []);
+    } catch (err) {
+      setDocumentosAssinadosDrive([]);
+      setErroDocumentosAssinados(err?.message || 'Falha ao carregar documentos assinados.');
+    } finally {
+      setCarregandoDocumentosAssinados(false);
+    }
+  }, [driveConfigurado, editId]);
+
+  useEffect(() => {
+    void carregarDocumentosAssinadosDrive();
+  }, [carregarDocumentosAssinadosDrive]);
 
   const ehPessoaJuridica = useMemo(
     () => normalizarDigitosCpfCnpj(form.cpf).length === 14,
@@ -2210,6 +2241,104 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                     </div>
                   </div>
                 )}
+
+                {modo === 'editar' && editId != null && driveConfigurado ? (
+                  <div className="mb-4 rounded-lg border border-indigo-200 bg-indigo-50/60 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-sm text-indigo-950 flex items-center gap-1.5">
+                          <FileCheck2 className="w-4 h-4 shrink-0" aria-hidden />
+                          Documentos assinados (P7S) no Drive
+                        </p>
+                        <p className="text-xs text-indigo-900/80 mt-0.5">
+                          Pasta{' '}
+                          <span className="font-mono">
+                            Pessoas/{String(editId).padStart(8, '0')}
+                          </span>
+                          {ehPessoaJuridica
+                            ? ' — contrato social, procuração e documentos do representante, reutilizáveis na inicial.'
+                            : ' — documentos assinados reutilizáveis em protocolos futuros.'}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={uploadP7sEnviando || form.edicaoDesabilitada}
+                          onClick={() => inputP7sRef.current?.click()}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 disabled:opacity-60"
+                        >
+                          {uploadP7sEnviando ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
+                          ) : (
+                            <FileUp className="w-3.5 h-3.5" aria-hidden />
+                          )}
+                          Anexar .p7s
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void carregarDocumentosAssinadosDrive()}
+                          disabled={carregandoDocumentosAssinados}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-indigo-300 bg-white text-indigo-900 text-xs font-medium hover:bg-indigo-100 disabled:opacity-60"
+                        >
+                          Atualizar
+                        </button>
+                      </div>
+                    </div>
+                    <input
+                      ref={inputP7sRef}
+                      type="file"
+                      accept=".p7s,application/pkcs7-signature"
+                      multiple
+                      className="hidden"
+                      onChange={async (e) => {
+                        const files = e.target.files ? [...e.target.files] : [];
+                        e.target.value = '';
+                        if (!files.length || editId == null) return;
+                        setUploadP7sEnviando(true);
+                        setErroDocumentosAssinados('');
+                        try {
+                          for (const file of files) {
+                            await uploadDocumentoDrivePessoa(editId, file, { tipo: 'ASSINADOS' });
+                          }
+                          await carregarDocumentosAssinadosDrive();
+                        } catch (err) {
+                          setErroDocumentosAssinados(
+                            err?.message || 'Falha ao enviar arquivo .p7s para o Drive.',
+                          );
+                        } finally {
+                          setUploadP7sEnviando(false);
+                        }
+                      }}
+                    />
+                    {erroDocumentosAssinados ? (
+                      <p className="text-xs text-red-700 mb-2">{erroDocumentosAssinados}</p>
+                    ) : null}
+                    {carregandoDocumentosAssinados ? (
+                      <p className="text-xs text-indigo-800 flex items-center gap-1.5">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
+                        Carregando…
+                      </p>
+                    ) : documentosAssinadosDrive.length === 0 ? (
+                      <p className="text-xs text-indigo-800/80">
+                        Nenhum documento .p7s registrado ainda. Use «Anexar .p7s» ou a pasta «Arquivos» → Assinados.
+                      </p>
+                    ) : (
+                      <ul className="space-y-1.5 text-xs text-indigo-950">
+                        {documentosAssinadosDrive.map((doc) => (
+                          <li
+                            key={doc.id ?? doc.nomeArquivo}
+                            className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md bg-white/70 px-2 py-1.5 border border-indigo-100"
+                          >
+                            <span className="font-medium truncate max-w-full">{doc.nomeArquivo}</span>
+                            {doc.tipo ? (
+                              <span className="text-indigo-700/70">({doc.tipo})</span>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ) : null}
 
                 {docStatus.kind !== 'idle' && (
                   <div
