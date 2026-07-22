@@ -248,6 +248,26 @@ public class ProjudiInicialController {
         return inicialAssinaturaService.assinarAutomatico(credencialId, codigoCliente, numeroInterno);
     }
 
+    @PostMapping(value = "/assinar-automatico-upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(
+            summary = "Assina PDFs enviados da máquina (inicial)",
+            description =
+                    "Enfileira lote PREPARANDO com PDF/JPG/MP4 enviados pelo navegador e libera para o assinador Windows.")
+    public AssinarAutomaticoResponse assinarAutomaticoUpload(
+            @RequestParam Long credencialId,
+            @RequestParam String codigoCliente,
+            @RequestParam Integer numeroInterno,
+            @RequestParam("pdfs") List<MultipartFile> pdfs) {
+        log.info(
+                "assinar-automatico-upload-inicial credencialId={} processo={}/{} arquivos={}",
+                credencialId,
+                codigoCliente,
+                numeroInterno,
+                pdfs != null ? pdfs.size() : 0);
+        return inicialAssinaturaService.assinarAutomaticoComPdfsLocais(
+                credencialId, codigoCliente, numeroInterno, pdfs);
+    }
+
     @GetMapping("/lote-assinatura/{loteId}")
     @Operation(summary = "Status do lote de assinatura automática (inicial)")
     public LoteAssinaturaStatusResponse statusLoteAssinatura(@PathVariable Long loteId) {

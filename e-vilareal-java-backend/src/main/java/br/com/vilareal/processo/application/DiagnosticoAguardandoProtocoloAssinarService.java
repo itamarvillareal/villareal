@@ -224,6 +224,81 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
         return new PrepararAssinarResultado(new ArrayList<>(peticaoIds), resumos, totalArquivos);
     }
 
+    /** PDF/JPG/MP4 enviados pelo navegador (sem buscar no Drive). */
+    @Transactional
+    public PrepararAssinarResultado prepararAssinaturaComPdfsLocais(
+            Long credencialId,
+            DiagnosticoAguardandoProtocoloItemRequest item,
+            List<PdfUploadItem> pdfsLocais,
+            Long loteAssinaturaId) {
+        if (credencialId == null) {
+            throw new BusinessRuleException("credencialId é obrigatório.");
+        }
+        if (item == null) {
+            throw new BusinessRuleException("Processo não informado.");
+        }
+        if (pdfsLocais == null || pdfsLocais.isEmpty()) {
+            throw new BusinessRuleException("Envie ao menos um PDF para assinar.");
+        }
+
+        String cod = normalizarCodigo(item.getCodigoCliente());
+        Integer proc = item.getNumeroInterno();
+        List<String> refsLocaisEscritos = new ArrayList<>();
+
+        if (loteAssinaturaId != null) {
+            verificarLoteAindaPreparando(loteAssinaturaId, refsLocaisEscritos);
+        }
+
+        String cnj = resolverCnj(item, cod, proc);
+        if (!StringUtils.hasText(cod) || proc == null || !StringUtils.hasText(cnj)) {
+            throw new BusinessRuleException("codigoCliente e numeroInterno são obrigatórios.");
+        }
+
+        List<PdfDriveItem> pdfs =
+                pdfsLocais.stream().map(p -> new PdfDriveItem(p.nomeOriginal(), p.bytes())).toList();
+        ResultadoUmProcesso resultado =
+                registrarPdfsParaAssinatura(credencialId, cod, proc, cnj, pdfs, false, refsLocaisEscritos);
+
+        if (resultado.arquivosRegistrados() == 0 && resultado.peticaoIds().isEmpty()) {
+            throw new BusinessRuleException(montarMensagemNenhumPdfPreparado(List.of(resultado.resumo())));
+        }
+
+        return new PrepararAssinarResultado(
+                new ArrayList<>(resultado.peticaoIds()), List.of(resultado.resumo()), resultado.arquivosRegistrados());
+    }
+
+    public static List<PdfUploadItem> lerPdfsUpload(List<MultipartFile> arquivos) {
+        if (arquivos == null || arquivos.isEmpty()) {
+            throw new BusinessRuleException("Envie ao menos um PDF para assinar.");
+        }
+        List<PdfUploadItem> out = new ArrayList<>();
+        for (MultipartFile mf : arquivos) {
+            if (mf == null || mf.isEmpty()) {
+                continue;
+            }
+            String nome = mf.getOriginalFilename() != null ? mf.getOriginalFilename().trim() : "documento.pdf";
+            if (!ProjudiArquivoAssinavelUtil.isNomeAssinavel(nome)) {
+                throw new BusinessRuleException(
+                        "Arquivo «" + nome + "» não é assinável. Use PDF, JPG/JPEG ou MP4.");
+            }
+            try {
+                byte[] bytes = mf.getBytes();
+                if (bytes.length == 0) {
+                    throw new BusinessRuleException("Arquivo «" + nome + "» está vazio.");
+                }
+                out.add(new PdfUploadItem(nome, bytes));
+            } catch (BusinessRuleException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new BusinessRuleException("Falha ao ler «" + nome + "»: " + e.getMessage());
+            }
+        }
+        if (out.isEmpty()) {
+            throw new BusinessRuleException("Envie ao menos um PDF para assinar.");
+        }
+        return List.copyOf(out);
+    }
+
     /** Mensagem agregada quando nenhuma petição foi preparada (uso em sync e async). */
     public static String montarMensagemNenhumPdfPreparado(List<ResumoProcessoPrepararAssinar> resumos) {
         long erros = resumos.stream().filter(ResumoProcessoPrepararAssinar::ignoradoPorErro).count();
@@ -273,29 +348,31 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
             String cnj,
             boolean sincronizarDriveNoRegistro,
             List<String> refsLocaisEscritos) {
-        int registradas = 0;
-        int reutilizadas = 0;
-        int ignoradasJaAssinadas = 0;
-        boolean semArquivos = false;
-        Set<Long> peticoesReutilizadas = new LinkedHashSet<>();
+        List<PdfDriveItem> pdfs = buscarPdfsNaPastaAssinar(cod, proc);
+        if (pdfs == null || pdfs.isEmpty()) {
+            return new ResultadoUmProcesso(resumoSemArquivos(cnj, cod), List.of(), 0);
+        }
+        return registrarPdfsParaAssinatura(
+                credencialId, cod, proc, cnj, pdfs, sincronizarDriveNoRegistro, refsLocaisEscritos);
+    }
 
-        List<PdfDriveItem> pdfs;
+    private List<PdfDriveItem> buscarPdfsNaPastaAssinar(String cod, Integer proc) {
         try {
             DrivePastaProcessoDto pastaDto =
                     documentoDrivePastaService.resolverPastaRaizProcesso(googleDriveService, cod, proc);
             if (pastaDto == null || !StringUtils.hasText(pastaDto.pastaId())) {
                 log.info("Preparar Assinar: pasta do processo não resolvida ({}/{})", cod, proc);
-                return new ResultadoUmProcesso(resumoSemArquivos(cnj, cod), List.of(), 0);
+                return List.of();
             }
 
             String pastaAssinarId = googleDriveService.encontrarPastaExistente(PASTA_ASSINAR, pastaDto.pastaId());
             if (!StringUtils.hasText(pastaAssinarId)) {
                 log.info("Preparar Assinar: subpasta Assinar ausente ({}/{})", cod, proc);
-                return new ResultadoUmProcesso(resumoSemArquivos(cnj, cod), List.of(), 0);
+                return List.of();
             }
 
             List<DriveArquivoDto> filhos = googleDriveService.listarConteudo(pastaAssinarId);
-            pdfs = new ArrayList<>();
+            List<PdfDriveItem> pdfs = new ArrayList<>();
             int ignoradosCanonicoDrive = 0;
             for (DriveArquivoDto arq : filhos) {
                 if (arq == null || "pasta".equals(arq.tipo()) || !StringUtils.hasText(arq.id())) {
@@ -328,14 +405,26 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
                         cod,
                         proc);
             }
+            return pdfs;
         } catch (Exception e) {
             log.warn("Preparar Assinar: falha no Drive ({}/{}): {}", cod, proc, e.getMessage());
-            return new ResultadoUmProcesso(resumoSemArquivos(cnj, cod), List.of(), 0);
+            return List.of();
         }
+    }
 
-        if (pdfs.isEmpty()) {
-            return new ResultadoUmProcesso(resumoSemArquivos(cnj, cod), List.of(), 0);
-        }
+    private ResultadoUmProcesso registrarPdfsParaAssinatura(
+            Long credencialId,
+            String cod,
+            Integer proc,
+            String cnj,
+            List<PdfDriveItem> pdfs,
+            boolean sincronizarDriveNoRegistro,
+            List<String> refsLocaisEscritos) {
+        int registradas = 0;
+        int reutilizadas = 0;
+        int ignoradasJaAssinadas = 0;
+        boolean semArquivos = false;
+        Set<Long> peticoesReutilizadas = new LinkedHashSet<>();
 
         String cnjDigitos = ProjudiNumeroReduzidoUtil.somenteDigitos(cnj);
 
@@ -810,6 +899,8 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
     }
 
     private record PdfDriveItem(String nomeOriginal, byte[] bytes) {}
+
+    public record PdfUploadItem(String nomeOriginal, byte[] bytes) {}
 
     private record DedupResultado(boolean shouldIgnore, Long reutilizarPeticaoId) {
         static DedupResultado bloqueado() {

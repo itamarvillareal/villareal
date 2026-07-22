@@ -13,6 +13,7 @@ import br.com.vilareal.processo.api.dto.AssinarAutomaticoResponse;
 import br.com.vilareal.processo.api.dto.DiagnosticoAguardandoProtocoloItemRequest;
 import br.com.vilareal.processo.api.dto.LoteAssinaturaStatusResponse;
 import br.com.vilareal.processo.api.dto.PrepararAssinarResultado;
+import br.com.vilareal.processo.application.DiagnosticoAguardandoProtocoloAssinarService.PdfUploadItem;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -126,10 +127,70 @@ public class DiagnosticoAssinaturaAutomaticaService {
         return new AssinarAutomaticoResponse(criado.getId(), List.of(), 0, false);
     }
 
+    @Transactional
+    public AssinarAutomaticoResponse assinarAutomaticoComPdfsLocais(
+            Long credencialId,
+            DiagnosticoAguardandoProtocoloItemRequest processo,
+            List<PdfUploadItem> pdfsLocais) {
+        if (credencialId == null) {
+            throw new BusinessRuleException("credencialId é obrigatório.");
+        }
+        if (processo == null) {
+            throw new BusinessRuleException("Processo não informado.");
+        }
+        if (pdfsLocais == null || pdfsLocais.isEmpty()) {
+            throw new BusinessRuleException("Envie ao menos um PDF para assinar.");
+        }
+
+        List<DiagnosticoAguardandoProtocoloItemRequest> processos = List.of(processo);
+
+        Optional<AssinaturaLoteEntity> preparandoIgual =
+                buscarPreparandoMesmaSelecaoUpload(credencialId, processos, pdfsLocais);
+        if (preparandoIgual.isPresent()) {
+            AssinaturaLoteEntity existente = preparandoIgual.get();
+            return new AssinarAutomaticoResponse(
+                    existente.getId(),
+                    copiarIds(existente.getPeticaoIds()),
+                    totalArquivosMeta(existente),
+                    true);
+        }
+
+        Optional<AssinaturaLoteEntity> emAssinatura = assinaturaLoteRepository
+                .findByStatusIn(List.of(AssinaturaLoteStatus.EM_ASSINATURA))
+                .stream()
+                .filter(l -> credencialId.equals(l.getCredencialId()))
+                .findFirst();
+        if (emAssinatura.isPresent()) {
+            throw new BusinessRuleException(
+                    "Assinatura automática já em andamento (lote #" + emAssinatura.get().getId() + "). "
+                            + "Aguarde a conclusão ou a falha do assinador.");
+        }
+
+        JsonNode meta = montarMetaPreparoUpload(processos, pdfsLocais);
+        AssinaturaLoteEntity criado = assinaturaLoteService.criarLoteEmPreparacao(credencialId, meta);
+        agendarPreparoUploadAposCommit(criado.getId(), credencialId, processo, pdfsLocais);
+        return new AssinarAutomaticoResponse(criado.getId(), List.of(), 0, false);
+    }
+
     /** Só dispara o executor após commit — evita race em que o lote ainda não é visível na thread de background. */
     private void agendarPreparoAposCommit(
             Long loteId, Long credencialId, List<DiagnosticoAguardandoProtocoloItemRequest> processos) {
         Runnable tarefa = () -> executarPreparoEmBackground(loteId, credencialId, processos);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    preparoExecutor.submit(tarefa);
+                }
+            });
+        } else {
+            preparoExecutor.submit(tarefa);
+        }
+    }
+
+    private void agendarPreparoUploadAposCommit(
+            Long loteId, Long credencialId, DiagnosticoAguardandoProtocoloItemRequest processo, List<PdfUploadItem> pdfsLocais) {
+        Runnable tarefa = () -> executarPreparoUploadEmBackground(loteId, credencialId, processo, pdfsLocais);
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
@@ -280,6 +341,75 @@ public class DiagnosticoAssinaturaAutomaticaService {
         }
     }
 
+    void executarPreparoUploadEmBackground(
+            Long loteId,
+            Long credencialId,
+            DiagnosticoAguardandoProtocoloItemRequest processo,
+            List<PdfUploadItem> pdfsLocais) {
+        try {
+            PrepararAssinarResultado preparado =
+                    diagnosticoAssinarService.prepararAssinaturaComPdfsLocais(credencialId, processo, pdfsLocais, loteId);
+            finalizarPreparoLote(loteId, preparado);
+        } catch (PreparoCanceladoException e) {
+            if (e.statusObservado() == AssinaturaLoteStatus.CANCELADO) {
+                log.info("Preparo upload abortado cooperativamente (lote #{}): {}", loteId, e.getMessage());
+                return;
+            }
+            log.warn("Preparo upload abortado inesperadamente (lote #{}): {}", loteId, e.getMessage());
+            assinaturaLoteService.falharPreparacao(loteId, "PREPARO_ABORTADO", e.getMessage());
+        } catch (BusinessRuleException e) {
+            log.warn("Preparo upload falhou (lote #{}): {}", loteId, e.getMessage());
+            assinaturaLoteService.falharPreparacao(loteId, "PREPARO_FALHOU", e.getMessage());
+        } catch (Exception e) {
+            log.error("Preparo upload inesperado (lote #{}): {}", loteId, e.getMessage(), e);
+            assinaturaLoteService.falharPreparacao(
+                    loteId, "PREPARO_FALHOU", "Falha ao preparar PDFs enviados: " + e.getMessage());
+        }
+    }
+
+    private void finalizarPreparoLote(Long loteId, PrepararAssinarResultado preparado) {
+        List<Long> peticaoIds = normalizarIds(preparado.peticaoIds());
+        if (peticaoIds.isEmpty()) {
+            assinaturaLoteService.falharPreparacao(
+                    loteId,
+                    "PREPARO_VAZIO",
+                    mensagemPreparoVazio(preparado));
+            return;
+        }
+
+        Optional<AssinaturaLoteEntity> liberado = buscarLoteComIntersecao(
+                peticaoIds, List.of(AssinaturaLoteStatus.LIBERADO));
+        if (liberado.isPresent() && !liberado.get().getId().equals(loteId)) {
+            AssinaturaLoteEntity outro = liberado.get();
+            assinaturaLoteService.falharPreparacao(
+                    loteId,
+                    "LOTE_DUPLICADO",
+                    "Já existe lote #" + outro.getId() + " liberado para os mesmos PDFs. Use-o ou aguarde.");
+            return;
+        }
+
+        Optional<AssinaturaLoteEntity> emAssinatura = buscarLoteComIntersecao(
+                peticaoIds, List.of(AssinaturaLoteStatus.EM_ASSINATURA));
+        if (emAssinatura.isPresent()) {
+            assinaturaLoteService.falharPreparacao(
+                    loteId,
+                    "EM_ASSINATURA",
+                    "Assinatura já em andamento (lote #" + emAssinatura.get().getId() + ").");
+            return;
+        }
+
+        assinaturaLoteService.concluirPreparacao(
+                loteId,
+                peticaoIds,
+                preparado.totalArquivos(),
+                objectMapper.valueToTree(preparado.resumo()));
+        log.info(
+                "Preparo assíncrono concluído: lote #{} — {} petição(ões), {} arquivo(s)",
+                loteId,
+                peticaoIds.size(),
+                preparado.totalArquivos());
+    }
+
     private static String mensagemPreparoVazio(PrepararAssinarResultado preparado) {
         if (preparado != null && preparado.resumo() != null) {
             long erros = preparado.resumo().stream()
@@ -303,6 +433,18 @@ public class DiagnosticoAssinaturaAutomaticaService {
                 .findFirst();
     }
 
+    private Optional<AssinaturaLoteEntity> buscarPreparandoMesmaSelecaoUpload(
+            Long credencialId,
+            List<DiagnosticoAguardandoProtocoloItemRequest> processos,
+            List<PdfUploadItem> pdfsLocais) {
+        String fp = fingerprintUpload(processos, pdfsLocais);
+        return assinaturaLoteRepository
+                .findByStatusAndCredencialIdOrderByCriadoEmDesc(AssinaturaLoteStatus.PREPARANDO, credencialId)
+                .stream()
+                .filter(l -> fp.equals(fingerprintMeta(l.getResultadoJson())))
+                .findFirst();
+    }
+
     private JsonNode montarMetaPreparo(List<DiagnosticoAguardandoProtocoloItemRequest> processos) {
         ObjectNode root = objectMapper.createObjectNode();
         root.put("fingerprint", fingerprintProcessos(processos));
@@ -318,6 +460,14 @@ public class DiagnosticoAssinaturaAutomaticaService {
         return root;
     }
 
+    private JsonNode montarMetaPreparoUpload(
+            List<DiagnosticoAguardandoProtocoloItemRequest> processos, List<PdfUploadItem> pdfsLocais) {
+        ObjectNode root = (ObjectNode) montarMetaPreparo(processos);
+        root.put("origem", "upload-local");
+        root.put("fingerprint", fingerprintUpload(processos, pdfsLocais));
+        return root;
+    }
+
     private static String fingerprintProcessos(List<DiagnosticoAguardandoProtocoloItemRequest> processos) {
         StringBuilder sb = new StringBuilder();
         for (DiagnosticoAguardandoProtocoloItemRequest p : processos) {
@@ -327,6 +477,22 @@ public class DiagnosticoAssinaturaAutomaticaService {
                     .append('|')
                     .append(String.valueOf(p.getNumeroProcessoNovo()).trim())
                     .append(';');
+        }
+        return sb.toString();
+    }
+
+    private static String fingerprintUpload(
+            List<DiagnosticoAguardandoProtocoloItemRequest> processos, List<PdfUploadItem> pdfsLocais) {
+        StringBuilder sb = new StringBuilder("upload|");
+        sb.append(fingerprintProcessos(processos));
+        if (pdfsLocais != null) {
+            for (PdfUploadItem pdf : pdfsLocais) {
+                sb.append('|')
+                        .append(String.valueOf(pdf.nomeOriginal()).trim())
+                        .append('|')
+                        .append(br.com.vilareal.projudi.ProjudiAssinaturaP7sUtil.sha256(pdf.bytes())
+                                .substring(0, 16));
+            }
         }
         return sb.toString();
     }

@@ -231,6 +231,11 @@ export async function assinarAutomaticoInicial({ credencialId, codigoCliente, nu
   });
 }
 
+/** @param {FormData} formData */
+export async function assinarAutomaticoInicialUpload(formData) {
+  return postFormData('/api/projudi/iniciais/assinar-automatico-upload', formData);
+}
+
 /** @param {number|string} loteId */
 export async function consultarLoteAssinaturaInicial(loteId) {
   return request(`/api/projudi/iniciais/lote-assinatura/${loteId}`);

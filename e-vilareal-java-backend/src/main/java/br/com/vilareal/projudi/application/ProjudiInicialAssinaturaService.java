@@ -4,6 +4,7 @@ import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
 import br.com.vilareal.processo.api.dto.AssinarAutomaticoResponse;
 import br.com.vilareal.processo.api.dto.DiagnosticoAguardandoProtocoloItemRequest;
+import br.com.vilareal.processo.application.DiagnosticoAguardandoProtocoloAssinarService;
 import br.com.vilareal.processo.application.DiagnosticoAssinaturaAutomaticaService;
 import br.com.vilareal.projudi.api.dto.InicialArquivoAssinadoResponse;
 import br.com.vilareal.projudi.infrastructure.persistence.entity.ProjudiPeticaoArquivoEntity;
@@ -14,6 +15,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -62,6 +64,21 @@ public class ProjudiInicialAssinaturaService {
         item.setNumeroInterno(numeroInterno);
         item.setNumeroProcessoNovo(chaveNumeroProcessoInicial(codigoCliente, numeroInterno));
         return assinaturaAutomaticaService.assinarAutomatico(credencialId, List.of(item));
+    }
+
+    @Transactional
+    public AssinarAutomaticoResponse assinarAutomaticoComPdfsLocais(
+            Long credencialId,
+            String codigoCliente,
+            Integer numeroInterno,
+            List<MultipartFile> pdfs) {
+        validarProcesso(codigoCliente, numeroInterno);
+        var pdfsLocais = DiagnosticoAguardandoProtocoloAssinarService.lerPdfsUpload(pdfs);
+        DiagnosticoAguardandoProtocoloItemRequest item = new DiagnosticoAguardandoProtocoloItemRequest();
+        item.setCodigoCliente(normalizarCodigo(codigoCliente));
+        item.setNumeroInterno(numeroInterno);
+        item.setNumeroProcessoNovo(chaveNumeroProcessoInicial(codigoCliente, numeroInterno));
+        return assinaturaAutomaticaService.assinarAutomaticoComPdfsLocais(credencialId, item, pdfsLocais);
     }
 
     @Transactional(readOnly = true)

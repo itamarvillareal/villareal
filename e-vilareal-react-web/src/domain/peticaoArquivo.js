@@ -10,6 +10,23 @@ export function isArquivoPdfSemAssinatura(file) {
   return /\.pdf$/i.test(file.name) || file.type === 'application/pdf';
 }
 
+/** PDF, JPG/JPEG ou MP4 enviados para assinatura no token (antes do .p7s). */
+export function isArquivoAssinavel(file) {
+  if (!file || isArquivoP7s(file)) return false;
+  return /\.(pdf|jpe?g|mp4)$/i.test(file.name);
+}
+
+/** @param {File[]} files @returns {{ validos: File[], invalidos: File[] }} */
+export function separarArquivosAssinaveis(files) {
+  const validos = [];
+  const invalidos = [];
+  for (const f of files) {
+    if (isArquivoAssinavel(f)) validos.push(f);
+    else invalidos.push(f);
+  }
+  return { validos, invalidos };
+}
+
 /** @param {File[]} files @returns {{ validos: File[], invalidos: File[] }} */
 export function separarArquivosP7s(files) {
   const validos = [];

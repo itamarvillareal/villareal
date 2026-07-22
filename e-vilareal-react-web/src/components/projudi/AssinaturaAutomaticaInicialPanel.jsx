@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FolderOpen, Loader2, PenLine, RefreshCw, Trash2, Upload, X } from 'lucide-react';
 import {
   assinarAutomaticoInicial,
+  assinarAutomaticoInicialUpload,
   baixarP7sAssinadoInicial,
   cancelarLoteAssinaturaInicial,
   consultarLoteAssinaturaInicial,
@@ -12,7 +13,7 @@ import {
 } from '../../api/iniciaisProjudiApi.js';
 import { listarPorProcesso } from '../../api/peticoesProjudiApi.js';
 import { chavePeticaoInicialDistribuicao } from '../../domain/peticaoInicialProjudi.js';
-import { isArquivoP7s } from '../../domain/peticaoArquivo.js';
+import { isArquivoAssinavel } from '../../domain/peticaoArquivo.js';
 import { mensagemErroAmigavel } from '../../utils/mensagemErroAmigavel.js';
 import { processosBtnPrimary } from '../processos/ProcessosAdminLayout.jsx';
 import {
@@ -243,23 +244,72 @@ export function AssinaturaAutomaticaInicialPanel({
     setAtivo(false);
   };
 
+  const acompanharLoteAssinatura = async (resp) => {
+    const id = resp?.loteId;
+    if (id == null) throw new Error('Resposta sem loteId.');
+    setLoteId(id);
+    if (Array.isArray(resp?.peticaoIds) && resp.peticaoIds.length > 0) {
+      setPeticaoCount(resp.peticaoIds.length);
+    }
+    const status = await consultarLoteAssinaturaInicial(id);
+    await aplicarStatusLote(status);
+    if (String(status?.status ?? '').toUpperCase() !== 'CONCLUIDO') {
+      iniciarPoll(id);
+    }
+  };
+
+  const tratarErroAssinatura = async (e, acao) => {
+    const msg = mensagemErroAmigavel(e, acao);
+    if (msg.includes('já constam na fila PROJUDI')) {
+      try {
+        if (await carregarJaAssinadosSeExistirem()) return true;
+      } catch {
+        /* segue para erro */
+      }
+    }
+    setFase('erro');
+    setErro(msg);
+    setAtivo(false);
+    onErro?.(msg);
+    return true;
+  };
+
   const processarArquivosMaquina = (ev) => {
     const files = Array.from(ev.target.files || []);
     ev.target.value = '';
     if (files.length === 0) return;
-    const invalidos = files.filter((f) => !isArquivoP7s(f));
+    const invalidos = files.filter((f) => !isArquivoAssinavel(f));
     if (invalidos.length) {
-      onErro?.('Selecione apenas arquivos .p7s.');
+      onErro?.('Selecione PDF, JPG/JPEG ou MP4 para assinar (não .p7s).');
       return;
     }
-    const linhas = files.map((file) => ({
-      key: crypto.randomUUID(),
-      file,
-      idArquivoTipo: 16,
-    }));
-    onArquivosAssinados(linhas, { anexar: true });
-    onToast?.(`${linhas.length} arquivo(s) .p7s adicionado(s) da sua máquina.`);
-    fecharModal();
+    void executarAssinaturaMaquina(files);
+  };
+
+  const executarAssinaturaMaquina = async (files) => {
+    if (disabled || ativo) return;
+    setFase('');
+    setErro('');
+    setErroCodigo('');
+    setLoteId(null);
+    setPeticaoCount(0);
+    setAtivo(true);
+    pararPoll();
+    try {
+      if (await carregarJaAssinadosSeExistirem()) return;
+
+      const formData = new FormData();
+      formData.append('credencialId', credencialId);
+      formData.append('codigoCliente', codigoCliente);
+      formData.append('numeroInterno', numeroInterno);
+      for (const file of files) {
+        formData.append('pdfs', file);
+      }
+      const resp = await assinarAutomaticoInicialUpload(formData);
+      await acompanharLoteAssinatura(resp);
+    } catch (e) {
+      await tratarErroAssinatura(e, 'enviar PDFs para assinatura');
+    }
   };
 
   const executarAssinaturaDrive = async () => {
@@ -275,30 +325,9 @@ export function AssinaturaAutomaticaInicialPanel({
       if (await carregarJaAssinadosSeExistirem()) return;
 
       const resp = await assinarAutomaticoInicial({ credencialId, codigoCliente, numeroInterno });
-      const id = resp?.loteId;
-      if (id == null) throw new Error('Resposta sem loteId.');
-      setLoteId(id);
-      if (Array.isArray(resp?.peticaoIds) && resp.peticaoIds.length > 0) {
-        setPeticaoCount(resp.peticaoIds.length);
-      }
-      const status = await consultarLoteAssinaturaInicial(id);
-      await aplicarStatusLote(status);
-      if (String(status?.status ?? '').toUpperCase() !== 'CONCLUIDO') {
-        iniciarPoll(id);
-      }
+      await acompanharLoteAssinatura(resp);
     } catch (e) {
-      const msg = mensagemErroAmigavel(e, 'iniciar a assinatura automática');
-      if (msg.includes('já constam na fila PROJUDI')) {
-        try {
-          if (await carregarJaAssinadosSeExistirem()) return;
-        } catch {
-          /* segue para erro */
-        }
-      }
-      setFase('erro');
-      setErro(msg);
-      setAtivo(false);
-      onErro?.(msg);
+      await tratarErroAssinatura(e, 'iniciar a assinatura automática');
     }
   };
 
@@ -508,7 +537,7 @@ export function AssinaturaAutomaticaInicialPanel({
       <input
         ref={inputMaquinaRef}
         type="file"
-        accept=".p7s,.pdf.p7s,application/pkcs7-signature"
+        accept=".pdf,.jpg,.jpeg,.mp4,application/pdf,image/jpeg,video/mp4"
         multiple
         className="sr-only"
         onChange={processarArquivosMaquina}
@@ -539,7 +568,7 @@ export function AssinaturaAutomaticaInicialPanel({
                     <span className="font-mono font-medium">
                       {codigoCliente}/{numeroInterno}
                     </span>
-                    . Como deseja obter os anexos <span className="font-mono">.p7s</span>?
+                    . Como deseja obter os anexos para assinar?
                   </p>
                   <div className="grid gap-3 sm:grid-cols-1">
                     <button
@@ -573,11 +602,11 @@ export function AssinaturaAutomaticaInicialPanel({
                         </span>
                         <span>
                           <span className="block text-sm font-semibold text-slate-900">
-                            Enviar da minha máquina
+                            Enviar PDFs da minha máquina
                           </span>
                           <span className="mt-1 block text-xs leading-relaxed text-slate-600">
-                            Selecione no computador os arquivos <span className="font-mono">.p7s</span>{' '}
-                            já assinados, sem usar a pasta «Assinar».
+                            Selecione no computador os PDFs (ou JPG/MP4) para assinar no token. O sistema
+                            gera os <span className="font-mono">.p7s</span> automaticamente após a assinatura.
                           </span>
                         </span>
                       </span>
