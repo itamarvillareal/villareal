@@ -10,6 +10,21 @@ public record ProjudiPrioridadeProcessoInicial(String rotulo, int idProcessoPrio
             new ProjudiPrioridadeProcessoInicial("Maior de 60 Anos", 6);
 
     public static ProjudiPrioridadeProcessoInicial deAutorMaiorDe60Anos(boolean maiorDe60Anos) {
-        return maiorDe60Anos ? MAIOR_60_ANOS : NORMAL;
+        return deAutorMaiorDe60Anos(maiorDe60Anos, null);
+    }
+
+    /**
+     * Quando {@code idProcessoPrioridadeMaior60} vem do HTML do PROJUDI, evita enviar id fixo incorreto
+     * (ex.: {@code 6} = «Réu Preso» na Vara Cível, não «Maior de 60 Anos»).
+     */
+    public static ProjudiPrioridadeProcessoInicial deAutorMaiorDe60Anos(
+            boolean maiorDe60Anos, Integer idProcessoPrioridadeMaior60) {
+        if (!maiorDe60Anos) {
+            return NORMAL;
+        }
+        if (idProcessoPrioridadeMaior60 != null && idProcessoPrioridadeMaior60 > 0) {
+            return new ProjudiPrioridadeProcessoInicial(MAIOR_60_ANOS.rotulo(), idProcessoPrioridadeMaior60);
+        }
+        return MAIOR_60_ANOS;
     }
 }

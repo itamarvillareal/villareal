@@ -6,8 +6,12 @@ import org.jsoup.nodes.Element;
 import org.springframework.util.StringUtils;
 
 import java.nio.charset.StandardCharsets;
+import java.text.Normalizer;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -128,6 +132,72 @@ final class ProjudiProcessoCivelHtmlUtil {
         Document doc = Jsoup.parse(html);
         String v = valorInput(doc, name);
         return StringUtils.hasText(v) ? Optional.of(v.trim()) : Optional.empty();
+    }
+
+    /** Rótulos visíveis → {@code value} do {@code <select name=Id_ProcessoPrioridade>}. */
+    static Map<String, Integer> extrairOpcoesProcessoPrioridade(String html) {
+        Map<String, Integer> out = new LinkedHashMap<>();
+        if (!StringUtils.hasText(html)) {
+            return out;
+        }
+        Document doc = Jsoup.parse(html);
+        for (Element select : doc.select("select[name=Id_ProcessoPrioridade], select#Id_ProcessoPrioridade")) {
+            for (Element option : select.select("option")) {
+                String rotulo = option.text();
+                String value = option.attr("value");
+                if (!StringUtils.hasText(rotulo) || !StringUtils.hasText(value)) {
+                    continue;
+                }
+                try {
+                    out.putIfAbsent(rotulo.trim(), Integer.parseInt(value.trim()));
+                } catch (NumberFormatException ignored) {
+                    // ignora opção sem id numérico
+                }
+            }
+        }
+        return out;
+    }
+
+    static Optional<Integer> idProcessoPrioridadePorRotulo(String html, String rotuloAlvo) {
+        if (!StringUtils.hasText(rotuloAlvo)) {
+            return Optional.empty();
+        }
+        String alvoNorm = normalizarRotuloPrioridade(rotuloAlvo);
+        Integer melhorId = null;
+        int melhorScore = -1;
+        for (Map.Entry<String, Integer> e : extrairOpcoesProcessoPrioridade(html).entrySet()) {
+            String rotuloNorm = normalizarRotuloPrioridade(e.getKey());
+            if (rotuloNorm.equals(alvoNorm)) {
+                return Optional.of(e.getValue());
+            }
+            if (rotuloNorm.contains(alvoNorm) || alvoNorm.contains(rotuloNorm)) {
+                int score = Math.min(rotuloNorm.length(), alvoNorm.length());
+                if (score > melhorScore) {
+                    melhorScore = score;
+                    melhorId = e.getValue();
+                }
+            }
+        }
+        return melhorId != null ? Optional.of(melhorId) : Optional.empty();
+    }
+
+    static String formatarOpcoesProcessoPrioridade(String html) {
+        List<String> partes = new ArrayList<>();
+        extrairOpcoesProcessoPrioridade(html)
+                .forEach((rotulo, id) -> partes.add(id + "=" + rotulo));
+        return partes.isEmpty() ? "(select Id_ProcessoPrioridade ausente)" : String.join(", ", partes);
+    }
+
+    private static String normalizarRotuloPrioridade(String rotulo) {
+        if (rotulo == null) {
+            return "";
+        }
+        String semAcento = Normalizer.normalize(rotulo, Normalizer.Form.NFD).replaceAll("\\p{M}+", "");
+        return semAcento
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", " ")
+                .trim()
+                .replaceAll("\\s+", " ");
     }
 
     static boolean pareceRevisao(String html) {

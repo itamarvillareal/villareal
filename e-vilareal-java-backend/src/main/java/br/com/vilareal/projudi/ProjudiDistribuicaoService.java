@@ -85,7 +85,12 @@ public class ProjudiDistribuicaoService {
         }
 
         public ProjudiPrioridadeProcessoInicial prioridadeEfetiva() {
-            return ProjudiPrioridadeProcessoInicial.deAutorMaiorDe60Anos(Boolean.TRUE.equals(prioridadeMaior60Anos));
+            return prioridadeEfetiva(null);
+        }
+
+        public ProjudiPrioridadeProcessoInicial prioridadeEfetiva(Integer idProcessoPrioridadeMaior60Resolvido) {
+            return ProjudiPrioridadeProcessoInicial.deAutorMaiorDe60Anos(
+                    Boolean.TRUE.equals(prioridadeMaior60Anos), idProcessoPrioridadeMaior60Resolvido);
         }
     }
 
@@ -628,8 +633,22 @@ public class ProjudiDistribuicaoService {
             trilha.ok("POST custas/dependência", navCustas, "custaTipo=3 dependenciaProcesso=2");
             registrarHashFluxoHtml(trilha, "POST custas/dependência", corpo(navCustas));
 
+            Optional<ProjudiPrioridadeProcessoInicial> prioridadePasso1Opt =
+                    resolverPrioridadePasso1(trilha, request, corpo(navCustas), credencialId);
+            if (prioridadePasso1Opt.isEmpty()) {
+                return new ResultadoPreparacaoInicial(
+                        false,
+                        "PASSO1",
+                        null,
+                        List.of(),
+                        sanitizarDetalhe(
+                                "Não foi possível mapear a prioridade «Maior de 60 Anos» no PROJUDI (Passo 1)."),
+                        trilha.passos());
+            }
+            ProjudiPrioridadeProcessoInicial prioridadePasso1 = prioridadePasso1Opt.get();
+
             String corpoPasso1 = ProjudiProcessoCivelInicialCorpoUtil.montarCorpoPasso1Area(
-                    request.valorCausa(), "2852", "-1", request.classeEfetiva(), request.prioridadeEfetiva());
+                    request.valorCausa(), "2852", "-1", request.classeEfetiva(), prioridadePasso1);
             HttpResponse<String> pPasso1 = postProcessoCivelComTrilha(
                     trilha, "POST Passo1", credencialId, corpoPasso1, REF_PROCESSO_CIVEL);
             if (pareceFalhaPost(pPasso1)) {
@@ -642,8 +661,16 @@ public class ProjudiDistribuicaoService {
                         "POST Passo1",
                         pPasso1);
             }
-            trilha.ok("POST Passo1", pPasso1, "Dados do processo enviados");
+            trilha.ok(
+                    "POST Passo1",
+                    pPasso1,
+                    "Dados do processo enviados (Id_ProcessoPrioridade="
+                            + prioridadePasso1.idProcessoPrioridade()
+                            + ")");
             registrarHashFluxoHtml(trilha, "POST Passo1", corpo(pPasso1));
+            trilha.registrarInstrumentacao(
+                    "Prioridades HTML Passo1",
+                    ProjudiProcessoCivelHtmlUtil.formatarOpcoesProcessoPrioridade(corpo(pPasso1)));
             TokensFluxo tokens = ProjudiProcessoCivelHtmlUtil.extrairTokens(corpo(pPasso1));
             String paginaAssuntos = StringUtils.hasText(tokens.paginaAtual()) ? tokens.paginaAtual() : "2852";
 
@@ -678,7 +705,7 @@ public class ProjudiDistribuicaoService {
                     credencialId,
                     request.valorCausa(),
                     request.classeEfetiva(),
-                    request.prioridadeEfetiva(),
+                    prioridadePasso1,
                     tokens,
                     1,
                     autor,
@@ -701,7 +728,7 @@ public class ProjudiDistribuicaoService {
                         credencialId,
                         request.valorCausa(),
                         request.classeEfetiva(),
-                        request.prioridadeEfetiva(),
+                        prioridadePasso1,
                         tokens,
                         0,
                         reu,
@@ -723,7 +750,7 @@ public class ProjudiDistribuicaoService {
                     "POST avançar anexos",
                     credencialId,
                     ProjudiProcessoCivelInicialCorpoUtil.montarCorpoAvancarAnexos(
-                            request.valorCausa(), request.classeEfetiva(), request.prioridadeEfetiva()),
+                            request.valorCausa(), request.classeEfetiva(), prioridadePasso1),
                     REF_PROCESSO_CIVEL);
             if (pareceFalhaPost(pAnexos)) {
                 return falha(
@@ -1000,6 +1027,62 @@ public class ProjudiDistribuicaoService {
             trilha.registrarInstrumentacao("Corpo " + passo, sanitizarDetalhe(corpo, HASH_DIAG_MAX));
         }
         return postProcessoCivel(credencialId, corpo, referer);
+    }
+
+    /**
+     * Resolve o {@code Id_ProcessoPrioridade} de «Maior de 60 Anos» a partir do HTML do PROJUDI.
+     * O id {@code 6} do rascunho manual (.projudi) corresponde a «Réu Preso» na Vara Cível — não reutilizar fixo.
+     */
+    private Optional<ProjudiPrioridadeProcessoInicial> resolverPrioridadePasso1(
+            TrilhaExecucao trilha,
+            InicialRequest request,
+            String htmlReferencia,
+            Long credencialId) {
+        if (!Boolean.TRUE.equals(request.prioridadeMaior60Anos())) {
+            return Optional.of(request.prioridadeEfetiva());
+        }
+
+        trilha.registrarInstrumentacao(
+                "Prioridades HTML custas",
+                ProjudiProcessoCivelHtmlUtil.formatarOpcoesProcessoPrioridade(htmlReferencia));
+
+        Optional<Integer> idResolvido = ProjudiProcessoCivelHtmlUtil.idProcessoPrioridadePorRotulo(
+                htmlReferencia, ProjudiPrioridadeProcessoInicial.MAIOR_60_ANOS.rotulo());
+
+        if (idResolvido.isEmpty()) {
+            String corpoProbe = ProjudiProcessoCivelInicialCorpoUtil.montarCorpoPasso1Area(
+                    request.valorCausa(),
+                    "2852",
+                    "-1",
+                    request.classeEfetiva(),
+                    ProjudiPrioridadeProcessoInicial.NORMAL);
+            HttpResponse<String> probePasso1 = postProcessoCivelComTrilha(
+                    trilha, "POST Passo1 probe prioridade", credencialId, corpoProbe, REF_PROCESSO_CIVEL);
+            if (!pareceFalhaPost(probePasso1)) {
+                String htmlProbe = corpo(probePasso1);
+                trilha.registrarInstrumentacao(
+                        "Prioridades HTML probe Passo1",
+                        ProjudiProcessoCivelHtmlUtil.formatarOpcoesProcessoPrioridade(htmlProbe));
+                idResolvido = ProjudiProcessoCivelHtmlUtil.idProcessoPrioridadePorRotulo(
+                        htmlProbe, ProjudiPrioridadeProcessoInicial.MAIOR_60_ANOS.rotulo());
+            } else {
+                trilha.falha("POST Passo1 probe prioridade", probePasso1, "Falha ao carregar opções de prioridade.");
+            }
+        }
+
+        if (idResolvido.isEmpty()) {
+            trilha.falhaSemResposta(
+                    "Prioridade Passo1",
+                    "Não foi possível mapear «Maior de 60 Anos» no select Id_ProcessoPrioridade do PROJUDI.");
+            return Optional.empty();
+        }
+
+        ProjudiPrioridadeProcessoInicial prioridade =
+                request.prioridadeEfetiva(idResolvido.get());
+        trilha.okSemResposta(
+                "Prioridade Passo1",
+                "Maior de 60 Anos → Id_ProcessoPrioridade=" + prioridade.idProcessoPrioridade());
+        return Optional.of(prioridade);
     }
 
     private HttpResponse<String> postProcessoCivel(Long credencialId, String corpo, String referer) {
