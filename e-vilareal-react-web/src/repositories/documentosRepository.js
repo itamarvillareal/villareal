@@ -212,6 +212,22 @@ export async function gerarProcuracao({ pessoaId, cidadeEstado, data, processoId
   return postPdf('/api/documentos/procuracao', body, opts);
 }
 
+export async function gerarDeclaracaoRendimentos(
+  { pessoaId, exerceAtividadeRemunerada, cidadeEstado, data, processoId, codigoCliente, numeroInterno },
+  opts = {},
+) {
+  const body = {
+    pessoaId: Number(pessoaId),
+    exerceAtividadeRemunerada: Boolean(exerceAtividadeRemunerada),
+  };
+  if (cidadeEstado) body.cidadeEstado = cidadeEstado;
+  if (data) body.data = data;
+  if (processoId != null && processoId !== '') body.processoId = Number(processoId);
+  if (codigoCliente) body.codigoCliente = String(codigoCliente);
+  if (numeroInterno != null && numeroInterno !== '') body.numeroInterno = Number(numeroInterno);
+  return postPdf('/api/documentos/declaracao-rendimentos', body, opts);
+}
+
 export async function gerarContratoHonorarios(
   {
     pessoaId,
@@ -451,6 +467,16 @@ export function nomeArquivoProcuracaoPdf(nomeOutorgante) {
     .replace(/^_|_$/g, '')
     .slice(0, 40);
   return `procuracao_${base || 'cliente'}.pdf`;
+}
+
+export function nomeArquivoDeclaracaoPdf(nomeDeclarante) {
+  const base = (nomeDeclarante || 'cliente')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/^_|_$/g, '')
+    .slice(0, 40);
+  return `declaracao_${base || 'cliente'}.pdf`;
 }
 
 export function nomeArquivoContratoPdf(nomeContratante, sufixoModelo) {

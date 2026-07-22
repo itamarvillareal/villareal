@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
+  ClipboardPen,
   FileSignature,
   FileText,
   FileUp,
@@ -31,7 +32,9 @@ import {
   gerarContratoAluguel,
   gerarContratoHonorarios,
   gerarProcuracao,
+  gerarDeclaracaoRendimentos,
   nomeArquivoContratoPdf,
+  nomeArquivoDeclaracaoPdf,
   nomeArquivoPeticaoPdf,
   nomeArquivoProcuracaoPdf,
   previewConteudoContratoHonorarios,
@@ -43,6 +46,7 @@ import { ENDERECAMENTOS } from './constants.js';
 import { btnGhost, btnPrimary, btnSecondary } from './documentosStyles.js';
 import { CollapsibleSection } from './components/CollapsibleSection.jsx';
 import { ModalHomologacaoAcordo } from './components/ModalHomologacaoAcordo.jsx';
+import { ModalDeclaracaoAtividadeRemunerada } from '../../components/processos/ModalDeclaracaoAtividadeRemunerada.jsx';
 import { PreviewHomologacaoAcordo } from './components/PreviewHomologacaoAcordo.jsx';
 import { DadosProcesso, resolveEnderecamento } from './components/DadosProcesso.jsx';
 import { DadosPartes } from './components/DadosPartes.jsx';
@@ -169,6 +173,7 @@ const hojeBR = () => {
 const MODO_IA = 'ia';
 const MODO_MANUAL = 'manual';
 const MODO_PROCURACAO = 'procuracao';
+const MODO_DECLARACAO = 'declaracao';
 const MODO_CONTRATO = 'contrato';
 const MODO_MODELO = 'modelo';
 const MODO_ARQUIVO = 'arquivo';
@@ -361,12 +366,14 @@ export function GerarDocumento() {
 
   const [modo, setModo] = useState(() => {
     if (modoInicial === 'contrato') return MODO_CONTRATO;
+    if (modoInicial === 'declaracao') return MODO_DECLARACAO;
     if (modoInicial === 'arquivo') return MODO_ARQUIVO;
     return MODO_IA;
   });
   const modoIA = modo === MODO_IA;
   const modoManual = modo === MODO_MANUAL;
   const modoProcuracao = modo === MODO_PROCURACAO;
+  const modoDeclaracao = modo === MODO_DECLARACAO;
   const modoContrato = modo === MODO_CONTRATO;
   const modoModelo = modo === MODO_MODELO;
   const modoArquivo = modo === MODO_ARQUIVO;
@@ -385,6 +392,12 @@ export function GerarDocumento() {
     cidadeEstado: formatarLocalData(dadosProcesso?.cidadeEstado),
     nomeOutorgante: dadosProcesso?.nomeOutorgante || '',
   }));
+  const [formDeclaracao, setFormDeclaracao] = useState(() => ({
+    pessoaId: dadosProcesso?.pessoaIdOutorgante ? String(dadosProcesso.pessoaIdOutorgante) : '',
+    cidadeEstado: formatarLocalData(dadosProcesso?.cidadeEstado),
+    nomeDeclarante: dadosProcesso?.nomeOutorgante || '',
+  }));
+  const [modalDeclaracaoAberta, setModalDeclaracaoAberta] = useState(false);
   const [formContrato, setFormContrato] = useState(() => ({
     modelo: MODELO_CONTRATO_HONORARIOS,
     pessoaId: dadosProcesso?.pessoaIdOutorgante ? String(dadosProcesso.pessoaIdOutorgante) : '',
@@ -669,6 +682,12 @@ export function GerarDocumento() {
       cidadeEstado: LOCAL_DATA_PADRAO,
       nomeOutorgante: '',
     });
+    setFormDeclaracao({
+      pessoaId: '',
+      cidadeEstado: LOCAL_DATA_PADRAO,
+      nomeDeclarante: '',
+    });
+    setModalDeclaracaoAberta(false);
     setFormContrato({
       modelo: MODELO_CONTRATO_HONORARIOS,
       pessoaId: '',
@@ -931,6 +950,34 @@ export function GerarDocumento() {
     }
   };
 
+  const handleGerarDeclaracaoRendimentos = async (exerceAtividadeRemunerada) => {
+    setMensagemErro('');
+    const pessoaId = Number(formDeclaracao.pessoaId);
+    if (!Number.isFinite(pessoaId) || pessoaId <= 0) {
+      setErrors({ pessoaIdDeclaracao: 'Informe o ID da pessoa (declarante).' });
+      return;
+    }
+    setErrors({});
+    setLoading(true);
+    try {
+      const blob = await gerarDeclaracaoRendimentos({
+        pessoaId,
+        exerceAtividadeRemunerada,
+        cidadeEstado: formDeclaracao.cidadeEstado?.trim() || LOCAL_DATA_PADRAO,
+        data: extrairDataIsoDeLocalData(formDeclaracao.cidadeEstado) || hojeIso(),
+        processoId: processoApiId,
+        codigoCliente: codigoClienteProcesso,
+        numeroInterno: numeroInternoProcesso,
+      });
+      downloadPdfBlob(blob, nomeArquivoDeclaracaoPdf(formDeclaracao.nomeDeclarante));
+      setModalDeclaracaoAberta(false);
+    } catch (e) {
+      setMensagemErro(e?.message || 'Falha ao gerar declaração de rendimentos.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const montarPayloadContratoHonorarios = (conteudoEditado) => {
     const pessoaId = Number(formContrato.pessoaId);
     return {
@@ -1145,6 +1192,16 @@ export function GerarDocumento() {
       await handleGerarProcuracao();
       return;
     }
+    if (modoDeclaracao) {
+      const pessoaId = Number(formDeclaracao.pessoaId);
+      if (!Number.isFinite(pessoaId) || pessoaId <= 0) {
+        setErrors({ pessoaIdDeclaracao: 'Informe o ID da pessoa (declarante).' });
+        return;
+      }
+      setErrors({});
+      setModalDeclaracaoAberta(true);
+      return;
+    }
     if (modoContrato) {
       await handleGerarContrato();
       return;
@@ -1328,6 +1385,24 @@ export function GerarDocumento() {
           >
             <FileSignature className="h-4 w-4" aria-hidden />
             Procuração
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={modoDeclaracao}
+            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${
+              modoDeclaracao
+                ? 'bg-white text-cyan-700 shadow-sm dark:bg-slate-900 dark:text-cyan-300'
+                : 'text-slate-600 hover:text-slate-900 dark:text-slate-400'
+            }`}
+            onClick={() => {
+              setModo(MODO_DECLARACAO);
+              setErrors({});
+              setMensagemErro('');
+            }}
+          >
+            <ClipboardPen className="h-4 w-4" aria-hidden />
+            Declaração
           </button>
           <button
             type="button"
@@ -1710,6 +1785,47 @@ export function GerarDocumento() {
               </label>
             </div>
           </CollapsibleSection>
+        ) : modoDeclaracao ? (
+          <CollapsibleSection title="Declaração de rendimentos" defaultOpen>
+            <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
+              Gera declaração nos termos da Lei 7.115/83. Ao gerar, você informará se o declarante
+              exerce atividade remunerada.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">
+                  ID da pessoa (declarante) *
+                </span>
+                <input
+                  type="number"
+                  min="1"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900"
+                  value={formDeclaracao.pessoaId}
+                  onChange={(e) => {
+                    setFormDeclaracao((f) => ({ ...f, pessoaId: e.target.value }));
+                    setErrors({});
+                    setMensagemErro('');
+                  }}
+                />
+                {errors.pessoaIdDeclaracao ? (
+                  <span className="mt-1 text-xs text-red-600">{errors.pessoaIdDeclaracao}</span>
+                ) : null}
+              </label>
+              <label className="block text-sm sm:col-span-2">
+                <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">
+                  Local e data (cidade/estado)
+                </span>
+                <input
+                  type="text"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-900"
+                  value={formDeclaracao.cidadeEstado}
+                  onChange={(e) =>
+                    setFormDeclaracao((f) => ({ ...f, cidadeEstado: e.target.value }))
+                  }
+                />
+              </label>
+            </div>
+          </CollapsibleSection>
         ) : modoContrato ? (
           <CollapsibleSection title="Contrato" defaultOpen>
             <div className="mb-4 grid gap-4">
@@ -1990,6 +2106,8 @@ export function GerarDocumento() {
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                 {modoProcuracao
                   ? 'Gerando procuração…'
+                  : modoDeclaracao
+                    ? 'Gerando declaração…'
                   : modoContrato
                     ? contratoHonorarios
                       ? 'Preparando prévia…'
@@ -2002,6 +2120,8 @@ export function GerarDocumento() {
               </>
             ) : modoProcuracao ? (
               'Gerar Procuração'
+            ) : modoDeclaracao ? (
+              'Gerar Declaração'
             ) : modoContrato ? (
               contratoHonorarios ? 'Visualizar prévia' : `Gerar ${rotuloModeloContrato(formContrato.modelo)}`
             ) : modoManual ? (
@@ -2087,6 +2207,17 @@ export function GerarDocumento() {
         }
         boletos={homologCalc.boletos}
         initialClausulas={homologPreviewParams?.clausulas}
+      />
+
+      <ModalDeclaracaoAtividadeRemunerada
+        aberto={modalDeclaracaoAberta}
+        nomeDeclarante={formDeclaracao.nomeDeclarante}
+        gerando={loading}
+        onConfirmar={(exerce) => void handleGerarDeclaracaoRendimentos(exerce)}
+        onCancelar={() => {
+          if (loading) return;
+          setModalDeclaracaoAberta(false);
+        }}
       />
     </div>
   );
