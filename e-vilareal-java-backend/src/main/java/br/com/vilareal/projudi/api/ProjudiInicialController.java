@@ -6,6 +6,7 @@ import br.com.vilareal.processo.application.DiagnosticoAssinaturaAutomaticaServi
 import br.com.vilareal.projudi.api.dto.InicialArquivoAssinadoResponse;
 import br.com.vilareal.projudi.application.ProjudiInicialAssinaturaService;
 import br.com.vilareal.projudi.ProjudiClasseProcessoInicial;
+import br.com.vilareal.projudi.ProjudiInicialOpcoesPasso3;
 import br.com.vilareal.projudi.ProjudiAssuntoCatalogoService;
 import br.com.vilareal.projudi.ProjudiAssuntoCatalogoService.ClasseItem;
 import br.com.vilareal.projudi.ProjudiAssuntoCatalogoService.ModalidadeSugeridaResponse;
@@ -130,7 +131,10 @@ public class ProjudiInicialController {
             @RequestParam("pdfs") List<MultipartFile> pdfs,
             @RequestParam(value = "idArquivoTipos", required = false) List<Integer> idArquivoTipos,
             @RequestParam(required = false) Integer idProcessoTipo,
-            @RequestParam(required = false) Integer processoTipoCodigo)
+            @RequestParam(required = false) Integer processoTipoCodigo,
+            @RequestParam(required = false) Boolean segredoJustica,
+            @RequestParam(required = false) Boolean naoMarcarAudiencia,
+            @RequestParam(required = false) Boolean juizo100Digital)
             throws IOException {
         List<Long> idsReu = normalizarPessoaIdsReu(pessoaIdReu, null, pessoaIdsReu);
         InicialRequest request = montarInicialRequest(
@@ -141,7 +145,10 @@ public class ProjudiInicialController {
                 pdfs,
                 idArquivoTipos,
                 idProcessoTipo,
-                processoTipoCodigo);
+                processoTipoCodigo,
+                segredoJustica,
+                naoMarcarAudiencia,
+                juizo100Digital);
         log.info(
                 "preparar-inicial credencialId={} assuntos={} autor={} reus={} arquivos={}",
                 credencialId,
@@ -172,7 +179,10 @@ public class ProjudiInicialController {
             @RequestParam(defaultValue = "false") boolean confirmar,
             @RequestParam(required = false) Long processoIdOrigem,
             @RequestParam(required = false) Integer idProcessoTipo,
-            @RequestParam(required = false) Integer processoTipoCodigo)
+            @RequestParam(required = false) Integer processoTipoCodigo,
+            @RequestParam(required = false) Boolean segredoJustica,
+            @RequestParam(required = false) Boolean naoMarcarAudiencia,
+            @RequestParam(required = false) Boolean juizo100Digital)
             throws IOException {
         List<Long> idsReu = normalizarPessoaIdsReu(pessoaIdReu, null, pessoaIdsReu);
         InicialRequest request = montarInicialRequest(
@@ -183,7 +193,10 @@ public class ProjudiInicialController {
                 pdfs,
                 idArquivoTipos,
                 idProcessoTipo,
-                processoTipoCodigo);
+                processoTipoCodigo,
+                segredoJustica,
+                naoMarcarAudiencia,
+                juizo100Digital);
         log.info(
                 "distribuir-inicial credencialId={} confirmar={} processoIdOrigem={} assuntos={} reus={} arquivos={}",
                 credencialId,
@@ -283,7 +296,10 @@ public class ProjudiInicialController {
             List<MultipartFile> pdfs,
             List<Integer> idArquivoTipos,
             Integer idProcessoTipo,
-            Integer processoTipoCodigo)
+            Integer processoTipoCodigo,
+            Boolean segredoJustica,
+            Boolean naoMarcarAudiencia,
+            Boolean juizo100Digital)
             throws IOException {
         if (pessoaIdsReu == null || pessoaIdsReu.isEmpty()) {
             throw new IllegalArgumentException("pessoaIdsReu é obrigatório (ao menos um réu).");
@@ -306,7 +322,10 @@ public class ProjudiInicialController {
                     pdfs.get(i).getBytes(), idTipo, pdfs.get(i).getOriginalFilename()));
         }
         ProjudiClasseProcessoInicial classe = assuntoCatalogoService.resolverClasse(idProcessoTipo, processoTipoCodigo);
-        return new InicialRequest(valorCausa, assuntos, pessoaIdAutor, List.copyOf(pessoaIdsReu), arquivos, classe);
+        ProjudiInicialOpcoesPasso3 opcoesPasso3 =
+                ProjudiInicialOpcoesPasso3.of(segredoJustica, naoMarcarAudiencia, juizo100Digital);
+        return new InicialRequest(
+                valorCausa, assuntos, pessoaIdAutor, List.copyOf(pessoaIdsReu), arquivos, classe, opcoesPasso3);
     }
 
     private static List<Long> normalizarPessoaIdsReu(

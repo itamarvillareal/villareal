@@ -51,6 +51,20 @@ class ProjudiProcessoCivelInicialCorpoUtilTest {
         assertTrue(corpo.contains("Id_ProcessoTipo=114&ProcessoTipoCodigo=1159"));
         assertTrue(corpo.contains("Comarca=AN%C1POLIS"));
         assertTrue(corpo.contains("Id_AreaDistribuicao=19"));
+        assertTrue(corpo.contains("ProcessoPrioridade=Normal"));
+        assertTrue(corpo.contains("Id_ProcessoPrioridade=1"));
+    }
+
+    @Test
+    void montarCorpoPasso1Area_despejoVaraCivel() {
+        String corpo = ProjudiProcessoCivelInicialCorpoUtil.montarCorpoPasso1Area(
+                "2.500,00", "2852", "-1", ProjudiClasseProcessoInicial.DESPEJO_VARA_CIVEL);
+        assertTrue(corpo.contains("Id_ProcessoTipo=109&ProcessoTipoCodigo=1093"));
+        assertTrue(corpo.contains("AreaDistribuicao=An%E1polis+-+C%EDvel"));
+        assertTrue(corpo.contains("Id_AreaDistribuicao=735"));
+        assertTrue(corpo.contains("ForumCodigo=3"));
+        assertTrue(corpo.contains("ProcessoPrioridade=Maior+de+60+Anos"));
+        assertTrue(corpo.contains("Id_ProcessoPrioridade=6"));
     }
 
     @Test

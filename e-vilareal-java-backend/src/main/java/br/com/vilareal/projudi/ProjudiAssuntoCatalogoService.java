@@ -61,11 +61,15 @@ public class ProjudiAssuntoCatalogoService {
                     "DIREITO DO CONSUMIDOR > Responsabilidade do Fornecedor > Indenização por Dano Material"),
             new AssuntoItem(
                     1991,
-                    "DIREITO CIVIL > Coisas > Propriedade > Condomínio em Edifício > Despesas Condominiais"));
+                    "DIREITO CIVIL > Coisas > Propriedade > Condomínio em Edifício > Despesas Condominiais"),
+            new AssuntoItem(
+                    8574,
+                    "DIREITO CIVIL > Obrigações > Espécies de Contratos > Locação de Imóvel > Despejo por Inadimplemento"));
 
     private static final List<ClasseItem> CLASSES = List.of(
             toClasseItem(ProjudiClasseProcessoInicial.JEC),
-            toClasseItem(ProjudiClasseProcessoInicial.EXECUCAO_TITULO_EXTRAJUDICIAL));
+            toClasseItem(ProjudiClasseProcessoInicial.EXECUCAO_TITULO_EXTRAJUDICIAL),
+            toClasseItem(ProjudiClasseProcessoInicial.DESPEJO_VARA_CIVEL));
 
     /**
      * Modalidades conhecidas — ordem das regras de natureza abaixo segue a mesma prioridade.
@@ -80,11 +84,17 @@ public class ProjudiAssuntoCatalogoService {
                     "COBRANCA_JEC",
                     "Cobrança (Juizado Especial Cível)",
                     ProjudiClasseProcessoInicial.JEC.id(),
-                    451));
+                    451),
+            new ModalidadeItem(
+                    "DESPEJO_VARA_CIVEL",
+                    "Despejo por Inadimplemento (Vara Cível)",
+                    ProjudiClasseProcessoInicial.DESPEJO_VARA_CIVEL.id(),
+                    8574));
 
     /** natureza normalizada (contém) → modalidade. Ordem importa (primeira regra que casar). */
     private static final List<Map.Entry<String, String>> REGRAS_MODALIDADE = List.of(
             Map.entry("EXECUCAO DE TAXA CONDOMINIAL", "EXECUCAO_TAXA_CONDOMINIAL"),
+            Map.entry("DESPEJO", "DESPEJO_VARA_CIVEL"),
             Map.entry("COBRANCA", "COBRANCA_JEC"));
 
     private final ProjudiAssuntoCadastroRepository assuntoCadastroRepository;
@@ -205,16 +215,7 @@ public class ProjudiAssuntoCatalogoService {
 
     public ProjudiClasseProcessoInicial resolverClasse(Integer idProcessoTipo, Integer processoTipoCodigo) {
         if (idProcessoTipo != null && processoTipoCodigo != null) {
-            for (ClasseItem item : CLASSES) {
-                if (item.idProcessoTipo() == idProcessoTipo && item.processoTipoCodigo() == processoTipoCodigo) {
-                    return toClasseProcesso(item);
-                }
-            }
-            throw new IllegalArgumentException(
-                    "Classe PROJUDI desconhecida: Id_ProcessoTipo="
-                            + idProcessoTipo
-                            + " ProcessoTipoCodigo="
-                            + processoTipoCodigo);
+            return ProjudiClasseProcessoInicial.porCodigos(idProcessoTipo, processoTipoCodigo);
         }
         return ProjudiClasseProcessoInicial.JEC;
     }
@@ -265,12 +266,7 @@ public class ProjudiAssuntoCatalogoService {
     }
 
     private static ProjudiClasseProcessoInicial toClasseProcesso(ClasseItem item) {
-        return new ProjudiClasseProcessoInicial(
-                item.id(),
-                item.rotulo(),
-                item.idProcessoTipo(),
-                item.processoTipoCodigo(),
-                item.processoTipoLabel());
+        return ProjudiClasseProcessoInicial.porId(item.id());
     }
 
     static String normalizarNaturezaAcao(String naturezaAcao) {

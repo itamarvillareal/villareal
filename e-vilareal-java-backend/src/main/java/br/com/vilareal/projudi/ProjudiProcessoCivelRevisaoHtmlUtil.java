@@ -48,12 +48,17 @@ final class ProjudiProcessoCivelRevisaoHtmlUtil {
 
     static final int DIAGNOSTICO_DESTINO_MAX = 800;
 
-    /** Regra do escritório: Juízo 100% Digital sempre desmarcado — nunca enviar no POST final. */
-    private static final String CAMPO_DIGITAL100 = "digital100";
-
     private ProjudiProcessoCivelRevisaoHtmlUtil() {}
 
     record FormularioRevisao(String action, Map<String, String> campos, String botaoNome, String botaoValor) {
+
+        FormularioRevisao comOpcoesPasso3(ProjudiInicialOpcoesPasso3 opcoes) {
+            Map<String, String> camposNovos = new LinkedHashMap<>(campos);
+            if (opcoes != null) {
+                opcoes.aplicarEmCampos(camposNovos);
+            }
+            return new FormularioRevisao(action, camposNovos, botaoNome, botaoValor);
+        }
 
         String montarCorpoPostIso8859() {
             Map<String, String> camposFiltrados = filtrarCamposPasso3Final(campos);
@@ -331,12 +336,11 @@ final class ProjudiProcessoCivelRevisaoHtmlUtil {
     }
 
     private static boolean ehCampoProibidoPasso3(String name) {
-        return CAMPO_DIGITAL100.equalsIgnoreCase(name.trim());
+        return false;
     }
 
     /**
-     * Remove campos que não devem ir no POST final do Passo 3.
-     * {@code digital100} nunca é enviado (regra do escritório); demais opcionais já foram filtrados na extração.
+     * Campos opcionais do Passo 3 — estado final definido por {@link ProjudiInicialOpcoesPasso3} na distribuição.
      */
     static Map<String, String> filtrarCamposPasso3Final(Map<String, String> campos) {
         Map<String, String> filtrados = new LinkedHashMap<>();

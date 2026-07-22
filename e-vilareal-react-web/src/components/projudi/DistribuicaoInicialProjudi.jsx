@@ -84,6 +84,7 @@ function montarFormDataInicial({
   processoTipoCodigo,
   processoIdOrigem,
   confirmar,
+  opcoesPasso3,
 }) {
   const fd = new FormData();
   fd.append('credencialId', String(credencialId).trim() || '1');
@@ -108,6 +109,11 @@ function montarFormDataInicial({
   }
   if (confirmar != null) {
     fd.append('confirmar', confirmar ? 'true' : 'false');
+  }
+  if (opcoesPasso3) {
+    fd.append('segredoJustica', opcoesPasso3.segredoJustica ? 'true' : 'false');
+    fd.append('naoMarcarAudiencia', opcoesPasso3.naoMarcarAudiencia ? 'true' : 'false');
+    fd.append('juizo100Digital', opcoesPasso3.juizo100Digital ? 'true' : 'false');
   }
   return fd;
 }
@@ -260,6 +266,9 @@ export function DistribuicaoInicialProjudi() {
   const [modalidadeSugerida, setModalidadeSugerida] = useState(null);
   const [idProcessoTipo, setIdProcessoTipo] = useState(CLASSE_JEC_PADRAO.idProcessoTipo);
   const [processoTipoCodigo, setProcessoTipoCodigo] = useState(CLASSE_JEC_PADRAO.processoTipoCodigo);
+  const [segredoJustica, setSegredoJustica] = useState(false);
+  const [naoMarcarAudiencia, setNaoMarcarAudiencia] = useState(false);
+  const [juizo100Digital, setJuizo100Digital] = useState(false);
   const sugestaoAplicadaRef = useRef(false);
   const [linhasP7s, setLinhasP7s] = useState([]);
 
@@ -496,6 +505,12 @@ export function DistribuicaoInicialProjudi() {
       (c) => c.idProcessoTipo === idProcessoTipo && c.processoTipoCodigo === processoTipoCodigo,
     ) ?? null;
 
+  const opcoesPasso3 = {
+    segredoJustica,
+    naoMarcarAudiencia,
+    juizo100Digital,
+  };
+
   const voltarParaProcesso = () => {
     if (dadosProcesso?.codigoCliente || dadosProcesso?.numeroInterno || dadosProcesso?.processoApiId) {
       navigate(
@@ -527,6 +542,7 @@ export function DistribuicaoInicialProjudi() {
         linhasP7s,
         idProcessoTipo,
         processoTipoCodigo,
+        opcoesPasso3,
       });
       const res = await prepararInicial(fd);
       setResultado(res);
@@ -561,6 +577,7 @@ export function DistribuicaoInicialProjudi() {
         processoTipoCodigo,
         processoIdOrigem: dadosProcesso?.processoApiId,
         confirmar: true,
+        opcoesPasso3,
       });
       const res = await distribuirInicial(fd);
       setResultado(res);
@@ -1008,6 +1025,58 @@ export function DistribuicaoInicialProjudi() {
                 ))}
               </ul>
             ) : null}
+          </section>
+
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+            <h2 className="text-sm font-semibold text-slate-800">Opções do Passo 3 (revisão PROJUDI)</h2>
+            <p className="text-xs text-slate-600">
+              Configure aqui as três opções da tela de confirmação do PROJUDI antes de distribuir. Ao clicar em{' '}
+              <strong>Distribuir no PROJUDI</strong>, o sistema envia estas escolhas no POST final.
+            </p>
+            <div className="space-y-2">
+              <label className="flex items-start gap-2 text-sm text-slate-800 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={segredoJustica}
+                  onChange={(ev) => setSegredoJustica(ev.target.checked)}
+                />
+                <span>
+                  <strong>Segredo de Justiça</strong>
+                  <span className="block text-xs text-slate-500">
+                    Marque se o processo envolve segredo de justiça.
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2 text-sm text-slate-800 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={naoMarcarAudiencia}
+                  onChange={(ev) => setNaoMarcarAudiencia(ev.target.checked)}
+                />
+                <span>
+                  <strong>Não Marcar Audiência</strong>
+                  <span className="block text-xs text-slate-500">
+                    Evita que o PROJUDI marque audiência automaticamente.
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2 text-sm text-slate-800 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={juizo100Digital}
+                  onChange={(ev) => setJuizo100Digital(ev.target.checked)}
+                />
+                <span>
+                  <strong>Deseja aderir ao Juízo 100% Digital?</strong>
+                  <span className="block text-xs text-slate-500">
+                    Implica adesão às regras do Juízo 100% Digital (Decreto Judiciário 837/2021).
+                  </span>
+                </span>
+              </label>
+            </div>
           </section>
 
           {dadosProcesso && validandoProntidao ? (

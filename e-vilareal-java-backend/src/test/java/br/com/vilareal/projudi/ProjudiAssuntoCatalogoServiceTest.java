@@ -35,13 +35,15 @@ class ProjudiAssuntoCatalogoServiceTest {
         assertTrue(lista.stream().anyMatch(a -> a.idAssunto() == 451));
         assertTrue(lista.stream().anyMatch(a -> a.idAssunto() == 985));
         assertTrue(lista.stream().anyMatch(a -> a.idAssunto() == 1991));
+        assertTrue(lista.stream().anyMatch(a -> a.idAssunto() == 8574));
     }
 
     @Test
-    void listarClasses_contemJecEExecucao() {
+    void listarClasses_contemJecExecucaoEDespejoVaraCivel() {
         var classes = service.listarClasses();
         assertTrue(classes.stream().anyMatch(c -> c.idProcessoTipo() == 162 && c.processoTipoCodigo() == 1436));
         assertTrue(classes.stream().anyMatch(c -> c.idProcessoTipo() == 114 && c.processoTipoCodigo() == 1159));
+        assertTrue(classes.stream().anyMatch(c -> c.idProcessoTipo() == 109 && c.processoTipoCodigo() == 1093));
     }
 
     @Test
@@ -51,6 +53,15 @@ class ProjudiAssuntoCatalogoServiceTest {
         assertEquals(162, res.idProcessoTipo());
         assertEquals(1436, res.processoTipoCodigo());
         assertEquals("COBRANCA_JEC", res.modalidadeId());
+    }
+
+    @Test
+    void sugerir_despejoRetorna8574VaraCivel() {
+        var res = service.sugerirModalidade("AÇÃO DE DESPEJO POR INADIMPLEMENTO");
+        assertEquals(8574, res.idAssuntoSugerido());
+        assertEquals(109, res.idProcessoTipo());
+        assertEquals(1093, res.processoTipoCodigo());
+        assertEquals("DESPEJO_VARA_CIVEL", res.modalidadeId());
     }
 
     @Test

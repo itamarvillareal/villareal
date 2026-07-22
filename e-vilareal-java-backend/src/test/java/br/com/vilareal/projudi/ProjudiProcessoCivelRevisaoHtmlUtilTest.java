@@ -155,7 +155,7 @@ class ProjudiProcessoCivelRevisaoHtmlUtilTest {
     }
 
     @Test
-    void extrairFormulario_digital100MarcadoNoHtml_naoEntraNoCorpoFinal() {
+    void extrairFormulario_digital100MarcadoNoHtml_entraNoCorpoQuandoOpcaoAtiva() {
         String html =
                 """
                 <form id="Formulario" action="ProcessoCivel">
@@ -171,10 +171,33 @@ class ProjudiProcessoCivelRevisaoHtmlUtilTest {
                 """;
         var form = ProjudiProcessoCivelRevisaoHtmlUtil.extrairFormularioDistribuicao(html);
         assertTrue(form.isPresent());
-        assertTrue(form.get().campos().keySet().stream().noneMatch(n -> n.equalsIgnoreCase("digital100")));
-        String corpo = form.get().montarCorpoPostIso8859();
+        assertEquals("true", form.get().campos().get("digital100"));
+        var formFinal = form.get().comOpcoesPasso3(new ProjudiInicialOpcoesPasso3(false, false, false));
+        String corpo = formFinal.montarCorpoPostIso8859();
         assertFalse(corpo.toLowerCase(Locale.ROOT).contains("digital100"));
+        var formComDigital = form.get().comOpcoesPasso3(new ProjudiInicialOpcoesPasso3(false, false, true));
+        corpo = formComDigital.montarCorpoPostIso8859();
+        assertTrue(corpo.contains("digital100=true"));
         assertTrue(corpo.contains("imgInserir=Confirmar"));
+    }
+
+    @Test
+    void comOpcoesPasso3_aplicaTresCheckboxes() {
+        String html =
+                """
+                <form id="Formulario" action="ProcessoCivel">
+                  <input type="hidden" name="PaginaAtual" value="5"/>
+                  <input type="hidden" name="PassoEditar" value="6"/>
+                  <input type="hidden" name="__Pedido__" value="-1"/>
+                  <input type="submit" name="imgInserir" value="Confirmar"/>
+                </form>
+                """;
+        var form = ProjudiProcessoCivelRevisaoHtmlUtil.extrairFormularioDistribuicao(html);
+        assertTrue(form.isPresent());
+        var formFinal = form.get().comOpcoesPasso3(new ProjudiInicialOpcoesPasso3(true, true, false));
+        assertEquals("true", formFinal.campos().get("SegredoJustica"));
+        assertEquals("false", formFinal.campos().get("NaoMarcarAudiencia"));
+        assertTrue(formFinal.campos().keySet().stream().noneMatch(n -> n.equalsIgnoreCase("digital100")));
     }
 
     @Test

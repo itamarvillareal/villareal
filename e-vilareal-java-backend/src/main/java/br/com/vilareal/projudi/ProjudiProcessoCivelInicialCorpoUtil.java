@@ -91,23 +91,25 @@ final class ProjudiProcessoCivelInicialCorpoUtil {
         sb.append("&dependenciaProcesso=").append(DEPENDENCIA_PROCESSO);
         sb.append("&numeroCompletoGuiaInicial=&ProcessoNumero=&ProcessoDependente=&ProcessoNumeroDependente=");
         if (comarcaPreenchida) {
-            sb.append("&Comarca=").append(encIso("ANÁPOLIS"));
-            sb.append("&Id_Comarca=2");
-            sb.append("&AreaDistribuicao=").append(encIso("Anápolis - Juizados Especiais Cíveis"));
-            sb.append("&ForumCodigo=7&Id_AreaDistribuicao=19");
+            sb.append("&Comarca=").append(encIso(classeEfetiva.comarca()));
+            sb.append("&Id_Comarca=").append(classeEfetiva.idComarca());
+            sb.append("&AreaDistribuicao=").append(encIso(classeEfetiva.areaDistribuicao()));
+            sb.append("&ForumCodigo=").append(classeEfetiva.forumCodigo());
+            sb.append("&Id_AreaDistribuicao=").append(classeEfetiva.idAreaDistribuicao());
             sb.append("&ProcessoTipo=").append(encIso(classeEfetiva.processoTipoLabel()));
             sb.append("&Id_ProcessoTipo=")
                     .append(classeEfetiva.idProcessoTipo())
                     .append("&ProcessoTipoCodigo=")
                     .append(classeEfetiva.processoTipoCodigo())
                     .append("&posicaoLista=");
-            sb.append("&ProcessoPrioridade=Normal&Id_ProcessoPrioridade=1");
+            sb.append("&ProcessoPrioridade=").append(encIso(classeEfetiva.processoPrioridade()));
+            sb.append("&Id_ProcessoPrioridade=").append(classeEfetiva.idProcessoPrioridade());
             sb.append("&Valor=").append(encIso(valorCausa));
             sb.append("&TcoNumero=&Rai=&posicaoLista=");
         } else {
             sb.append("&Comarca=&Id_Comarca=&AreaDistribuicao=&ForumCodigo=&Id_AreaDistribuicao=");
             sb.append("&ProcessoTipo=&Id_ProcessoTipo=&ProcessoTipoCodigo=&posicaoLista=");
-            sb.append("&ProcessoPrioridade=Normal&Id_ProcessoPrioridade=1");
+            sb.append("&ProcessoPrioridade=&Id_ProcessoPrioridade=");
             sb.append("&Valor=&TcoNumero=&Rai=&posicaoLista=");
         }
         return sb.toString();

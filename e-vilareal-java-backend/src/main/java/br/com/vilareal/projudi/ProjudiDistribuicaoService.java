@@ -66,10 +66,15 @@ public class ProjudiDistribuicaoService {
             Long pessoaIdAutor,
             List<Long> pessoaIdsReu,
             List<ArquivoPeticao> arquivos,
-            ProjudiClasseProcessoInicial classe) {
+            ProjudiClasseProcessoInicial classe,
+            ProjudiInicialOpcoesPasso3 opcoesPasso3) {
 
         public ProjudiClasseProcessoInicial classeEfetiva() {
             return classe != null ? classe : ProjudiClasseProcessoInicial.JEC;
+        }
+
+        public ProjudiInicialOpcoesPasso3 opcoesPasso3Efetivas() {
+            return opcoesPasso3 != null ? opcoesPasso3 : ProjudiInicialOpcoesPasso3.PADRAO;
         }
     }
 
@@ -324,26 +329,27 @@ public class ProjudiDistribuicaoService {
                     trilha);
         }
         FormularioRevisao form = formOpt.get();
+        FormularioRevisao formComOpcoes = form.comOpcoesPasso3(request.opcoesPasso3Efetivas());
         trilha.okSemResposta(
                 "Scraping Passo3",
                 "action="
-                        + form.action()
+                        + formComOpcoes.action()
                         + " botão="
-                        + form.botaoNome()
+                        + formComOpcoes.botaoNome()
                         + "="
-                        + form.botaoValor()
+                        + formComOpcoes.botaoValor()
                         + " hidden+checkbox="
-                        + form.campos().size()
+                        + formComOpcoes.campos().size()
                         + " nomes="
-                        + String.join(",", form.campos().keySet()));
-        String corpoEnvio = form.montarCorpoPostIso8859();
+                        + String.join(",", formComOpcoes.campos().keySet()));
+        String corpoEnvio = formComOpcoes.montarCorpoPostIso8859();
         trilha.registrarInstrumentacao(
                 "Corpo Passo3 (envio)",
-                ProjudiProcessoCivelRevisaoHtmlUtil.formatarCorpoPasso3(form));
+                ProjudiProcessoCivelRevisaoHtmlUtil.formatarCorpoPasso3(formComOpcoes));
         trilha.registrarInstrumentacao(
                 "Corpo Passo3 (ISO-8859-1)",
                 sanitizarDetalhe(corpoEnvio, HASH_DIAG_MAX));
-        String pedidoForm = ProjudiProcessoCivelRevisaoHtmlUtil.pedidoValorNoFormulario(form);
+        String pedidoForm = ProjudiProcessoCivelRevisaoHtmlUtil.pedidoValorNoFormulario(formComOpcoes);
         String hashRevisaoHtml = ProjudiProcessoCivelHtmlUtil.hashFluxoPreferidoNoHtml(htmlOut.html);
         trilha.registrarInstrumentacao(
                 "Controle Passo3",
