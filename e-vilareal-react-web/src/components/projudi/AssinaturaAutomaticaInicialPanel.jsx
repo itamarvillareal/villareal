@@ -3,15 +3,14 @@ import { FolderOpen, Loader2, PenLine, RefreshCw, Trash2, Upload, X } from 'luci
 import {
   assinarAutomaticoInicial,
   assinarAutomaticoInicialUpload,
-  baixarP7sAssinadoInicial,
   cancelarLoteAssinaturaInicial,
   consultarLoteAssinaturaInicial,
   excluirArquivoFilaInicial,
   excluirPeticaoFilaInicial,
-  listarArquivosAssinadosInicial,
   reliberarLoteAssinaturaInicial,
 } from '../../api/iniciaisProjudiApi.js';
 import { listarPorProcesso } from '../../api/peticoesProjudiApi.js';
+import { baixarLinhasP7sAssinadosInicial } from '../../domain/carregarP7sAssinadosInicial.js';
 import { chavePeticaoInicialDistribuicao } from '../../domain/peticaoInicialProjudi.js';
 import { isArquivoAssinavel } from '../../domain/peticaoArquivo.js';
 import { mensagemErroAmigavel } from '../../utils/mensagemErroAmigavel.js';
@@ -27,23 +26,6 @@ const MSG_TOKEN_OCUPADO =
 
 function erroFilaProjudiBloqueada(msg) {
   return String(msg ?? '').includes('já constam na fila PROJUDI');
-}
-
-function nomeArquivoP7s(nomeOriginal, nomeP7s) {
-  const base = String(nomeOriginal ?? '').trim();
-  if (base.toLowerCase().endsWith('.p7s')) return base;
-  if (base.toLowerCase().endsWith('.pdf')) return `${base.slice(0, -4)}.p7s`;
-  if (base) return `${base}.p7s`;
-  return String(nomeP7s ?? 'documento.p7s');
-}
-
-function normalizarPeticaoIds(input) {
-  if (input == null) return null;
-  if (Array.isArray(input)) {
-    const ids = input.filter((id) => id != null);
-    return ids.length ? ids : null;
-  }
-  return [input];
 }
 
 function aguardar(ms) {
@@ -153,74 +135,38 @@ export function AssinaturaAutomaticaInicialPanel({
   };
 
   const carregarJaAssinadosSeExistirem = async () => {
-    const arquivos = await listarArquivosAssinadosInicial({ codigoCliente, numeroInterno });
-    if (!Array.isArray(arquivos) || arquivos.length === 0) return false;
-    await carregarP7sAssinados(null, { fecharModal: true });
+    const linhas = await baixarLinhasP7sAssinadosInicial(codigoCliente, numeroInterno);
+    if (!linhas.length) return false;
+    await Promise.resolve(onArquivosAssinados(linhas));
+    onToast?.(`${linhas.length} arquivo(s) .p7s já assinados carregados na lista de protocolo.`);
+    setFase('concluido');
+    setAtivo(false);
+    pararPoll();
+    setTimeout(() => fecharModal(), 700);
     return true;
   };
 
-  const listarTodosArquivosAssinados = async (peticaoIdsFiltro) => {
-    const ids = normalizarPeticaoIds(peticaoIdsFiltro);
-    if (ids) {
-      const partes = await Promise.all(
-        ids.map((peticaoId) =>
-          listarArquivosAssinadosInicial({ codigoCliente, numeroInterno, peticaoId }),
-        ),
-      );
-      const vistos = new Set();
-      const out = [];
-      for (const lista of partes) {
-        for (const arq of lista || []) {
-          if (arq?.arquivoId == null || vistos.has(arq.arquivoId)) continue;
-          vistos.add(arq.arquivoId);
-          out.push(arq);
-        }
-      }
-      return out;
-    }
-    const lista = await listarArquivosAssinadosInicial({ codigoCliente, numeroInterno });
-    return Array.isArray(lista) ? lista : [];
-  };
-
-  const carregarP7sAssinados = async (peticaoIdsFiltro = null, { fecharModal = false } = {}) => {
+  /** Após lote CONCLUIDO (ou retry): baixa todos os .p7s ASSINADA da inicial. */
+  const carregarP7sAssinados = async (_peticaoIdsFiltro = null, { fecharModal = false } = {}) => {
     const maxTentativas = 10;
-    let arquivos = [];
+    let linhas = [];
     for (let tentativa = 0; tentativa < maxTentativas; tentativa += 1) {
-      arquivos = await listarTodosArquivosAssinados(peticaoIdsFiltro);
-      if (arquivos.length > 0) break;
+      linhas = await baixarLinhasP7sAssinadosInicial(codigoCliente, numeroInterno);
+      if (linhas.length > 0) break;
       if (tentativa < maxTentativas - 1) {
         await aguardar(1500);
       }
     }
-    if (!Array.isArray(arquivos) || arquivos.length === 0) {
+    if (!linhas.length) {
       throw new Error('Nenhum .p7s assinado encontrado para este processo.');
     }
-    const linhas = await Promise.all(
-      arquivos.map(async (arq) => {
-        const nome = nomeArquivoP7s(arq.nomeOriginal, arq.nomeP7s);
-        const blob = await baixarP7sAssinadoInicial({
-          arquivoId: arq.arquivoId,
-          codigoCliente,
-          numeroInterno,
-          nomeFallback: nome,
-        });
-        const file = new File([blob], nome, { type: 'application/pkcs7-signature' });
-        return {
-          key: `assinado-${arq.arquivoId}`,
-          file,
-          idArquivoTipo: arq.idArquivoTipo ?? (arq.ordem === 1 ? 16 : 1),
-        };
-      }),
-    );
     await Promise.resolve(onArquivosAssinados(linhas));
     onToast?.(`${linhas.length} arquivo(s) .p7s carregado(s) na lista de protocolo.`);
     setFase('concluido');
     setAtivo(false);
     pararPoll();
     if (fecharModal) {
-      setTimeout(() => {
-        fecharModal();
-      }, 700);
+      setTimeout(() => fecharModal(), 700);
     }
   };
 
@@ -393,6 +339,9 @@ export function AssinaturaAutomaticaInicialPanel({
     pararPoll();
     setModalAberto(true);
     try {
+      // Se já houver .p7s assinados na fila, coloca na lista de protocolo sem reassinatura.
+      if (await carregarJaAssinadosSeExistirem()) return;
+
       const resp = await assinarAutomaticoInicial({ credencialId, codigoCliente, numeroInterno });
       await acompanharLoteAssinatura(resp);
     } catch (e) {

@@ -28,6 +28,7 @@ import {
 import { listarCredenciais } from '../../api/peticoesProjudiApi.js';
 import { AssinaturaAutomaticaInicialPanel } from './AssinaturaAutomaticaInicialPanel.jsx';
 import { isArquivoP7s } from '../../domain/peticaoArquivo.js';
+import { baixarLinhasP7sAssinadosInicial } from '../../domain/carregarP7sAssinadosInicial.js';
 import { ordenarLinhasP7s } from '../../domain/ordenarAnexosP7sInicial.js';
 import { SeletorPessoaParteImovel } from '../imoveis/SeletorPessoaParteImovel.jsx';
 import { buildLinkDestinoProcesso } from '../../domain/camposProcessoCliente.js';
@@ -294,6 +295,7 @@ export function DistribuicaoInicialProjudi() {
   const [prioridadeMaior60Anos, setPrioridadeMaior60Anos] = useState(false);
   const prioridadeAutoMarcadaRef = useRef(null);
   const sugestaoAplicadaRef = useRef(false);
+  const assinadosAutoCarregadosRef = useRef('');
   const [linhasP7s, setLinhasP7s] = useState([]);
   const aplicarLinhasP7s = useCallback((updater) => {
     setLinhasP7s((rows) =>
@@ -700,6 +702,38 @@ export function DistribuicaoInicialProjudi() {
     if (!pessoaAutor?.id || docsPessoaDisponiveis.length === 0) return;
     void mesclarSomentePessoaDocs({ silencioso: true });
   }, [pessoaAutor?.id, docsPessoaDisponiveis.length, incluirDocsPessoa, mesclarSomentePessoaDocs]);
+
+  /** Ao abrir a tela, preenche a lista com .p7s já assinados deste processo (se houver). */
+  useEffect(() => {
+    const cod = dadosProcesso?.codigoCliente;
+    const ni = dadosProcesso?.numeroInterno;
+    if (!cod || ni == null || String(ni).trim() === '') return;
+    const chave = `${String(cod).trim()}/${String(ni).trim()}`;
+    if (assinadosAutoCarregadosRef.current === chave) return;
+    assinadosAutoCarregadosRef.current = chave;
+    let cancelado = false;
+    void (async () => {
+      try {
+        const linhas = await baixarLinhasP7sAssinadosInicial(cod, ni);
+        if (cancelado || linhas.length === 0) return;
+        await incorporarAnexosProcessoComPessoas(linhas, { silencioso: true });
+        if (!cancelado) {
+          setToast(
+            `${linhas.length} arquivo(s) .p7s já assinados carregados na lista de protocolo.`,
+          );
+        }
+      } catch {
+        /* sem assinatura prévia — usuário usa «Assinar automaticamente» */
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [
+    dadosProcesso?.codigoCliente,
+    dadosProcesso?.numeroInterno,
+    incorporarAnexosProcessoComPessoas,
+  ]);
 
   async function carregarDocumentosConstitutivosPessoa() {
     await mesclarSomentePessoaDocs({ silencioso: false });

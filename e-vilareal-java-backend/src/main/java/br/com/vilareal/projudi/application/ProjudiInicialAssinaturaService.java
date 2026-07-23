@@ -21,9 +21,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
+import java.util.Map;
 
 /**
  * Assinatura automática de PDFs da pasta «Assinar» para protocolo de inicial (sem CNJ).
@@ -92,39 +93,62 @@ public class ProjudiInicialAssinaturaService {
             String codigoCliente, Integer numeroInterno, Long peticaoId) {
         validarProcesso(codigoCliente, numeroInterno);
         String chave = chaveNumeroProcessoInicial(codigoCliente, numeroInterno);
-        Optional<ProjudiPeticaoEntity> peticaoOpt;
+        List<ProjudiPeticaoEntity> peticoes;
         if (peticaoId != null) {
-            peticaoOpt = peticaoRepository.findById(peticaoId).filter(p -> chave.equals(p.getNumeroProcesso()));
+            peticoes = peticaoRepository
+                    .findById(peticaoId)
+                    .filter(p -> chave.equals(p.getNumeroProcesso()))
+                    .map(List::of)
+                    .orElse(List.of());
         } else {
-            peticaoOpt = peticaoRepository.findByNumeroProcessoWithArquivos(chave).stream()
+            // Todas as petições ASSINADA da inicial — a lista de protocolo precisa dos .p7s
+            // mesmo quando houve mais de uma assinatura parcial.
+            peticoes = peticaoRepository.findByNumeroProcessoWithArquivos(chave).stream()
                     .filter(p -> STATUS_PETICAO_ASSINADA.equals(p.getStatus()))
-                    .max(Comparator.comparing(ProjudiPeticaoEntity::getCriadoEm));
+                    .sorted(Comparator.comparing(ProjudiPeticaoEntity::getCriadoEm).reversed())
+                    .toList();
         }
-        if (peticaoOpt.isEmpty()) {
+        if (peticoes.isEmpty()) {
             return List.of();
         }
-        ProjudiPeticaoEntity peticao = peticaoRepository
-                .findByIdWithArquivos(peticaoOpt.get().getId())
-                .orElse(peticaoOpt.get());
-        List<InicialArquivoAssinadoResponse> out = new ArrayList<>();
-        for (ProjudiPeticaoArquivoEntity arquivo : peticao.getArquivos()) {
-            if (arquivo == null || !STATUS_ARQUIVO_ASSINADO.equals(arquivo.getStatus())) {
-                continue;
+        // Preferência: arquivo mais recente com o mesmo nome original (evita duplicata).
+        Map<String, InicialArquivoAssinadoResponse> porNome = new LinkedHashMap<>();
+        for (ProjudiPeticaoEntity peticaoBase : peticoes) {
+            ProjudiPeticaoEntity peticao = peticaoRepository
+                    .findByIdWithArquivos(peticaoBase.getId())
+                    .orElse(peticaoBase);
+            for (ProjudiPeticaoArquivoEntity arquivo : peticao.getArquivos()) {
+                if (arquivo == null || !STATUS_ARQUIVO_ASSINADO.equals(arquivo.getStatus())) {
+                    continue;
+                }
+                if (!StringUtils.hasText(arquivo.getP7sRef())
+                        || !Files.isRegularFile(storeDir.resolve(arquivo.getP7sRef()))) {
+                    continue;
+                }
+                String nomeOriginal = StringUtils.hasText(arquivo.getNomeOriginal())
+                        ? arquivo.getNomeOriginal().trim()
+                        : ("arquivo-" + arquivo.getId());
+                String chaveNome = nomeOriginal.toLowerCase(Locale.ROOT);
+                if (porNome.containsKey(chaveNome)) {
+                    continue;
+                }
+                String nomeP7s = Path.of(arquivo.getP7sRef()).getFileName().toString();
+                porNome.put(
+                        chaveNome,
+                        new InicialArquivoAssinadoResponse(
+                                arquivo.getId(),
+                                peticao.getId(),
+                                arquivo.getOrdem(),
+                                arquivo.getIdArquivoTipo() > 0 ? arquivo.getIdArquivoTipo() : 1,
+                                nomeOriginal,
+                                nomeP7s));
             }
-            if (!StringUtils.hasText(arquivo.getP7sRef())
-                    || !Files.isRegularFile(storeDir.resolve(arquivo.getP7sRef()))) {
-                continue;
-            }
-            String nomeP7s = Path.of(arquivo.getP7sRef()).getFileName().toString();
-            out.add(new InicialArquivoAssinadoResponse(
-                    arquivo.getId(),
-                    peticao.getId(),
-                    arquivo.getOrdem(),
-                    arquivo.getIdArquivoTipo() > 0 ? arquivo.getIdArquivoTipo() : 1,
-                    arquivo.getNomeOriginal(),
-                    nomeP7s));
         }
-        out.sort(Comparator.comparingInt(InicialArquivoAssinadoResponse::ordem));
+        List<InicialArquivoAssinadoResponse> out = new ArrayList<>(porNome.values());
+        out.sort(Comparator.comparing(
+                        (InicialArquivoAssinadoResponse a) -> String.valueOf(a.nomeOriginal()),
+                        String.CASE_INSENSITIVE_ORDER)
+                .thenComparingInt(InicialArquivoAssinadoResponse::ordem));
         return List.copyOf(out);
     }
 
