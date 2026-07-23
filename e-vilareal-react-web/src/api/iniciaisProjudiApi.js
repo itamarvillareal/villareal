@@ -275,19 +275,19 @@ export async function baixarP7sAssinadoInicial({ arquivoId, codigoCliente, numer
   return blob;
 }
 
-/** @param {number} pessoaIdAutor @returns {Promise<Array<{ documentoId: number, pessoaId: number, pessoaNome: string, tipo: string, nomeArquivo: string, idArquivoTipo: number, origem: string }>>} */
+/** @param {number} pessoaIdAutor @returns {Promise<Array<{ p7sDriveFileId: string, pessoaId: number, pessoaNome: string, tipo: string, nomeArquivo: string, idArquivoTipo: number, origem: string }>>} */
 export async function listarDocumentosPessoaInicial(pessoaIdAutor) {
   return request('/api/projudi/iniciais/documentos-pessoa', {
     query: { pessoaIdAutor: Number(pessoaIdAutor) },
   });
 }
 
-/** @param {{ documentoId: number, pessoaIdAutor: number, nomeFallback?: string }} params */
-export async function baixarP7sDocumentoPessoaInicial({ documentoId, pessoaIdAutor, nomeFallback }) {
+/** @param {{ driveFileId: string, pessoaIdAutor: number, nomeFallback?: string }} params */
+export async function baixarP7sDocumentoPessoaInicial({ driveFileId, pessoaIdAutor, nomeFallback }) {
   const { blob } = await requestBlob(
-    `/api/projudi/iniciais/documentos-pessoa/${documentoId}/p7s`,
+    '/api/projudi/iniciais/documentos-pessoa/p7s',
     {
-      query: { pessoaIdAutor: Number(pessoaIdAutor) },
+      query: { pessoaIdAutor: Number(pessoaIdAutor), driveFileId: String(driveFileId) },
       accept: 'application/octet-stream',
       fallbackFilename: nomeFallback || 'documento.p7s',
     },

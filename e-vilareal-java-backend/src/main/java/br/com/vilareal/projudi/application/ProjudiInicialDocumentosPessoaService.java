@@ -4,21 +4,17 @@ import br.com.vilareal.common.exception.BusinessRuleException;
 import br.com.vilareal.common.exception.ResourceNotFoundException;
 import br.com.vilareal.documento.DocumentoNomeNumeracaoUtil;
 import br.com.vilareal.documento.GoogleDriveService;
-import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaDocumentoDriveEntity;
-import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.application.PessoaDocumentoDriveService;
-import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaDocumentoDriveRepository;
+import br.com.vilareal.pessoa.application.PessoaP7sDriveItem;
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.projudi.api.dto.InicialDocumentoPessoaResponse;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Documentos constitutivos (.p7s) na pasta {@code Pessoas/{id8}/…} para instruir a inicial,
@@ -31,37 +27,27 @@ public class ProjudiInicialDocumentosPessoaService {
     static final int ID_ARQUIVO_TIPO_OUTROS = 1;
 
     private final PessoaRepository pessoaRepository;
-    private final PessoaDocumentoDriveRepository documentoRepository;
     private final PessoaDocumentoDriveService pessoaDocumentoDriveService;
     private final GoogleDriveService googleDriveService;
 
     public ProjudiInicialDocumentosPessoaService(
             PessoaRepository pessoaRepository,
-            PessoaDocumentoDriveRepository documentoRepository,
             PessoaDocumentoDriveService pessoaDocumentoDriveService,
             GoogleDriveService googleDriveService) {
         this.pessoaRepository = pessoaRepository;
-        this.documentoRepository = documentoRepository;
         this.pessoaDocumentoDriveService = pessoaDocumentoDriveService;
         this.googleDriveService = googleDriveService;
     }
 
-    @Transactional
     public List<InicialDocumentoPessoaResponse> listarConstitutivos(Long pessoaIdAutor) {
         if (pessoaIdAutor == null || pessoaIdAutor < 1) {
             throw new IllegalArgumentException("pessoaIdAutor é obrigatório.");
         }
         List<PessoaContexto> pessoas = resolverPessoasContexto(pessoaIdAutor);
-        for (PessoaContexto ctx : pessoas) {
-            pessoaDocumentoDriveService.sincronizarP7sDoDrive(ctx.pessoaId());
-        }
         List<InicialDocumentoPessoaResponse> out = new ArrayList<>();
         for (PessoaContexto ctx : pessoas) {
-            List<PessoaDocumentoDriveEntity> docs =
-                    documentoRepository.findByPessoaIdAndP7sDriveFileIdIsNotNullOrderByCreatedAtDescIdDesc(
-                            ctx.pessoaId());
-            for (PessoaDocumentoDriveEntity doc : docs) {
-                out.add(toResponse(doc, ctx));
+            for (PessoaP7sDriveItem item : pessoaDocumentoDriveService.listarP7sNoDrive(ctx.pessoaId())) {
+                out.add(toResponse(item, ctx));
             }
         }
         out.sort(Comparator.comparingInt((InicialDocumentoPessoaResponse d) ->
@@ -70,30 +56,27 @@ public class ProjudiInicialDocumentosPessoaService {
         return List.copyOf(out);
     }
 
-    @Transactional(readOnly = true)
-    public byte[] baixarP7s(Long documentoId, Long pessoaIdAutor) {
-        if (documentoId == null || pessoaIdAutor == null) {
-            throw new IllegalArgumentException("documentoId e pessoaIdAutor são obrigatórios.");
+    public byte[] baixarP7s(String driveFileId, Long pessoaIdAutor) {
+        if (!StringUtils.hasText(driveFileId) || pessoaIdAutor == null) {
+            throw new IllegalArgumentException("driveFileId e pessoaIdAutor são obrigatórios.");
         }
-        PessoaDocumentoDriveEntity doc = documentoRepository
-                .findById(documentoId)
-                .orElseThrow(() -> new ResourceNotFoundException("Documento não encontrado: " + documentoId));
-        Set<Long> pessoaIdsPermitidas =
-                new LinkedHashSet<>(resolverPessoasContexto(pessoaIdAutor).stream().map(PessoaContexto::pessoaId).toList());
-        if (!pessoaIdsPermitidas.contains(doc.getPessoaId())) {
-            throw new BusinessRuleException("Documento não pertence ao autor ou representante desta inicial.");
+        String driveFileIdNorm = driveFileId.trim();
+        for (PessoaContexto ctx : resolverPessoasContexto(pessoaIdAutor)) {
+            boolean permitido = pessoaDocumentoDriveService.listarP7sNoDrive(ctx.pessoaId()).stream()
+                    .anyMatch(item -> driveFileIdNorm.equals(item.p7sDriveFileId()));
+            if (!permitido) {
+                continue;
+            }
+            if (!googleDriveService.isConfigurado()) {
+                throw new IllegalStateException("Google Drive não configurado.");
+            }
+            try {
+                return googleDriveService.baixarBytesArquivo(driveFileIdNorm);
+            } catch (Exception e) {
+                throw new BusinessRuleException("Falha ao baixar .p7s do Drive: " + e.getMessage());
+            }
         }
-        if (!StringUtils.hasText(doc.getP7sDriveFileId())) {
-            throw new BusinessRuleException("Documento sem .p7s no Drive.");
-        }
-        if (!googleDriveService.isConfigurado()) {
-            throw new IllegalStateException("Google Drive não configurado.");
-        }
-        try {
-            return googleDriveService.baixarBytesArquivo(doc.getP7sDriveFileId());
-        } catch (Exception e) {
-            throw new BusinessRuleException("Falha ao baixar .p7s do Drive: " + e.getMessage());
-        }
+        throw new BusinessRuleException("Arquivo não encontrado na pasta Pessoas do autor ou representante.");
     }
 
     List<PessoaContexto> resolverPessoasContexto(Long pessoaIdAutor) {
@@ -114,13 +97,13 @@ public class ProjudiInicialDocumentosPessoaService {
         return List.copyOf(out);
     }
 
-    private InicialDocumentoPessoaResponse toResponse(PessoaDocumentoDriveEntity doc, PessoaContexto ctx) {
+    private InicialDocumentoPessoaResponse toResponse(PessoaP7sDriveItem item, PessoaContexto ctx) {
         return new InicialDocumentoPessoaResponse(
-                doc.getId(),
-                doc.getPessoaId(),
+                item.p7sDriveFileId(),
+                ctx.pessoaId(),
                 ctx.nomeExibicao(),
-                doc.getTipo(),
-                doc.getNomeArquivo(),
+                item.tipoPasta(),
+                item.nomeArquivo(),
                 ID_ARQUIVO_TIPO_OUTROS,
                 ctx.origem());
     }

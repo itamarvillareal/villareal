@@ -18,11 +18,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
+import java.util.Map;
 
 @Service
 public class PessoaDocumentoDriveService {
@@ -55,18 +56,35 @@ public class PessoaDocumentoDriveService {
         return entidades.stream().map(this::toResponse).toList();
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public List<PessoaDocumentoDriveResponse> listarAssinados(Long pessoaId) {
         validarPessoaExiste(pessoaId);
-        sincronizarP7sDoDrive(pessoaId);
-        return documentoRepository
-                .findByPessoaIdAndP7sDriveFileIdIsNotNullOrderByCreatedAtDescIdDesc(pessoaId)
-                .stream()
+        return listarP7sNoDrive(pessoaId).stream().map(item -> toResponseDrive(item, pessoaId)).toList();
+    }
+
+    /**
+     * Lista .p7s diretamente nas pastas Pessoas (Assinados, Documentos e raiz) via Google Drive API.
+     */
+    public List<PessoaP7sDriveItem> listarP7sNoDrive(Long pessoaId) {
+        validarPessoaExiste(pessoaId);
+        if (!googleDriveService.isConfigurado()) {
+            return List.of();
+        }
+        Map<String, PessoaP7sDriveItem> porDriveId = new LinkedHashMap<>();
+        try {
+            coletarP7sDaPasta(pessoaId, TipoDocumentoPessoa.ASSINADOS, porDriveId);
+            coletarP7sDaPasta(pessoaId, TipoDocumentoPessoa.DOCUMENTOS, porDriveId);
+            String pastaRaizId = documentoDrivePastaService.resolverPastaPessoa(pessoaId).pastaId();
+            coletarP7sEmPasta(pastaRaizId, TipoDocumentoPessoa.ASSINADOS.name(), porDriveId);
+        } catch (Exception e) {
+            log.warn("Falha ao listar .p7s no Drive (pessoaId={}): {}", pessoaId, e.getMessage());
+            return List.of();
+        }
+        return porDriveId.values().stream()
                 .sorted(Comparator.comparingInt(
-                                (PessoaDocumentoDriveEntity d) ->
-                                        DocumentoNomeNumeracaoUtil.extrairPrefixoNumerico(d.getNomeArquivo()))
-                        .thenComparing(PessoaDocumentoDriveEntity::getNomeArquivo))
-                .map(this::toResponse)
+                                (PessoaP7sDriveItem item) ->
+                                        DocumentoNomeNumeracaoUtil.extrairPrefixoNumerico(item.nomeArquivo()))
+                        .thenComparing(PessoaP7sDriveItem::nomeArquivo))
                 .toList();
     }
 
@@ -140,11 +158,15 @@ public class PessoaDocumentoDriveService {
         if (prefixoExistente >= 2) {
             numero = prefixoExistente;
         } else {
-            List<String> nomesExistentes = documentoRepository
+            List<String> nomesExistentes = new ArrayList<>();
+            documentoRepository
                     .findByPessoaIdAndTipoOrderByCreatedAtDescIdDesc(pessoaId, TipoDocumentoPessoa.ASSINADOS.name())
                     .stream()
                     .map(PessoaDocumentoDriveEntity::getNomeArquivo)
-                    .toList();
+                    .forEach(nomesExistentes::add);
+            listarP7sNoDrive(pessoaId).stream()
+                    .map(PessoaP7sDriveItem::nomeArquivo)
+                    .forEach(nomesExistentes::add);
             numero = DocumentoNomeNumeracaoUtil.calcularProximoNumeroPessoaAssinados(nomesExistentes);
         }
         String descricao = DocumentoNomeNumeracaoUtil.extrairDescricaoBase(nomeOriginal);
@@ -197,83 +219,46 @@ public class PessoaDocumentoDriveService {
         });
     }
 
-    /**
-     * Registra no banco .p7s já presentes na pasta Pessoas (Assinados/Documentos/raiz),
-     * para que apareçam na inicial PROJUDI sem novo upload pela UI.
-     */
-    @Transactional
-    public int sincronizarP7sDoDrive(Long pessoaId) {
-        validarPessoaExiste(pessoaId);
-        if (!googleDriveService.isConfigurado()) {
-            return 0;
-        }
-        int registrados = 0;
-        try {
-            Set<String> pastas = new LinkedHashSet<>();
-            pastas.add(documentoDrivePastaService.resolverPastaPessoa(pessoaId).pastaId());
-            pastas.add(documentoDrivePastaService.obterPastaDestinoPessoa(pessoaId, TipoDocumentoPessoa.ASSINADOS));
-            pastas.add(documentoDrivePastaService.obterPastaDestinoPessoa(pessoaId, TipoDocumentoPessoa.DOCUMENTOS));
-            for (String pastaId : pastas) {
-                if (!StringUtils.hasText(pastaId)) {
-                    continue;
-                }
-                List<DriveArquivoDto> arquivos = googleDriveService.listarConteudo(pastaId);
-                for (DriveArquivoDto arquivo : arquivos) {
-                    if (!ehArquivoP7s(arquivo)) {
-                        continue;
-                    }
-                    if (registrarP7sExistenteNoDrive(pessoaId, arquivo, arquivos)) {
-                        registrados++;
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Falha ao sincronizar .p7s do Drive (pessoaId={}): {}", pessoaId, e.getMessage());
-        }
-        return registrados;
+    private void coletarP7sDaPasta(Long pessoaId, TipoDocumentoPessoa tipo, Map<String, PessoaP7sDriveItem> acumulado)
+            throws Exception {
+        String pastaId = documentoDrivePastaService.obterPastaDestinoPessoa(pessoaId, tipo);
+        coletarP7sEmPasta(pastaId, tipo.name(), acumulado);
     }
 
-    private boolean registrarP7sExistenteNoDrive(
-            Long pessoaId, DriveArquivoDto p7sArquivo, List<DriveArquivoDto> mesmaPasta) throws Exception {
-        if (p7sArquivo == null || !StringUtils.hasText(p7sArquivo.id())) {
-            return false;
+    private void coletarP7sEmPasta(String pastaId, String tipoPasta, Map<String, PessoaP7sDriveItem> acumulado)
+            throws Exception {
+        if (!StringUtils.hasText(pastaId)) {
+            return;
         }
-        if (documentoRepository.existsByP7sDriveFileId(p7sArquivo.id())) {
-            return false;
+        List<DriveArquivoDto> arquivos = googleDriveService.listarConteudo(pastaId);
+        for (DriveArquivoDto arquivo : arquivos) {
+            if (!ehArquivoP7s(arquivo) || !StringUtils.hasText(arquivo.id())) {
+                continue;
+            }
+            acumulado.putIfAbsent(
+                    arquivo.id(),
+                    new PessoaP7sDriveItem(
+                            arquivo.id(),
+                            StringUtils.hasText(arquivo.nome()) ? arquivo.nome().trim() : "documento.p7s",
+                            localizarPdfCorrespondente(arquivo, arquivos),
+                            tipoPasta));
         }
-        byte[] p7sBytes = googleDriveService.baixarBytesArquivo(p7sArquivo.id());
-        ProjudiAssinaturaP7sUtil.ValidacaoP7s validacao = ProjudiAssinaturaP7sUtil.validar(p7sBytes);
-        if (!validacao.cmsValido()) {
-            log.warn("Ignorando .p7s inválido no Drive (pessoaId={}, arquivo={})", pessoaId, p7sArquivo.nome());
-            return false;
-        }
+    }
 
-        String nomeP7s = StringUtils.hasText(p7sArquivo.nome()) ? p7sArquivo.nome().trim() : "documento.p7s";
-        String nomePdf = nomePdfCorrespondente(nomeP7s);
-        String pdfDriveId = mesmaPasta.stream()
+    private static String localizarPdfCorrespondente(DriveArquivoDto p7sArquivo, List<DriveArquivoDto> mesmaPasta) {
+        if (p7sArquivo == null || !StringUtils.hasText(p7sArquivo.nome())) {
+            return null;
+        }
+        String nomePdf = nomePdfCorrespondente(p7sArquivo.nome().trim());
+        return mesmaPasta.stream()
                 .filter(a -> a != null && StringUtils.hasText(a.nome()))
                 .filter(a -> nomePdf.equalsIgnoreCase(a.nome().trim()))
                 .map(DriveArquivoDto::id)
                 .findFirst()
                 .orElse(null);
-
-        PessoaDocumentoDriveEntity entity = new PessoaDocumentoDriveEntity();
-        entity.setPessoaId(pessoaId);
-        entity.setTipo(TipoDocumentoPessoa.ASSINADOS.name());
-        entity.setNomeArquivo(nomeP7s);
-        entity.setDriveFileId(pdfDriveId);
-        entity.setP7sDriveFileId(p7sArquivo.id());
-        if (validacao.temConteudoEmbutido()) {
-            entity.setPdfSha256(validacao.sha256ConteudoEmbutido());
-        }
-        entity.setP7sSha256(ProjudiAssinaturaP7sUtil.sha256(p7sBytes));
-        entity.setMimeType("application/pkcs7-signature");
-        documentoRepository.save(entity);
-        log.info("Sincronizado .p7s da pasta Pessoas (pessoaId={}, arquivo={})", pessoaId, nomeP7s);
-        return true;
     }
 
-    private static boolean ehArquivoP7s(DriveArquivoDto arquivo) {
+    static boolean ehArquivoP7s(DriveArquivoDto arquivo) {
         if (arquivo == null || !StringUtils.hasText(arquivo.nome())) {
             return false;
         }
@@ -317,5 +302,19 @@ public class PessoaDocumentoDriveService {
                 entity.getP7sSha256(),
                 entity.getMimeType(),
                 entity.getCreatedAt());
+    }
+
+    private PessoaDocumentoDriveResponse toResponseDrive(PessoaP7sDriveItem item, Long pessoaId) {
+        return new PessoaDocumentoDriveResponse(
+                null,
+                pessoaId,
+                item.tipoPasta(),
+                item.nomeArquivo(),
+                item.pdfDriveFileId(),
+                item.p7sDriveFileId(),
+                null,
+                null,
+                "application/pkcs7-signature",
+                null);
     }
 }

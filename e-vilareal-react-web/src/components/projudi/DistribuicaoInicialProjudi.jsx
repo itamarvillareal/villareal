@@ -296,6 +296,7 @@ export function DistribuicaoInicialProjudi() {
   const [linhasP7s, setLinhasP7s] = useState([]);
   const [docsPessoaDisponiveis, setDocsPessoaDisponiveis] = useState([]);
   const [carregandoDocsPessoa, setCarregandoDocsPessoa] = useState(false);
+  const [incluirDocsPessoa, setIncluirDocsPessoa] = useState(true);
 
   const [pessoaAutor, setPessoaAutor] = useState(null);
   const [pessoasReu, setPessoasReu] = useState([]);
@@ -555,16 +556,25 @@ export function DistribuicaoInicialProjudi() {
     };
   }, [pessoaAutor?.id]);
 
+  useEffect(() => {
+    setIncluirDocsPessoa(true);
+  }, [pessoaAutor?.id]);
+
+  useEffect(() => {
+    if (incluirDocsPessoa) return;
+    setLinhasP7s((rows) => rows.filter((linha) => linha.origem !== 'pessoa'));
+  }, [incluirDocsPessoa]);
+
   const baixarLinhasConstitutivosPessoa = useCallback(async (autorId) => {
     if (!autorId) return [];
     const docs = await listarDocumentosPessoaInicial(autorId);
     if (!Array.isArray(docs) || docs.length === 0) return [];
     const linhas = [];
     for (const doc of docs) {
-      const key = `pessoa-doc-${doc.documentoId}`;
+      const key = `pessoa-drive-${doc.p7sDriveFileId}`;
       const nome = String(doc.nomeArquivo ?? 'documento.p7s').trim() || 'documento.p7s';
       const blob = await baixarP7sDocumentoPessoaInicial({
-        documentoId: doc.documentoId,
+        driveFileId: doc.p7sDriveFileId,
         pessoaIdAutor: autorId,
         nomeFallback: nome,
       });
@@ -582,6 +592,9 @@ export function DistribuicaoInicialProjudi() {
 
   const mesclarSomentePessoaDocs = useCallback(
     async ({ silencioso = false } = {}) => {
+      if (!incluirDocsPessoa) {
+        return 0;
+      }
       const autorId = pessoaAutor?.id ?? null;
       if (!autorId) {
         if (!silencioso) {
@@ -626,13 +639,13 @@ export function DistribuicaoInicialProjudi() {
         setCarregandoDocsPessoa(false);
       }
     },
-    [baixarLinhasConstitutivosPessoa, pessoaAutor?.id],
+    [baixarLinhasConstitutivosPessoa, incluirDocsPessoa, pessoaAutor?.id],
   );
 
   const incorporarAnexosProcessoComPessoas = useCallback(
     async (linhasProcesso, { silencioso = false } = {}) => {
       const autorId = pessoaAutor?.id ?? null;
-      if (!autorId) {
+      if (!autorId || !incluirDocsPessoa) {
         setLinhasP7s(linhasProcesso);
         if (!silencioso && linhasProcesso.length > 0) {
           setToast(`${linhasProcesso.length} arquivo(s) .p7s carregado(s) da assinatura automática.`);
@@ -673,13 +686,14 @@ export function DistribuicaoInicialProjudi() {
         setCarregandoDocsPessoa(false);
       }
     },
-    [baixarLinhasConstitutivosPessoa, pessoaAutor?.id],
+    [baixarLinhasConstitutivosPessoa, incluirDocsPessoa, pessoaAutor?.id],
   );
 
   useEffect(() => {
+    if (!incluirDocsPessoa) return;
     if (!pessoaAutor?.id || docsPessoaDisponiveis.length === 0) return;
     void mesclarSomentePessoaDocs({ silencioso: true });
-  }, [pessoaAutor?.id, docsPessoaDisponiveis.length, mesclarSomentePessoaDocs]);
+  }, [pessoaAutor?.id, docsPessoaDisponiveis.length, incluirDocsPessoa, mesclarSomentePessoaDocs]);
 
   async function carregarDocumentosConstitutivosPessoa() {
     await mesclarSomentePessoaDocs({ silencioso: false });
@@ -1194,7 +1208,9 @@ export function DistribuicaoInicialProjudi() {
                     {' '}
                     (<span className="font-mono">Pessoas/{String(pessoaAutor.id).padStart(8, '0')}</span>
                     {docsPessoaDisponiveis.length > 0
-                      ? ` · ${docsPessoaDisponiveis.length} .p7s — incluídos automaticamente no protocolo`
+                      ? incluirDocsPessoa
+                        ? ` · ${docsPessoaDisponiveis.length} .p7s — serão incluídos no protocolo`
+                        : ` · ${docsPessoaDisponiveis.length} .p7s — não serão incluídos`
                       : ''}
                     ):
                   </>
@@ -1203,9 +1219,38 @@ export function DistribuicaoInicialProjudi() {
                 )}{' '}
                 documentos constitutivos numerados a partir de{' '}
                 <span className="font-mono">02.</span> (procuração, contrato social, docs. do representante em PJ…).
-                São juntados junto com os anexos assinados na pasta «Assinar» do processo.
+                São juntados junto com os anexos assinados na pasta «Assinar» do processo quando a opção abaixo estiver marcada.
               </p>
             </div>
+            {pessoaAutor?.id ? (
+              <label
+                className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${
+                  docsPessoaDisponiveis.length > 0
+                    ? 'border-indigo-200 bg-indigo-50/60 text-indigo-950 cursor-pointer'
+                    : 'border-slate-200 bg-slate-50 text-slate-500 cursor-not-allowed'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={incluirDocsPessoa}
+                  disabled={docsPessoaDisponiveis.length === 0 || carregandoDocsPessoa || operacao != null}
+                  onChange={(ev) => setIncluirDocsPessoa(ev.target.checked)}
+                />
+                <span>
+                  <strong>Incluir documentos constitutivos da pasta Pessoas</strong>
+                  <span className="block text-xs mt-0.5 opacity-90">
+                    Procuração, contrato social, documentos do representante (PJ) etc. — numerados a partir de{' '}
+                    <span className="font-mono">02.</span>
+                    {docsPessoaDisponiveis.length === 0
+                      ? '. Nenhum .p7s encontrado no Drive deste autor.'
+                      : incluirDocsPessoa
+                        ? `. ${docsPessoaDisponiveis.length} arquivo(s) serão anexados à inicial.`
+                        : '. Os arquivos da pasta Pessoas não serão enviados nesta distribuição.'}
+                  </span>
+                </span>
+              </label>
+            ) : null}
             <div className="flex flex-wrap items-center gap-2">
               {dadosProcesso?.codigoCliente && dadosProcesso?.numeroInterno ? (
                 <AssinaturaAutomaticaInicialPanel
@@ -1213,17 +1258,21 @@ export function DistribuicaoInicialProjudi() {
                   codigoCliente={dadosProcesso.codigoCliente}
                   numeroInterno={dadosProcesso.numeroInterno}
                   disabled={!dadosProcesso || operacao != null}
-                  onArquivosAssinados={(linhas, opts) =>
-                    opts?.anexar
-                      ? (setLinhasP7s((rows) => [...rows, ...linhas]),
-                        void mesclarSomentePessoaDocs({ silencioso: false }))
-                      : void incorporarAnexosProcessoComPessoas(linhas)
-                  }
+                  onArquivosAssinados={(linhas, opts) => {
+                    if (opts?.anexar) {
+                      setLinhasP7s((rows) => [...rows, ...linhas]);
+                      if (incluirDocsPessoa) {
+                        void mesclarSomentePessoaDocs({ silencioso: false });
+                      }
+                      return;
+                    }
+                    void incorporarAnexosProcessoComPessoas(linhas);
+                  }}
                   onToast={setToast}
                   onErro={setApiError}
                 />
               ) : null}
-              {pessoaAutor?.id ? (
+              {pessoaAutor?.id && incluirDocsPessoa ? (
                 <button
                   type="button"
                   className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-900 hover:bg-indigo-100 disabled:opacity-60"

@@ -299,11 +299,11 @@ public class ProjudiInicialController {
         return documentosPessoaService.listarConstitutivos(pessoaIdAutor);
     }
 
-    @GetMapping(value = "/documentos-pessoa/{documentoId}/p7s", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
+    @GetMapping(value = "/documentos-pessoa/p7s", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
     @Operation(summary = "Baixa .p7s constitutivo da pasta Pessoas para anexar na inicial")
     public ResponseEntity<byte[]> baixarP7sDocumentoPessoa(
-            @PathVariable Long documentoId, @RequestParam Long pessoaIdAutor) {
-        byte[] bytes = documentosPessoaService.baixarP7s(documentoId, pessoaIdAutor);
+            @RequestParam Long pessoaIdAutor, @RequestParam String driveFileId) {
+        byte[] bytes = documentosPessoaService.baixarP7s(driveFileId, pessoaIdAutor);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"documento.p7s\"")
                 .body(bytes);

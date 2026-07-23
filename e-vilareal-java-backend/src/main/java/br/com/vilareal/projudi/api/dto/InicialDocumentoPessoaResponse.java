@@ -1,7 +1,7 @@
 package br.com.vilareal.projudi.api.dto;
 
 public record InicialDocumentoPessoaResponse(
-        Long documentoId,
+        String p7sDriveFileId,
         Long pessoaId,
         String pessoaNome,
         String tipo,

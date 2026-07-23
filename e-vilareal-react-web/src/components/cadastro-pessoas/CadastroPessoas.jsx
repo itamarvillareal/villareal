@@ -2329,13 +2329,13 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                       </p>
                     ) : documentosAssinadosDrive.length === 0 ? (
                       <p className="text-xs text-indigo-800/80">
-                        Nenhum documento .p7s registrado ainda. Anexe na subpasta Assinados (numerados 02, 03…) ou use «Arquivos».
+                        Nenhum documento .p7s na pasta Pessoas ainda. Anexe na subpasta Assinados (numerados 02, 03…) ou use «Arquivos».
                       </p>
                     ) : (
                       <ul className="space-y-1.5 text-xs text-indigo-950">
                         {documentosAssinadosDrive.map((doc) => (
                           <li
-                            key={doc.id ?? doc.nomeArquivo}
+                            key={doc.p7sDriveFileId ?? doc.nomeArquivo}
                             className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md bg-white/70 px-2 py-1.5 border border-indigo-100"
                           >
                             <span className="font-medium truncate max-w-full">{doc.nomeArquivo}</span>
