@@ -30,6 +30,9 @@ export const CLAUSULAS_HOMOLOGACAO_PADRAO = {
   incluirDesistenciaRecursos: true,
   incluirCustas90: true,
   incluirArt922: true,
+  incluirDesbloqueioContas: true,
+  /** @type {'EXECUTADO' | 'EXEQUENTE'} */
+  destinatarioDesbloqueio: 'EXECUTADO',
 };
 
 /** Boletos do plano aceito: valor total da parcela (coluna Valor); honorários não somam. */
@@ -122,6 +125,9 @@ export function montarBodyPeticaoHomologacaoAcordo({
       incluirDesistenciaRecursos: cl.incluirDesistenciaRecursos !== false,
       incluirCustas90: cl.incluirCustas90 !== false,
       incluirArt922: cl.incluirArt922 !== false,
+      incluirDesbloqueioContas: cl.incluirDesbloqueioContas !== false,
+      destinatarioDesbloqueio:
+        cl.destinatarioDesbloqueio === 'EXEQUENTE' ? 'EXEQUENTE' : 'EXECUTADO',
     },
   };
 }

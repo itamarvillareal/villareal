@@ -192,6 +192,45 @@ export function ModalHomologacaoAcordo({
               </label>
             ))}
           </div>
+
+          <div className="rounded-md border border-slate-200 px-3 py-2 dark:border-slate-700">
+            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+              <input
+                type="checkbox"
+                checked={clausulas.incluirDesbloqueioContas !== false}
+                onChange={(e) =>
+                  setClausulas((c) => ({ ...c, incluirDesbloqueioContas: e.target.checked }))
+                }
+                disabled={loading}
+              />
+              Desbloqueio de contas
+            </label>
+            {clausulas.incluirDesbloqueioContas !== false ? (
+              <div className="mt-2 flex flex-wrap gap-4 pl-6 text-sm text-slate-600 dark:text-slate-300">
+                <span className="text-slate-500 dark:text-slate-400">Liberar valores:</span>
+                <label className="flex items-center gap-1.5">
+                  <input
+                    type="radio"
+                    name="destinatarioDesbloqueio"
+                    checked={clausulas.destinatarioDesbloqueio !== 'EXEQUENTE'}
+                    onChange={() => setClausulas((c) => ({ ...c, destinatarioDesbloqueio: 'EXECUTADO' }))}
+                    disabled={loading}
+                  />
+                  ao Executado
+                </label>
+                <label className="flex items-center gap-1.5">
+                  <input
+                    type="radio"
+                    name="destinatarioDesbloqueio"
+                    checked={clausulas.destinatarioDesbloqueio === 'EXEQUENTE'}
+                    onChange={() => setClausulas((c) => ({ ...c, destinatarioDesbloqueio: 'EXEQUENTE' }))}
+                    disabled={loading}
+                  />
+                  ao Exequente
+                </label>
+              </div>
+            ) : null}
+          </div>
         </fieldset>
 
         {boletos.length > 0 ? (

@@ -312,7 +312,9 @@ public class PeticaoHomologacaoAcordoService {
                 dto.incluirIrrevogavel() == null || Boolean.TRUE.equals(dto.incluirIrrevogavel()),
                 dto.incluirDesistenciaRecursos() == null || Boolean.TRUE.equals(dto.incluirDesistenciaRecursos()),
                 dto.incluirCustas90() == null || Boolean.TRUE.equals(dto.incluirCustas90()),
-                dto.incluirArt922() == null || Boolean.TRUE.equals(dto.incluirArt922()));
+                dto.incluirArt922() == null || Boolean.TRUE.equals(dto.incluirArt922()),
+                dto.incluirDesbloqueioContas() == null || Boolean.TRUE.equals(dto.incluirDesbloqueioContas()),
+                resolverDestinatarioDesbloqueio(dto.destinatarioDesbloqueio()));
     }
 
     private static ClausulasConfig clausulasPadrao() {
@@ -325,7 +327,17 @@ public class PeticaoHomologacaoAcordoService {
                 true,
                 true,
                 true,
-                true);
+                true,
+                true,
+                HomologacaoAcordoTextoBuilder.DestinatarioDesbloqueio.EXECUTADO);
+    }
+
+    private static HomologacaoAcordoTextoBuilder.DestinatarioDesbloqueio resolverDestinatarioDesbloqueio(
+            String valor) {
+        if ("EXEQUENTE".equalsIgnoreCase(nz(valor).trim())) {
+            return HomologacaoAcordoTextoBuilder.DestinatarioDesbloqueio.EXEQUENTE;
+        }
+        return HomologacaoAcordoTextoBuilder.DestinatarioDesbloqueio.EXECUTADO;
     }
 
     private static BigDecimal parsePercent(String valor, BigDecimal padrao) {

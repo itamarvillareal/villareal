@@ -29,5 +29,8 @@ public record PeticaoHomologacaoAcordoRequest(
             Boolean incluirIrrevogavel,
             Boolean incluirDesistenciaRecursos,
             Boolean incluirCustas90,
-            Boolean incluirArt922) {}
+            Boolean incluirArt922,
+            Boolean incluirDesbloqueioContas,
+            /** EXECUTADO ou EXEQUENTE. */
+            String destinatarioDesbloqueio) {}
 }

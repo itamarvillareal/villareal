@@ -29,6 +29,12 @@ public final class HomologacaoAcordoTextoBuilder {
 
     public record TituloLinha(String vencimento, BigDecimal valor) {}
 
+    /** Destinatário da liberação dos valores constritos (pedido de desbloqueio). */
+    public enum DestinatarioDesbloqueio {
+        EXECUTADO,
+        EXEQUENTE
+    }
+
     public record ClausulasConfig(
             BigDecimal multaPercent,
             BigDecimal jurosPercent,
@@ -38,7 +44,9 @@ public final class HomologacaoAcordoTextoBuilder {
             boolean incluirIrrevogavel,
             boolean incluirDesistenciaRecursos,
             boolean incluirCustas90,
-            boolean incluirArt922) {}
+            boolean incluirArt922,
+            boolean incluirDesbloqueioContas,
+            DestinatarioDesbloqueio destinatarioDesbloqueio) {}
 
     public static String montarCorpoFatos(
             BigDecimal totalGeral, String totalGeralExtenso, String unidade, List<TituloLinha> titulos) {
@@ -137,6 +145,18 @@ public final class HomologacaoAcordoTextoBuilder {
             sb.append("<p class=\"pedido\">Requer ainda, sejam dispensadas quaisquer custas ")
                     .append("processuais remanescentes, por força da redação do § 3º do artigo 90 do Código de ")
                     .append("Processo Civil;</p>");
+        }
+
+        if (clausulas.incluirDesbloqueioContas()) {
+            String favorDe =
+                    clausulas.destinatarioDesbloqueio() == DestinatarioDesbloqueio.EXEQUENTE
+                            ? "em favor do Exequente"
+                            : "em favor do próprio Executado";
+            sb.append("<p class=\"pedido\">Requer, ainda, seja determinado o imediato desbloqueio das ")
+                    .append("contas bancárias do Executado e a liberação de quaisquer valores eventualmente ")
+                    .append("constritos nos autos ")
+                    .append(favorDe)
+                    .append(", diante da composição amigável ora noticiada e da homologação do presente acordo.</p>");
         }
 
         if (clausulas.incluirArt922()) {

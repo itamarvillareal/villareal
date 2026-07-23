@@ -43,7 +43,9 @@ class HomologacaoAcordoTextoBuilderTest {
                 true,
                 true,
                 true,
-                true);
+                true,
+                true,
+                HomologacaoAcordoTextoBuilder.DestinatarioDesbloqueio.EXECUTADO);
 
         String html = HomologacaoAcordoTextoBuilder.montarCorpoAcordo(
                 List.of(new HomologacaoAcordoTextoBuilder.BoletoLinha(new BigDecimal("1000.00"), "01/08/2026")),
@@ -68,7 +70,9 @@ class HomologacaoAcordoTextoBuilderTest {
                 false,
                 false,
                 true,
-                true);
+                true,
+                true,
+                HomologacaoAcordoTextoBuilder.DestinatarioDesbloqueio.EXECUTADO);
 
         String html = HomologacaoAcordoTextoBuilder.montarCorpoPedidos(clausulas);
 
@@ -76,7 +80,30 @@ class HomologacaoAcordoTextoBuilderTest {
         assertThat(html).contains("Diante do exposto, requer de Vossa Excelência:");
         assertThat(html).contains("class=\"pedido\"");
         assertThat(html).contains("artigo 90 do Código de Processo Civil");
+        assertThat(html).contains("em favor do próprio Executado");
+        assertThat(html).contains("desbloqueio das contas bancárias do Executado");
         assertThat(html).contains("artigo 922 do Código de Processo Civil");
+    }
+
+    @Test
+    void montarCorpoPedidos_desbloqueioEmFavorDoExequente() {
+        var clausulas = new HomologacaoAcordoTextoBuilder.ClausulasConfig(
+                new BigDecimal("30"),
+                new BigDecimal("1"),
+                new BigDecimal("20"),
+                "",
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                HomologacaoAcordoTextoBuilder.DestinatarioDesbloqueio.EXEQUENTE);
+
+        String html = HomologacaoAcordoTextoBuilder.montarCorpoPedidos(clausulas);
+
+        assertThat(html).contains("em favor do Exequente");
+        assertThat(html).doesNotContain("em favor do próprio Executado");
     }
 
     @Test
