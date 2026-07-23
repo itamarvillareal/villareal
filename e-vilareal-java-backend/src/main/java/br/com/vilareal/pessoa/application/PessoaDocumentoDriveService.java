@@ -19,8 +19,10 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 @Service
 public class PessoaDocumentoDriveService {
@@ -53,9 +55,10 @@ public class PessoaDocumentoDriveService {
         return entidades.stream().map(this::toResponse).toList();
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<PessoaDocumentoDriveResponse> listarAssinados(Long pessoaId) {
         validarPessoaExiste(pessoaId);
+        sincronizarP7sDoDrive(pessoaId);
         return documentoRepository
                 .findByPessoaIdAndP7sDriveFileIdIsNotNullOrderByCreatedAtDescIdDesc(pessoaId)
                 .stream()
@@ -192,6 +195,105 @@ public class PessoaDocumentoDriveService {
                 log.warn("Erro ao salvar PDF na pasta Pessoas (pessoaId={}): {}", pessoaId, e.getMessage());
             }
         });
+    }
+
+    /**
+     * Registra no banco .p7s já presentes na pasta Pessoas (Assinados/Documentos/raiz),
+     * para que apareçam na inicial PROJUDI sem novo upload pela UI.
+     */
+    @Transactional
+    public int sincronizarP7sDoDrive(Long pessoaId) {
+        validarPessoaExiste(pessoaId);
+        if (!googleDriveService.isConfigurado()) {
+            return 0;
+        }
+        int registrados = 0;
+        try {
+            Set<String> pastas = new LinkedHashSet<>();
+            pastas.add(documentoDrivePastaService.resolverPastaPessoa(pessoaId).pastaId());
+            pastas.add(documentoDrivePastaService.obterPastaDestinoPessoa(pessoaId, TipoDocumentoPessoa.ASSINADOS));
+            pastas.add(documentoDrivePastaService.obterPastaDestinoPessoa(pessoaId, TipoDocumentoPessoa.DOCUMENTOS));
+            for (String pastaId : pastas) {
+                if (!StringUtils.hasText(pastaId)) {
+                    continue;
+                }
+                List<DriveArquivoDto> arquivos = googleDriveService.listarConteudo(pastaId);
+                for (DriveArquivoDto arquivo : arquivos) {
+                    if (!ehArquivoP7s(arquivo)) {
+                        continue;
+                    }
+                    if (registrarP7sExistenteNoDrive(pessoaId, arquivo, arquivos)) {
+                        registrados++;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Falha ao sincronizar .p7s do Drive (pessoaId={}): {}", pessoaId, e.getMessage());
+        }
+        return registrados;
+    }
+
+    private boolean registrarP7sExistenteNoDrive(
+            Long pessoaId, DriveArquivoDto p7sArquivo, List<DriveArquivoDto> mesmaPasta) throws Exception {
+        if (p7sArquivo == null || !StringUtils.hasText(p7sArquivo.id())) {
+            return false;
+        }
+        if (documentoRepository.existsByP7sDriveFileId(p7sArquivo.id())) {
+            return false;
+        }
+        byte[] p7sBytes = googleDriveService.baixarBytesArquivo(p7sArquivo.id());
+        ProjudiAssinaturaP7sUtil.ValidacaoP7s validacao = ProjudiAssinaturaP7sUtil.validar(p7sBytes);
+        if (!validacao.cmsValido()) {
+            log.warn("Ignorando .p7s inválido no Drive (pessoaId={}, arquivo={})", pessoaId, p7sArquivo.nome());
+            return false;
+        }
+
+        String nomeP7s = StringUtils.hasText(p7sArquivo.nome()) ? p7sArquivo.nome().trim() : "documento.p7s";
+        String nomePdf = nomePdfCorrespondente(nomeP7s);
+        String pdfDriveId = mesmaPasta.stream()
+                .filter(a -> a != null && StringUtils.hasText(a.nome()))
+                .filter(a -> nomePdf.equalsIgnoreCase(a.nome().trim()))
+                .map(DriveArquivoDto::id)
+                .findFirst()
+                .orElse(null);
+
+        PessoaDocumentoDriveEntity entity = new PessoaDocumentoDriveEntity();
+        entity.setPessoaId(pessoaId);
+        entity.setTipo(TipoDocumentoPessoa.ASSINADOS.name());
+        entity.setNomeArquivo(nomeP7s);
+        entity.setDriveFileId(pdfDriveId);
+        entity.setP7sDriveFileId(p7sArquivo.id());
+        if (validacao.temConteudoEmbutido()) {
+            entity.setPdfSha256(validacao.sha256ConteudoEmbutido());
+        }
+        entity.setP7sSha256(ProjudiAssinaturaP7sUtil.sha256(p7sBytes));
+        entity.setMimeType("application/pkcs7-signature");
+        documentoRepository.save(entity);
+        log.info("Sincronizado .p7s da pasta Pessoas (pessoaId={}, arquivo={})", pessoaId, nomeP7s);
+        return true;
+    }
+
+    private static boolean ehArquivoP7s(DriveArquivoDto arquivo) {
+        if (arquivo == null || !StringUtils.hasText(arquivo.nome())) {
+            return false;
+        }
+        String nome = arquivo.nome().trim().toLowerCase(Locale.ROOT);
+        if (nome.endsWith(".p7s")) {
+            return true;
+        }
+        String mime = StringUtils.hasText(arquivo.mimeType()) ? arquivo.mimeType().trim().toLowerCase(Locale.ROOT) : "";
+        return mime.contains("pkcs7") || mime.contains("p7s");
+    }
+
+    private static String nomePdfCorrespondente(String nomeP7s) {
+        String nome = StringUtils.hasText(nomeP7s) ? nomeP7s.trim() : "documento.p7s";
+        if (nome.toLowerCase(Locale.ROOT).endsWith(".pdf.p7s")) {
+            return nome.substring(0, nome.length() - 4);
+        }
+        if (nome.toLowerCase(Locale.ROOT).endsWith(".p7s")) {
+            return nome.substring(0, nome.length() - 4) + ".pdf";
+        }
+        return nome + ".pdf";
     }
 
     private void validarPessoaExiste(Long pessoaId) {

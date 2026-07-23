@@ -566,7 +566,7 @@ export function DistribuicaoInicialProjudi() {
     try {
       const docs = await listarDocumentosPessoaInicial(autorId);
       if (!Array.isArray(docs) || docs.length === 0) {
-        setToast('Nenhum .p7s constitutivo na pasta Pessoas do autor (procuração, contrato social, documentos pessoais…).');
+        setToast('Nenhum .p7s constitutivo registrado na pasta Pessoas/Assinados do autor (use «Anexar .p7s» no cadastro ou coloque os arquivos na subpasta Assinados).');
         return;
       }
       const chavesExistentes = new Set(linhasP7s.map((l) => l.key));

@@ -13,4 +13,6 @@ public interface PessoaDocumentoDriveRepository extends JpaRepository<PessoaDocu
 
     List<PessoaDocumentoDriveEntity> findByPessoaIdAndP7sDriveFileIdIsNotNullOrderByCreatedAtDescIdDesc(
             Long pessoaId);
+
+    boolean existsByP7sDriveFileId(String p7sDriveFileId);
 }

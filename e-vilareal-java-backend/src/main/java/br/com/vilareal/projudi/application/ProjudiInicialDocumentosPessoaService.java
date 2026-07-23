@@ -6,6 +6,7 @@ import br.com.vilareal.documento.DocumentoNomeNumeracaoUtil;
 import br.com.vilareal.documento.GoogleDriveService;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaDocumentoDriveEntity;
 import br.com.vilareal.pessoa.infrastructure.persistence.entity.PessoaEntity;
+import br.com.vilareal.pessoa.application.PessoaDocumentoDriveService;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaDocumentoDriveRepository;
 import br.com.vilareal.pessoa.infrastructure.persistence.repository.PessoaRepository;
 import br.com.vilareal.projudi.api.dto.InicialDocumentoPessoaResponse;
@@ -31,23 +32,29 @@ public class ProjudiInicialDocumentosPessoaService {
 
     private final PessoaRepository pessoaRepository;
     private final PessoaDocumentoDriveRepository documentoRepository;
+    private final PessoaDocumentoDriveService pessoaDocumentoDriveService;
     private final GoogleDriveService googleDriveService;
 
     public ProjudiInicialDocumentosPessoaService(
             PessoaRepository pessoaRepository,
             PessoaDocumentoDriveRepository documentoRepository,
+            PessoaDocumentoDriveService pessoaDocumentoDriveService,
             GoogleDriveService googleDriveService) {
         this.pessoaRepository = pessoaRepository;
         this.documentoRepository = documentoRepository;
+        this.pessoaDocumentoDriveService = pessoaDocumentoDriveService;
         this.googleDriveService = googleDriveService;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<InicialDocumentoPessoaResponse> listarConstitutivos(Long pessoaIdAutor) {
         if (pessoaIdAutor == null || pessoaIdAutor < 1) {
             throw new IllegalArgumentException("pessoaIdAutor é obrigatório.");
         }
         List<PessoaContexto> pessoas = resolverPessoasContexto(pessoaIdAutor);
+        for (PessoaContexto ctx : pessoas) {
+            pessoaDocumentoDriveService.sincronizarP7sDoDrive(ctx.pessoaId());
+        }
         List<InicialDocumentoPessoaResponse> out = new ArrayList<>();
         for (PessoaContexto ctx : pessoas) {
             List<PessoaDocumentoDriveEntity> docs =
