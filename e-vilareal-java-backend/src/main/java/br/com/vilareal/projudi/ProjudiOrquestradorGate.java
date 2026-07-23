@@ -34,6 +34,14 @@ public class ProjudiOrquestradorGate {
         return prioridadeAguardando.get() > 0;
     }
 
+    /**
+     * Robô PROJUDI livre: sem lock e sem operação prioritária pendente.
+     * Há corrida possível até {@link #tryExecutar}; use try* para adquirir de fato.
+     */
+    public boolean estaOcioso() {
+        return !lock.isLocked() && prioridadeAguardando.get() == 0;
+    }
+
     public boolean tryLock() {
         return lock.tryLock();
     }

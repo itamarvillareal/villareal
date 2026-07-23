@@ -26,6 +26,7 @@ public final class JobNames {
     public static final String PROJUDI_VARREDURA_MONITORAMENTO = "projudi_varredura_monitoramento";
     public static final String CONSOLIDADO_DRIVE_BACKFILL = "consolidado_drive_backfill";
     public static final String CALCULO_INDICES_MENSAIS = "calculo_indices_mensais";
+    public static final String COPIA_MOVIMENTACOES_CLIENTE_IDLE = "copia_movimentacoes_cliente_idle";
 
     public static final List<String> TODOS_MONITORADOS = List.of(
             GMAIL_PROJUDI,
@@ -48,7 +49,8 @@ public final class JobNames {
             AGENDA_AUDIENCIA_ESPELHAMENTO,
             PROJUDI_VARREDURA_MONITORAMENTO,
             CONSOLIDADO_DRIVE_BACKFILL,
-            CALCULO_INDICES_MENSAIS);
+            CALCULO_INDICES_MENSAIS,
+            COPIA_MOVIMENTACOES_CLIENTE_IDLE);
 
     private JobNames() {}
 }

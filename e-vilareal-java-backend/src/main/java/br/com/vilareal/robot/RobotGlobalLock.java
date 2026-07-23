@@ -21,6 +21,11 @@ public class RobotGlobalLock {
 
     private final ReentrantLock lock = new ReentrantLock();
 
+    /** {@code true} quando nenhum robô global (PJe etc.) está em execução. */
+    public boolean estaOcioso() {
+        return !lock.isLocked();
+    }
+
     public boolean tryExecutar(String contexto, Runnable action) {
         if (!lock.tryLock()) {
             log.info("robô global ocupado, pulando ({})", contexto);
