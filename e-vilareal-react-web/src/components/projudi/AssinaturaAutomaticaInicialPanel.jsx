@@ -37,6 +37,21 @@ function nomeArquivoP7s(nomeOriginal, nomeP7s) {
   return String(nomeP7s ?? 'documento.p7s');
 }
 
+function normalizarPeticaoIds(input) {
+  if (input == null) return null;
+  if (Array.isArray(input)) {
+    const ids = input.filter((id) => id != null);
+    return ids.length ? ids : null;
+  }
+  return [input];
+}
+
+function aguardar(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 /**
  * Botão + modal de assinatura automática (PDFs da pasta «Assinar» → .p7s).
  * @param {object} props
@@ -140,19 +155,43 @@ export function AssinaturaAutomaticaInicialPanel({
   const carregarJaAssinadosSeExistirem = async () => {
     const arquivos = await listarArquivosAssinadosInicial({ codigoCliente, numeroInterno });
     if (!Array.isArray(arquivos) || arquivos.length === 0) return false;
-    await carregarP7sAssinados();
-    setFase('concluido');
-    setAtivo(false);
-    pararPoll();
+    await carregarP7sAssinados(null, { fecharModal: true });
     return true;
   };
 
-  const carregarP7sAssinados = async (peticaoIdFiltro = null) => {
-    const arquivos = await listarArquivosAssinadosInicial({
-      codigoCliente,
-      numeroInterno,
-      peticaoId: peticaoIdFiltro ?? undefined,
-    });
+  const listarTodosArquivosAssinados = async (peticaoIdsFiltro) => {
+    const ids = normalizarPeticaoIds(peticaoIdsFiltro);
+    if (ids) {
+      const partes = await Promise.all(
+        ids.map((peticaoId) =>
+          listarArquivosAssinadosInicial({ codigoCliente, numeroInterno, peticaoId }),
+        ),
+      );
+      const vistos = new Set();
+      const out = [];
+      for (const lista of partes) {
+        for (const arq of lista || []) {
+          if (arq?.arquivoId == null || vistos.has(arq.arquivoId)) continue;
+          vistos.add(arq.arquivoId);
+          out.push(arq);
+        }
+      }
+      return out;
+    }
+    const lista = await listarArquivosAssinadosInicial({ codigoCliente, numeroInterno });
+    return Array.isArray(lista) ? lista : [];
+  };
+
+  const carregarP7sAssinados = async (peticaoIdsFiltro = null, { fecharModal = false } = {}) => {
+    const maxTentativas = 10;
+    let arquivos = [];
+    for (let tentativa = 0; tentativa < maxTentativas; tentativa += 1) {
+      arquivos = await listarTodosArquivosAssinados(peticaoIdsFiltro);
+      if (arquivos.length > 0) break;
+      if (tentativa < maxTentativas - 1) {
+        await aguardar(1500);
+      }
+    }
     if (!Array.isArray(arquivos) || arquivos.length === 0) {
       throw new Error('Nenhum .p7s assinado encontrado para este processo.');
     }
@@ -173,8 +212,16 @@ export function AssinaturaAutomaticaInicialPanel({
         };
       }),
     );
-    onArquivosAssinados(linhas);
-    onToast?.(`${linhas.length} arquivo(s) .p7s carregado(s) da assinatura automática.`);
+    await Promise.resolve(onArquivosAssinados(linhas));
+    onToast?.(`${linhas.length} arquivo(s) .p7s carregado(s) na lista de protocolo.`);
+    setFase('concluido');
+    setAtivo(false);
+    pararPoll();
+    if (fecharModal) {
+      setTimeout(() => {
+        fecharModal();
+      }, 700);
+    }
   };
 
   const aplicarStatusLote = async (status) => {
@@ -194,13 +241,13 @@ export function AssinaturaAutomaticaInicialPanel({
       setAtivo(false);
       pararPoll();
       try {
-        const peticaoIdUpload =
-          modoAssinaturaRef.current === 'upload'
-            ? (Array.isArray(status?.peticaoIds) && status.peticaoIds.length > 0
-                ? status.peticaoIds[0]
-                : peticaoIdsLoteRef.current[0])
-            : null;
-        await carregarP7sAssinados(peticaoIdUpload);
+        const peticaoIds =
+          Array.isArray(status?.peticaoIds) && status.peticaoIds.length > 0
+            ? status.peticaoIds
+            : peticaoIdsLoteRef.current.length > 0
+              ? peticaoIdsLoteRef.current
+              : null;
+        await carregarP7sAssinados(peticaoIds, { fecharModal: true });
       } catch (e) {
         setFase('erro');
         setErro(mensagemErroAmigavel(e, 'carregar os .p7s assinados'));
@@ -344,37 +391,12 @@ export function AssinaturaAutomaticaInicialPanel({
     setPeticaoCount(0);
     setAtivo(true);
     pararPoll();
+    setModalAberto(true);
     try {
-      if (await carregarJaAssinadosSeExistirem()) return;
-
       const resp = await assinarAutomaticoInicial({ credencialId, codigoCliente, numeroInterno });
       await acompanharLoteAssinatura(resp);
     } catch (e) {
       await tratarErroAssinatura(e, 'iniciar a assinatura automática');
-    }
-  };
-
-  const carregarAssinadosExistentes = async () => {
-    if (disabled || ativo) return;
-    setModalAberto(true);
-    setFase('');
-    setErro('');
-    setErroCodigo('');
-    setAtivo(true);
-    pararPoll();
-    try {
-      const ok = await carregarJaAssinadosSeExistirem();
-      if (!ok) {
-        setFase('erro');
-        setErro(
-          'Nenhum .p7s assinado encontrado para este processo. Use «Assinar automaticamente» para assinar os PDFs da pasta «Assinar».',
-        );
-        setAtivo(false);
-      }
-    } catch (e) {
-      setFase('erro');
-      setErro(mensagemErroAmigavel(e, 'carregar os .p7s já assinados'));
-      setAtivo(false);
     }
   };
 
@@ -526,13 +548,12 @@ export function AssinaturaAutomaticaInicialPanel({
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2">
       <button
         type="button"
         className={`${processosBtnPrimary} inline-flex items-center gap-1.5 text-sm`}
         disabled={disabled || !processoOk || ativo}
         onClick={abrirModalEscolha}
-        title="Escolha entre assinar PDFs da pasta «Assinar» ou enviar .p7s da sua máquina"
+        title="Assina PDFs da pasta «Assinar» ou enviados da sua máquina e carrega os .p7s na lista de protocolo"
       >
         {ativo ? (
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
@@ -541,16 +562,6 @@ export function AssinaturaAutomaticaInicialPanel({
         )}
         Assinar automaticamente
       </button>
-      <button
-        type="button"
-        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-        disabled={disabled || !processoOk || ativo}
-        onClick={() => void carregarAssinadosExistentes()}
-        title="Carrega .p7s já assinados deste processo (sem refazer assinatura no token)"
-      >
-        Carregar .p7s já assinados
-      </button>
-      </div>
 
       <input
         ref={inputMaquinaRef}
@@ -692,8 +703,8 @@ export function AssinaturaAutomaticaInicialPanel({
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-4 text-center space-y-2">
                   <p className="font-semibold text-emerald-900">Assinatura concluída</p>
                   <p className="text-xs text-emerald-800">
-                    Os .p7s foram carregados na lista de anexos abaixo. Confira os tipos e prossiga
-                    com Preparar ou Distribuir.
+                    Os .p7s foram adicionados à lista de protocolo (ordenados por numeração). Confira os
+                    tipos e prossiga com Preparar ou Distribuir.
                   </p>
                 </div>
               )}

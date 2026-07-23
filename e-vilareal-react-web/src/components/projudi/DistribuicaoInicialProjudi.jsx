@@ -143,6 +143,23 @@ function linhaP7sComArquivo(file) {
   return { key: crypto.randomUUID(), file, idArquivoTipo: 16 };
 }
 
+/** Prefixo numérico do nome (ex.: `12.Anexo.pdf.p7s` → 12). Sem prefixo → fim da lista. */
+function prefixoNumericoNomeArquivo(nome) {
+  const m = String(nome ?? '').trim().match(/^(\d{1,2})\./);
+  return m ? Number.parseInt(m[1], 10) : 9999;
+}
+
+function ordenarLinhasP7s(linhas) {
+  return [...linhas].sort((a, b) => {
+    const pa = prefixoNumericoNomeArquivo(a.file?.name);
+    const pb = prefixoNumericoNomeArquivo(b.file?.name);
+    if (pa !== pb) return pa - pb;
+    return String(a.file?.name ?? '').localeCompare(String(b.file?.name ?? ''), 'pt-BR', {
+      sensitivity: 'base',
+    });
+  });
+}
+
 function BadgeCampo({ nivel, label, motivo }) {
   const resolvido = nivel === 'RESOLVIDO';
   return (
@@ -294,6 +311,11 @@ export function DistribuicaoInicialProjudi() {
   const prioridadeAutoMarcadaRef = useRef(null);
   const sugestaoAplicadaRef = useRef(false);
   const [linhasP7s, setLinhasP7s] = useState([]);
+  const aplicarLinhasP7s = useCallback((updater) => {
+    setLinhasP7s((rows) =>
+      ordenarLinhasP7s(typeof updater === 'function' ? updater(rows) : updater),
+    );
+  }, []);
   const [docsPessoaDisponiveis, setDocsPessoaDisponiveis] = useState([]);
   const [carregandoDocsPessoa, setCarregandoDocsPessoa] = useState(false);
   const [incluirDocsPessoa, setIncluirDocsPessoa] = useState(true);
@@ -562,8 +584,8 @@ export function DistribuicaoInicialProjudi() {
 
   useEffect(() => {
     if (incluirDocsPessoa) return;
-    setLinhasP7s((rows) => rows.filter((linha) => linha.origem !== 'pessoa'));
-  }, [incluirDocsPessoa]);
+    aplicarLinhasP7s((rows) => rows.filter((linha) => linha.origem !== 'pessoa'));
+  }, [incluirDocsPessoa, aplicarLinhasP7s]);
 
   const baixarLinhasConstitutivosPessoa = useCallback(async (autorId) => {
     if (!autorId) return [];
@@ -615,7 +637,7 @@ export function DistribuicaoInicialProjudi() {
           return 0;
         }
         let adicionados = 0;
-        setLinhasP7s((rows) => {
+        aplicarLinhasP7s((rows) => {
           const chaves = new Set(rows.map((l) => l.key));
           const novas = linhasPessoa.filter((l) => !chaves.has(l.key));
           adicionados = novas.length;
@@ -639,14 +661,14 @@ export function DistribuicaoInicialProjudi() {
         setCarregandoDocsPessoa(false);
       }
     },
-    [baixarLinhasConstitutivosPessoa, incluirDocsPessoa, pessoaAutor?.id],
+    [baixarLinhasConstitutivosPessoa, incluirDocsPessoa, pessoaAutor?.id, aplicarLinhasP7s],
   );
 
   const incorporarAnexosProcessoComPessoas = useCallback(
     async (linhasProcesso, { silencioso = false } = {}) => {
       const autorId = pessoaAutor?.id ?? null;
       if (!autorId || !incluirDocsPessoa) {
-        setLinhasP7s(linhasProcesso);
+        aplicarLinhasP7s(linhasProcesso);
         if (!silencioso && linhasProcesso.length > 0) {
           setToast(`${linhasProcesso.length} arquivo(s) .p7s carregado(s) da assinatura automática.`);
         }
@@ -656,7 +678,7 @@ export function DistribuicaoInicialProjudi() {
       if (!silencioso) setApiError('');
       try {
         const linhasPessoa = await baixarLinhasConstitutivosPessoa(autorId);
-        setLinhasP7s(() => {
+        aplicarLinhasP7s(() => {
           const chaves = new Set();
           const out = [];
           for (const linha of [...linhasProcesso, ...linhasPessoa]) {
@@ -678,7 +700,7 @@ export function DistribuicaoInicialProjudi() {
           }
         }
       } catch (err) {
-        setLinhasP7s(linhasProcesso);
+        aplicarLinhasP7s(linhasProcesso);
         if (!silencioso) {
           setApiError(err?.message || 'Falha ao incluir documentos da pasta Pessoas.');
         }
@@ -686,7 +708,7 @@ export function DistribuicaoInicialProjudi() {
         setCarregandoDocsPessoa(false);
       }
     },
-    [baixarLinhasConstitutivosPessoa, incluirDocsPessoa, pessoaAutor?.id],
+    [baixarLinhasConstitutivosPessoa, incluirDocsPessoa, pessoaAutor?.id, aplicarLinhasP7s],
   );
 
   useEffect(() => {
@@ -1260,15 +1282,15 @@ export function DistribuicaoInicialProjudi() {
                   codigoCliente={dadosProcesso.codigoCliente}
                   numeroInterno={dadosProcesso.numeroInterno}
                   disabled={!dadosProcesso || operacao != null}
-                  onArquivosAssinados={(linhas, opts) => {
+                  onArquivosAssinados={async (linhas, opts) => {
                     if (opts?.anexar) {
-                      setLinhasP7s((rows) => [...rows, ...linhas]);
+                      aplicarLinhasP7s((rows) => [...rows, ...linhas]);
                       if (incluirDocsPessoa) {
-                        void mesclarSomentePessoaDocs({ silencioso: false });
+                        await mesclarSomentePessoaDocs({ silencioso: false });
                       }
                       return;
                     }
-                    void incorporarAnexosProcessoComPessoas(linhas);
+                    await incorporarAnexosProcessoComPessoas(linhas);
                   }}
                   onToast={setToast}
                   onErro={setApiError}
@@ -1304,7 +1326,7 @@ export function DistribuicaoInicialProjudi() {
                     setApiError('Selecione apenas arquivos .p7s.');
                     return;
                   }
-                  setLinhasP7s((rows) => [...rows, ...files.map((f) => linhaP7sComArquivo(f))]);
+                  aplicarLinhasP7s((rows) => [...rows, ...files.map((f) => linhaP7sComArquivo(f))]);
                 }}
               />
               <label htmlFor="inicial-p7s" className={`${processosBtnPrimary} cursor-pointer text-sm`}>
@@ -1334,7 +1356,7 @@ export function DistribuicaoInicialProjudi() {
                       value={linha.idArquivoTipo}
                       onChange={(ev) => {
                         const v = Number(ev.target.value);
-                        setLinhasP7s((rows) =>
+                        aplicarLinhasP7s((rows) =>
                           rows.map((r, i) => (i === idx ? { ...r, idArquivoTipo: v } : r)),
                         );
                       }}
@@ -1348,7 +1370,7 @@ export function DistribuicaoInicialProjudi() {
                     <button
                       type="button"
                       className="text-slate-400 hover:text-rose-600"
-                      onClick={() => setLinhasP7s((rows) => rows.filter((_, i) => i !== idx))}
+                      onClick={() => aplicarLinhasP7s((rows) => rows.filter((_, i) => i !== idx))}
                     >
                       <Trash2 className="h-4 w-4" aria-hidden />
                     </button>

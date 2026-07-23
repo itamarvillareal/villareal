@@ -95,9 +95,6 @@ public class ProjudiInicialAssinaturaService {
         Optional<ProjudiPeticaoEntity> peticaoOpt;
         if (peticaoId != null) {
             peticaoOpt = peticaoRepository.findById(peticaoId).filter(p -> chave.equals(p.getNumeroProcesso()));
-            if (peticaoOpt.isPresent() && !STATUS_PETICAO_ASSINADA.equals(peticaoOpt.get().getStatus())) {
-                return List.of();
-            }
         } else {
             peticaoOpt = peticaoRepository.findByNumeroProcessoWithArquivos(chave).stream()
                     .filter(p -> STATUS_PETICAO_ASSINADA.equals(p.getStatus()))
