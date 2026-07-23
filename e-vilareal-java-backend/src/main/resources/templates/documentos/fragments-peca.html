@@ -114,12 +114,22 @@
             position: running(rodape-primeira);
             width: 100%;
             text-align: center;
+            height: 0;
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+            border: none;
         }
 
         .rodape-running {
             position: running(rodape);
             width: 100%;
             text-align: center;
+            height: 0;
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+            border: none;
         }
 
         .rodape-linha1,
@@ -470,6 +480,30 @@
         </table>
     </div>
 
+    <div class="cabecalho-padrao">
+        <p class="paginacao-direita">
+            <span class="pag-num-atual"></span> de <span class="pag-num-total"></span>
+        </p>
+        <table class="cabecalho-layout">
+            <tr>
+                <td class="cabecalho-logo">
+                    <img th:if="${logoCabecalhoBase64 != null and !logoCabecalhoBase64.isEmpty()}"
+                         th:src="${logoCabecalhoBase64}" alt="Villa Real e Advogados"
+                         style="height: 2.3cm; width: 5.9cm; max-height: 2.3cm; max-width: 5.9cm; object-fit: contain;"/>
+                </td>
+                <td class="cabecalho-advogado">
+                    <div class="advogado-bloco">
+                        <p class="advogado-nome" th:text="${advogadoNome}">Dr. Itamar Alexandre Felix Villa Real Junior</p>
+                        <p class="advogado-oab" th:text="${advogadoOab}">OAB/GO 33.329</p>
+                    </div>
+                </td>
+            </tr>
+        </table>
+    </div>
+</th:block>
+
+<!-- Petições reformatadas: só cabeçalho running (evita duplicar logo na 1ª página). -->
+<th:block th:fragment="cabecalho-peticao">
     <div class="cabecalho-padrao">
         <p class="paginacao-direita">
             <span class="pag-num-atual"></span> de <span class="pag-num-total"></span>

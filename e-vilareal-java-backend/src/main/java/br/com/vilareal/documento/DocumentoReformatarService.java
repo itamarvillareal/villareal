@@ -147,63 +147,40 @@ public class DocumentoReformatarService {
         if (request == null) {
             throw new IllegalArgumentException("Conteúdo do documento é obrigatório.");
         }
+        DocumentoReformatarConteudoRequest efetivo = request;
         if (StringUtils.hasText(request.corpoUnico())) {
-            DocumentoReformatarConteudoRequest parsed =
+            DocumentoReformatarConteudoRequest fromEditor =
                     DocumentoReformatarCorpoUnicoHtml.aplicarCorpoUnico(request, request.corpoUnico());
-            if (corpoUnicoTemEstruturaParaPdf(parsed, request.corpoUnico())) {
-                return gerarPdfModoReformatado(parsed, request.corpoUnico());
-            }
-            return gerarPdfModoCorpoUnico(parsed, request);
+            efetivo = mesclarConteudoReformatado(request, fromEditor);
         }
-        return gerarPdfModoReformatado(request, null);
+        return gerarPdfModoReformatado(efetivo, request.corpoUnico());
     }
 
-    private static boolean corpoUnicoTemEstruturaParaPdf(
-            DocumentoReformatarConteudoRequest parsed, String corpoUnicoHtml) {
-        if (parsed == null) {
-            return false;
+    /** Mescla campos parseados do editor WYSIWYG com o JSON estruturado original. */
+    static DocumentoReformatarConteudoRequest mesclarConteudoReformatado(
+            DocumentoReformatarConteudoRequest base, DocumentoReformatarConteudoRequest fromEditor) {
+        if (fromEditor == null) {
+            return base;
         }
-        if (StringUtils.hasText(parsed.preambulo())) {
-            return true;
-        }
-        if (parsed.secoes() != null && !parsed.secoes().isEmpty()) {
-            return true;
-        }
-        return StringUtils.hasText(corpoUnicoHtml)
-                && (corpoUnicoHtml.contains("data-doc-part=\"preambulo\"")
-                        || corpoUnicoHtml.contains("data-doc-part=\"secao\""));
+        List<DocumentoReformatarConteudoRequest.SecaoConteudo> secoes =
+                fromEditor.secoes() != null && !fromEditor.secoes().isEmpty() ? fromEditor.secoes() : base.secoes();
+        return new DocumentoReformatarConteudoRequest(
+                preferirTexto(fromEditor.enderecamento(), base.enderecamento()),
+                preferirTexto(fromEditor.numeroProcesso(), base.numeroProcesso()),
+                preferirTexto(fromEditor.cidadeEstado(), base.cidadeEstado()),
+                preferirTexto(fromEditor.data(), base.data()),
+                preferirTexto(fromEditor.nomePeca(), base.nomePeca()),
+                preferirTexto(fromEditor.preambulo(), base.preambulo()),
+                secoes,
+                preferirTexto(fromEditor.fecho(), base.fecho()),
+                preferirTexto(fromEditor.advogadoNome(), base.advogadoNome()),
+                preferirTexto(fromEditor.advogadoOab(), base.advogadoOab()),
+                base.corpoUnico(),
+                base.processoId());
     }
 
-    private byte[] gerarPdfModoCorpoUnico(
-            DocumentoReformatarConteudoRequest parsed, DocumentoReformatarConteudoRequest original) {
-        String corpoHtml = DocumentoReformatarCorpoUnicoHtml.extrairHtmlParaPdf(original.corpoUnico());
-        LocalDate data = parseData(parsed.data());
-        String localDataCustom = resolverLocalDataCorpoUnico(
-                original.corpoUnico(), original.cidadeEstado(), data, parsed);
-        String cidadeEstado = original.cidadeEstado() != null && !original.cidadeEstado().isBlank()
-                ? original.cidadeEstado().trim()
-                : "Anápolis, estado de Goiás";
-        DocumentoRenderContext ctx = new DocumentoRenderContext(
-                "",
-                "",
-                cidadeEstado,
-                data,
-                true,
-                null,
-                null,
-                List.of(),
-                List.of(),
-                List.of(),
-                List.of(),
-                List.of(),
-                localDataCustom,
-                true,
-                advogadoManualOuNull(parsed.advogadoNome(), DocumentoReformatarCorpoUnicoHtml.ADVOGADO_NOME_PADRAO),
-                advogadoManualOuNull(parsed.advogadoOab(), DocumentoReformatarCorpoUnicoHtml.ADVOGADO_OAB_PADRAO),
-                true,
-                corpoHtml,
-                original.processoId());
-        return pdfService.gerarPdf(ctx);
+    private static String preferirTexto(String preferido, String fallback) {
+        return StringUtils.hasText(preferido) ? preferido.trim() : fallback;
     }
 
     private byte[] gerarPdfModoReformatado(DocumentoReformatarConteudoRequest request, String corpoUnicoOriginal) {
