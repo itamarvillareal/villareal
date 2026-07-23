@@ -1,6 +1,7 @@
 package br.com.vilareal.financeiro.application;
 
 import br.com.vilareal.financeiro.api.dto.ContaBancariaResponse;
+import br.com.vilareal.financeiro.api.dto.ContaBancariaWriteRequest;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaBancariaEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaBancariaRepository;
@@ -10,6 +11,8 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -142,5 +145,40 @@ class ContaBancariaApplicationServiceTest {
             assertThat(c.tipo()).isEqualTo("VIRTUAL");
             assertThat(c.temExtrato()).isFalse();
         });
+    }
+
+    @Test
+    void criarPersisteContaRealComExtrato() {
+        when(repo.findByNumeroBanco(903)).thenReturn(Optional.empty());
+        when(repo.saveAndFlush(any(ContaBancariaEntity.class))).thenAnswer(inv -> {
+            ContaBancariaEntity c = inv.getArgument(0);
+            c.setId(99L);
+            return c;
+        });
+
+        ContaBancariaResponse out = service.criar(new ContaBancariaWriteRequest(
+                903,
+                "BB Conta Corrente",
+                "REAL",
+                null,
+                null,
+                "1",
+                "324-7",
+                "453259-7"));
+
+        assertThat(out.numeroBanco()).isEqualTo(903);
+        assertThat(out.bancoNome()).isEqualTo("BB Conta Corrente");
+        assertThat(out.temExtrato()).isTrue();
+        assertThat(out.ofxConta()).isEqualTo("453259-7");
+    }
+
+    @Test
+    void criarRejeitaNumeroDuplicado() {
+        when(repo.findByNumeroBanco(903)).thenReturn(Optional.of(conta(903, "BB Conta Corrente", "REAL", true)));
+
+        assertThatThrownBy(() -> service.criar(new ContaBancariaWriteRequest(
+                        903, "Outro", "REAL", null, null, null, null, null)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("903");
     }
 }

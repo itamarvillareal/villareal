@@ -276,7 +276,7 @@ public class DocumentoDocxParser {
     }
 
     private static ParagrafoDocumento criarParagrafo(Props props, TipoParagrafo tipo) {
-        return new ParagrafoDocumento(tipo, props.runs());
+        return new ParagrafoDocumento(tipo, props.runs(), props.estiloCss());
     }
 
     private static boolean ehLinhaSomenteProcesso(String texto, String numeroProcesso) {
@@ -327,7 +327,8 @@ public class DocumentoDocxParser {
             maxFont = 24;
         }
 
-        return new Props(texto, runs, center, justify, bold, allCaps, maxFont, temLista);
+        String estiloCss = DocumentoParagrafoEstiloUtil.estiloFromWordParagraph(paragrafo, center, justify);
+        return new Props(texto, runs, center, justify, bold, allCaps, maxFont, temLista, estiloCss);
     }
 
     private static int resolverFontSizeHalfPoints(XWPFRun run) {
@@ -367,7 +368,8 @@ public class DocumentoDocxParser {
             boolean bold,
             boolean allCaps,
             int fontSizeHalfPoints,
-            boolean temListaNativa) {
+            boolean temListaNativa,
+            String estiloCss) {
 
         boolean cabecalhoEscritorio() {
             if (DocumentoParseadoHeuristics.ehRuidoEscritorio(texto)) {

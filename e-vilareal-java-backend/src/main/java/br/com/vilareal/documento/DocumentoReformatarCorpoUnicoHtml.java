@@ -93,7 +93,7 @@ public final class DocumentoReformatarCorpoUnicoHtml {
         }
 
         if (StringUtils.hasText(req.preambulo())) {
-            sb.append("<div data-doc-part=\"preambulo\" style=\"margin-bottom:18pt;text-align:justify;text-indent:2cm;\">")
+            sb.append("<div data-doc-part=\"preambulo\" style=\"margin-bottom:18pt;text-align:justify;\">")
                     .append(req.preambulo().trim())
                     .append("</div>");
         }
@@ -125,7 +125,7 @@ public final class DocumentoReformatarCorpoUnicoHtml {
                             .append(escapeTexto(secao.titulo().trim()))
                             .append("</p>");
                 }
-                sb.append("<div data-doc-part=\"secao-conteudo\" style=\"text-align:justify;text-indent:4cm;\">")
+                sb.append("<div data-doc-part=\"secao-conteudo\" style=\"text-align:justify;\">")
                         .append(StringUtils.hasText(secao.conteudo()) ? secao.conteudo().trim() : "")
                         .append("</div></div>");
             }

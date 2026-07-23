@@ -8,6 +8,8 @@ import {
 
 /** Banco do Brasil */
 export const NUMERO_BANCO_BB = 3;
+/** Banco do Brasil — conta corrente (extrato OFX) */
+export const NUMERO_BANCO_BB_CONTA_CORRENTE = 903;
 /** Caixa Econômica Federal */
 export const NUMERO_BANCO_CEF = 5;
 /** Cora */
@@ -17,6 +19,7 @@ export const NUMERO_BANCO_SICOOB_VRV = 29;
 
 const BANCOS_KARLA = [
   NUMERO_BANCO_BB,
+  NUMERO_BANCO_BB_CONTA_CORRENTE,
   NUMERO_BANCO_CEF,
   NUMERO_BANCO_CORA,
   NUMERO_BANCO_SICOOB_VRV,

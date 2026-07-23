@@ -353,6 +353,36 @@ function classeResultadoProtocolo(resultado) {
   }
 }
 
+/** Checkboxes espelhando a confirmação PROJUDI (PaginaAtual=5). */
+function OpcoesConfirmacaoProjudiCheckboxes({ opcoes, disabled, onUrgencia, onLiberdade }) {
+  return (
+    <div className="space-y-1.5">
+      <label className="flex items-start gap-2 text-xs text-slate-700 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={Boolean(opcoes?.pedidoUrgencia)}
+          disabled={disabled}
+          onChange={(e) => onUrgencia?.(e.target.checked)}
+        />
+        <span>
+          Envolve pedido de urgência (tutelas, liminares, comunicados de prisão, alvarás e similares).
+        </span>
+      </label>
+      <label className="flex items-start gap-2 text-xs text-slate-700 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={Boolean(opcoes?.pedidoLiberdade)}
+          disabled={disabled}
+          onChange={(e) => onLiberdade?.(e.target.checked)}
+        />
+        <span>Pedido de Liberdade</span>
+      </label>
+    </div>
+  );
+}
+
 export function PeticionamentoProjudi() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -382,16 +412,44 @@ export function PeticionamentoProjudi() {
   const [codigoClienteReg, setCodigoClienteReg] = useState('');
   const [numeroInternoReg, setNumeroInternoReg] = useState('');
   const [complemento, setComplemento] = useState('');
+  const [descricaoMovimentacao, setDescricaoMovimentacao] = useState('');
   const [linhasP7s, setLinhasP7s] = useState([]);
 
   const [partesPorProcesso, setPartesPorProcesso] = useState({});
   const [selecionadas, setSelecionadas] = useState(() => new Set());
   const [agendamentoInputPorPeticao, setAgendamentoInputPorPeticao] = useState({});
+  /** @type {[{ [id: number]: { pedidoUrgencia: boolean, pedidoLiberdade: boolean } }, Function]} */
+  const [opcoesConfirmacaoPorPeticao, setOpcoesConfirmacaoPorPeticao] = useState({});
+  const [protocoloPedidoUrgencia, setProtocoloPedidoUrgencia] = useState(false);
+  const [protocoloPedidoLiberdade, setProtocoloPedidoLiberdade] = useState(false);
   const [modalProtocolo, setModalProtocolo] = useState(false);
   const [previa, setPrevia] = useState(null);
   const [carregandoPrevia, setCarregandoPrevia] = useState(false);
   const [resultadoProtocolo, setResultadoProtocolo] = useState([]);
   const [protocoloProgresso, setProtocoloProgresso] = useState(null);
+
+  const opcoesConfirmacaoDaPeticao = (p) => {
+    const local = opcoesConfirmacaoPorPeticao[p.id];
+    return {
+      pedidoUrgencia: local?.pedidoUrgencia ?? Boolean(p.pedidoUrgencia),
+      pedidoLiberdade: local?.pedidoLiberdade ?? Boolean(p.pedidoLiberdade),
+    };
+  };
+
+  const setOpcaoConfirmacaoPeticao = (peticaoId, campo, valor) => {
+    setOpcoesConfirmacaoPorPeticao((prev) => {
+      const atual = prev[peticaoId] || {};
+      const peticao = filaPeticoes.find((x) => x.id === peticaoId);
+      return {
+        ...prev,
+        [peticaoId]: {
+          pedidoUrgencia: atual.pedidoUrgencia ?? Boolean(peticao?.pedidoUrgencia),
+          pedidoLiberdade: atual.pedidoLiberdade ?? Boolean(peticao?.pedidoLiberdade),
+          [campo]: valor,
+        },
+      };
+    });
+  };
 
   useEffect(() => {
     if (numeroProcessoOrigem) setNumeroProcesso(numeroProcessoOrigem);
@@ -548,6 +606,16 @@ export function PeticionamentoProjudi() {
   );
 
   useEffect(() => {
+    const salva = assinadasProtocolar
+      .filter((p) => selecionadas.has(p.id))
+      .map((p) => p.complemento)
+      .find((c) => String(c ?? '').trim());
+    if (salva) {
+      setDescricaoMovimentacao((atual) => (String(atual ?? '').trim() ? atual : salva.trim()));
+    }
+  }, [assinadasProtocolar, selecionadas]);
+
+  useEffect(() => {
     setSelecionadas((prev) => {
       const permitidos = new Set(assinadasProtocolar.map((p) => p.id));
       const next = new Set([...prev].filter((id) => permitidos.has(id)));
@@ -668,6 +736,9 @@ export function PeticionamentoProjudi() {
       await registrarAssinados(fd);
       setToast(`${arquivos.length} .p7s registrado(s).`);
       setComplemento('');
+      if (complemento.trim()) {
+        setDescricaoMovimentacao(complemento.trim());
+      }
       setLinhasP7s([]);
       await recarregar();
     } catch (err) {
@@ -680,6 +751,9 @@ export function PeticionamentoProjudi() {
   const abrirModalProtocolo = async () => {
     const ids = idsSelecionadosProtocolar;
     if (!ids.length) return;
+    const selecionadasPeticoes = filaPeticoes.filter((p) => ids.includes(p.id));
+    setProtocoloPedidoUrgencia(selecionadasPeticoes.some((p) => opcoesConfirmacaoDaPeticao(p).pedidoUrgencia));
+    setProtocoloPedidoLiberdade(selecionadasPeticoes.some((p) => opcoesConfirmacaoDaPeticao(p).pedidoLiberdade));
     setModalProtocolo(true);
     setPrevia(null);
     setCarregandoPrevia(true);
@@ -722,7 +796,10 @@ export function PeticionamentoProjudi() {
       finalizado: false,
     });
     try {
-      await protocolarLote(ids);
+      await protocolarLote(ids, descricaoMovimentacao, {
+        pedidoUrgencia: protocoloPedidoUrgencia,
+        pedidoLiberdade: protocoloPedidoLiberdade,
+      });
     } catch (err) {
       setApiError(err?.message || 'Falha ao iniciar o protocolo.');
       setOperacao(null);
@@ -785,9 +862,15 @@ export function PeticionamentoProjudi() {
     setOperacao(`agendar-${peticaoId}`);
     setApiError('');
     try {
-      await agendarProtocolo(peticaoId, iso);
+      const opcoes = opcoesConfirmacaoDaPeticao(p || { id: peticaoId });
+      await agendarProtocolo(peticaoId, iso, opcoes);
       setToast(`Petição #${peticaoId} agendada para ${formatarAgendamentoProtocolo(iso)}.`);
       setAgendamentoInputPorPeticao((prev) => {
+        const next = { ...prev };
+        delete next[peticaoId];
+        return next;
+      });
+      setOpcoesConfirmacaoPorPeticao((prev) => {
         const next = { ...prev };
         delete next[peticaoId];
         return next;
@@ -1141,7 +1224,7 @@ export function PeticionamentoProjudi() {
                     )}
                   </label>
                   <label className="block sm:col-span-2">
-                    <span className="text-xs text-slate-600">Complemento (opcional)</span>
+                    <span className="text-xs text-slate-600">Descrição movimentação (no registro)</span>
                     <input
                       className={inputClass}
                       value={complemento}
@@ -1425,6 +1508,16 @@ export function PeticionamentoProjudi() {
                               <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-violet-900">
                                 <Clock className="w-3.5 h-3.5 shrink-0" aria-hidden />
                                 <span>Agendado: {formatarAgendamentoProtocolo(p.protocoloAgendadoPara)}</span>
+                                {(p.pedidoUrgencia || p.pedidoLiberdade) ? (
+                                  <span className="font-normal text-violet-700">
+                                    {[
+                                      p.pedidoUrgencia ? 'urgência' : null,
+                                      p.pedidoLiberdade ? 'liberdade' : null,
+                                    ]
+                                      .filter(Boolean)
+                                      .join(' · ')}
+                                  </span>
+                                ) : null}
                                 <button
                                   type="button"
                                   className="font-normal text-rose-700 hover:underline disabled:opacity-50"
@@ -1439,46 +1532,54 @@ export function PeticionamentoProjudi() {
                                   {p.protocoloMensagem}
                                 </p>
                               ) : null}
-                              <div className="flex flex-wrap items-end gap-2 rounded border border-violet-200 bg-violet-50/60 p-2">
-                                <label className="flex flex-col gap-1 text-xs text-slate-700">
-                                  Alterar data e hora
-                                  <input
-                                    type="datetime-local"
-                                    className="rounded border border-slate-300 px-2 py-1 text-sm bg-white"
-                                    min={minDatetimeLocalAgendamento()}
-                                    value={
-                                      agendamentoInputPorPeticao[p.id] ??
-                                      isoParaDatetimeLocal(p.protocoloAgendadoPara) ??
-                                      ''
+                              <div className="mt-2 space-y-2 rounded border border-violet-200 bg-violet-50/60 p-2">
+                                <div className="flex flex-wrap items-end gap-2">
+                                  <label className="flex flex-col gap-1 text-xs text-slate-700">
+                                    Alterar data e hora
+                                    <input
+                                      type="datetime-local"
+                                      className="rounded border border-slate-300 px-2 py-1 text-sm bg-white"
+                                      min={minDatetimeLocalAgendamento()}
+                                      value={
+                                        agendamentoInputPorPeticao[p.id] ??
+                                        isoParaDatetimeLocal(p.protocoloAgendadoPara) ??
+                                        ''
+                                      }
+                                      onChange={(e) =>
+                                        setAgendamentoInputPorPeticao((prev) => ({
+                                          ...prev,
+                                          [p.id]: e.target.value,
+                                        }))
+                                      }
+                                      disabled={operacao === `agendar-${p.id}`}
+                                    />
+                                  </label>
+                                  <button
+                                    type="button"
+                                    className={`${processosBtnPrimary} bg-violet-700 hover:bg-violet-800 text-xs py-1.5 px-2.5`}
+                                    disabled={
+                                      operacao === `agendar-${p.id}` ||
+                                      !(
+                                        agendamentoInputPorPeticao[p.id] ??
+                                        isoParaDatetimeLocal(p.protocoloAgendadoPara)
+                                      )
                                     }
-                                    onChange={(e) =>
-                                      setAgendamentoInputPorPeticao((prev) => ({
-                                        ...prev,
-                                        [p.id]: e.target.value,
-                                      }))
-                                    }
-                                    disabled={operacao === `agendar-${p.id}`}
-                                  />
-                                </label>
-                                <button
-                                  type="button"
-                                  className={`${processosBtnPrimary} bg-violet-700 hover:bg-violet-800 text-xs py-1.5 px-2.5`}
-                                  disabled={
-                                    operacao === `agendar-${p.id}` ||
-                                    !(
-                                      agendamentoInputPorPeticao[p.id] ??
-                                      isoParaDatetimeLocal(p.protocoloAgendadoPara)
-                                    )
-                                  }
-                                  onClick={() => void onAgendarProtocoloPeticao(p.id)}
-                                >
-                                  {operacao === `agendar-${p.id}` ? (
-                                    <Loader2 className="w-3.5 h-3.5 animate-spin inline mr-1" aria-hidden />
-                                  ) : (
-                                    <Clock className="w-3.5 h-3.5 inline mr-1" aria-hidden />
-                                  )}
-                                  Reagendar
-                                </button>
+                                    onClick={() => void onAgendarProtocoloPeticao(p.id)}
+                                  >
+                                    {operacao === `agendar-${p.id}` ? (
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin inline mr-1" aria-hidden />
+                                    ) : (
+                                      <Clock className="w-3.5 h-3.5 inline mr-1" aria-hidden />
+                                    )}
+                                    Reagendar
+                                  </button>
+                                </div>
+                                <OpcoesConfirmacaoProjudiCheckboxes
+                                  opcoes={opcoesConfirmacaoDaPeticao(p)}
+                                  disabled={operacao === `agendar-${p.id}`}
+                                  onUrgencia={(v) => setOpcaoConfirmacaoPeticao(p.id, 'pedidoUrgencia', v)}
+                                  onLiberdade={(v) => setOpcaoConfirmacaoPeticao(p.id, 'pedidoLiberdade', v)}
+                                />
                               </div>
                             </div>
                             <button
@@ -1563,38 +1664,46 @@ export function PeticionamentoProjudi() {
                                   {p.protocoloMensagem}
                                 </p>
                               ) : null}
-                              <div className="mt-2 flex flex-wrap items-end gap-2 rounded border border-violet-200 bg-violet-50/60 p-2">
-                                <label className="flex flex-col gap-1 text-xs text-slate-700">
-                                  Data e hora
-                                  <input
-                                    type="datetime-local"
-                                    className="rounded border border-slate-300 px-2 py-1 text-sm bg-white"
-                                    min={minDatetimeLocalAgendamento()}
-                                    value={agendamentoInputPorPeticao[p.id] ?? ''}
-                                    onChange={(e) =>
-                                      setAgendamentoInputPorPeticao((prev) => ({
-                                        ...prev,
-                                        [p.id]: e.target.value,
-                                      }))
+                              <div className="mt-2 space-y-2 rounded border border-violet-200 bg-violet-50/60 p-2">
+                                <div className="flex flex-wrap items-end gap-2">
+                                  <label className="flex flex-col gap-1 text-xs text-slate-700">
+                                    Data e hora
+                                    <input
+                                      type="datetime-local"
+                                      className="rounded border border-slate-300 px-2 py-1 text-sm bg-white"
+                                      min={minDatetimeLocalAgendamento()}
+                                      value={agendamentoInputPorPeticao[p.id] ?? ''}
+                                      onChange={(e) =>
+                                        setAgendamentoInputPorPeticao((prev) => ({
+                                          ...prev,
+                                          [p.id]: e.target.value,
+                                        }))
+                                      }
+                                      disabled={operacao === `agendar-${p.id}`}
+                                    />
+                                  </label>
+                                  <button
+                                    type="button"
+                                    className={`${processosBtnPrimary} bg-violet-700 hover:bg-violet-800 text-xs py-1.5 px-2.5`}
+                                    disabled={
+                                      operacao === `agendar-${p.id}` || !agendamentoInputPorPeticao[p.id]
                                     }
-                                    disabled={operacao === `agendar-${p.id}`}
-                                  />
-                                </label>
-                                <button
-                                  type="button"
-                                  className={`${processosBtnPrimary} bg-violet-700 hover:bg-violet-800 text-xs py-1.5 px-2.5`}
-                                  disabled={
-                                    operacao === `agendar-${p.id}` || !agendamentoInputPorPeticao[p.id]
-                                  }
-                                  onClick={() => void onAgendarProtocoloPeticao(p.id)}
-                                >
-                                  {operacao === `agendar-${p.id}` ? (
-                                    <Loader2 className="w-3.5 h-3.5 animate-spin inline mr-1" aria-hidden />
-                                  ) : (
-                                    <Clock className="w-3.5 h-3.5 inline mr-1" aria-hidden />
-                                  )}
-                                  Agendar protocolo
-                                </button>
+                                    onClick={() => void onAgendarProtocoloPeticao(p.id)}
+                                  >
+                                    {operacao === `agendar-${p.id}` ? (
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin inline mr-1" aria-hidden />
+                                    ) : (
+                                      <Clock className="w-3.5 h-3.5 inline mr-1" aria-hidden />
+                                    )}
+                                    Agendar protocolo
+                                  </button>
+                                </div>
+                                <OpcoesConfirmacaoProjudiCheckboxes
+                                  opcoes={opcoesConfirmacaoDaPeticao(p)}
+                                  disabled={operacao === `agendar-${p.id}`}
+                                  onUrgencia={(v) => setOpcaoConfirmacaoPeticao(p.id, 'pedidoUrgencia', v)}
+                                  onLiberdade={(v) => setOpcaoConfirmacaoPeticao(p.id, 'pedidoLiberdade', v)}
+                                />
                               </div>
                             </div>
                             <button
@@ -1614,6 +1723,18 @@ export function PeticionamentoProjudi() {
                           </li>
                         ))}
                       </ul>
+                      <label className="block space-y-1">
+                        <span className="text-xs font-medium text-slate-700">
+                          Descrição movimentação (PROJUDI)
+                        </span>
+                        <input
+                          className={inputClass}
+                          placeholder="Ex.: Petição Urgente - cancelamento sessão CEJUSC"
+                          value={descricaoMovimentacao}
+                          onChange={(ev) => setDescricaoMovimentacao(ev.target.value)}
+                          disabled={idsSelecionadosProtocolar.length === 0 || operacao === 'protocolo'}
+                        />
+                      </label>
                       <button
                         type="button"
                         className={`${processosBtnPrimary} bg-amber-700 hover:bg-amber-800 w-full sm:w-auto`}
@@ -1715,6 +1836,10 @@ export function PeticionamentoProjudi() {
         previa={previa}
         carregandoPrevia={carregandoPrevia}
         confirmando={operacao === 'protocolo'}
+        pedidoUrgencia={protocoloPedidoUrgencia}
+        pedidoLiberdade={protocoloPedidoLiberdade}
+        onPedidoUrgenciaChange={setProtocoloPedidoUrgencia}
+        onPedidoLiberdadeChange={setProtocoloPedidoLiberdade}
         onCancel={() => {
           if (operacao === 'protocolo') return;
           setModalProtocolo(false);

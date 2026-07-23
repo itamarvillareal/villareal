@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   filtrarBancosPorAcessoExtrato,
   NUMERO_BANCO_BB,
+  NUMERO_BANCO_BB_CONTA_CORRENTE,
   NUMERO_BANCO_CEF,
   NUMERO_BANCO_CORA,
   NUMERO_BANCO_SICOOB_VRV,
@@ -17,11 +18,14 @@ describe('financeiroExtratoAcesso', () => {
     expect(usuarioPodeAcessarExtratoBanco(1, 'itamar', 'itamar')).toBe(true);
   });
 
-  it('karla acessa BB, CEF, CORA e Sicoob VRV', () => {
+  it('karla acessa BB, BB Conta Corrente, CEF, CORA e Sicoob VRV', () => {
     expect(usuarioEhKarlaExtrato('karla', 'karla')).toBe(true);
     expect(usuarioEhKarlaExtrato('2', 'karla.pedroza')).toBe(true);
     expect(
       usuarioPodeAcessarExtratoBanco(NUMERO_BANCO_BB, 'karla', 'karla.pedroza'),
+    ).toBe(true);
+    expect(
+      usuarioPodeAcessarExtratoBanco(NUMERO_BANCO_BB_CONTA_CORRENTE, 'karla', 'karla.pedroza'),
     ).toBe(true);
     expect(
       usuarioPodeAcessarExtratoBanco(NUMERO_BANCO_CEF, 'karla', 'karla.pedroza'),
@@ -39,6 +43,7 @@ describe('financeiroExtratoAcesso', () => {
     const bancos = [
       { nome: 'Itaú', numero: 1 },
       { nome: 'BB', numero: NUMERO_BANCO_BB },
+      { nome: 'BB Conta Corrente', numero: NUMERO_BANCO_BB_CONTA_CORRENTE },
       { nome: 'CEF', numero: NUMERO_BANCO_CEF },
       { nome: 'CORA', numero: NUMERO_BANCO_CORA },
       { nome: 'Sicoob VRV', numero: NUMERO_BANCO_SICOOB_VRV },
@@ -46,6 +51,7 @@ describe('financeiroExtratoAcesso', () => {
     const filtrados = filtrarBancosPorAcessoExtrato(bancos, 'karla', 'karla.pedroza');
     expect(filtrados.map((b) => b.numero)).toEqual([
       NUMERO_BANCO_BB,
+      NUMERO_BANCO_BB_CONTA_CORRENTE,
       NUMERO_BANCO_CEF,
       NUMERO_BANCO_CORA,
       NUMERO_BANCO_SICOOB_VRV,

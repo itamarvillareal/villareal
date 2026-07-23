@@ -79,8 +79,48 @@ class ProjudiPeticaoServiceTest {
     }
 
     @Test
+    void resolverCorpoPasso11_comUrgenciaELiberdade() {
+        String html =
+                """
+                <form>
+                <input id="__Pedido__" name="__Pedido__" type="hidden" value="111">
+                <input type="checkbox" name="Urgente" value="true"> Envolve pedido de urgência
+                <label><input type="checkbox" name="PedidoLiberdade" value="true"> Pedido de Liberdade</label>
+                </form>
+                """;
+        String corpo = ProjudiPeticaoService.resolverCorpoPasso11(
+                html, new ProjudiPeticaoOpcoesConfirmacao(true, true));
+        assertTrue(corpo.contains("__Pedido__=111"), corpo);
+        assertTrue(corpo.contains("&Urgente=true"), corpo);
+        assertTrue(corpo.contains("&PedidoLiberdade=true"), corpo);
+    }
+
+    @Test
     void resolverCorpoPasso11_ignoraPedidoNull() {
         String html = "<input name=\"__Pedido__\" type=\"hidden\" value=\"null\" />";
         assertEquals(null, ProjudiPeticaoService.resolverCorpoPasso11(html));
+    }
+
+    @Test
+    void normalizarTextoMovimentacaoProjudi_preservaLatin1() {
+        assertEquals(
+                "Indicação Prioridade e Juntada Caução",
+                ProjudiPeticaoService.normalizarTextoMovimentacaoProjudi(
+                        "Indicação Prioridade e Juntada Caução"));
+    }
+
+    @Test
+    void normalizarTextoMovimentacaoProjudi_removeEmoji() {
+        assertEquals(
+                "Petição urgente _",
+                ProjudiPeticaoService.normalizarTextoMovimentacaoProjudi("Petição urgente 🚨"));
+    }
+
+    @Test
+    void normalizarTextoMovimentacaoProjudi_preservaAcentosIso88591() {
+        assertEquals(
+                "Petição Urgente - cancelamento sessao cejusc",
+                ProjudiPeticaoService.normalizarTextoMovimentacaoProjudi(
+                        "Petição Urgente - cancelamento sessao cejusc"));
     }
 }

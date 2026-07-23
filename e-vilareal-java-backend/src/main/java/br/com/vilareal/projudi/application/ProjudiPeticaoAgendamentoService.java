@@ -28,6 +28,12 @@ public class ProjudiPeticaoAgendamentoService {
 
     @Transactional
     public void agendarProtocolo(Long peticaoId, Instant agendadoPara) {
+        agendarProtocolo(peticaoId, agendadoPara, null, null);
+    }
+
+    @Transactional
+    public void agendarProtocolo(
+            Long peticaoId, Instant agendadoPara, Boolean pedidoUrgencia, Boolean pedidoLiberdade) {
         validarHorario(agendadoPara);
         ProjudiPeticaoEntity peticao = peticaoRepository
                 .findById(peticaoId)
@@ -35,17 +41,29 @@ public class ProjudiPeticaoAgendamentoService {
         validarStatusAgendavel(peticao);
         ProjudiInicialAssinaturaService.exigirNaoEhInicialDistribuicao(peticao.getNumeroProcesso(), peticaoId);
         peticao.setProtocoloAgendadoPara(agendadoPara);
+        if (pedidoUrgencia != null) {
+            peticao.setPedidoUrgencia(pedidoUrgencia);
+        }
+        if (pedidoLiberdade != null) {
+            peticao.setPedidoLiberdade(pedidoLiberdade);
+        }
         peticaoRepository.save(peticao);
     }
 
     @Transactional
     public void agendarProtocoloLote(List<Long> peticaoIds, Instant agendadoPara) {
+        agendarProtocoloLote(peticaoIds, agendadoPara, null, null);
+    }
+
+    @Transactional
+    public void agendarProtocoloLote(
+            List<Long> peticaoIds, Instant agendadoPara, Boolean pedidoUrgencia, Boolean pedidoLiberdade) {
         if (peticaoIds == null || peticaoIds.isEmpty()) {
             throw new IllegalArgumentException("peticaoIds é obrigatório (ao menos um id).");
         }
         validarHorario(agendadoPara);
         for (Long id : peticaoIds) {
-            agendarProtocolo(id, agendadoPara);
+            agendarProtocolo(id, agendadoPara, pedidoUrgencia, pedidoLiberdade);
         }
     }
 

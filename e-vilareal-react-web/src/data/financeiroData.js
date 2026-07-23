@@ -94,7 +94,7 @@ export const NOME_CONTA_CONTABIL_GERAL = 'Geral';
 
 /** Contas bancárias / extratos correntes (sem cartões de crédito). */
 const BANCO_TO_NUMERO = {
-  'Itaú': 1, 'Bradesco': 2, 'BB': 3, 'Sicoob': 4, 'CEF': 5, 'Itaú Poupança': 6,
+  'Itaú': 1, 'Bradesco': 2, 'BB': 3, 'BB Conta Corrente': 903, 'Sicoob': 4, 'CEF': 5, 'Itaú Poupança': 6,
   'LANÇ MANUAIS': 9, 'Poupança Bradesco': 10,
   'Mercado Pago': 11, 'CEF Poupança': 12, 'Nubank': 13, 'PicPay': 14, 'PicPay Rachel': 15,
   'LANÇ EM DINHEIRO': 17, 'LANÇ MANUAIS (2)': 18,
@@ -108,6 +108,7 @@ const BANCO_TO_NUMERO = {
 /** Ordem fixa no topo da lista de bancos (sidebar Financeiro); demais mantêm ordenação por volume. */
 export const ORDEM_EXIBICAO_BANCOS = [
   'Itaú',
+  'BB Conta Corrente',
   'CORA',
   'Sicoob VRV',
   'Sicoob JA',
@@ -553,6 +554,17 @@ export function maxNumeroBancoCadastrado(contasExtras) {
 
 export function proximoNumeroContaBanco(contasExtras) {
   return maxNumeroBancoCadastrado(contasExtras) + 1;
+}
+
+/** Próximo numero_banco livre considerando API + extras locais. */
+export function proximoNumeroContaBancaria(contasApi, contasExtras) {
+  let max = maxNumeroBancoCadastrado(contasExtras);
+  const lista = Array.isArray(contasApi) ? contasApi : [];
+  for (const c of lista) {
+    const n = Number(c?.numeroBanco);
+    if (Number.isFinite(n)) max = Math.max(max, n);
+  }
+  return max + 1;
 }
 
 /**

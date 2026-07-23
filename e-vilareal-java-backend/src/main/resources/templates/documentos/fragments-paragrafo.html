@@ -17,7 +17,8 @@
     <p th:unless="${paragrafo.tipo.name() == 'TABELA'}" th:class="${paragrafo.tipo.name() == 'ENUMERACAO' ? 'enumeracao' :
                    paragrafo.tipo.name() == 'FECHO' ? 'fecho' :
                    paragrafo.tipo.name() == 'CITACAO' ? 'citacao' :
-                   paragrafo.tipo.name() == 'NOME_PECA' ? 'nome-peca' : 'corpo'}">
+                   paragrafo.tipo.name() == 'NOME_PECA' ? 'nome-peca' : 'corpo'}"
+       th:attr="style=${paragrafo.estiloCss}">
         <th:block th:replace="~{documentos/fragments-paragrafo :: runs(${paragrafo.conteudo})}"/>
     </p>
 </th:block>

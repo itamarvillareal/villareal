@@ -261,6 +261,80 @@ public class ProjudiPeticaoRegistroService {
         return peticaoRepository.save(peticao);
     }
 
+    /**
+     * Persiste a descrição da movimentação nas petições ASSINADA antes do protocolo.
+     * O texto informado na UI no momento do «Protocolar» prevalece sobre o valor salvo no registro.
+     */
+    @Transactional
+    public void aplicarComplementoAntesProtocolo(List<Long> peticaoIds, String complemento) {
+        if (peticaoIds == null || peticaoIds.isEmpty() || !StringUtils.hasText(complemento)) {
+            return;
+        }
+        String valor = complemento.trim();
+        for (Long id : peticaoIds) {
+            if (id == null) {
+                continue;
+            }
+            ProjudiPeticaoEntity peticao = buscarPorId(id);
+            if (STATUS_PETICAO_ASSINADA.equals(peticao.getStatus())) {
+                peticao.setComplemento(valor);
+                peticaoRepository.save(peticao);
+            }
+        }
+    }
+
+    /**
+     * Persiste checkboxes da confirmação PROJUDI nas petições ASSINADA antes do protocolo imediato.
+     * {@code null} = não altera o valor já salvo.
+     */
+    @Transactional
+    public void aplicarOpcoesConfirmacaoAntesProtocolo(
+            List<Long> peticaoIds, Boolean pedidoUrgencia, Boolean pedidoLiberdade) {
+        if (peticaoIds == null || peticaoIds.isEmpty()) {
+            return;
+        }
+        if (pedidoUrgencia == null && pedidoLiberdade == null) {
+            return;
+        }
+        for (Long id : peticaoIds) {
+            if (id == null) {
+                continue;
+            }
+            ProjudiPeticaoEntity peticao = buscarPorId(id);
+            if (!STATUS_PETICAO_ASSINADA.equals(peticao.getStatus())) {
+                continue;
+            }
+            if (pedidoUrgencia != null) {
+                peticao.setPedidoUrgencia(pedidoUrgencia);
+            }
+            if (pedidoLiberdade != null) {
+                peticao.setPedidoLiberdade(pedidoLiberdade);
+            }
+            peticaoRepository.save(peticao);
+        }
+    }
+
+    /** Primeiro complemento não vazio do grupo; senão {@code observacaoFase} do processo. */
+    @Transactional(readOnly = true)
+    public String resolverComplementoJuntada(List<ProjudiPeticaoEntity> peticoes) {
+        if (peticoes != null) {
+            for (ProjudiPeticaoEntity peticao : peticoes) {
+                if (peticao != null && StringUtils.hasText(peticao.getComplemento())) {
+                    return peticao.getComplemento().trim();
+                }
+            }
+        }
+        if (peticoes == null || peticoes.isEmpty()) {
+            return "";
+        }
+        return processoRepository
+                .findByNumeroCnj(peticoes.getFirst().getNumeroProcesso())
+                .map(ProcessoEntity::getObservacaoFase)
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .orElse("");
+    }
+
     @Transactional(readOnly = true)
     public List<ProjudiPeticaoEntity> listarPorStatus(String status) {
         return peticaoRepository.findByStatus(status);

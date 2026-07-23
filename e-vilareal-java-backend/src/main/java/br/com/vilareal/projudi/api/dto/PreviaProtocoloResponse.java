@@ -13,6 +13,7 @@ public record PreviaProtocoloResponse(
             long credencialId,
             String numeroProcesso,
             List<Long> peticaoIds,
+            String complemento,
             List<ArquivoPreviaDto> arquivos,
             List<String> avisos) {}
 

@@ -1,7 +1,5 @@
 /**
  * Classificação de contas bancárias (Fase 3, item 3 — FASE B/B4).
- *
- * A FONTE de verdade da distinção manual/real/virtual passa a ser o endpoint
  * `GET /api/financeiro/contas-bancarias` (tipo/temExtrato), buscado uma vez e cacheado no
  * `FinanceiroContext`. Este módulo apenas constrói o mapa a partir da resposta e oferece um
  * FALLBACK hardcoded (segurança de transição) caso o fetch demore ou falhe.
@@ -11,6 +9,8 @@
  *
  * O fallback sai na FASE C.
  */
+
+import { buildNumeroBancoMap } from './financeiroData.js';
 
 /** Classificação implícita anterior (hardcode). Só usado quando o endpoint não está disponível. */
 export const CONTA_CLASSIFICACAO_FALLBACK = Object.freeze({
@@ -75,6 +75,62 @@ export function isContaVirtual(numeroBanco, classificacaoPorNumero) {
 /** Conta com extrato bancário (participa da conciliação por extrato). */
 export function contaTemExtrato(numeroBanco, classificacaoPorNumero) {
   return classificacaoConta(numeroBanco, classificacaoPorNumero).temExtrato === true;
+}
+
+/**
+ * Lista de bancos para sidebar/extrato: mapa hardcoded + extras locais, sobreposto pela API
+ * (fonte de verdade para contas novas cadastradas em conta_bancaria).
+ */
+export function buildBancosExtratoList({
+  contasApi,
+  classificacaoPorNumero,
+  contadores = {},
+  contasExtrasList,
+}) {
+  const hardcodedMap = buildNumeroBancoMap(contasExtrasList);
+  /** @type {Map<number, object>} */
+  const byNumero = new Map();
+
+  for (const [nome, numeroRaw] of Object.entries(hardcodedMap)) {
+    const numero = Number(numeroRaw);
+    if (!Number.isFinite(numero)) continue;
+    const cls = classificacaoConta(numero, classificacaoPorNumero);
+    byNumero.set(numero, {
+      nome,
+      numero,
+      count: contadores[numero] ?? contadores[nome] ?? null,
+      tipo: cls.tipo,
+      temExtrato: cls.temExtrato,
+      exigeSomaZero: cls.exigeSomaZero === true,
+      ofxBankId: cls.ofxBankId ?? null,
+      ofxAgencia: cls.ofxAgencia ?? null,
+      ofxConta: cls.ofxConta ?? null,
+    });
+  }
+
+  const listaApi = Array.isArray(contasApi) ? contasApi : [];
+  for (const c of listaApi) {
+    const numero = Number(c?.numeroBanco);
+    if (!Number.isFinite(numero)) continue;
+    if (c?.ativo === false) continue;
+    const nomeApi = String(c?.bancoNome ?? '').trim();
+    const existing = byNumero.get(numero);
+    const nome = nomeApi || existing?.nome || `Banco ${numero}`;
+    const cls = classificacaoConta(numero, classificacaoPorNumero);
+    byNumero.set(numero, {
+      nome,
+      numero,
+      count: contadores[numero] ?? contadores[nome] ?? existing?.count ?? null,
+      tipo: cls.tipo,
+      temExtrato: cls.temExtrato,
+      exigeSomaZero: cls.exigeSomaZero === true,
+      ofxBankId: cls.ofxBankId ?? null,
+      ofxAgencia: cls.ofxAgencia ?? null,
+      ofxConta: cls.ofxConta ?? null,
+    });
+  }
+
+  return [...byNumero.values()];
 }
 
 /** Conta de acerto (CONTA ZERO): grupos soma zero exata, vínculo obrigatório, visão do cliente. */

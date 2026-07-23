@@ -14,6 +14,7 @@ import br.com.vilareal.processo.api.dto.PrepararAssinarResultado;
 import br.com.vilareal.processo.api.dto.PrepararAssinarResultado.ResumoProcessoPrepararAssinar;
 import br.com.vilareal.processo.api.dto.ProcessoDiagnosticoPessoaItemResponse;
 import br.com.vilareal.processo.api.dto.ProcessoResponse;
+import br.com.vilareal.processo.infrastructure.persistence.entity.ProcessoEntity;
 import br.com.vilareal.processo.infrastructure.persistence.repository.ProcessoRepository;
 import br.com.vilareal.projudi.ProjudiArquivoAssinavelUtil;
 import br.com.vilareal.projudi.ProjudiAssinaturaP7sUtil;
@@ -525,7 +526,7 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
         }
 
         ProjudiPeticaoEntity peticao = peticaoRegistroService.registrarPeticao(
-                credencialId, cnj, null, paraRegistrar, sincronizarDriveNoRegistro);
+                credencialId, cnj, complementoInicialProcesso(cnj), paraRegistrar, sincronizarDriveNoRegistro);
         for (ProjudiPeticaoArquivoEntity arquivo : peticao.getArquivos()) {
             if (StringUtils.hasText(arquivo.getPdfRef())) {
                 refsLocaisEscritos.add(arquivo.getPdfRef());
@@ -583,7 +584,7 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
         }
 
         ProjudiPeticaoEntity peticao = peticaoRegistroService.registrarPeticao(
-                credencialId, cnj, null, paraRegistrar, false);
+                credencialId, cnj, complementoInicialProcesso(cnj), paraRegistrar, false);
         for (ProjudiPeticaoArquivoEntity arquivo : peticao.getArquivos()) {
             if (StringUtils.hasText(arquivo.getPdfRef())) {
                 refsLocaisEscritos.add(arquivo.getPdfRef());
@@ -954,6 +955,18 @@ public class DiagnosticoAguardandoProtocoloAssinarService {
                     e.getMessage());
             return false;
         }
+    }
+
+    private String complementoInicialProcesso(String cnj) {
+        if (!StringUtils.hasText(cnj)) {
+            return null;
+        }
+        return processoRepository
+                .findByNumeroCnj(cnj.trim())
+                .map(ProcessoEntity::getObservacaoFase)
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .orElse(null);
     }
 
     private String resolverCodigoClientePorCnj(String cnj) {

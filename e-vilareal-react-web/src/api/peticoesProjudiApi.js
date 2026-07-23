@@ -24,6 +24,8 @@ import { postFormData, request } from './httpClient.js';
  * @property {string|null} protocoloMensagem
  * @property {string|null} protocoloEtapa
  * @property {string|null} protocoloAgendadoPara
+ * @property {boolean} [pedidoUrgencia]
+ * @property {boolean} [pedidoLiberdade]
  * @property {ProjudiPeticaoArquivo[]} arquivos
  */
 
@@ -92,10 +94,21 @@ export async function enviarAssinados(formData) {
  * @param {number[]} peticaoIds
  * @returns {Promise<{ peticaoIds: number[], total: number, status: string }>}
  */
-export async function protocolarLote(peticaoIds) {
+/**
+ * @param {number[]} peticaoIds
+ * @param {string} [complemento]
+ * @param {{ pedidoUrgencia?: boolean, pedidoLiberdade?: boolean }} [opcoes]
+ */
+export async function protocolarLote(peticaoIds, complemento, opcoes = {}) {
   return request('/api/projudi/peticoes/protocolar-lote', {
     method: 'POST',
-    body: { peticaoIds, confirmar: true },
+    body: {
+      peticaoIds,
+      confirmar: true,
+      complemento: String(complemento ?? '').trim() || null,
+      pedidoUrgencia: Boolean(opcoes.pedidoUrgencia),
+      pedidoLiberdade: Boolean(opcoes.pedidoLiberdade),
+    },
   });
 }
 
@@ -103,11 +116,16 @@ export async function protocolarLote(peticaoIds) {
  * Agenda protocolo de uma petição para horário fixo.
  * @param {number} peticaoId
  * @param {string} agendadoPara ISO-8601
+ * @param {{ pedidoUrgencia?: boolean, pedidoLiberdade?: boolean }} [opcoes]
  */
-export async function agendarProtocolo(peticaoId, agendadoPara) {
+export async function agendarProtocolo(peticaoId, agendadoPara, opcoes = {}) {
   return request(`/api/projudi/peticoes/${peticaoId}/agendar-protocolo`, {
     method: 'PUT',
-    body: { agendadoPara },
+    body: {
+      agendadoPara,
+      pedidoUrgencia: Boolean(opcoes.pedidoUrgencia),
+      pedidoLiberdade: Boolean(opcoes.pedidoLiberdade),
+    },
   });
 }
 
@@ -115,11 +133,17 @@ export async function agendarProtocolo(peticaoId, agendadoPara) {
  * Agenda protocolo para horário fixo (petições ASSINADA ou pendentes de assinatura).
  * @param {number[]} peticaoIds
  * @param {string} agendadoPara ISO-8601 (ex.: new Date(...).toISOString())
+ * @param {{ pedidoUrgencia?: boolean, pedidoLiberdade?: boolean }} [opcoes]
  */
-export async function agendarProtocoloLote(peticaoIds, agendadoPara) {
+export async function agendarProtocoloLote(peticaoIds, agendadoPara, opcoes = {}) {
   return request('/api/projudi/peticoes/agendar-protocolo-lote', {
     method: 'POST',
-    body: { peticaoIds, agendadoPara },
+    body: {
+      peticaoIds,
+      agendadoPara,
+      pedidoUrgencia: Boolean(opcoes.pedidoUrgencia),
+      pedidoLiberdade: Boolean(opcoes.pedidoLiberdade),
+    },
   });
 }
 
@@ -141,6 +165,26 @@ export function podeCancelarAgendamentoProtocolo(peticao) {
   if (!peticao?.protocoloAgendadoPara) return false;
   const status = String(peticao.status || '').toUpperCase();
   return status !== 'PROTOCOLANDO' && status !== 'PROTOCOLADA';
+}
+
+/** @param {string|null|undefined} iso */
+export function formatarAgendamentoProtocolo(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+/** @param {ProjudiPeticao[]} peticoes */
+export function filtrarPeticoesAgendamentoAtivo(peticoes) {
+  return (Array.isArray(peticoes) ? peticoes : []).filter(podeCancelarAgendamentoProtocolo);
+}
+
+/** @param {ProjudiPeticao[]} peticoes */
+export function filtrarPeticoesProtocolando(peticoes) {
+  return (Array.isArray(peticoes) ? peticoes : []).filter(
+    (p) => String(p?.status || '').toUpperCase() === 'PROTOCOLANDO',
+  );
 }
 
 export const AGENDAMENTO_ANTECEDENCIA_MINUTOS = 15;
@@ -222,10 +266,21 @@ export async function validarProtocolo(numeroProcesso) {
  * @param {string} numeroProcesso
  * @returns {Promise<{ peticaoIds: number[], total: number, status: string }>}
  */
-export async function protocolarProcesso(numeroProcesso) {
+/**
+ * @param {string} numeroProcesso
+ * @param {string} [complemento]
+ * @param {{ pedidoUrgencia?: boolean, pedidoLiberdade?: boolean }} [opcoes]
+ */
+export async function protocolarProcesso(numeroProcesso, complemento, opcoes = {}) {
   return request('/api/projudi/peticoes/protocolar-processo', {
     method: 'POST',
-    body: { numeroProcesso, confirmar: true },
+    body: {
+      numeroProcesso,
+      confirmar: true,
+      complemento: String(complemento ?? '').trim() || null,
+      pedidoUrgencia: Boolean(opcoes.pedidoUrgencia),
+      pedidoLiberdade: Boolean(opcoes.pedidoLiberdade),
+    },
   });
 }
 

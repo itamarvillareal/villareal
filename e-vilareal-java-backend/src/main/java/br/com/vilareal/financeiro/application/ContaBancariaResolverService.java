@@ -30,7 +30,9 @@ import java.util.Optional;
 public class ContaBancariaResolverService {
 
     private static final int NUMERO_BANCO_99_PAY = 30;
+    private static final int NUMERO_BANCO_BB_CONTA_CORRENTE = 903;
     private static final String NOME_BANCO_99_PAY = "99 pay";
+    private static final String NOME_BANCO_BB_CONTA_CORRENTE = "BB Conta Corrente";
 
     private final ContaBancariaRepository contaBancariaRepository;
     private final ContaBancariaResolverService self;
@@ -83,6 +85,9 @@ public class ContaBancariaResolverService {
     private static String nomeCanonico(Integer numeroBanco, String bancoNome) {
         if (numeroBanco != null && numeroBanco == NUMERO_BANCO_99_PAY) {
             return NOME_BANCO_99_PAY;
+        }
+        if (numeroBanco != null && numeroBanco == NUMERO_BANCO_BB_CONTA_CORRENTE) {
+            return NOME_BANCO_BB_CONTA_CORRENTE;
         }
         return StringUtils.hasText(bancoNome) ? bancoNome.trim() : null;
     }

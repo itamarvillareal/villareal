@@ -7,14 +7,17 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.List;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -76,5 +79,28 @@ class FinanceiroContasBancariasEndpointTest {
                 .andExpect(jsonPath("$[4].numeroBanco").value(900))
                 .andExpect(jsonPath("$[4].tipo").value("VIRTUAL"))
                 .andExpect(jsonPath("$[4].temExtrato").value(false));
+    }
+
+    @Test
+    void criarContaBancaria_devolveContaCriada() throws Exception {
+        when(contaBancariaService.criar(any())).thenReturn(new ContaBancariaResponse(
+                903, "BB Conta Corrente", "REAL", true, true, "1", "324-7", "453259-7", false));
+
+        mockMvc.perform(post("/api/financeiro/contas-bancarias")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "numeroBanco": 903,
+                                  "bancoNome": "BB Conta Corrente",
+                                  "tipo": "REAL",
+                                  "ofxBankId": "1",
+                                  "ofxAgencia": "324-7",
+                                  "ofxConta": "453259-7"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.numeroBanco").value(903))
+                .andExpect(jsonPath("$.bancoNome").value("BB Conta Corrente"))
+                .andExpect(jsonPath("$.ofxConta").value("453259-7"));
     }
 }

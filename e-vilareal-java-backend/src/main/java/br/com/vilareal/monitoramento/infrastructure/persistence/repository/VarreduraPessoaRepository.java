@@ -27,7 +27,7 @@ public interface VarreduraPessoaRepository extends JpaRepository<VarreduraPessoa
     /**
      * Pessoas elegíveis à varredura (marcadas para monitoramento, ativas, com documento),
      * priorizando quem tem a última varredura mais antiga — quem NUNCA foi varrido vem
-     * primeiro (NULLS FIRST). Usado pelo scheduler com página de tamanho 1 (uma por tick).
+     * primeiro (NULLS FIRST). Usado pelo scheduler para o ciclo completo de cada horário.
      */
     @Query(
             """

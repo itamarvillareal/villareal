@@ -1,11 +1,13 @@
 package br.com.vilareal.financeiro.application;
 
 import br.com.vilareal.financeiro.api.dto.ContaBancariaResponse;
+import br.com.vilareal.financeiro.api.dto.ContaBancariaWriteRequest;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.ContaBancariaEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.entity.LancamentoFinanceiroEntity;
 import br.com.vilareal.financeiro.infrastructure.persistence.repository.ContaBancariaRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.Optional;
@@ -26,6 +28,8 @@ import java.util.Set;
 public class ContaBancariaApplicationService {
 
     private static final String TIPO_MANUAL = "MANUAL";
+    private static final String TIPO_VIRTUAL = "VIRTUAL";
+    private static final String TIPO_REAL = "REAL";
 
     private final ContaBancariaRepository contaBancariaRepository;
     private final FinanceiroExtratoAcessoService extratoAcessoService;
@@ -43,17 +47,67 @@ public class ContaBancariaApplicationService {
         Optional<Set<Integer>> permitidos = extratoAcessoService.numerosBancosPermitidos();
         return contaBancariaRepository.findAllByOrderByNumeroBancoAsc().stream()
                 .filter(c -> permitidos.isEmpty() || permitidos.get().contains(c.getNumeroBanco()))
-                .map(c -> new ContaBancariaResponse(
-                        c.getNumeroBanco(),
-                        c.getBancoNome(),
-                        c.getTipo(),
-                        Boolean.TRUE.equals(c.getTemExtrato()),
-                        Boolean.TRUE.equals(c.getAtivo()),
-                        c.getOfxBankId(),
-                        c.getOfxAgencia(),
-                        c.getOfxConta(),
-                        Boolean.TRUE.equals(c.getExigeSomaZero())))
+                .map(ContaBancariaApplicationService::toResponse)
                 .toList();
+    }
+
+    /**
+     * Cadastra conta bancária explicitamente (antes do 1º lançamento). Idempotência de número fica a cargo
+     * do UK {@code numero_banco} — em conflito, retorna erro claro em vez de falhar silenciosamente.
+     */
+    @Transactional
+    public ContaBancariaResponse criar(ContaBancariaWriteRequest req) {
+        if (req == null || req.numeroBanco() == null) {
+            throw new IllegalArgumentException("numeroBanco é obrigatório.");
+        }
+        if (contaBancariaRepository.findByNumeroBanco(req.numeroBanco()).isPresent()) {
+            throw new IllegalArgumentException(
+                    "Já existe conta bancária com numero_banco " + req.numeroBanco() + ".");
+        }
+        String nome = StringUtils.hasText(req.bancoNome()) ? req.bancoNome().trim() : null;
+        if (!StringUtils.hasText(nome)) {
+            throw new IllegalArgumentException("bancoNome é obrigatório.");
+        }
+        String tipo = StringUtils.hasText(req.tipo()) ? req.tipo().trim().toUpperCase() : TIPO_REAL;
+        if (!TIPO_REAL.equals(tipo) && !TIPO_MANUAL.equals(tipo) && !TIPO_VIRTUAL.equals(tipo)) {
+            throw new IllegalArgumentException("tipo deve ser REAL, MANUAL ou VIRTUAL.");
+        }
+
+        ContaBancariaEntity nova = new ContaBancariaEntity();
+        nova.setNumeroBanco(req.numeroBanco());
+        nova.setBancoNome(nome);
+        nova.setTipo(tipo);
+        nova.setTemExtrato(req.temExtrato() != null ? req.temExtrato() : temExtratoPadrao(tipo));
+        nova.setAtivo(req.ativo() == null || req.ativo());
+        nova.setOfxBankId(trimToNull(req.ofxBankId()));
+        nova.setOfxAgencia(trimToNull(req.ofxAgencia()));
+        nova.setOfxConta(trimToNull(req.ofxConta()));
+        nova.setExigeSomaZero(false);
+        return toResponse(contaBancariaRepository.saveAndFlush(nova));
+    }
+
+    private static boolean temExtratoPadrao(String tipo) {
+        return TIPO_REAL.equals(tipo);
+    }
+
+    private static String trimToNull(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        return value.trim();
+    }
+
+    static ContaBancariaResponse toResponse(ContaBancariaEntity c) {
+        return new ContaBancariaResponse(
+                c.getNumeroBanco(),
+                c.getBancoNome(),
+                c.getTipo(),
+                Boolean.TRUE.equals(c.getTemExtrato()),
+                Boolean.TRUE.equals(c.getAtivo()),
+                c.getOfxBankId(),
+                c.getOfxAgencia(),
+                c.getOfxConta(),
+                Boolean.TRUE.equals(c.getExigeSomaZero()));
     }
 
     /**

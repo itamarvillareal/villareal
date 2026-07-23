@@ -10,4 +10,6 @@ import java.util.List;
 @Schema(description = "Agendar protocolo para várias petições no mesmo horário")
 public record AgendarProtocoloLoteRequest(
         @NotEmpty List<Long> peticaoIds,
-        @NotNull Instant agendadoPara) {}
+        @NotNull Instant agendadoPara,
+        @Schema(description = "Marca «Envolve pedido de urgência» na confirmação PROJUDI") Boolean pedidoUrgencia,
+        @Schema(description = "Marca «Pedido de Liberdade» na confirmação PROJUDI") Boolean pedidoLiberdade) {}

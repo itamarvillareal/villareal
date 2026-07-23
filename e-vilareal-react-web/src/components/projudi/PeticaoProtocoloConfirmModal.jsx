@@ -8,6 +8,10 @@ import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
  *   previa: object | null,
  *   carregandoPrevia?: boolean,
  *   confirmando?: boolean,
+ *   pedidoUrgencia?: boolean,
+ *   pedidoLiberdade?: boolean,
+ *   onPedidoUrgenciaChange?: (v: boolean) => void,
+ *   onPedidoLiberdadeChange?: (v: boolean) => void,
  *   onCancel: () => void,
  *   onConfirmar: () => void,
  * }} props
@@ -19,6 +23,10 @@ export function PeticaoProtocoloConfirmModal({
   previa,
   carregandoPrevia = false,
   confirmando = false,
+  pedidoUrgencia = false,
+  pedidoLiberdade = false,
+  onPedidoUrgenciaChange,
+  onPedidoLiberdadeChange,
   onCancel,
   onConfirmar,
 }) {
@@ -63,6 +71,15 @@ export function PeticaoProtocoloConfirmModal({
                   Juntada {idx + 1}
                   {j.peticaoIds?.length ? ` · petições ${j.peticaoIds.join(', ')}` : ''}
                 </div>
+                {j.complemento ? (
+                  <p className="text-xs text-slate-700">
+                    Descrição movimentação: <strong>{j.complemento}</strong>
+                  </p>
+                ) : (
+                  <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                    Sem descrição de movimentação — o PROJUDI receberá o campo vazio.
+                  </p>
+                )}
                 <ol className="list-decimal list-inside text-xs text-slate-700">
                   {(j.arquivos || []).map((a) => (
                     <li key={`${a.peticaoId}-${a.ordemNaJuntada}`}>
@@ -79,6 +96,32 @@ export function PeticaoProtocoloConfirmModal({
             ))}
           </div>
         ) : null}
+
+        <fieldset className="rounded border border-slate-200 bg-slate-50 p-2 space-y-2">
+          <legend className="text-xs font-semibold text-slate-700 px-1">Opções na confirmação PROJUDI</legend>
+          <label className="flex items-start gap-2 text-xs text-slate-700 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={Boolean(pedidoUrgencia)}
+              disabled={confirmando}
+              onChange={(e) => onPedidoUrgenciaChange?.(e.target.checked)}
+            />
+            <span>
+              Envolve pedido de urgência (tutelas provisórias, liminares, comunicados de prisão, alvarás e similares).
+            </span>
+          </label>
+          <label className="flex items-start gap-2 text-xs text-slate-700 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={Boolean(pedidoLiberdade)}
+              disabled={confirmando}
+              onChange={(e) => onPedidoLiberdadeChange?.(e.target.checked)}
+            />
+            <span>Pedido de Liberdade</span>
+          </label>
+        </fieldset>
 
         <div className="flex flex-wrap justify-end gap-2">
           <button

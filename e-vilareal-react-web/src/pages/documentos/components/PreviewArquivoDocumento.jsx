@@ -3,7 +3,7 @@ import { HtmlEditor } from './HtmlEditor.jsx';
 import { btnPrimary, btnSecondary } from '../documentosStyles.js';
 
 const corpoUnicoClass =
-  'doc-edicao-preview prose prose-sm max-w-none min-h-[520px] rounded-b-lg border border-t-0 border-slate-300/90 bg-white px-4 py-5 text-slate-900 shadow-sm transition focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/25 dark:prose-invert dark:border-slate-600 dark:bg-slate-900/60 dark:text-slate-100 [&_mark]:bg-yellow-200';
+  'doc-edicao-preview prose prose-sm max-w-none min-h-[520px] rounded-b-lg border border-t-0 border-slate-300/90 bg-white px-4 py-5 text-slate-900 shadow-sm transition focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/25 dark:prose-invert dark:border-slate-600 dark:bg-slate-900/60 dark:text-slate-100 [&_mark]:bg-yellow-200 [&_p.corpo]:text-justify [&_[data-doc-part=preambulo]_p.corpo]:indent-[2cm] [&_[data-doc-part=secao-conteudo]_p.corpo]:indent-[4cm] [&_p.enumeracao]:indent-[2.5cm]';
 
 export function PreviewArquivoDocumento({
   conteudo,

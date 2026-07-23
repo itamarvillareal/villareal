@@ -94,7 +94,25 @@ public class ProjudiPeticaoService {
             String complemento,
             List<ArquivoPeticao> arquivos,
             Consumer<String> progresso) {
-        return executarFluxoProtocolo(credencialId, numeroProcesso, complemento, arquivos, true, progresso);
+        return protocolarPeticao(
+                credencialId, numeroProcesso, complemento, arquivos, progresso, ProjudiPeticaoOpcoesConfirmacao.PADRAO);
+    }
+
+    public ResultadoProtocoloPeticao protocolarPeticao(
+            Long credencialId,
+            String numeroProcesso,
+            String complemento,
+            List<ArquivoPeticao> arquivos,
+            Consumer<String> progresso,
+            ProjudiPeticaoOpcoesConfirmacao opcoesConfirmacao) {
+        return executarFluxoProtocolo(
+                credencialId,
+                numeroProcesso,
+                complemento,
+                arquivos,
+                true,
+                progresso,
+                opcoesConfirmacao == null ? ProjudiPeticaoOpcoesConfirmacao.PADRAO : opcoesConfirmacao);
     }
 
     private ResultadoProtocoloPeticao executarFluxoProtocolo(
@@ -103,7 +121,14 @@ public class ProjudiPeticaoService {
             String complemento,
             List<ArquivoPeticao> arquivos,
             boolean executarConcluir) {
-        return executarFluxoProtocolo(credencialId, numeroProcesso, complemento, arquivos, executarConcluir, null);
+        return executarFluxoProtocolo(
+                credencialId,
+                numeroProcesso,
+                complemento,
+                arquivos,
+                executarConcluir,
+                null,
+                ProjudiPeticaoOpcoesConfirmacao.PADRAO);
     }
 
     private ResultadoProtocoloPeticao executarFluxoProtocolo(
@@ -113,6 +138,24 @@ public class ProjudiPeticaoService {
             List<ArquivoPeticao> arquivos,
             boolean executarConcluir,
             Consumer<String> progresso) {
+        return executarFluxoProtocolo(
+                credencialId,
+                numeroProcesso,
+                complemento,
+                arquivos,
+                executarConcluir,
+                progresso,
+                ProjudiPeticaoOpcoesConfirmacao.PADRAO);
+    }
+
+    private ResultadoProtocoloPeticao executarFluxoProtocolo(
+            Long credencialId,
+            String numeroProcesso,
+            String complemento,
+            List<ArquivoPeticao> arquivos,
+            boolean executarConcluir,
+            Consumer<String> progresso,
+            ProjudiPeticaoOpcoesConfirmacao opcoesConfirmacao) {
         if (credencialId == null) {
             return falha("credencialId é obrigatório.", "");
         }
@@ -130,15 +173,24 @@ public class ProjudiPeticaoService {
         }
 
         String processo = numeroProcesso.trim();
-        String complementoIso = encIso8859(complemento == null ? "" : complemento);
+        String complementoIso = encIso8859(normalizarTextoMovimentacaoProjudi(complemento == null ? "" : complemento));
         long epochMillis = System.currentTimeMillis();
+        ProjudiPeticaoOpcoesConfirmacao opcoes =
+                opcoesConfirmacao == null ? ProjudiPeticaoOpcoesConfirmacao.PADRAO : opcoesConfirmacao;
 
         emitir(progresso, "Conectando ao PROJUDI…");
 
         ResultadoProtocoloPeticao resultado;
         try {
             resultado = executarPassosProtocolo(
-                    credencialId, processo, complementoIso, arquivos, executarConcluir, progresso, epochMillis);
+                    credencialId,
+                    processo,
+                    complementoIso,
+                    arquivos,
+                    executarConcluir,
+                    progresso,
+                    epochMillis,
+                    opcoes);
         } catch (Exception e) {
             log.warn("Falha no protocolo PROJUDI (processo={}): {}", numeroProcesso, e.getMessage());
             resultado = falha(e.getClass().getSimpleName() + ": " + e.getMessage(), "");
@@ -160,7 +212,8 @@ public class ProjudiPeticaoService {
             List<ArquivoPeticao> arquivos,
             boolean executarConcluir,
             Consumer<String> progresso,
-            long epochMillis) {
+            long epochMillis,
+            ProjudiPeticaoOpcoesConfirmacao opcoesConfirmacao) {
         // 1) busca — reaproveita sessão em cache/disco (TTL projudi.session.ttl-min); login+OTP só se expirada
         emitir(progresso, "Buscando o processo…");
         var busca = sessionService.buscarProcessoConsulta(credencialId, processo);
@@ -310,7 +363,8 @@ public class ProjudiPeticaoService {
 
             // 11) irreversível — __Pedido__ é consumido uma vez por sessão; extrair do HTML (lote reutiliza OTP)
             emitir(progresso, "Concluindo o protocolo (irreversível)…");
-            String corpoPasso11 = resolverCorpoPasso11(corpoP9);
+            String htmlConfirmacao = corpoP9;
+            String corpoPasso11 = resolverCorpoPasso11(htmlConfirmacao, opcoesConfirmacao);
             if (corpoPasso11 == null) {
                 var paginaConfirmacao = sessionService.getAutenticadoComReferer(
                         credencialId, "Peticionamento?PaginaAtual=5", REF_PETICIONAMENTO);
@@ -319,16 +373,21 @@ public class ProjudiPeticaoService {
                             "Passo 10b (Peticionamento confirmação p.5) falhou.",
                             paginaConfirmacao.body());
                 }
-                corpoPasso11 = resolverCorpoPasso11(paginaConfirmacao.body());
+                htmlConfirmacao = paginaConfirmacao.body();
+                corpoPasso11 = resolverCorpoPasso11(htmlConfirmacao, opcoesConfirmacao);
             }
             if (corpoPasso11 == null) {
                 log.warn(
                         "PROJUDI: __Pedido__ não encontrado no HTML (processo={}) — corpo fixo passo 11 "
                                 + "(risco de pedido duplicado em lote).",
                         processo);
-                corpoPasso11 = CORPO_PASSO_11;
+                corpoPasso11 = opcoesConfirmacao.aplicarNoCorpoPasso11(CORPO_PASSO_11, htmlConfirmacao);
             } else {
-                log.debug("PROJUDI passo 11 (processo={}): __Pedido__ extraído do HTML.", processo);
+                log.debug(
+                        "PROJUDI passo 11 (processo={}): __Pedido__ extraído; urgencia={}, liberdade={}.",
+                        processo,
+                        opcoesConfirmacao.pedidoUrgencia(),
+                        opcoesConfirmacao.pedidoLiberdade());
             }
             HttpResponse<String> p11 = sessionService.postPeticionamento(
                     credencialId,
@@ -536,18 +595,30 @@ public class ProjudiPeticaoService {
 
     /** Monta o POST Concluir (passo 11) com token {@code __Pedido__} da página de confirmação. */
     static String montarCorpoPasso11(String pedido) {
+        return montarCorpoPasso11(pedido, null, ProjudiPeticaoOpcoesConfirmacao.PADRAO);
+    }
+
+    static String montarCorpoPasso11(
+            String pedido, String htmlConfirmacao, ProjudiPeticaoOpcoesConfirmacao opcoes) {
         if (!StringUtils.hasText(pedido)) {
             return null;
         }
-        return "PaginaAtual=5&__Pedido__="
+        String base = "PaginaAtual=5&__Pedido__="
                 + encIso8859(pedido.trim())
                 + "&PaginaAnterior=-2&TituloPagina=null&imgConcluir=Concluir";
+        ProjudiPeticaoOpcoesConfirmacao efetivas =
+                opcoes == null ? ProjudiPeticaoOpcoesConfirmacao.PADRAO : opcoes;
+        return efetivas.aplicarNoCorpoPasso11(base, htmlConfirmacao);
     }
 
     static String resolverCorpoPasso11(String html) {
+        return resolverCorpoPasso11(html, ProjudiPeticaoOpcoesConfirmacao.PADRAO);
+    }
+
+    static String resolverCorpoPasso11(String html, ProjudiPeticaoOpcoesConfirmacao opcoes) {
         return ProjudiProcessoCivelHtmlUtil.extrairHidden(html, "__Pedido__")
                 .filter(p -> !"null".equalsIgnoreCase(p.trim()))
-                .map(ProjudiPeticaoService::montarCorpoPasso11)
+                .map(pedido -> montarCorpoPasso11(pedido, html, opcoes))
                 .orElse(null);
     }
 
@@ -627,6 +698,11 @@ public class ProjudiPeticaoService {
 
     private static String corpoResposta(HttpResponse<String> resp) {
         return resp.body() == null ? "" : resp.body();
+    }
+
+    /** NFC + transliteração para ISO-8859-1 (campo Descrição Movimentação no PROJUDI). */
+    static String normalizarTextoMovimentacaoProjudi(String texto) {
+        return tornarNomeArquivoCompativelProjudi(texto);
     }
 
     private static String encIso8859(String valor) {

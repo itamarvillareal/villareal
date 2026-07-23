@@ -265,6 +265,28 @@ export async function listarContasBancariasClassificacaoApi(opts = {}) {
   return request('/api/financeiro/contas-bancarias', { signal });
 }
 
+/** Cadastra conta bancária de extrato na API (fonte de verdade em conta_bancaria). */
+export async function criarContaBancariaApi(payload, opts = {}) {
+  const { signal } = opts;
+  if (!featureFlags.useApiFinanceiro) {
+    throw new Error('API financeiro desativada.');
+  }
+  return request('/api/financeiro/contas-bancarias', {
+    method: 'POST',
+    signal,
+    body: {
+      numeroBanco: Number(payload.numeroBanco),
+      bancoNome: String(payload.bancoNome ?? '').trim(),
+      tipo: payload.tipo ?? 'REAL',
+      temExtrato: payload.temExtrato ?? true,
+      ativo: payload.ativo ?? true,
+      ofxBankId: payload.ofxBankId ?? null,
+      ofxAgencia: payload.ofxAgencia ?? null,
+      ofxConta: payload.ofxConta ?? null,
+    },
+  });
+}
+
 /** Leitura API (fonte principal quando flag ativa). */
 export async function listarLancamentosFinanceiro(filtros = {}, opts = {}) {
   const { signal } = opts;

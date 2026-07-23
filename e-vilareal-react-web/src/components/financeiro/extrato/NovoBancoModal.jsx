@@ -1,24 +1,31 @@
 import { useState } from 'react';
 import { useCloseOnEscape } from '../../../hooks/useCloseOnEscape.js';
 import { X } from 'lucide-react';
+import { featureFlags } from '../../../config/featureFlags.js';
 import {
   loadPersistedContasExtrasFinanceiro,
+  proximoNumeroContaBancaria,
   proximoNumeroContaBanco,
   savePersistedContasExtrasFinanceiro,
   validarNovoNomeContaBancaria,
 } from '../../../data/financeiroData.js';
+import {
+  criarContaBancariaApi,
+  listarContasBancariasClassificacaoApi,
+} from '../../../repositories/financeiroRepository.js';
 
 export function NovoBancoModal({ open, onClose, onCreated }) {
   const [nome, setNome] = useState('');
   const [numeroManual, setNumeroManual] = useState('');
   const [tipo, setTipo] = useState('banco');
   const [erro, setErro] = useState('');
+  const [salvando, setSalvando] = useState(false);
 
   useCloseOnEscape(open, onClose);
 
   if (!open) return null;
 
-  const handleSalvar = () => {
+  const handleSalvar = async () => {
     setErro('');
     if (tipo === 'cartao') {
       setErro('Cartões são gerenciados em Configuração. Escolha tipo Banco para conta corrente.');
@@ -30,23 +37,55 @@ export function NovoBancoModal({ open, onClose, onCreated }) {
       setErro(v.message);
       return;
     }
-    const numero =
-      numeroManual.trim() !== '' ? Number(numeroManual) : proximoNumeroContaBanco(extras);
-    if (!Number.isFinite(numero) || numero < 1) {
-      setErro('Número inválido.');
-      return;
+
+    setSalvando(true);
+    try {
+      const contasApi = featureFlags.useApiFinanceiro
+        ? await listarContasBancariasClassificacaoApi()
+        : [];
+      let numero =
+        numeroManual.trim() !== ''
+          ? Number(numeroManual)
+          : featureFlags.useApiFinanceiro
+            ? proximoNumeroContaBancaria(contasApi, extras)
+            : proximoNumeroContaBanco(extras);
+
+      if (!Number.isFinite(numero) || numero < 1) {
+        setErro('Número inválido.');
+        return;
+      }
+      if (extras.some((c) => c.numero === numero)) {
+        setErro('Este número já está em uso.');
+        return;
+      }
+      if (contasApi.some((c) => Number(c?.numeroBanco) === numero)) {
+        setErro('Este número já está em uso na API.');
+        return;
+      }
+
+      if (featureFlags.useApiFinanceiro) {
+        const criada = await criarContaBancariaApi({
+          numeroBanco: numero,
+          bancoNome: v.nome,
+          tipo: 'REAL',
+          temExtrato: true,
+        });
+        numero = Number(criada?.numeroBanco ?? numero);
+      } else {
+        const novo = { nome: v.nome, numero };
+        const next = [...extras, novo].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+        savePersistedContasExtrasFinanceiro(next);
+      }
+
+      onCreated?.({ nome: v.nome, numero });
+      setNome('');
+      setNumeroManual('');
+      onClose();
+    } catch (e) {
+      setErro(e?.message || 'Não foi possível criar a conta bancária.');
+    } finally {
+      setSalvando(false);
     }
-    if (extras.some((c) => c.numero === numero)) {
-      setErro('Este número já está em uso.');
-      return;
-    }
-    const novo = { nome: v.nome, numero };
-    const next = [...extras, novo].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
-    savePersistedContasExtrasFinanceiro(next);
-    onCreated?.(novo);
-    setNome('');
-    setNumeroManual('');
-    onClose();
   };
 
   return (
@@ -102,6 +141,7 @@ export function NovoBancoModal({ open, onClose, onCreated }) {
           <button
             type="button"
             onClick={onClose}
+            disabled={salvando}
             className="px-3 py-1.5 text-sm rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800"
           >
             Cancelar
@@ -109,9 +149,10 @@ export function NovoBancoModal({ open, onClose, onCreated }) {
           <button
             type="button"
             onClick={handleSalvar}
-            className="px-3 py-1.5 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700"
+            disabled={salvando}
+            className="px-3 py-1.5 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
           >
-            Salvar
+            {salvando ? 'Salvando…' : 'Salvar'}
           </button>
         </div>
       </div>

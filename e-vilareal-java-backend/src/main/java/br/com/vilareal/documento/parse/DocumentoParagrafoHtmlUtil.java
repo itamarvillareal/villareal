@@ -38,7 +38,11 @@ public final class DocumentoParagrafoHtmlUtil {
                     case NOME_PECA -> "nome-peca";
                     default -> "corpo";
                 };
-        return "<p class=\"" + cls + "\">" + runsToHtml(paragrafo.conteudo()) + "</p>";
+        String styleAttr = "";
+        if (StringUtils.hasText(paragrafo.estiloCss())) {
+            styleAttr = " style=\"" + escapeAttr(paragrafo.estiloCss()) + "\"";
+        }
+        return "<p class=\"" + cls + "\"" + styleAttr + ">" + runsToHtml(paragrafo.conteudo()) + "</p>";
     }
 
     /** Garante {@code <p class="corpo">} com recuo e espaçamento no PDF (modo manual/IA). */
@@ -125,7 +129,9 @@ public final class DocumentoParagrafoHtmlUtil {
             TipoParagrafo tipo = tipoFromClass(el.className(), tipoPadrao);
             List<TextoFormatado> runs = parseRuns(el);
             if (!runs.isEmpty()) {
-                resultado.add(new ParagrafoDocumento(tipo, runs));
+                String estilo = el.attr("style");
+                String estiloCss = StringUtils.hasText(estilo) ? estilo.trim() : null;
+                resultado.add(new ParagrafoDocumento(tipo, runs, estiloCss));
             }
         }
         return resultado;
@@ -227,5 +233,9 @@ public final class DocumentoParagrafoHtmlUtil {
             return "";
         }
         return texto.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+
+    private static String escapeAttr(String texto) {
+        return escapeHtml(texto).replace("\"", "&quot;");
     }
 }

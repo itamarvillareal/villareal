@@ -163,6 +163,12 @@ import {
 } from './processos/ModalEscolherEnderecoParte.jsx';
 import { carregarEnderecosPessoa } from '../repositories/pessoasEnderecosContatosRepository.js';
 import { ModalPeticionamentoProcesso } from './projudi/ModalPeticionamentoProcesso.jsx';
+import {
+  filtrarPeticoesAgendamentoAtivo,
+  filtrarPeticoesProtocolando,
+  formatarAgendamentoProtocolo,
+  listarPorProcesso,
+} from '../api/peticoesProjudiApi.js';
 import { PessoaEmbedModal } from './PessoaEmbedModal.jsx';
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape.js';
 import { AutorUsuarioExibicao } from './ui/AutorUsuarioExibicao.jsx';
@@ -537,6 +543,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
   const [modalRelatorioPublicacoes, setModalRelatorioPublicacoes] = useState(false);
   const [modalConsultaPeriodica, setModalConsultaPeriodica] = useState(false);
   const [modalPeticionamentoProjudi, setModalPeticionamentoProjudi] = useState(false);
+  const [peticoesAgendadasProcesso, setPeticoesAgendadasProcesso] = useState([]);
+  const [peticoesProtocolandoProcesso, setPeticoesProtocolandoProcesso] = useState([]);
   /** Modal com cadastro de clientes (mesmo formulário de /pessoas) para o cliente e proc. atuais. */
   const [clientesEmbed, setClientesEmbed] = useState(null);
   /** Cadastro de Pessoas em janela suspensa (duplo clique na lista «Nesta parte»). */
@@ -2396,6 +2404,29 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
     () => String(numeroProcessoNovo ?? '').trim(),
     [numeroProcessoNovo]
   );
+
+  const recarregarPeticoesProjudiProcesso = useCallback(async () => {
+    if (!featureFlags.useApiProcessos || !cnjProcessoAtual) {
+      setPeticoesAgendadasProcesso([]);
+      setPeticoesProtocolandoProcesso([]);
+      return;
+    }
+    try {
+      const rows = await listarPorProcesso(cnjProcessoAtual);
+      setPeticoesAgendadasProcesso(filtrarPeticoesAgendamentoAtivo(rows));
+      setPeticoesProtocolandoProcesso(filtrarPeticoesProtocolando(rows));
+    } catch {
+      setPeticoesAgendadasProcesso([]);
+      setPeticoesProtocolandoProcesso([]);
+    }
+  }, [cnjProcessoAtual]);
+
+  useEffect(() => {
+    void recarregarPeticoesProjudiProcesso();
+  }, [recarregarPeticoesProjudiProcesso]);
+
+  const temAlertaPeticoesProjudiProcesso =
+    peticoesAgendadasProcesso.length > 0 || peticoesProtocolandoProcesso.length > 0;
   const processoCnjTrt18 = useMemo(() => cnjEhTrt18(cnjProcessoAtual), [cnjProcessoAtual]);
   const pjeTribunalNorm = String(pjeTribunal ?? '').trim();
   const pjeAutomacaoTrt18 =
@@ -4128,17 +4159,27 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
                     </button>
                     <button
                       type="button"
-                      className={processosBtnToolbarRed}
+                      className={`${processosBtnToolbarRed} relative`}
                       disabled={apiSaving || !podeGerarDocumento}
                       onClick={() => setModalPeticionamentoProjudi(true)}
                       title={
                         String(numeroProcessoNovo ?? '').trim()
-                          ? 'Petições registradas para protocolo no PROJUDI (deste processo)'
+                          ? temAlertaPeticoesProjudiProcesso
+                            ? 'Há petição agendada ou em protocolo neste processo — abra para detalhes'
+                            : 'Petições registradas para protocolo no PROJUDI (deste processo)'
                           : 'Preencha o Nº Processo Novo (CNJ) para peticionar no PROJUDI'
                       }
                     >
                       <Send className="w-3.5 h-3.5" aria-hidden />
                       Peticionamento PROJUDI
+                      {temAlertaPeticoesProjudiProcesso ? (
+                        <span
+                          className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-violet-600 px-1 text-[9px] font-bold text-white shadow"
+                          aria-hidden
+                        >
+                          {peticoesAgendadasProcesso.length + peticoesProtocolandoProcesso.length}
+                        </span>
+                      ) : null}
                     </button>
                   </>
                 ) : null}
@@ -4173,6 +4214,71 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
             { variant: 'valor', label: 'Valor da causa', value: valorCausaFmt, muted: valorCausaZerado, Icon: CircleDollarSign },
           ]}
         />
+        {featureFlags.useApiProcessos && cnjProcessoAtual && peticoesProtocolandoProcesso.length > 0 ? (
+          <div className="mb-3 rounded-xl border border-amber-300 bg-amber-50/90 px-3 py-2.5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0 flex-1 space-y-1">
+                <p className="text-sm font-semibold text-amber-950 flex items-center gap-1.5">
+                  <Send className="w-4 h-4 shrink-0" aria-hidden />
+                  {peticoesProtocolandoProcesso.length === 1
+                    ? 'Petição em protocolo no PROJUDI'
+                    : `${peticoesProtocolandoProcesso.length} petições em protocolo no PROJUDI`}
+                </p>
+                <ul className="text-sm text-amber-900/90 space-y-0.5">
+                  {peticoesProtocolandoProcesso.map((p) => (
+                    <li key={p.id}>
+                      Petição #{p.id}
+                      {p.protocoloEtapa ? ` · ${p.protocoloEtapa}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalPeticionamentoProjudi(true)}
+                className="shrink-0 rounded-md border border-amber-400 bg-white px-2.5 py-1 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+              >
+                Acompanhar
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {featureFlags.useApiProcessos && cnjProcessoAtual && peticoesAgendadasProcesso.length > 0 ? (
+          <div className="mb-3 rounded-xl border border-violet-300 bg-violet-50/90 px-3 py-2.5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0 flex-1 space-y-1">
+                <p className="text-sm font-semibold text-violet-900 flex items-center gap-1.5">
+                  <CalendarClock className="w-4 h-4 shrink-0" aria-hidden />
+                  {peticoesAgendadasProcesso.length === 1
+                    ? 'Petição agendada aguardando protocolo'
+                    : `${peticoesAgendadasProcesso.length} petições agendadas aguardando protocolo`}
+                </p>
+                <ul className="text-sm text-violet-900/90 space-y-0.5">
+                  {peticoesAgendadasProcesso.map((p) => {
+                    const pendenteAssinatura = String(p.status || '').toUpperCase() === 'PENDENTE_ASSINATURA';
+                    return (
+                      <li key={p.id}>
+                        Petição #{p.id} · protocolo em{' '}
+                        {formatarAgendamentoProtocolo(p.protocoloAgendadoPara)}
+                        {pendenteAssinatura ? ' (aguardando assinatura)' : ''}
+                      </li>
+                    );
+                  })}
+                </ul>
+                <p className="text-xs text-violet-800/85">
+                  Evite registrar outra petição neste processo enquanto houver protocolo agendado ou em andamento.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalPeticionamentoProjudi(true)}
+                className="shrink-0 rounded-md border border-violet-400 bg-white px-2.5 py-1 text-xs font-semibold text-violet-900 hover:bg-violet-100"
+              >
+                Ver petições
+              </button>
+            </div>
+          </div>
+        ) : null}
         {statusAtivo && String(faseCampo ?? '').trim() ? (
           <div className="mb-4 rounded-xl border border-blue-200/80 bg-blue-50/50 px-3 py-2.5 shadow-sm">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-800 mb-1">
@@ -4741,15 +4847,12 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
               <div className="rounded-lg border border-slate-200/90 bg-white/90 p-2 sm:p-2.5 shadow-sm text-slate-900">
                 <div className="grid grid-cols-2 md:grid-cols-12 gap-x-2 gap-y-1.5">
                   <Field label="Data do Protocolo" dense className="col-span-1 md:col-span-2 min-w-0">
-                    <input
-                      type="text"
+                    <CampoDataBr
                       value={dataProtocolo}
                       readOnly={camposBloqueados}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setDataProtocolo(resolverAliasHojeEmTexto(v, 'br') ?? v);
-                      }}
+                      onChange={setDataProtocolo}
                       placeholder="dd/mm/aaaa ou hj"
+                      title="Data do protocolo (dd/mm/aaaa)"
                       className={clsCampoDenso}
                     />
                   </Field>
@@ -6462,7 +6565,10 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
 
       <ModalPeticionamentoProcesso
         open={modalPeticionamentoProjudi}
-        onClose={() => setModalPeticionamentoProjudi(false)}
+        onClose={() => {
+          setModalPeticionamentoProjudi(false);
+          void recarregarPeticoesProjudiProcesso();
+        }}
         numeroCnj={numeroProcessoNovo}
         clienteNome={cliente}
         codigoCliente={codigoCliente}

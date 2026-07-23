@@ -42,6 +42,14 @@ public class ProjudiPeticaoEntity {
     @Column(name = "protocolo_agendado_para")
     private Instant protocoloAgendadoPara;
 
+    /** Checkbox PROJUDI «Envolve pedido de urgência…» na confirmação (PaginaAtual=5). */
+    @Column(name = "pedido_urgencia", nullable = false)
+    private boolean pedidoUrgencia;
+
+    /** Checkbox PROJUDI «Pedido de Liberdade» na confirmação (PaginaAtual=5). */
+    @Column(name = "pedido_liberdade", nullable = false)
+    private boolean pedidoLiberdade;
+
     @Column(name = "protocolado_em")
     private Instant protocoladoEm;
 

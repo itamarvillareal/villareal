@@ -1,9 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { CARTAO_TO_NUMERO, compararOrdemExibicaoBancos, getBancoNumeroMapMerged } from '../../data/financeiroData.js';
+import { CARTAO_TO_NUMERO, compararOrdemExibicaoBancos, loadPersistedContasExtrasFinanceiro } from '../../data/financeiroData.js';
 import {
+  buildBancosExtratoList,
   buildClassificacaoContasPorNumero,
-  classificacaoConta,
   contaExigeSomaZero as contaExigeSomaZeroFn,
   contaTemExtrato as contaTemExtratoFn,
   isContaManual as isContaManualFn,
@@ -68,24 +68,13 @@ export function FinanceiroProvider({
   );
 
   const bancos = useMemo(() => {
-    const map = getBancoNumeroMapMerged();
-    return Object.entries(map)
-      .map(([nome, numero]) => {
-        const cls = classificacaoConta(numero, classificacaoPorNumero);
-        return {
-          nome,
-          numero,
-          count: contadores[numero] ?? contadores[nome] ?? null,
-          tipo: cls.tipo,
-          temExtrato: cls.temExtrato,
-          exigeSomaZero: cls.exigeSomaZero === true,
-          ofxBankId: cls.ofxBankId ?? null,
-          ofxAgencia: cls.ofxAgencia ?? null,
-          ofxConta: cls.ofxConta ?? null,
-        };
-      })
-      .sort(compararOrdemExibicaoBancos);
-  }, [contadores, bancosRevision, classificacaoPorNumero]);
+    return buildBancosExtratoList({
+      contasApi: contasClassificacaoApi,
+      classificacaoPorNumero,
+      contadores,
+      contasExtrasList: loadPersistedContasExtrasFinanceiro(),
+    }).sort(compararOrdemExibicaoBancos);
+  }, [contadores, bancosRevision, classificacaoPorNumero, contasClassificacaoApi]);
 
   const bancosPermitidos = useMemo(() => filtrarBancosPorAcessoExtrato(bancos), [bancos]);
 

@@ -1081,8 +1081,9 @@ export function MonitoramentoProjudiPage() {
                 <BellOff className="w-10 h-10 text-slate-300" />
                 <div className="text-slate-700 font-medium">Nenhum processo novo desde a última varredura</div>
                 <div className="text-sm text-slate-500 max-w-md">
-                  A varredura roda automaticamente e compara com o que já foi visto. Quando um
-                  processo novo aparecer para uma pessoa monitorada, ele chega aqui como alerta.
+                  A varredura roda automaticamente 5 vezes ao dia e compara com o que já foi
+                  visto. Quando um processo novo aparecer para uma pessoa monitorada, ele chega
+                  aqui como alerta.
                 </div>
               </div>
             ) : (

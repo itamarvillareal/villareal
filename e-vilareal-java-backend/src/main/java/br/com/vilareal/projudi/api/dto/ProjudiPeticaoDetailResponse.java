@@ -16,6 +16,8 @@ public record ProjudiPeticaoDetailResponse(
         String protocoloMensagem,
         String protocoloEtapa,
         Instant protocoloAgendadoPara,
+        boolean pedidoUrgencia,
+        boolean pedidoLiberdade,
         List<ProjudiPeticaoArquivoResponse> arquivos) {
 
     public static ProjudiPeticaoDetailResponse de(ProjudiPeticaoEntity peticao) {
@@ -33,6 +35,8 @@ public record ProjudiPeticaoDetailResponse(
                 peticao.getProtocoloMensagem(),
                 peticao.getProtocoloEtapa(),
                 peticao.getProtocoloAgendadoPara(),
+                peticao.isPedidoUrgencia(),
+                peticao.isPedidoLiberdade(),
                 arquivos);
     }
 }

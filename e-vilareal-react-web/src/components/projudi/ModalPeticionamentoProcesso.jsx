@@ -80,8 +80,11 @@ export function ModalPeticionamentoProcesso({
   const [resultadoProtocolo, setResultadoProtocolo] = useState([]);
 
   const [linhasP7s, setLinhasP7s] = useState([]);
-  const [complemento, setComplemento] = useState('');
+  const [complementoRegistro, setComplementoRegistro] = useState('');
+  const [descricaoMovimentacao, setDescricaoMovimentacao] = useState('');
   const [credencialId, setCredencialId] = useState('');
+  const [pedidoUrgencia, setPedidoUrgencia] = useState(false);
+  const [pedidoLiberdade, setPedidoLiberdade] = useState(false);
 
   const cnj = String(numeroCnj ?? '').trim();
 
@@ -133,6 +136,15 @@ export function ModalPeticionamentoProcesso({
     [peticoes],
   );
 
+  useEffect(() => {
+    const salva = assinadas.map((p) => p.complemento).find((c) => String(c ?? '').trim());
+    if (salva) {
+      setDescricaoMovimentacao((atual) => (String(atual ?? '').trim() ? atual : salva.trim()));
+    }
+    if (assinadas.some((p) => p.pedidoUrgencia)) setPedidoUrgencia(true);
+    if (assinadas.some((p) => p.pedidoLiberdade)) setPedidoLiberdade(true);
+  }, [assinadas]);
+
   const registrarP7s = async (e) => {
     e.preventDefault();
     const arquivos = linhasP7s.filter((l) => l.file);
@@ -146,14 +158,17 @@ export function ModalPeticionamentoProcesso({
       const fd = new FormData();
       fd.append('credencialId', cred || '2');
       fd.append('numeroProcesso', cnj);
-      if (complemento.trim()) fd.append('complemento', complemento.trim());
+      if (complementoRegistro.trim()) fd.append('complemento', complementoRegistro.trim());
       for (const linha of arquivos) {
         fd.append('arquivosP7s', linha.file);
         fd.append('idArquivoTipos', String(linha.idArquivoTipo));
       }
       await registrarAssinados(fd);
       setLinhasP7s([]);
-      setComplemento('');
+      setComplementoRegistro('');
+      if (complementoRegistro.trim()) {
+        setDescricaoMovimentacao(complementoRegistro.trim());
+      }
       await recarregar();
     } catch (e) {
       setErro(e?.message || 'Falha ao registrar .p7s.');
@@ -163,6 +178,9 @@ export function ModalPeticionamentoProcesso({
   };
 
   const abrirModalProtocolo = async () => {
+    const assinadas = peticoes.filter((p) => p.status === 'ASSINADA');
+    setPedidoUrgencia(assinadas.some((p) => p.pedidoUrgencia));
+    setPedidoLiberdade(assinadas.some((p) => p.pedidoLiberdade));
     setModalConfirmar(true);
     setPrevia(null);
     setCarregandoPrevia(true);
@@ -183,7 +201,10 @@ export function ModalPeticionamentoProcesso({
     setResultadoProtocolo([]);
     let aceitas = [];
     try {
-      const res = await protocolarProcesso(cnj);
+      const res = await protocolarProcesso(cnj, descricaoMovimentacao, {
+        pedidoUrgencia,
+        pedidoLiberdade,
+      });
       aceitas = Array.isArray(res?.peticaoIds) ? res.peticaoIds : [];
     } catch (e) {
       setErro(e?.message || 'Falha ao iniciar o protocolo.');
@@ -474,9 +495,9 @@ export function ModalPeticionamentoProcesso({
                   ) : null}
                   <input
                     className={inputClass}
-                    placeholder="Complemento (opcional)"
-                    value={complemento}
-                    onChange={(ev) => setComplemento(ev.target.value)}
+                    placeholder="Descrição movimentação (opcional no registro)"
+                    value={complementoRegistro}
+                    onChange={(ev) => setComplementoRegistro(ev.target.value)}
                   />
                   {linhasP7s.length > 0 ? (
                     <button
@@ -550,6 +571,11 @@ export function ModalPeticionamentoProcesso({
                         <li key={p.id} className="flex items-start gap-2 px-2 py-2">
                           <div className="min-w-0 flex-1">
                             <div className="font-medium">#{p.id}</div>
+                            {p.complemento ? (
+                              <p className="text-xs text-slate-500 truncate" title={p.complemento}>
+                                {p.complemento}
+                              </p>
+                            ) : null}
                             {(p.arquivos || []).map((a) => (
                               <PeticaoArquivoLinhaExcluir
                                 key={a.id ?? a.ordem}
@@ -579,6 +605,21 @@ export function ModalPeticionamentoProcesso({
                       ))}
                     </ul>
                   )}
+                  <label className="block space-y-1">
+                    <span className="text-xs font-medium text-slate-700">
+                      Descrição movimentação (PROJUDI)
+                    </span>
+                    <input
+                      className={inputClass}
+                      placeholder="Ex.: Petição Urgente - cancelamento sessão CEJUSC"
+                      value={descricaoMovimentacao}
+                      onChange={(ev) => setDescricaoMovimentacao(ev.target.value)}
+                      disabled={assinadas.length === 0 || operacao === 'protocolo'}
+                    />
+                    <span className="text-[11px] text-slate-500">
+                      Enviada ao campo «Descrição Movimentação» no protocolo. Confira antes de concluir.
+                    </span>
+                  </label>
                   <button
                     type="button"
                     className="w-full inline-flex items-center justify-center gap-1 rounded-lg bg-amber-700 px-3 py-2 text-sm font-medium text-white hover:bg-amber-800 disabled:opacity-50"
@@ -614,6 +655,10 @@ export function ModalPeticionamentoProcesso({
         previa={previa}
         carregandoPrevia={carregandoPrevia}
         confirmando={operacao === 'protocolo'}
+        pedidoUrgencia={pedidoUrgencia}
+        pedidoLiberdade={pedidoLiberdade}
+        onPedidoUrgenciaChange={setPedidoUrgencia}
+        onPedidoLiberdadeChange={setPedidoLiberdade}
         onCancel={() => {
           if (operacao === 'protocolo') return;
           setModalConfirmar(false);

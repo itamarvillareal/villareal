@@ -22,6 +22,29 @@ class DocumentoParagrafoHtmlUtilTest {
     }
 
     @Test
+    void paragrafoToHtml_preservaEstiloRecuo() {
+        ParagrafoDocumento p = new ParagrafoDocumento(
+                TipoParagrafo.CORPO,
+                List.of(new TextoFormatado("Texto recuado.", false, false, false)),
+                "text-align: justify; text-indent: 2.50cm;");
+
+        String html = DocumentoParagrafoHtmlUtil.paragrafoToHtml(p);
+
+        assertThat(html).contains("style=\"text-align: justify; text-indent: 2.50cm;\"");
+        assertThat(html).contains("class=\"corpo\"");
+    }
+
+    @Test
+    void htmlToParagrafos_restauraEstiloRecuo() {
+        List<ParagrafoDocumento> paragrafos = DocumentoParagrafoHtmlUtil.htmlToParagrafos(
+                "<p class=\"corpo\" style=\"text-indent: 2.50cm; text-align: justify;\">Parágrafo recuado.</p>",
+                TipoParagrafo.CORPO);
+
+        assertThat(paragrafos).hasSize(1);
+        assertThat(paragrafos.get(0).estiloCss()).contains("text-indent: 2.50cm");
+    }
+
+    @Test
     void htmlToParagrafos_restauraNegrito() {
         List<ParagrafoDocumento> paragrafos = DocumentoParagrafoHtmlUtil.htmlToParagrafos(
                 "<p class=\"corpo\">Fulano, <strong>brasileiro</strong></p>", TipoParagrafo.CORPO);

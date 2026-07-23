@@ -146,6 +146,18 @@ public class FinanceiroController {
         return contaBancariaService.listar();
     }
 
+    @PostMapping("/contas-bancarias")
+    @Operation(description = "Cadastra conta bancária de extrato (ou manual/virtual) antes do 1º lançamento.")
+    public ResponseEntity<ContaBancariaResponse> criarContaBancaria(
+            @Valid @RequestBody ContaBancariaWriteRequest request) {
+        ContaBancariaResponse body = contaBancariaService.criar(request);
+        URI uri = ServletUriComponentsBuilder.fromCurrentRequest()
+                .path("/{numeroBanco}")
+                .buildAndExpand(body.numeroBanco())
+                .toUri();
+        return ResponseEntity.created(uri).body(body);
+    }
+
     @GetMapping("/lancamentos/resumo-processo/{processoId}")
     @Operation(description = "Saldo (crédito − débito) e total de lançamentos vinculados ao processo.")
     public ResumoProcessoFinanceiroResponse resumoProcesso(@PathVariable Long processoId) {

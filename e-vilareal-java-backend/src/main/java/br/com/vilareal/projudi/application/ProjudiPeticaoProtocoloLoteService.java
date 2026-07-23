@@ -8,6 +8,7 @@ import br.com.vilareal.projudi.api.dto.ValidarProtocoloResponse.JuntadaValidacao
 import br.com.vilareal.documento.DocumentoPastaAssinarService;
 import br.com.vilareal.documento.GoogleDriveService;
 import br.com.vilareal.projudi.ProjudiOrquestradorGate;
+import br.com.vilareal.projudi.ProjudiPeticaoOpcoesConfirmacao;
 import br.com.vilareal.projudi.ProjudiPeticaoService;
 import br.com.vilareal.projudi.ProjudiPeticaoService.ArquivoPeticao;
 import br.com.vilareal.projudi.ProjudiPeticaoService.ResultadoProtocoloPeticao;
@@ -92,14 +93,30 @@ public class ProjudiPeticaoProtocoloLoteService {
     public record ResultadoItemLote(Long peticaoId, String numeroProcesso, String resultado, String mensagem) {}
 
     public List<ResultadoItemLote> protocolarLote(List<Long> peticaoIds) {
-        return protocolarLote(peticaoIds, false);
+        return protocolarLote(peticaoIds, false, null);
     }
 
     public List<ResultadoItemLote> protocolarLote(List<Long> peticaoIds, boolean emailResultadoAgendamento) {
+        return protocolarLote(peticaoIds, emailResultadoAgendamento, null);
+    }
+
+    public List<ResultadoItemLote> protocolarLote(
+            List<Long> peticaoIds, boolean emailResultadoAgendamento, String complemento) {
+        return protocolarLote(peticaoIds, emailResultadoAgendamento, complemento, null, null);
+    }
+
+    public List<ResultadoItemLote> protocolarLote(
+            List<Long> peticaoIds,
+            boolean emailResultadoAgendamento,
+            String complemento,
+            Boolean pedidoUrgencia,
+            Boolean pedidoLiberdade) {
         if (peticaoIds == null || peticaoIds.isEmpty()) {
             throw new IllegalArgumentException("peticaoIds é obrigatório (ao menos um id).");
         }
         validarPeticaoIdsNaoSaoInicialDistribuicao(peticaoIds);
+        registroService.aplicarComplementoAntesProtocolo(peticaoIds, complemento);
+        registroService.aplicarOpcoesConfirmacaoAntesProtocolo(peticaoIds, pedidoUrgencia, pedidoLiberdade);
 
         Optional<List<ResultadoItemLote>> resultado = orquestradorGate.executarComRetornoAguardando(
                 "peticao/protocolar-lote",
@@ -127,7 +144,7 @@ public class ProjudiPeticaoProtocoloLoteService {
      * evitando que a requisição HTTP fique presa e estoure timeout de proxy (504).
      */
     public List<Long> protocolarLoteAssincrono(List<Long> peticaoIds) {
-        return protocolarLoteAssincrono(peticaoIds, false);
+        return protocolarLoteAssincrono(peticaoIds, false, null);
     }
 
     /**
@@ -135,10 +152,26 @@ public class ProjudiPeticaoProtocoloLoteService {
      *     (usado apenas pelo scheduler de protocolo agendado).
      */
     public List<Long> protocolarLoteAssincrono(List<Long> peticaoIds, boolean emailResultadoAgendamento) {
+        return protocolarLoteAssincrono(peticaoIds, emailResultadoAgendamento, null);
+    }
+
+    public List<Long> protocolarLoteAssincrono(
+            List<Long> peticaoIds, boolean emailResultadoAgendamento, String complemento) {
+        return protocolarLoteAssincrono(peticaoIds, emailResultadoAgendamento, complemento, null, null);
+    }
+
+    public List<Long> protocolarLoteAssincrono(
+            List<Long> peticaoIds,
+            boolean emailResultadoAgendamento,
+            String complemento,
+            Boolean pedidoUrgencia,
+            Boolean pedidoLiberdade) {
         if (peticaoIds == null || peticaoIds.isEmpty()) {
             throw new IllegalArgumentException("peticaoIds é obrigatório (ao menos um id).");
         }
         List<Long> ids = List.copyOf(peticaoIds);
+        registroService.aplicarComplementoAntesProtocolo(ids, complemento);
+        registroService.aplicarOpcoesConfirmacaoAntesProtocolo(ids, pedidoUrgencia, pedidoLiberdade);
         estadoService.limparEstadoFila(ids);
         protocoloExecutor.submit(() -> executarLoteEmBackground(ids, emailResultadoAgendamento));
         return ids;
@@ -146,13 +179,20 @@ public class ProjudiPeticaoProtocoloLoteService {
 
     /** Variante por número de processo: resolve as ASSINADA e dispara em segundo plano. */
     public List<Long> protocolarProcessoAssincrono(String numeroProcesso) {
+        return protocolarProcessoAssincrono(numeroProcesso, null, null, null);
+    }
+
+    public List<Long> protocolarProcessoAssincrono(String numeroProcesso, String complemento) {
+        return protocolarProcessoAssincrono(numeroProcesso, complemento, null, null);
+    }
+
+    public List<Long> protocolarProcessoAssincrono(
+            String numeroProcesso, String complemento, Boolean pedidoUrgencia, Boolean pedidoLiberdade) {
         List<Long> ids = idsAssinadasParaProtocolo(numeroProcesso);
         if (ids.isEmpty()) {
             return List.of();
         }
-        estadoService.limparEstadoFila(ids);
-        protocoloExecutor.submit(() -> executarLoteEmBackground(ids, false));
-        return ids;
+        return protocolarLoteAssincrono(ids, false, complemento, pedidoUrgencia, pedidoLiberdade);
     }
 
     private void executarLoteEmBackground(List<Long> ids, boolean emailResultadoAgendamento) {
@@ -340,7 +380,7 @@ public class ProjudiPeticaoProtocoloLoteService {
         ResultadoProtocoloPeticao validacao = peticaoService.validarProtocoloSemConcluir(
                 referencia.getCredencialId(),
                 referencia.getNumeroProcesso(),
-                referencia.getComplemento(),
+                registroService.resolverComplementoJuntada(peticoes),
                 arquivosP7s);
 
         return new JuntadaValidacaoDto(
@@ -423,6 +463,7 @@ public class ProjudiPeticaoProtocoloLoteService {
                 credencialId,
                 numeroProcesso,
                 peticoes.stream().map(ProjudiPeticaoEntity::getId).toList(),
+                registroService.resolverComplementoJuntada(peticoes),
                 arquivosPrevia,
                 List.copyOf(avisos));
 
@@ -510,6 +551,15 @@ public class ProjudiPeticaoProtocoloLoteService {
         return new ArrayList<>(grupos.values());
     }
 
+    private static ProjudiPeticaoOpcoesConfirmacao resolverOpcoesConfirmacao(List<ProjudiPeticaoEntity> peticoes) {
+        if (peticoes == null || peticoes.isEmpty()) {
+            return ProjudiPeticaoOpcoesConfirmacao.PADRAO;
+        }
+        return ProjudiPeticaoOpcoesConfirmacao.deFlags(
+                peticoes.stream().map(ProjudiPeticaoEntity::isPedidoUrgencia).toList(),
+                peticoes.stream().map(ProjudiPeticaoEntity::isPedidoLiberdade).toList());
+    }
+
     private Map<Long, ResultadoItemLote> processarGrupoJuntada(List<Long> peticaoIdsGrupo) {
         Map<Long, ResultadoItemLote> resultados = new LinkedHashMap<>();
         List<Long> claimadas = new ArrayList<>();
@@ -555,13 +605,16 @@ public class ProjudiPeticaoProtocoloLoteService {
 
         ProjudiPeticaoEntity referencia = peticoes.getFirst();
         List<ArquivoPeticao> arquivosP7s = montarArquivosDePeticoes(peticoes);
+        ProjudiPeticaoOpcoesConfirmacao opcoesConfirmacao = resolverOpcoesConfirmacao(peticoes);
 
         String idsLabel = claimadas.toString();
         log.warn(
-                "Protocolando juntada {} (processo={}, {} arquivo(s)) — passo Concluir é IRREVERSÍVEL.",
+                "Protocolando juntada {} (processo={}, {} arquivo(s), urgencia={}, liberdade={}) — passo Concluir é IRREVERSÍVEL.",
                 idsLabel,
                 referencia.getNumeroProcesso(),
-                arquivosP7s.size());
+                arquivosP7s.size(),
+                opcoesConfirmacao.pedidoUrgencia(),
+                opcoesConfirmacao.pedidoLiberdade());
 
         List<Long> idsGrupo = List.copyOf(claimadas);
         ResultadoProtocoloPeticao protocolo;
@@ -569,9 +622,10 @@ public class ProjudiPeticaoProtocoloLoteService {
             protocolo = peticaoService.protocolarPeticao(
                     referencia.getCredencialId(),
                     referencia.getNumeroProcesso(),
-                    referencia.getComplemento(),
+                    registroService.resolverComplementoJuntada(peticoes),
                     arquivosP7s,
-                    etapa -> estadoService.registrarEtapa(idsGrupo, etapa));
+                    etapa -> estadoService.registrarEtapa(idsGrupo, etapa),
+                    opcoesConfirmacao);
         } catch (RuntimeException e) {
             // Exceção (ex.: falha de OTP/sessão) não pode deixar a petição presa em PROTOCOLANDO:
             // devolve para ASSINADA (frame "2. Protocolar") para reenvio imediato.

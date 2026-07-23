@@ -232,7 +232,8 @@ public class ProjudiPeticaoController {
             throw new IllegalArgumentException(
                     "confirmar=true é obrigatório — o passo Concluir no PROJUDI é irreversível.");
         }
-        List<Long> aceitas = protocoloLoteService.protocolarLoteAssincrono(body.peticaoIds());
+        List<Long> aceitas = protocoloLoteService.protocolarLoteAssincrono(
+                body.peticaoIds(), false, body.complemento(), body.pedidoUrgencia(), body.pedidoLiberdade());
         return ResponseEntity.accepted()
                 .contentType(MediaType.APPLICATION_JSON)
                 .cacheControl(CacheControl.noStore())
@@ -250,7 +251,8 @@ public class ProjudiPeticaoController {
             throw new IllegalArgumentException(
                     "confirmar=true é obrigatório — o passo Concluir no PROJUDI é irreversível.");
         }
-        List<Long> aceitas = protocoloLoteService.protocolarProcessoAssincrono(body.numeroProcesso());
+        List<Long> aceitas = protocoloLoteService.protocolarProcessoAssincrono(
+                body.numeroProcesso(), body.complemento(), body.pedidoUrgencia(), body.pedidoLiberdade());
         return ResponseEntity.accepted()
                 .contentType(MediaType.APPLICATION_JSON)
                 .cacheControl(CacheControl.noStore())
@@ -260,7 +262,8 @@ public class ProjudiPeticaoController {
     @PostMapping(value = "/agendar-protocolo-lote", consumes = MediaType.APPLICATION_JSON_VALUE)
     @Operation(summary = "Agenda protocolo PROJUDI para horário fixo (petições ASSINADA ou pendentes)")
     public ResponseEntity<Void> agendarProtocoloLote(@Valid @RequestBody AgendarProtocoloLoteRequest body) {
-        agendamentoService.agendarProtocoloLote(body.peticaoIds(), body.agendadoPara());
+        agendamentoService.agendarProtocoloLote(
+                body.peticaoIds(), body.agendadoPara(), body.pedidoUrgencia(), body.pedidoLiberdade());
         return ResponseEntity.noContent().build();
     }
 
@@ -268,7 +271,8 @@ public class ProjudiPeticaoController {
     @Operation(summary = "Agenda protocolo de uma petição para horário fixo")
     public ResponseEntity<Void> agendarProtocolo(
             @PathVariable Long peticaoId, @Valid @RequestBody AgendarProtocoloRequest body) {
-        agendamentoService.agendarProtocolo(peticaoId, body.agendadoPara());
+        agendamentoService.agendarProtocolo(
+                peticaoId, body.agendadoPara(), body.pedidoUrgencia(), body.pedidoLiberdade());
         return ResponseEntity.noContent().build();
     }
 

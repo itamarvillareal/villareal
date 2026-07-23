@@ -55,8 +55,9 @@ class FinanceiroExtratoAcessoServiceTest {
         when(usuarioRepository.findWithPerfilByLoginIgnoreCase("karla.pedroza"))
                 .thenReturn(Optional.of(usuario(2L, "karla.pedroza")));
 
-        assertThat(service.numerosBancosPermitidos()).hasValue(Set.of(3, 5, 26, 29));
+        assertThat(service.numerosBancosPermitidos()).hasValue(Set.of(3, 903, 5, 26, 29));
         assertThatCode(() -> service.assertAcessoExtratoBanco(3)).doesNotThrowAnyException();
+        assertThatCode(() -> service.assertAcessoExtratoBanco(903)).doesNotThrowAnyException();
         assertThatCode(() -> service.assertAcessoExtratoBanco(5)).doesNotThrowAnyException();
         assertThatCode(() -> service.assertAcessoExtratoBanco(26)).doesNotThrowAnyException();
         assertThatCode(() -> service.assertAcessoExtratoBanco(29)).doesNotThrowAnyException();
