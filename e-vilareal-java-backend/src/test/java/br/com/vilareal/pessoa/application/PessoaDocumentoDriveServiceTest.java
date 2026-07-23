@@ -17,4 +17,11 @@ class PessoaDocumentoDriveServiceTest {
                 .isFalse();
         assertThat(PessoaDocumentoDriveService.ehArquivoP7s(null)).isFalse();
     }
+
+    @Test
+    void ehArquivoP7s_reconhecePdfP7s() {
+        assertThat(PessoaDocumentoDriveService.ehArquivoP7s(
+                        new DriveArquivoDto("3", "02.Procuracao.pdf.p7s", null, null, null, null, null, null, null)))
+                .isTrue();
+    }
 }

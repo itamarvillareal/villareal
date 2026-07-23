@@ -17,8 +17,9 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * Documentos constitutivos (.p7s) na pasta {@code Pessoas/{id8}/…} para instruir a inicial,
- * separados dos documentos específicos do processo (pasta «Assinar»).
+ * Documentos constitutivos (.p7s) na pasta {@code Pessoas/{id8}/…} para instruir a inicial
+ * (Assinados, Assinar, Documentos e demais subpastas), separados dos anexos da pasta
+ * «Assinar» do processo.
  */
 @Service
 public class ProjudiInicialDocumentosPessoaService {

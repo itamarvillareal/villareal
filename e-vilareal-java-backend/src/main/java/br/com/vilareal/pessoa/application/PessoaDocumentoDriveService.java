@@ -63,7 +63,8 @@ public class PessoaDocumentoDriveService {
     }
 
     /**
-     * Lista .p7s diretamente nas pastas Pessoas (Assinados, Documentos e raiz) via Google Drive API.
+     * Lista .p7s diretamente nas pastas Pessoas via Google Drive API:
+     * Assinados, Documentos, Assinar (legado/manual) e demais subpastas imediatas + raiz.
      */
     public List<PessoaP7sDriveItem> listarP7sNoDrive(Long pessoaId) {
         validarPessoaExiste(pessoaId);
@@ -76,6 +77,7 @@ public class PessoaDocumentoDriveService {
             coletarP7sDaPasta(pessoaId, TipoDocumentoPessoa.DOCUMENTOS, porDriveId);
             String pastaRaizId = documentoDrivePastaService.resolverPastaPessoa(pessoaId).pastaId();
             coletarP7sEmPasta(pastaRaizId, TipoDocumentoPessoa.ASSINADOS.name(), porDriveId);
+            coletarP7sEmSubpastasImediatas(pastaRaizId, porDriveId);
         } catch (Exception e) {
             log.warn("Falha ao listar .p7s no Drive (pessoaId={}): {}", pessoaId, e.getMessage());
             return List.of();
@@ -223,6 +225,42 @@ public class PessoaDocumentoDriveService {
             throws Exception {
         String pastaId = documentoDrivePastaService.obterPastaDestinoPessoa(pessoaId, tipo);
         coletarP7sEmPasta(pastaId, tipo.name(), acumulado);
+    }
+
+    /**
+     * Varre subpastas imediatas da raiz Pessoas (ex.: «Assinar», pastas legadas) para achar .p7s
+     * que não estejam só em Assinados/Documentos.
+     */
+    private void coletarP7sEmSubpastasImediatas(String pastaRaizId, Map<String, PessoaP7sDriveItem> acumulado)
+            throws Exception {
+        if (!StringUtils.hasText(pastaRaizId)) {
+            return;
+        }
+        List<DriveArquivoDto> filhos = googleDriveService.listarConteudo(pastaRaizId);
+        for (DriveArquivoDto filho : filhos) {
+            if (filho == null || !"pasta".equals(filho.tipo()) || !StringUtils.hasText(filho.id())) {
+                continue;
+            }
+            String nomePasta = StringUtils.hasText(filho.nome()) ? filho.nome().trim() : "Pasta";
+            String tipoJaCoberto = tipoPastaPadraoPessoa(nomePasta);
+            if (tipoJaCoberto != null) {
+                // Assinados/Documentos já foram coletados via obterPastaDestinoPessoa
+                continue;
+            }
+            coletarP7sEmPasta(filho.id(), nomePasta.toUpperCase(Locale.ROOT), acumulado);
+        }
+    }
+
+    private static String tipoPastaPadraoPessoa(String nomePasta) {
+        if (!StringUtils.hasText(nomePasta)) {
+            return null;
+        }
+        for (TipoDocumentoPessoa tipo : TipoDocumentoPessoa.values()) {
+            if (tipo.getPasta().equalsIgnoreCase(nomePasta.trim()) || tipo.name().equalsIgnoreCase(nomePasta.trim())) {
+                return tipo.name();
+            }
+        }
+        return null;
     }
 
     private void coletarP7sEmPasta(String pastaId, String tipoPasta, Map<String, PessoaP7sDriveItem> acumulado)

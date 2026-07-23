@@ -1202,7 +1202,7 @@ export function DistribuicaoInicialProjudi() {
                 <span className="font-mono">01.PeticaoInicial.pdf</span>) e documentos específicos desta ação.
               </p>
               <p>
-                <strong>Pasta «Pessoas/Assinados» do autor</strong>
+                <strong>Pasta Pessoas do autor</strong>
                 {pessoaAutor?.id ? (
                   <>
                     {' '}
@@ -1217,7 +1217,7 @@ export function DistribuicaoInicialProjudi() {
                 ) : (
                   ':'
                 )}{' '}
-                documentos constitutivos numerados a partir de{' '}
+                documentos constitutivos em Assinados/Assinar/Documentos, numerados a partir de{' '}
                 <span className="font-mono">02.</span> (procuração, contrato social, docs. do representante em PJ…).
                 São juntados junto com os anexos assinados na pasta «Assinar» do processo quando a opção abaixo estiver marcada.
               </p>
@@ -1225,16 +1225,18 @@ export function DistribuicaoInicialProjudi() {
             {pessoaAutor?.id ? (
               <label
                 className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${
-                  docsPessoaDisponiveis.length > 0
-                    ? 'border-indigo-200 bg-indigo-50/60 text-indigo-950 cursor-pointer'
-                    : 'border-slate-200 bg-slate-50 text-slate-500 cursor-not-allowed'
+                  carregandoDocsPessoa || operacao != null
+                    ? 'border-slate-200 bg-slate-50 text-slate-500 cursor-wait'
+                    : docsPessoaDisponiveis.length > 0
+                      ? 'border-indigo-200 bg-indigo-50/60 text-indigo-950 cursor-pointer'
+                      : 'border-slate-200 bg-slate-50 text-slate-700 cursor-pointer'
                 }`}
               >
                 <input
                   type="checkbox"
                   className="mt-0.5"
                   checked={incluirDocsPessoa}
-                  disabled={docsPessoaDisponiveis.length === 0 || carregandoDocsPessoa || operacao != null}
+                  disabled={carregandoDocsPessoa || operacao != null}
                   onChange={(ev) => setIncluirDocsPessoa(ev.target.checked)}
                 />
                 <span>
@@ -1243,7 +1245,7 @@ export function DistribuicaoInicialProjudi() {
                     Procuração, contrato social, documentos do representante (PJ) etc. — numerados a partir de{' '}
                     <span className="font-mono">02.</span>
                     {docsPessoaDisponiveis.length === 0
-                      ? '. Nenhum .p7s encontrado no Drive deste autor.'
+                      ? '. Nenhum .p7s encontrado ainda no Drive deste autor (Assinados, Assinar, Documentos…).'
                       : incluirDocsPessoa
                         ? `. ${docsPessoaDisponiveis.length} arquivo(s) serão anexados à inicial.`
                         : '. Os arquivos da pasta Pessoas não serão enviados nesta distribuição.'}
