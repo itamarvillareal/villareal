@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -555,52 +555,134 @@ export function DistribuicaoInicialProjudi() {
     };
   }, [pessoaAutor?.id]);
 
+  const baixarLinhasConstitutivosPessoa = useCallback(async (autorId) => {
+    if (!autorId) return [];
+    const docs = await listarDocumentosPessoaInicial(autorId);
+    if (!Array.isArray(docs) || docs.length === 0) return [];
+    const linhas = [];
+    for (const doc of docs) {
+      const key = `pessoa-doc-${doc.documentoId}`;
+      const nome = String(doc.nomeArquivo ?? 'documento.p7s').trim() || 'documento.p7s';
+      const blob = await baixarP7sDocumentoPessoaInicial({
+        documentoId: doc.documentoId,
+        pessoaIdAutor: autorId,
+        nomeFallback: nome,
+      });
+      const file = new File([blob], nome, { type: 'application/pkcs7-signature' });
+      linhas.push({
+        key,
+        file,
+        idArquivoTipo: doc.idArquivoTipo ?? 1,
+        origem: 'pessoa',
+        rotulo: `${doc.tipo ?? 'Documento'} · ${doc.pessoaNome ?? 'Pessoa'}`,
+      });
+    }
+    return linhas;
+  }, []);
+
+  const mesclarSomentePessoaDocs = useCallback(
+    async ({ silencioso = false } = {}) => {
+      const autorId = pessoaAutor?.id ?? null;
+      if (!autorId) {
+        if (!silencioso) {
+          setApiError('Selecione o autor antes de carregar documentos da pasta Pessoas.');
+        }
+        return 0;
+      }
+      setCarregandoDocsPessoa(true);
+      if (!silencioso) setApiError('');
+      try {
+        const linhasPessoa = await baixarLinhasConstitutivosPessoa(autorId);
+        if (linhasPessoa.length === 0) {
+          if (!silencioso) {
+            setToast(
+              'Nenhum .p7s constitutivo na pasta Pessoas/Assinados do autor (procuração, contrato social, documentos pessoais…).',
+            );
+          }
+          return 0;
+        }
+        let adicionados = 0;
+        setLinhasP7s((rows) => {
+          const chaves = new Set(rows.map((l) => l.key));
+          const novas = linhasPessoa.filter((l) => !chaves.has(l.key));
+          adicionados = novas.length;
+          if (novas.length === 0) return rows;
+          return [...rows, ...novas];
+        });
+        if (!silencioso) {
+          if (adicionados === 0) {
+            setToast('Os documentos constitutivos da pasta Pessoas já estão na lista de anexos.');
+          } else {
+            setToast(`${adicionados} documento(s) constitutivo(s) adicionado(s) da pasta Pessoas.`);
+          }
+        }
+        return adicionados;
+      } catch (err) {
+        if (!silencioso) {
+          setApiError(err?.message || 'Falha ao carregar documentos da pasta Pessoas.');
+        }
+        return 0;
+      } finally {
+        setCarregandoDocsPessoa(false);
+      }
+    },
+    [baixarLinhasConstitutivosPessoa, pessoaAutor?.id],
+  );
+
+  const incorporarAnexosProcessoComPessoas = useCallback(
+    async (linhasProcesso, { silencioso = false } = {}) => {
+      const autorId = pessoaAutor?.id ?? null;
+      if (!autorId) {
+        setLinhasP7s(linhasProcesso);
+        if (!silencioso && linhasProcesso.length > 0) {
+          setToast(`${linhasProcesso.length} arquivo(s) .p7s carregado(s) da assinatura automática.`);
+        }
+        return;
+      }
+      setCarregandoDocsPessoa(true);
+      if (!silencioso) setApiError('');
+      try {
+        const linhasPessoa = await baixarLinhasConstitutivosPessoa(autorId);
+        setLinhasP7s(() => {
+          const chaves = new Set();
+          const out = [];
+          for (const linha of [...linhasProcesso, ...linhasPessoa]) {
+            if (chaves.has(linha.key)) continue;
+            chaves.add(linha.key);
+            out.push(linha);
+          }
+          return out;
+        });
+        if (!silencioso) {
+          const qtdPessoa = linhasPessoa.length;
+          const qtdProc = linhasProcesso.length;
+          if (qtdPessoa > 0) {
+            setToast(
+              `${qtdProc} anexo(s) do processo e ${qtdPessoa} constitutivo(s) da pasta Pessoas prontos para protocolo.`,
+            );
+          } else {
+            setToast(`${qtdProc} arquivo(s) .p7s carregado(s) da assinatura automática.`);
+          }
+        }
+      } catch (err) {
+        setLinhasP7s(linhasProcesso);
+        if (!silencioso) {
+          setApiError(err?.message || 'Falha ao incluir documentos da pasta Pessoas.');
+        }
+      } finally {
+        setCarregandoDocsPessoa(false);
+      }
+    },
+    [baixarLinhasConstitutivosPessoa, pessoaAutor?.id],
+  );
+
+  useEffect(() => {
+    if (!pessoaAutor?.id || docsPessoaDisponiveis.length === 0) return;
+    void mesclarSomentePessoaDocs({ silencioso: true });
+  }, [pessoaAutor?.id, docsPessoaDisponiveis.length, mesclarSomentePessoaDocs]);
+
   async function carregarDocumentosConstitutivosPessoa() {
-    const autorId = pessoaAutor?.id ?? null;
-    if (!autorId) {
-      setApiError('Selecione o autor antes de carregar documentos da pasta Pessoas.');
-      return;
-    }
-    setCarregandoDocsPessoa(true);
-    setApiError('');
-    try {
-      const docs = await listarDocumentosPessoaInicial(autorId);
-      if (!Array.isArray(docs) || docs.length === 0) {
-        setToast('Nenhum .p7s constitutivo registrado na pasta Pessoas/Assinados do autor (use «Anexar .p7s» no cadastro ou coloque os arquivos na subpasta Assinados).');
-        return;
-      }
-      const chavesExistentes = new Set(linhasP7s.map((l) => l.key));
-      const novasLinhas = [];
-      for (const doc of docs) {
-        const key = `pessoa-doc-${doc.documentoId}`;
-        if (chavesExistentes.has(key)) continue;
-        const nome = String(doc.nomeArquivo ?? 'documento.p7s').trim() || 'documento.p7s';
-        const blob = await baixarP7sDocumentoPessoaInicial({
-          documentoId: doc.documentoId,
-          pessoaIdAutor: autorId,
-          nomeFallback: nome,
-        });
-        const file = new File([blob], nome, { type: 'application/pkcs7-signature' });
-        novasLinhas.push({
-          key,
-          file,
-          idArquivoTipo: doc.idArquivoTipo ?? 1,
-          origem: 'pessoa',
-          rotulo: `${doc.tipo ?? 'Documento'} · ${doc.pessoaNome ?? 'Pessoa'}`,
-        });
-        chavesExistentes.add(key);
-      }
-      if (novasLinhas.length === 0) {
-        setToast('Os documentos constitutivos da pasta Pessoas já estão na lista de anexos.');
-        return;
-      }
-      setLinhasP7s((rows) => [...rows, ...novasLinhas]);
-      setToast(`${novasLinhas.length} documento(s) constitutivo(s) adicionado(s) da pasta Pessoas.`);
-    } catch (err) {
-      setApiError(err?.message || 'Falha ao carregar documentos da pasta Pessoas.');
-    } finally {
-      setCarregandoDocsPessoa(false);
-    }
+    await mesclarSomentePessoaDocs({ silencioso: false });
   }
 
   const reusComPendencia = partesReu.some((p) => p && !p.prontaParaInserir);
@@ -1112,7 +1194,7 @@ export function DistribuicaoInicialProjudi() {
                     {' '}
                     (<span className="font-mono">Pessoas/{String(pessoaAutor.id).padStart(8, '0')}</span>
                     {docsPessoaDisponiveis.length > 0
-                      ? ` · ${docsPessoaDisponiveis.length} .p7s disponível(is)`
+                      ? ` · ${docsPessoaDisponiveis.length} .p7s — incluídos automaticamente no protocolo`
                       : ''}
                     ):
                   </>
@@ -1121,6 +1203,7 @@ export function DistribuicaoInicialProjudi() {
                 )}{' '}
                 documentos constitutivos numerados a partir de{' '}
                 <span className="font-mono">02.</span> (procuração, contrato social, docs. do representante em PJ…).
+                São juntados junto com os anexos assinados na pasta «Assinar» do processo.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -1132,8 +1215,9 @@ export function DistribuicaoInicialProjudi() {
                   disabled={!dadosProcesso || operacao != null}
                   onArquivosAssinados={(linhas, opts) =>
                     opts?.anexar
-                      ? setLinhasP7s((rows) => [...rows, ...linhas])
-                      : setLinhasP7s(linhas)
+                      ? (setLinhasP7s((rows) => [...rows, ...linhas]),
+                        void mesclarSomentePessoaDocs({ silencioso: false }))
+                      : void incorporarAnexosProcessoComPessoas(linhas)
                   }
                   onToast={setToast}
                   onErro={setApiError}
