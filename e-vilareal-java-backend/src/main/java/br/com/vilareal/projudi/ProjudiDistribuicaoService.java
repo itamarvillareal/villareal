@@ -486,12 +486,29 @@ public class ProjudiDistribuicaoService {
                     ProjudiProcessoCivelRevisaoHtmlUtil.extrairNumeroProcessoGerado(corpoDist, null);
 
             if (numeroOpt.isEmpty()) {
+                String diagnostico =
+                        ProjudiProcessoCivelRevisaoHtmlUtil.extrairTrechoDiagnosticoDestino302(corpoDist);
+                if (ProjudiProcessoCivelRevisaoHtmlUtil.parecePaginaProblemaNoPedido(corpoDist)) {
+                    trilha.falhaSemResposta(
+                            "Extrair número",
+                            "PROJUDI respondeu «Problema no pedido». POST NÃO será reenviado. " + diagnostico);
+                    return falhaDistribuicao(
+                            "DISTRIBUIR",
+                            "PROJUDI rejeitou a confirmação (Problema no pedido). "
+                                    + "Causa frequente: nome de anexo com acento incompatível (NFD) entre "
+                                    + "upload UTF-8 e lista files[] em ISO-8859-1. "
+                                    + diagnostico,
+                            corpoDist,
+                            trilha);
+                }
                 trilha.falhaSemResposta(
                         "Extrair número",
-                        "Resposta 200 mas CNJ não encontrado no corpo. POST NÃO será reenviado.");
+                        "Resposta 200 mas CNJ não encontrado no corpo. POST NÃO será reenviado. "
+                                + diagnostico);
                 return falhaDistribuicao(
                         "DISTRIBUIR",
-                        "Distribuição não confirmada — número do processo não reconhecido na resposta.",
+                        "Distribuição não confirmada — número do processo não reconhecido na resposta. "
+                                + diagnostico,
                         corpoDist,
                         trilha);
             }

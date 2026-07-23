@@ -98,6 +98,18 @@ class ProjudiProcessoCivelRevisaoHtmlUtilTest {
     }
 
     @Test
+    void parecePaginaProblemaNoPedido_detectaTitle() {
+        String html =
+                """
+                <html><head><title>Problema no pedido</title></head>
+                <body><div id="conteudo">Pedido inválido ou já utilizado.</div></body></html>
+                """;
+        assertTrue(ProjudiProcessoCivelRevisaoHtmlUtil.parecePaginaProblemaNoPedido(html));
+        String trecho = ProjudiProcessoCivelRevisaoHtmlUtil.extrairTrechoDiagnosticoDestino302(html);
+        assertTrue(trecho.toLowerCase(Locale.ROOT).contains("problema"));
+    }
+
+    @Test
     void classificarRedirect302_descarteUsuarioPaginaMenos10() {
         String descarte =
                 "https://projudi.tjgo.jus.br/Usuario?PaginaAtual=-10&hashFluxo=abc123";

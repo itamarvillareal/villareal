@@ -10,6 +10,7 @@ import org.springframework.util.StringUtils;
 import java.net.URLEncoder;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.text.Normalizer;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
@@ -421,12 +422,16 @@ public class ProjudiPeticaoService {
     /**
      * PROJUDI (ProcessoCivel / inicial) rejeita extensão {@code .p7s} isolada;
      * aceita nomes no padrão {@code *.pdf.p7s} (como nas interlocutórias).
+     * <p>
+     * Também normaliza Unicode para NFC e remove caracteres fora de ISO-8859-1:
+     * o upload (UTF-8) e o Passo 2 ({@code files[]} em ISO-8859-1) precisam do mesmo nome;
+     * acentos em NFD viram {@code ?} no Passo 2 e o PROJUDI responde «Problema no pedido».
      */
     static String normalizarNomeP7sParaUpload(String nome) {
         if (!StringUtils.hasText(nome)) {
             return nome;
         }
-        String trimmed = nome.trim();
+        String trimmed = tornarNomeArquivoCompativelProjudi(nome.trim());
         String lower = trimmed.toLowerCase(Locale.ROOT);
         if (lower.endsWith(".pdf.p7s")) {
             return trimmed;
@@ -435,6 +440,40 @@ public class ProjudiPeticaoService {
             return trimmed.substring(0, trimmed.length() - 4) + ".pdf.p7s";
         }
         return trimmed;
+    }
+
+    /**
+     * NFC + apenas bytes representáveis em ISO-8859-1 (com transliteração de acentos restantes).
+     */
+    static String tornarNomeArquivoCompativelProjudi(String nome) {
+        if (!StringUtils.hasText(nome)) {
+            return nome;
+        }
+        String nfc = Normalizer.normalize(nome.trim(), Normalizer.Form.NFC);
+        if (cabeEmIso88591(nfc)) {
+            return nfc;
+        }
+        StringBuilder out = new StringBuilder(nfc.length());
+        for (int i = 0; i < nfc.length(); ) {
+            int cp = nfc.codePointAt(i);
+            String ch = new String(Character.toChars(cp));
+            if (cabeEmIso88591(ch)) {
+                out.append(ch);
+            } else {
+                String semMarcas = Normalizer.normalize(ch, Normalizer.Form.NFD).replaceAll("\\p{M}+", "");
+                if (StringUtils.hasText(semMarcas) && cabeEmIso88591(semMarcas)) {
+                    out.append(semMarcas);
+                } else {
+                    out.append('_');
+                }
+            }
+            i += Character.charCount(cp);
+        }
+        return out.toString();
+    }
+
+    private static boolean cabeEmIso88591(String valor) {
+        return StandardCharsets.ISO_8859_1.newEncoder().canEncode(valor);
     }
 
     static String gerarNomeP7s(String numeroProcesso, long epochMillis, int indice) {

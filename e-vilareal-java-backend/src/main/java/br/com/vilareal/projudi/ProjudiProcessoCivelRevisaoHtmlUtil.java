@@ -221,12 +221,31 @@ final class ProjudiProcessoCivelRevisaoHtmlUtil {
         return Optional.empty();
     }
 
+    /** Página HTML do PROJUDI com título «Problema no pedido» (token/anexo/validação). */
+    static boolean parecePaginaProblemaNoPedido(String html) {
+        if (!StringUtils.hasText(html)) {
+            return false;
+        }
+        String lower = html.toLowerCase(Locale.ROOT);
+        return lower.contains("<title>problema no pedido</title>")
+                || lower.contains("problema no pedido");
+    }
+
     /** Trecho legível da página de destino após redirect 302 (mensagens de erro/validação). */
     static String extrairTrechoDiagnosticoDestino302(String html) {
         if (!StringUtils.hasText(html)) {
             return "(HTML vazio)";
         }
         List<String> partes = new ArrayList<>();
+
+        Document doc = org.jsoup.Jsoup.parse(html);
+        Element title = doc.selectFirst("title");
+        if (title != null && StringUtils.hasText(title.text())) {
+            String t = title.text().trim();
+            if (!"projudi".equalsIgnoreCase(t)) {
+                partes.add("title: " + t);
+            }
+        }
 
         Matcher titulo = TITULO_ERRO_JS.matcher(html);
         if (titulo.find()) {
@@ -243,12 +262,20 @@ final class ProjudiProcessoCivelRevisaoHtmlUtil {
             }
         }
 
-        Document doc = org.jsoup.Jsoup.parse(html);
         for (String sel :
-                List.of(".mensagemErro", "#mensagemErro", ".msgErro", "div.erro", "span.erro", "font[color=red]")) {
+                List.of(
+                        ".mensagemErro",
+                        "#mensagemErro",
+                        ".msgErro",
+                        "div.erro",
+                        "span.erro",
+                        "font[color=red]",
+                        "#conteudo",
+                        "td.mensagem",
+                        "div#mensagem")) {
             for (Element el : doc.select(sel)) {
                 String t = el.text().trim();
-                if (StringUtils.hasText(t) && !partes.contains(t)) {
+                if (StringUtils.hasText(t) && t.length() >= 4 && !partes.contains(t)) {
                     partes.add(t);
                 }
             }
@@ -268,6 +295,8 @@ final class ProjudiProcessoCivelRevisaoHtmlUtil {
                     || lower.contains("preencha")
                     || lower.contains("atenção")
                     || lower.contains("atencao")
+                    || lower.contains("problema")
+                    || lower.contains("pedido")
                     || (lower.contains("campo") && (lower.contains("deve") || lower.contains("inform")))) {
                 partes.add(linha);
             }

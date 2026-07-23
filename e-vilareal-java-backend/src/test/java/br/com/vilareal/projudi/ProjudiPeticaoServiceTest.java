@@ -3,6 +3,7 @@ package br.com.vilareal.projudi;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ProjudiPeticaoServiceTest {
@@ -34,6 +35,18 @@ class ProjudiPeticaoServiceTest {
         assertEquals(
                 "Peticao.pdf.p7s",
                 ProjudiPeticaoService.normalizarNomeP7sParaUpload("Peticao.pdf.p7s"));
+    }
+
+    @Test
+    void normalizarNomeP7sParaUpload_converteNfdParaNfcLatin1() {
+        // "LOCAÇÃO" em NFD (C + cedilha combinante + A + til combinante) — causa «Problema no pedido»
+        String nfd = "09.FICHA DE LOCA" + "C\u0327" + "A\u0303" + "O.pdf.p7s";
+        String normalizado = ProjudiPeticaoService.normalizarNomeP7sParaUpload(nfd);
+        assertEquals("09.FICHA DE LOCAÇÃO.pdf.p7s", normalizado);
+        assertTrue(java.nio.charset.StandardCharsets.ISO_8859_1.newEncoder().canEncode(normalizado));
+        String corpo = ProjudiProcessoCivelInicialCorpoUtil.montarCorpoConcluirAnexos(java.util.List.of(normalizado));
+        assertTrue(corpo.contains("LOCA%C7%C3O"), corpo);
+        assertFalse(corpo.contains("%3F"), corpo);
     }
 
     @Test
