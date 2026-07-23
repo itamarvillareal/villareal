@@ -270,7 +270,10 @@ public class ProjudiDistribuicaoService {
                     credencialId,
                     enderecoIdDaParteNoProcesso(processoIdOrigem, pessoaIdAutor));
         }
-        if (credencialId != null && !idsReu.isEmpty()) {
+        // Login/OTP bloqueado: não tentar resolver as demais partes (evita N timeouts e mensagens duplicadas).
+        boolean sessaoProjudiIndisponivel =
+                bloqueios.stream().anyMatch(ProjudiSessionService::isFalhaAutenticacaoProjudi);
+        if (credencialId != null && !idsReu.isEmpty() && !sessaoProjudiIndisponivel) {
             int totalReus = idsReu.size();
             for (int i = 0; i < idsReu.size(); i++) {
                 Long pessoaIdReu = idsReu.get(i);
@@ -288,6 +291,9 @@ public class ProjudiDistribuicaoService {
                                 enderecoIdDaParteNoProcesso(processoIdOrigem, pessoaIdReu));
                 if (reu != null) {
                     reus.add(reu);
+                }
+                if (bloqueios.stream().anyMatch(ProjudiSessionService::isFalhaAutenticacaoProjudi)) {
+                    break;
                 }
             }
         }
@@ -338,7 +344,15 @@ public class ProjudiDistribuicaoService {
             return parte;
         } catch (RuntimeException e) {
             log.warn("validarProntidao {} pessoaId={}: {}", papel, pessoaId, e.getMessage());
-            bloqueios.add(rotuloPapel(papel) + ": falha ao resolver no PROJUDI — " + e.getMessage());
+            String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            if (ProjudiSessionService.isFalhaAutenticacaoProjudi(msg)) {
+                // Mensagem do tribunal já traz o horário (ex.: limite de OTP) — sem prefixo Autor/Réu.
+                if (bloqueios.stream().noneMatch(ProjudiSessionService::isFalhaAutenticacaoProjudi)) {
+                    bloqueios.add(msg);
+                }
+            } else {
+                bloqueios.add(rotuloPapel(papel) + ": falha ao resolver no PROJUDI — " + msg);
+            }
             return null;
         }
     }

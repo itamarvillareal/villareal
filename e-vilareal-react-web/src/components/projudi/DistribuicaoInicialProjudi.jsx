@@ -766,6 +766,12 @@ export function DistribuicaoInicialProjudi() {
     !todosReusInformados ||
     validandoProntidao;
 
+  const bloqueiosLoginProjudi = (validacaoProntidao?.bloqueios || []).filter((b) =>
+    /limite de envios|código de segurança|codigo de seguranca|token otp|otp|login no projudi/i.test(
+      String(b || ''),
+    ),
+  );
+
   const podePreparar = validacaoProntidao?.pronta === true && !validandoProntidao;
 
   const classeSelecionada =
@@ -1251,7 +1257,19 @@ export function DistribuicaoInicialProjudi() {
                 )}
               </div>
             </div>
-            {partesPendentes && pessoaAutor && pessoasReu.length > 0 ? (
+            {bloqueiosLoginProjudi.length > 0 ? (
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-950">
+                <p className="font-medium flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden />
+                  Login no PROJUDI indisponível
+                </p>
+                <ul className="list-disc pl-5 mt-1.5 space-y-0.5">
+                  {bloqueiosLoginProjudi.map((bloqueio) => (
+                    <li key={bloqueio}>{bloqueio}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : partesPendentes && pessoaAutor && pessoasReu.length > 0 && !validandoProntidao ? (
               <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
                 Corrija as pendências das partes antes de preparar.
               </p>

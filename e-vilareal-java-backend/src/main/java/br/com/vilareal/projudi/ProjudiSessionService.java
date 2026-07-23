@@ -22,6 +22,8 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
@@ -68,6 +70,8 @@ public class ProjudiSessionService {
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
     private static final Duration OTP_TIMEOUT = Duration.ofMinutes(2);
     private static final int MAX_TENTATIVAS_HTTP = 3;
+    private static final ZoneId FUSO_HORARIO_BR = ZoneId.of("America/Sao_Paulo");
+    private static final DateTimeFormatter HORARIO_OTP = DateTimeFormatter.ofPattern("HH:mm");
 
     private final ProjudiCredencialService credencialService;
     private final ProjudiTokenReaderService tokenReader;
@@ -624,6 +628,11 @@ public class ProjudiSessionService {
 
         // f. fluxo com OTP
         if (login.path("requerOtp").asBoolean(false)) {
+            // PROJUDI devolve requerOtp=true também no 403 de limite de reenvio (sucesso=false).
+            // Não aguardar e-mail nesses casos — a mensagem já traz o horário de liberação.
+            if (!login.path("sucesso").asBoolean(false)) {
+                throw new IllegalStateException(mensagemFalhaLoginOtp(login));
+            }
             Optional<String> token = tokenReader.aguardarToken(inicioLogin, OTP_TIMEOUT);
             if (token.isEmpty()) {
                 throw new IllegalStateException("Token OTP não recebido no prazo.");
@@ -651,10 +660,75 @@ public class ProjudiSessionService {
             return finalizarAutenticacao(credencialId, client, cookieManager, cpf);
         }
 
-        // h.
+        // h. login recusado com mensagem do tribunal (ex.: limite OTP sem flag típica)
+        if (temTexto(login.path("mensagem").asText(null))) {
+            throw new IllegalStateException(mensagemFalhaLoginOtp(login));
+        }
+
         // TEMPORÁRIO - diagnóstico login
         throw new IllegalStateException("Resposta inesperada do servidor no login. Corpo (1000): "
                 + truncar(respLogin.body(), 1000));
+    }
+
+    /**
+     * Mensagem amigável quando o PROJUDI recusa o login/OTP (ex.: limite de reenvios).
+     * Prefere {@code mensagem} do JSON; se houver
+     * {@code proximoEnvioDisponivelMilissegundos} e a mensagem não citar horário, anexa o HH:mm (BRT).
+     */
+    static String mensagemFalhaLoginOtp(JsonNode login) {
+        String mensagem = login != null ? login.path("mensagem").asText(null) : null;
+        String horario = formatarHorarioProximoEnvioOtp(login);
+        if (temTexto(mensagem)) {
+            String texto = mensagem.trim();
+            if (horario != null && !mensagemContemHorario(texto)) {
+                return texto + " Tente novamente a partir das " + horario + ".";
+            }
+            return texto;
+        }
+        if (horario != null) {
+            return "O limite de envios do código de segurança do PROJUDI foi atingido. "
+                    + "Um novo poderá ser solicitado a partir das " + horario + ".";
+        }
+        return "Login no PROJUDI recusado (código de segurança/OTP). Tente novamente mais tarde.";
+    }
+
+    static String formatarHorarioProximoEnvioOtp(JsonNode login) {
+        if (login == null || !login.has("proximoEnvioDisponivelMilissegundos")
+                || login.path("proximoEnvioDisponivelMilissegundos").isNull()) {
+            return null;
+        }
+        long millis = login.path("proximoEnvioDisponivelMilissegundos").asLong(0L);
+        if (millis <= 0L) {
+            return null;
+        }
+        return Instant.ofEpochMilli(millis)
+                .atZone(FUSO_HORARIO_BR)
+                .toLocalTime()
+                .format(HORARIO_OTP);
+    }
+
+    static boolean mensagemContemHorario(String mensagem) {
+        if (!temTexto(mensagem)) {
+            return false;
+        }
+        return mensagem.matches("(?s).*\\b\\d{1,2}:\\d{2}\\b.*");
+    }
+
+    /** Falha de autenticação/OTP que deve ser exibida uma vez (sem prefixo Autor/Réu). */
+    static boolean isFalhaAutenticacaoProjudi(String mensagem) {
+        if (!temTexto(mensagem)) {
+            return false;
+        }
+        String m = mensagem.toLowerCase(Locale.ROOT);
+        return m.contains("limite de envios")
+                || m.contains("código de segurança")
+                || m.contains("codigo de seguranca")
+                || m.contains("token otp")
+                || m.contains("falha na validação do otp")
+                || m.contains("falha na validacao do otp")
+                || m.contains("confirmação manual de e-mail")
+                || m.contains("confirmacao manual de e-mail")
+                || m.contains("login no projudi recusado");
     }
 
     private ProjudiSession finalizarAutenticacao(

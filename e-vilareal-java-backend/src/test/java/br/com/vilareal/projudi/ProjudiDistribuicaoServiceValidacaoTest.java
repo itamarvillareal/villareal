@@ -24,6 +24,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -138,6 +140,24 @@ class ProjudiDistribuicaoServiceValidacaoTest {
         assertFalse(res.pronta());
         assertTrue(res.bloqueios().stream().anyMatch((b) -> b.contains("Autor:") && b.contains("credencial PROJUDI")));
         assertNull(res.autor());
+    }
+
+    @Test
+    void validarProntidao_limiteOtpExibeMensagemComHorarioENaoTentaReus() {
+        String msgLimite =
+                "O limite de envios do código de segurança foi atingido. "
+                        + "Um novo poderá ser solicitado a partir das 18:18.";
+        when(parteResolverService.resolver(eq(10L), eq(1L), isNull()))
+                .thenThrow(new IllegalStateException(msgLimite));
+
+        var res = service.validarProntidao(1L, "1500,00", List.of(451), 10L, List.of(20L, 30L), 1, null);
+
+        assertFalse(res.pronta());
+        assertTrue(res.bloqueios().contains(msgLimite));
+        assertTrue(res.bloqueios().stream().noneMatch((b) -> b.startsWith("Autor:")));
+        assertTrue(res.reus().isEmpty());
+        verify(parteResolverService, never()).resolver(eq(20L), eq(1L), isNull());
+        verify(parteResolverService, never()).resolver(eq(30L), eq(1L), isNull());
     }
 
     @Test
