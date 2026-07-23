@@ -132,4 +132,23 @@ class DocumentoReformatarCorpoUnicoHtmlTest {
         assertThat(xhtml).doesNotContain("<br>");
         assertThat(xhtml).contains("<img src=\"x.png\" alt=\"logo\" />");
     }
+
+    @Test
+    void extrairHtmlParaPdf_removeLogoMesmoSemDataDocPartNoContainer() {
+        String html =
+                """
+                <div class="doc-edicao-preview">
+                <div style="display:flex">
+                <img src="data:image/jpeg;base64,abc" alt="Villa Real e Advogados" style="height:88px" />
+                </div>
+                <p data-doc-part="enderecamento">MERITÍSSIMO JUÍZO</p>
+                <div data-doc-part="preambulo"><p>Texto do preâmbulo.</p></div>
+                </div>
+                """;
+        String pdfHtml = DocumentoReformatarCorpoUnicoHtml.extrairHtmlParaPdf(html);
+        assertThat(pdfHtml).doesNotContain("data:image/jpeg");
+        assertThat(pdfHtml).doesNotContain("Villa Real e Advogados");
+        assertThat(pdfHtml).contains("MERITÍSSIMO JUÍZO");
+        assertThat(pdfHtml).contains("Texto do preâmbulo");
+    }
 }

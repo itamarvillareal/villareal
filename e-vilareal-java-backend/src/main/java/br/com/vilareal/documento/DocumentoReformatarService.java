@@ -150,38 +150,70 @@ public class DocumentoReformatarService {
         if (StringUtils.hasText(request.corpoUnico())) {
             DocumentoReformatarConteudoRequest parsed =
                     DocumentoReformatarCorpoUnicoHtml.aplicarCorpoUnico(request, request.corpoUnico());
-            String corpoHtml = DocumentoReformatarCorpoUnicoHtml.extrairHtmlParaPdf(request.corpoUnico());
-            LocalDate data = parseData(parsed.data());
-            String localDataCustom = resolverLocalDataCorpoUnico(
-                    request.corpoUnico(), request.cidadeEstado(), data, parsed);
-            String cidadeEstado = request.cidadeEstado() != null && !request.cidadeEstado().isBlank()
-                    ? request.cidadeEstado().trim()
-                    : "Anápolis, estado de Goiás";
-            DocumentoRenderContext ctx = new DocumentoRenderContext(
-                    "",
-                    "",
-                    cidadeEstado,
-                    data,
-                    true,
-                    null,
-                    null,
-                    List.of(),
-                    List.of(),
-                    List.of(),
-                    List.of(),
-                    List.of(),
-                    localDataCustom,
-                    true,
-                    advogadoManualOuNull(parsed.advogadoNome(), DocumentoReformatarCorpoUnicoHtml.ADVOGADO_NOME_PADRAO),
-                    advogadoManualOuNull(parsed.advogadoOab(), DocumentoReformatarCorpoUnicoHtml.ADVOGADO_OAB_PADRAO),
-                    true,
-                    corpoHtml,
-                    request.processoId());
-            return pdfService.gerarPdf(ctx);
+            if (corpoUnicoTemEstruturaParaPdf(parsed, request.corpoUnico())) {
+                return gerarPdfModoReformatado(parsed, request.corpoUnico());
+            }
+            return gerarPdfModoCorpoUnico(parsed, request);
         }
+        return gerarPdfModoReformatado(request, null);
+    }
 
+    private static boolean corpoUnicoTemEstruturaParaPdf(
+            DocumentoReformatarConteudoRequest parsed, String corpoUnicoHtml) {
+        if (parsed == null) {
+            return false;
+        }
+        if (StringUtils.hasText(parsed.preambulo())) {
+            return true;
+        }
+        if (parsed.secoes() != null && !parsed.secoes().isEmpty()) {
+            return true;
+        }
+        return StringUtils.hasText(corpoUnicoHtml)
+                && (corpoUnicoHtml.contains("data-doc-part=\"preambulo\"")
+                        || corpoUnicoHtml.contains("data-doc-part=\"secao\""));
+    }
+
+    private byte[] gerarPdfModoCorpoUnico(
+            DocumentoReformatarConteudoRequest parsed, DocumentoReformatarConteudoRequest original) {
+        String corpoHtml = DocumentoReformatarCorpoUnicoHtml.extrairHtmlParaPdf(original.corpoUnico());
+        LocalDate data = parseData(parsed.data());
+        String localDataCustom = resolverLocalDataCorpoUnico(
+                original.corpoUnico(), original.cidadeEstado(), data, parsed);
+        String cidadeEstado = original.cidadeEstado() != null && !original.cidadeEstado().isBlank()
+                ? original.cidadeEstado().trim()
+                : "Anápolis, estado de Goiás";
+        DocumentoRenderContext ctx = new DocumentoRenderContext(
+                "",
+                "",
+                cidadeEstado,
+                data,
+                true,
+                null,
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                localDataCustom,
+                true,
+                advogadoManualOuNull(parsed.advogadoNome(), DocumentoReformatarCorpoUnicoHtml.ADVOGADO_NOME_PADRAO),
+                advogadoManualOuNull(parsed.advogadoOab(), DocumentoReformatarCorpoUnicoHtml.ADVOGADO_OAB_PADRAO),
+                true,
+                corpoHtml,
+                original.processoId());
+        return pdfService.gerarPdf(ctx);
+    }
+
+    private byte[] gerarPdfModoReformatado(DocumentoReformatarConteudoRequest request, String corpoUnicoOriginal) {
         LocalDate data = parseData(request.data());
-        String localData = DocumentoLocalDataResolver.resolver(request.cidadeEstado(), request.data(), null, pdfService);
+        String localData;
+        if (StringUtils.hasText(corpoUnicoOriginal)) {
+            localData = resolverLocalDataCorpoUnico(corpoUnicoOriginal, request.cidadeEstado(), data, request);
+        } else {
+            localData = DocumentoLocalDataResolver.resolver(request.cidadeEstado(), request.data(), null, pdfService);
+        }
 
         List<ParagrafoDocumento> preambulo =
                 DocumentoParagrafoHtmlUtil.htmlToParagrafos(request.preambulo(), TipoParagrafo.CORPO);
@@ -216,7 +248,7 @@ public class DocumentoReformatarService {
                         : "Anápolis, estado de Goiás",
                 data,
                 true,
-                request.nomePeca(),
+                nomePecaReformatadaParaTemplate(request),
                 null,
                 List.of(),
                 List.of(),
@@ -225,12 +257,23 @@ public class DocumentoReformatarService {
                 fecho,
                 localData,
                 temFecho,
-                null,
-                null,
+                advogadoManualOuNull(request.advogadoNome(), DocumentoReformatarCorpoUnicoHtml.ADVOGADO_NOME_PADRAO),
+                advogadoManualOuNull(request.advogadoOab(), DocumentoReformatarCorpoUnicoHtml.ADVOGADO_OAB_PADRAO),
                 false,
                 null,
                 request.processoId());
         return pdfService.gerarPdf(ctx);
+    }
+
+    private static String nomePecaReformatadaParaTemplate(DocumentoReformatarConteudoRequest request) {
+        if (!StringUtils.hasText(request.nomePeca())) {
+            return null;
+        }
+        if (StringUtils.hasText(request.preambulo())
+                && request.preambulo().toLowerCase(Locale.ROOT).contains(request.nomePeca().trim().toLowerCase(Locale.ROOT))) {
+            return null;
+        }
+        return request.nomePeca().trim();
     }
 
     private DocumentoParseado parsear(MultipartFile arquivo) throws IOException {
