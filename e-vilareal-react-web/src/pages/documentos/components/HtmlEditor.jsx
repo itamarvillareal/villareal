@@ -15,7 +15,7 @@ const editorSurfaceBaseClass =
   'html-editor-surface prose prose-sm max-w-none rounded-b-lg border border-t-0 border-slate-300/90 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm transition focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/25 dark:prose-invert dark:border-slate-600 dark:bg-slate-900/60 dark:text-slate-200 [&_mark]:bg-yellow-200 [&_p.citacao]:ml-8 [&_p.citacao]:border-l-2 [&_p.citacao]:border-slate-300 [&_p.citacao]:pl-3';
 
 const toolbarClass =
-  'flex flex-wrap items-center gap-1 rounded-t-lg border border-b-0 border-slate-300/90 bg-slate-50 px-2 py-1.5 dark:border-slate-600 dark:bg-slate-800/80';
+  'sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-1 rounded-t-lg border border-b-0 border-slate-300/90 bg-slate-50 px-2 py-1.5 shadow-sm dark:border-slate-600 dark:bg-slate-800/80';
 
 const toolbarBtnClass =
   'inline-flex items-center justify-center rounded-md p-1.5 text-slate-600 transition hover:bg-white hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-slate-100';
@@ -308,6 +308,9 @@ export function HtmlEditor({
   surfaceClassName,
   toolbar = 'compacto',
   editorKey,
+  /** Quando true, só o corpo do editor rola; a barra de formatação permanece fixa no topo. */
+  scrollEditor = false,
+  className = '',
 }) {
   const ref = useRef(null);
   const surfaceClass = surfaceClassName || editorSurfaceBaseClass;
@@ -333,8 +336,14 @@ export function HtmlEditor({
     onChange?.(sanitizarHtmlSecao(el.innerHTML));
   };
 
+  const rootClass = scrollEditor
+    ? `flex min-h-0 flex-col ${className}`.trim()
+    : className;
+
+  const editorScrollClass = scrollEditor ? 'min-h-0 flex-1 overflow-y-auto' : '';
+
   return (
-    <div>
+    <div className={rootClass || undefined}>
       <div className={toolbarClass} role="toolbar" aria-label="Formatação de texto">
         {toolbar === 'completo' ? (
           <ToolbarCompleto onAction={aplicar} />
@@ -342,19 +351,21 @@ export function HtmlEditor({
           <ToolbarCompacto onAction={aplicar} />
         )}
       </div>
-      <div
-        ref={ref}
-        role="textbox"
-        aria-multiline="true"
-        aria-label={ariaLabel}
-        contentEditable
-        suppressContentEditableWarning
-        data-html-editor={editorKey || undefined}
-        onInput={(e) => onChange?.(sanitizarHtmlSecao(e.currentTarget.innerHTML))}
-        onBlur={(e) => sincronizarHtml(e.currentTarget)}
-        className={surfaceClass}
-        style={{ minHeight }}
-      />
+      <div className={editorScrollClass}>
+        <div
+          ref={ref}
+          role="textbox"
+          aria-multiline="true"
+          aria-label={ariaLabel}
+          contentEditable
+          suppressContentEditableWarning
+          data-html-editor={editorKey || undefined}
+          onInput={(e) => onChange?.(sanitizarHtmlSecao(e.currentTarget.innerHTML))}
+          onBlur={(e) => sincronizarHtml(e.currentTarget)}
+          className={surfaceClass}
+          style={{ minHeight }}
+        />
+      </div>
     </div>
   );
 }

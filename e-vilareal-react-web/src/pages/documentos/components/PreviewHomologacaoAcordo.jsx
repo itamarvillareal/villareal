@@ -81,7 +81,7 @@ export function PreviewHomologacaoAcordo({
 
       <div className="grid min-h-0 lg:grid-cols-2">
         <div
-          className={`${alturaPainelClass} overflow-y-auto border-b border-slate-200 px-3 py-3 dark:border-slate-700 lg:border-b-0 lg:border-r lg:px-4 lg:py-4`}
+          className={`${alturaPainelClass} flex min-h-0 flex-col border-b border-slate-200 px-3 py-3 dark:border-slate-700 lg:border-b-0 lg:border-r lg:px-4 lg:py-4`}
         >
           <HtmlEditor
             ariaLabel="Texto da homologatória de acordo"
@@ -90,6 +90,8 @@ export function PreviewHomologacaoAcordo({
             minHeight="720px"
             surfaceClassName={corpoUnicoClass}
             toolbar="completo"
+            scrollEditor
+            className="min-h-0 flex-1"
           />
         </div>
 

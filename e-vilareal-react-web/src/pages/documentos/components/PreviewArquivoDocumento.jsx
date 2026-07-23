@@ -91,7 +91,7 @@ export function PreviewArquivoDocumento({
       </header>
 
       <div className="grid lg:grid-cols-2">
-        <div className="max-h-[min(85vh,960px)] overflow-y-auto border-b border-slate-200 px-4 py-4 dark:border-slate-700 lg:border-b-0 lg:border-r">
+        <div className="flex h-[min(85vh,960px)] min-h-[480px] flex-col border-b border-slate-200 px-4 py-4 dark:border-slate-700 lg:border-b-0 lg:border-r">
           <HtmlEditor
             ariaLabel="Documento completo"
             value={conteudo.corpoUnico}
@@ -99,6 +99,8 @@ export function PreviewArquivoDocumento({
             minHeight="520px"
             surfaceClassName={corpoUnicoClass}
             toolbar="completo"
+            scrollEditor
+            className="min-h-0 flex-1"
           />
         </div>
 
