@@ -18,7 +18,7 @@ class DocumentoReformatarFluxoDocxTest {
 
     @EnabledIf("docxDisponivel")
     @Test
-    void fluxoPreview_usaModoEstruturado_naoCorpoUnicoNoPdf() throws Exception {
+    void fluxoPreview_corpoUnicoParaPdf_removeTimbradoDaPrevia() throws Exception {
         DocumentoDocxParser parser = new DocumentoDocxParser();
         DocumentoParseado parsed;
         try (var in = Files.newInputStream(DOCX)) {
@@ -41,17 +41,18 @@ class DocumentoReformatarFluxoDocxTest {
 
         String corpoUnico = DocumentoReformatarCorpoUnicoHtml.montar(base);
         assertThat(corpoUnico).contains("data-doc-part=\"cabecalho\"");
-        assertThat(corpoUnico).contains("data-doc-part=\"preambulo\"");
+        assertThat(corpoUnico).contains("data-doc-part=\"enderecamento\"");
 
         DocumentoReformatarConteudoRequest parsedCorpo =
                 DocumentoReformatarCorpoUnicoHtml.aplicarCorpoUnico(base, corpoUnico);
 
-        assertThat(parsedCorpo.preambulo()).contains("preâmbulo teste");
         assertThat(parsedCorpo.enderecamento()).contains("MERITÍSSIMO");
 
         String pdfHtml = DocumentoReformatarCorpoUnicoHtml.extrairHtmlParaPdf(corpoUnico);
         assertThat(pdfHtml).doesNotContain("data:image");
         assertThat(pdfHtml).doesNotContain("data-doc-part=\"cabecalho\"");
+        assertThat(pdfHtml).contains("MERITÍSSIMO JUÍZO");
+        assertThat(pdfHtml).doesNotContain("Av. Pinheiro Chagas");
     }
 
     static boolean docxDisponivel() {

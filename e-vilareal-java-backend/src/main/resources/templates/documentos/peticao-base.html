@@ -54,6 +54,10 @@
             margin-left: 15mm;
         }
 
+        .corpo-documento.corpo-documento-unico {
+            margin-left: 0;
+        }
+
         .enderecamento {
             font-family: Arial, sans-serif;
             font-size: 13pt;
@@ -310,7 +314,7 @@
 
 <th:block th:replace="~{documentos/fragments-peca :: rodape}"/>
 
-<div class="corpo-documento">
+<div class="corpo-documento" th:classappend="${modoCorpoUnico} ? ' corpo-documento-unico' : ''">
     <th:block th:if="${modoCorpoUnico}">
         <div class="corpo-unico-editado" th:utext="${corpoUnicoHtml}"></div>
         <div class="bloco-fecho">
