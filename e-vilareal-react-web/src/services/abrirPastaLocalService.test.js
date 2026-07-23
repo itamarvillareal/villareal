@@ -2,6 +2,7 @@ import { describe, expect, it, vi, afterEach } from 'vitest';
 import {
   abrirPastaClienteLocal,
   abrirPastaClienteViaNavegador,
+  abrirPastaPessoaLocal,
   verificarLocalHelperAtivo,
 } from './abrirPastaLocalService.js';
 
@@ -65,6 +66,26 @@ describe('abrirPastaLocalService', () => {
     const url = String(openMock.mock.calls[0][0]);
     expect(url).toContain('numeroInterno=3');
     expect(url).toContain('nomeCliente=');
+  });
+
+  it('abrirPastaPessoaLocal envia pessoaId e nome', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ ok: true, caminho: '/tmp/pessoa' }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await abrirPastaPessoaLocal({
+      pessoaId: 4069,
+      nomePessoa: 'MI Aluguel',
+    });
+
+    expect(result.caminho).toBe('/tmp/pessoa');
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body);
+    expect(body.pessoaId).toBe('4069');
+    expect(body.nomePessoa).toBe('MI Aluguel');
   });
 
   it('verificarLocalHelperAtivo retorna false quando fetch falha', async () => {

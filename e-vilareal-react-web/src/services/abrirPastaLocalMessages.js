@@ -54,3 +54,10 @@ export function tituloBotaoPastaLocal({ ativo, baseClientes, so = detectarSOUsua
   }
   return base;
 }
+
+export function tituloBotaoPastaLocalPessoa({ ativo, so = detectarSOUsuario() } = {}) {
+  const gerenciador = so === 'windows' ? 'Explorer' : 'Finder';
+  return ativo
+    ? `Abre Pessoas/{id8} - nome no ${gerenciador} (Google Drive Desktop sincronizado localmente).`
+    : `Agente local inativo — instale em Configurações (instalador ${so === 'windows' ? 'Windows' : 'macOS'}).`;
+}

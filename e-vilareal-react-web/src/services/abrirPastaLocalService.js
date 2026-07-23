@@ -195,3 +195,64 @@ export async function abrirPastaClienteLocalOuFalhar(params) {
     throw err;
   }
 }
+
+function montarQueryAbrirPastaPessoa({ pessoaId, nomePessoa }) {
+  const params = new URLSearchParams();
+  params.set('pessoaId', String(pessoaId ?? '').trim());
+  const nome = String(nomePessoa ?? '').trim();
+  if (nome) params.set('nomePessoa', nome);
+  return params.toString();
+}
+
+function montarBodyAbrirPastaPessoa({ pessoaId, nomePessoa }) {
+  return {
+    pessoaId: String(pessoaId ?? '').trim(),
+    nomePessoa: String(nomePessoa ?? '').trim() || undefined,
+  };
+}
+
+export function abrirPastaPessoaViaNavegador(params) {
+  const query = montarQueryAbrirPastaPessoa(params);
+  const url = `${urlsBase()[0]}/abrir-pasta-pessoa?${query}`;
+  const popup = window.open(url, '_blank', 'noopener,noreferrer');
+  if (!popup) {
+    window.location.assign(url);
+  }
+  return { ok: true, viaNavegador: true };
+}
+
+/**
+ * Abre a pasta Pessoas/{id8} - nome no Finder/Explorer via agente local.
+ */
+export async function abrirPastaPessoaLocal({ pessoaId, nomePessoa }) {
+  const id = String(pessoaId ?? '').trim();
+  if (!id) throw new Error('Informe o id da pessoa.');
+
+  const params = { pessoaId: id, nomePessoa };
+  const body = montarBodyAbrirPastaPessoa(params);
+
+  try {
+    return await chamarLocalHelperPost('/abrir-pasta-pessoa', body);
+  } catch (err) {
+    if (!isErroRede(err)) throw err;
+    try {
+      const query = montarQueryAbrirPastaPessoa(params);
+      return await chamarLocalHelperGet(`/abrir-pasta-pessoa?${query}`);
+    } catch (errGet) {
+      if (!isErroRede(errGet)) throw errGet;
+      return abrirPastaPessoaViaNavegador(params);
+    }
+  }
+}
+
+/** Abre pasta da pessoa no Finder/Explorer; mantém o portal aberto quando possível. */
+export async function abrirPastaPessoaLocalOuFalhar(params) {
+  try {
+    return await abrirPastaPessoaLocal(params);
+  } catch (err) {
+    if (isErroRede(err)) {
+      throw new LocalHelperIndisponivelError();
+    }
+    throw err;
+  }
+}

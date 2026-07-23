@@ -65,6 +65,7 @@ import {
 } from '../../repositories/pessoasEnderecosContatosRepository.js';
 import { featureFlags } from '../../config/featureFlags.js';
 import { obterStatusDrive } from '../../repositories/driveRepository.js';
+import { BotaoPastaLocalPessoa } from '../BotaoPastaLocalPessoa.jsx';
 import {
   listarDocumentosAssinadosPessoa,
   uploadDocumentoDrivePessoa,
@@ -2088,6 +2089,14 @@ export function CadastroPessoas({ embedIntent, embedIntentRevision = 0, onFechar
                         )}
                         <span className="whitespace-nowrap">Qualificação</span>
                       </button>
+                    ) : null}
+                    {modo === 'editar' && editId != null ? (
+                      <BotaoPastaLocalPessoa
+                        pessoaId={editId}
+                        nomePessoa={form.nome}
+                        disabled={form.edicaoDesabilitada}
+                        onErro={(msg) => setErroComplementar(msg)}
+                      />
                     ) : null}
                     {modo === 'editar' && editId != null ? (
                       <button

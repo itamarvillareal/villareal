@@ -9,6 +9,10 @@ import {
   detectarBaseClientesDrive,
   resolverPastaClienteDrive,
 } from './lib/resolver-pasta-cliente-drive.mjs';
+import {
+  detectarBasePessoasDrive,
+  resolverPastaPessoaDrive,
+} from './lib/resolver-pasta-pessoa-drive.mjs';
 
 function carregarConfigPersistida() {
   try {
@@ -130,6 +134,20 @@ function abrirNoSistema(caminho) {
   });
 }
 
+async function handleAbrirPastaPessoa(body) {
+  const pessoaId = String(body.pessoaId ?? '').trim();
+  if (!pessoaId) throw new Error('pessoaId é obrigatório');
+
+  const baseDir = detectarBasePessoasDrive();
+  const caminho = resolverPastaPessoaDrive({
+    baseDir,
+    pessoaId,
+    nomePessoa: body.nomePessoa,
+  });
+  await abrirNoSistema(caminho);
+  return { ok: true, caminho, basePessoas: baseDir };
+}
+
 async function handleAbrirPastaCliente(body) {
   const codigoCliente = String(body.codigoCliente ?? '').trim();
   if (!codigoCliente) throw new Error('codigoCliente é obrigatório');
@@ -179,6 +197,35 @@ const server = http.createServer(async (req, res) => {
 
     if (
       (req.method === 'GET' || req.method === 'POST') &&
+      url.pathname === '/abrir-pasta-pessoa'
+    ) {
+      const body =
+        req.method === 'POST'
+          ? await lerCorpoJson(req)
+          : {
+              pessoaId: url.searchParams.get('pessoaId'),
+              nomePessoa: url.searchParams.get('nomePessoa'),
+            };
+      const result = await handleAbrirPastaPessoa(body);
+      const querJson = String(req.headers.accept ?? '').includes('application/json');
+      if (req.method === 'GET' && !querJson) {
+        html(
+          res,
+          200,
+          `<!doctype html><meta charset="utf-8"><title>Villa Real</title>
+           <p style="font-family:system-ui;padding:1.5rem">Pasta da pessoa aberta no Finder.</p>
+           <p style="font-family:system-ui;padding:0 1.5rem;color:#555">${result.caminho ?? ''}</p>
+           <script>setTimeout(()=>window.close(),1200)</script>`,
+          req,
+        );
+        return;
+      }
+      json(res, 200, result, req);
+      return;
+    }
+
+    if (
+      (req.method === 'GET' || req.method === 'POST') &&
       url.pathname === '/abrir-pasta-cliente'
     ) {
       const body =
@@ -217,7 +264,7 @@ const server = http.createServer(async (req, res) => {
     json(res, 404, { ok: false, erro: 'Rota não encontrada' }, req);
   } catch (err) {
     const msg = err?.message || 'Erro interno';
-    if (req.method === 'GET' && String(req.url || '').includes('/abrir-pasta-cliente')) {
+    if (req.method === 'GET' && String(req.url || '').includes('/abrir-pasta-')) {
       const querJson = String(req.headers.accept ?? '').includes('application/json');
       if (querJson) {
         json(res, 400, { ok: false, erro: msg }, req);
