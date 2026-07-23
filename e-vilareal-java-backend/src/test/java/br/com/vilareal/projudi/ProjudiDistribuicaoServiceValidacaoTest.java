@@ -50,6 +50,7 @@ class ProjudiDistribuicaoServiceValidacaoTest {
                 parteResolverService,
                 processoRepository,
                 processoParteRepository,
+                null,
                 new ObjectMapper());
     }
 
@@ -89,6 +90,26 @@ class ProjudiDistribuicaoServiceValidacaoTest {
         assertTrue(res.pronta());
         assertTrue(res.bloqueios().isEmpty());
         assertTrue(res.pendenciasPartes().isEmpty());
+    }
+
+    @Test
+    void validarProntidao_bloqueiaAnexoAcimaDe3Mb() {
+        when(parteResolverService.resolver(eq(10L), eq(1L), isNull())).thenReturn(partePronta());
+        when(parteResolverService.resolver(eq(20L), eq(1L), isNull())).thenReturn(partePronta());
+
+        long acima = ProjudiDistribuicaoService.MAX_BYTES_ANEXO_P7S + 1;
+        var res = service.validarProntidao(
+                1L,
+                "1500,00",
+                List.of(451),
+                10L,
+                List.of(20L),
+                1,
+                null,
+                List.of(new ProjudiDistribuicaoService.AnexoMeta("09.FICHA.pdf.p7s", acima)));
+
+        assertFalse(res.pronta());
+        assertTrue(res.bloqueios().stream().anyMatch((b) -> b.contains("09.FICHA.pdf.p7s") && b.contains("3 MB")));
     }
 
     @Test

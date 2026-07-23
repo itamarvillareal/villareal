@@ -10,6 +10,8 @@ import br.com.vilareal.projudi.ProjudiProcessoCivelHtmlUtil.TokensFluxo;
 import br.com.vilareal.projudi.ProjudiProcessoCivelRevisaoHtmlUtil.ExtracaoNumero;
 import br.com.vilareal.projudi.ProjudiProcessoCivelRevisaoHtmlUtil.FormularioRevisao;
 import br.com.vilareal.projudi.ProjudiSessionService.RespostaProjudi;
+import br.com.vilareal.projudi.application.ProjudiInicialAssinaturaService;
+import br.com.vilareal.pessoa.infrastructure.persistence.entity.ClienteEntity;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,6 +40,11 @@ public class ProjudiDistribuicaoService {
     private static final int RESPOSTA_DIAGNOSTICO_MAX = 1600;
     private static final int HASH_DIAG_MAX = 1600;
 
+    /** Limite prático do PROJUDI para upload de anexo .p7s na distribuição de inicial. */
+    public static final long MAX_BYTES_ANEXO_P7S = 3L * 1024 * 1024;
+
+    public record AnexoMeta(String nomeArquivo, long tamanhoBytes) {}
+
     private static final Pattern SENSIVEL_DETALHE = Pattern.compile(
             "(?i)(senha|password|otp|c[oó]digo\\s*otp|cookie|jsessionid|set-cookie|sessionid|"
                     + "authtoken|bearer\\s+[a-z0-9._-]+)([^\\s&;\"']{0,120})");
@@ -50,6 +57,7 @@ public class ProjudiDistribuicaoService {
     private final ProjudiParteResolverService parteResolverService;
     private final ProcessoRepository processoRepository;
     private final ProcessoParteRepository processoParteRepository;
+    private final ProjudiInicialAssinaturaService inicialAssinaturaService;
     private final ObjectMapper objectMapper;
 
     public ProjudiDistribuicaoService(
@@ -57,11 +65,13 @@ public class ProjudiDistribuicaoService {
             ProjudiParteResolverService parteResolverService,
             ProcessoRepository processoRepository,
             ProcessoParteRepository processoParteRepository,
+            ProjudiInicialAssinaturaService inicialAssinaturaService,
             ObjectMapper objectMapper) {
         this.sessionService = sessionService;
         this.parteResolverService = parteResolverService;
         this.processoRepository = processoRepository;
         this.processoParteRepository = processoParteRepository;
+        this.inicialAssinaturaService = inicialAssinaturaService;
         this.objectMapper = objectMapper;
     }
 
@@ -203,6 +213,26 @@ public class ProjudiDistribuicaoService {
             List<Long> pessoaIdsReu,
             int quantidadeAnexos,
             Long processoIdOrigem) {
+        return validarProntidao(
+                credencialId,
+                valorCausa,
+                idAssuntos,
+                pessoaIdAutor,
+                pessoaIdsReu,
+                quantidadeAnexos,
+                processoIdOrigem,
+                null);
+    }
+
+    public ValidacaoProntidaoInicial validarProntidao(
+            Long credencialId,
+            String valorCausa,
+            List<Integer> idAssuntos,
+            Long pessoaIdAutor,
+            List<Long> pessoaIdsReu,
+            int quantidadeAnexos,
+            Long processoIdOrigem,
+            List<AnexoMeta> anexos) {
         List<String> bloqueios = new ArrayList<>();
         List<PendenciaParte> pendenciasPartes = new ArrayList<>();
         List<Long> idsReu = pessoaIdsReu != null ? pessoaIdsReu : List.of();
@@ -225,6 +255,7 @@ public class ProjudiDistribuicaoService {
         if (quantidadeAnexos <= 0) {
             bloqueios.add("Nenhum anexo .p7s adicionado.");
         }
+        adicionarBloqueiosTamanhoAnexos(bloqueios, anexos);
 
         ParteProjudiResolvida autor = null;
         List<ParteProjudiResolvida> reus = new ArrayList<>();
@@ -353,6 +384,16 @@ public class ProjudiDistribuicaoService {
             Long credencialId, InicialRequest request, boolean confirmar, Long processoIdOrigem) {
         Long processoIdGravacao =
                 request.processoIdOrigem() != null ? request.processoIdOrigem() : processoIdOrigem;
+        ResultadoDistribuicaoInicial resultado =
+                executarDistribuicaoInicial(credencialId, request, confirmar, processoIdGravacao);
+        if (confirmar && resultado != null && !resultado.ok()) {
+            return limparFilaAposFalhaProtocolo(processoIdGravacao, resultado);
+        }
+        return resultado;
+    }
+
+    private ResultadoDistribuicaoInicial executarDistribuicaoInicial(
+            Long credencialId, InicialRequest request, boolean confirmar, Long processoIdGravacao) {
         TrilhaExecucao trilha = new TrilhaExecucao();
         HtmlRevisaoHolder htmlOut = new HtmlRevisaoHolder();
         ResultadoPreparacaoInicial prep = prepararInicialInterno(credencialId, request, trilha, htmlOut);
@@ -483,6 +524,66 @@ public class ProjudiDistribuicaoService {
         }
     }
 
+    /**
+     * Após falha na distribuição confirmada, remove petições {@code INICIAL-…} do processo
+     * para permitir reassinatura limpa dos anexos.
+     */
+    private ResultadoDistribuicaoInicial limparFilaAposFalhaProtocolo(
+            Long processoIdOrigem, ResultadoDistribuicaoInicial resultado) {
+        if (processoIdOrigem == null) {
+            log.warn("Falha no protocolo sem processoIdOrigem — fila de assinatura não foi limpa.");
+            return resultado;
+        }
+        try {
+            Optional<ProcessoEntity> processoOpt = processoRepository.findById(processoIdOrigem);
+            if (processoOpt.isEmpty()) {
+                log.warn(
+                        "Falha no protocolo: processo {} não encontrado — fila não limpa.",
+                        processoIdOrigem);
+                return resultado;
+            }
+            ProcessoEntity processo = processoOpt.get();
+            String codigoCliente = resolverCodigoCliente(processo);
+            Integer numeroInterno = processo.getNumeroInterno();
+            if (!StringUtils.hasText(codigoCliente) || numeroInterno == null) {
+                log.warn(
+                        "Falha no protocolo: processo {} sem codigoCliente/numeroInterno — fila não limpa.",
+                        processoIdOrigem);
+                return resultado;
+            }
+            int removidas = inicialAssinaturaService.limparFilaAssinaturaInicial(codigoCliente, numeroInterno);
+            String aviso =
+                    removidas > 0
+                            ? " Fila de assinatura da inicial limpa automaticamente ("
+                                    + removidas
+                                    + " petição(ões) removida(s)). Assine novamente os anexos antes de protocolar."
+                            : " Nenhuma petição na fila de assinatura para limpar.";
+            String resposta =
+                    (resultado.respostaBruta() != null ? resultado.respostaBruta() : "") + aviso;
+            return new ResultadoDistribuicaoInicial(
+                    false,
+                    resultado.passoAlcancado(),
+                    resultado.numeroProcessoGerado(),
+                    resultado.numeroGravadoCadastro(),
+                    resposta,
+                    resultado.passos());
+        } catch (Exception e) {
+            log.warn(
+                    "Não foi possível limpar fila de assinatura após falha no protocolo (processoId={}): {}",
+                    processoIdOrigem,
+                    e.getMessage());
+            return resultado;
+        }
+    }
+
+    private static String resolverCodigoCliente(ProcessoEntity processo) {
+        ClienteEntity cliente = processo.getCliente();
+        if (cliente != null && StringUtils.hasText(cliente.getCodigoCliente())) {
+            return cliente.getCodigoCliente().trim();
+        }
+        return null;
+    }
+
     private ResultadoPreparacaoInicial prepararInicialInterno(
             Long credencialId, InicialRequest request, TrilhaExecucao trilhaIn, HtmlRevisaoHolder htmlOut) {
         TrilhaExecucao trilha = trilhaIn != null ? trilhaIn : new TrilhaExecucao();
@@ -519,6 +620,10 @@ public class ProjudiDistribuicaoService {
                     trilha,
                     "Validação",
                     null);
+        }
+        String erroTamanho = mensagemAnexosAcimaDoLimite(request.arquivos());
+        if (erroTamanho != null) {
+            return falha("VALIDACAO", erroTamanho, null, List.of(), trilha, "Validação tamanho anexo", null);
         }
 
         Long processoIdOrigem = request.processoIdOrigem();
@@ -1289,6 +1394,62 @@ public class ProjudiDistribuicaoService {
                 pendencias != null ? pendencias : List.of(),
                 resposta,
                 trilha != null ? trilha.passos() : List.of());
+    }
+
+    static void adicionarBloqueiosTamanhoAnexos(List<String> bloqueios, List<AnexoMeta> anexos) {
+        if (bloqueios == null || anexos == null || anexos.isEmpty()) {
+            return;
+        }
+        for (int i = 0; i < anexos.size(); i++) {
+            AnexoMeta anexo = anexos.get(i);
+            if (anexo == null || anexo.tamanhoBytes() <= MAX_BYTES_ANEXO_P7S) {
+                continue;
+            }
+            String nome =
+                    StringUtils.hasText(anexo.nomeArquivo())
+                            ? anexo.nomeArquivo().trim()
+                            : ("arquivo " + (i + 1));
+            bloqueios.add(mensagemAnexoAcimaDoLimite(nome, anexo.tamanhoBytes()));
+        }
+    }
+
+    static String mensagemAnexosAcimaDoLimite(List<ArquivoPeticao> arquivos) {
+        if (arquivos == null || arquivos.isEmpty()) {
+            return null;
+        }
+        List<String> msgs = new ArrayList<>();
+        for (int i = 0; i < arquivos.size(); i++) {
+            ArquivoPeticao arquivo = arquivos.get(i);
+            if (arquivo == null || arquivo.bytesP7s() == null) {
+                continue;
+            }
+            long bytes = arquivo.bytesP7s().length;
+            if (bytes <= MAX_BYTES_ANEXO_P7S) {
+                continue;
+            }
+            String nome =
+                    StringUtils.hasText(arquivo.nomeArquivo())
+                            ? arquivo.nomeArquivo().trim()
+                            : ("arquivo " + (i + 1));
+            msgs.add(mensagemAnexoAcimaDoLimite(nome, bytes));
+        }
+        if (msgs.isEmpty()) {
+            return null;
+        }
+        return String.join(" ", msgs);
+    }
+
+    static String mensagemAnexoAcimaDoLimite(String nomeArquivo, long tamanhoBytes) {
+        return "Anexo «"
+                + nomeArquivo
+                + "» tem "
+                + formatarMb(tamanhoBytes)
+                + " (máximo permitido pelo PROJUDI: 3 MB). Reduza o arquivo e assine novamente.";
+    }
+
+    static String formatarMb(long bytes) {
+        double mb = bytes / (1024.0 * 1024.0);
+        return String.format(java.util.Locale.forLanguageTag("pt-BR"), "%.1f MB", mb);
     }
 
     static String sanitizarDetalhe(String raw) {

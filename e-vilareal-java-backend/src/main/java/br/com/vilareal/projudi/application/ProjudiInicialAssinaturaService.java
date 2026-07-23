@@ -11,6 +11,8 @@ import br.com.vilareal.projudi.infrastructure.persistence.entity.ProjudiPeticaoA
 import br.com.vilareal.projudi.infrastructure.persistence.entity.ProjudiPeticaoEntity;
 import br.com.vilareal.projudi.infrastructure.persistence.repository.ProjudiPeticaoArquivoRepository;
 import br.com.vilareal.projudi.infrastructure.persistence.repository.ProjudiPeticaoRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +34,8 @@ import java.util.Map;
  */
 @Service
 public class ProjudiInicialAssinaturaService {
+
+    private static final Logger log = LoggerFactory.getLogger(ProjudiInicialAssinaturaService.class);
 
     static final String PREFIXO_CHAVE_INICIAL = "INICIAL-";
     static final String STATUS_PETICAO_ASSINADA = "ASSINADA";
@@ -187,6 +191,34 @@ public class ProjudiInicialAssinaturaService {
         validarProcesso(codigoCliente, numeroInterno);
         exigirPeticaoPertenceInicial(peticaoId, codigoCliente, numeroInterno);
         peticaoRegistroService.excluirPeticaoInicialDistribuicao(peticaoId);
+    }
+
+    /**
+     * Remove todas as petições {@code INICIAL-…} do processo (ASSINADA, pendente, erro, etc.)
+     * para liberar reassinatura após falha no protocolo/distribuição.
+     *
+     * @return quantidade de petições excluídas
+     */
+    @Transactional
+    public int limparFilaAssinaturaInicial(String codigoCliente, Integer numeroInterno) {
+        validarProcesso(codigoCliente, numeroInterno);
+        String chave = chaveNumeroProcessoInicial(codigoCliente, numeroInterno);
+        List<ProjudiPeticaoEntity> peticoes = peticaoRepository.findByNumeroProcessoWithArquivos(chave);
+        int removidas = 0;
+        for (ProjudiPeticaoEntity peticao : peticoes) {
+            if (peticao == null || peticao.getId() == null) {
+                continue;
+            }
+            peticaoRegistroService.excluirPeticaoInicialDistribuicao(peticao.getId());
+            removidas++;
+        }
+        if (removidas > 0) {
+            log.info(
+                    "Fila de assinatura da inicial limpa (chave={}, peticoesRemovidas={})",
+                    chave,
+                    removidas);
+        }
+        return removidas;
     }
 
     @Transactional

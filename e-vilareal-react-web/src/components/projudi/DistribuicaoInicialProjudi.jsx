@@ -141,8 +141,21 @@ function montarFormDataInicial({
   return fd;
 }
 
+/** Limite do PROJUDI para anexo .p7s na distribuição de inicial (deve bater com o backend). */
+const MAX_BYTES_ANEXO_P7S = 3 * 1024 * 1024;
+
 function linhaP7sComArquivo(file) {
   return { key: crypto.randomUUID(), file, idArquivoTipo: 16 };
+}
+
+function formatarMb(bytes) {
+  const n = Number(bytes);
+  if (!Number.isFinite(n) || n < 0) return '0 MB';
+  return `${(n / (1024 * 1024)).toFixed(1).replace('.', ',')} MB`;
+}
+
+function anexoExcedeLimiteProjudi(file) {
+  return Number(file?.size) > MAX_BYTES_ANEXO_P7S;
 }
 
 function BadgeCampo({ nivel, label, motivo }) {
@@ -486,6 +499,10 @@ export function DistribuicaoInicialProjudi() {
             pessoaIdsReu: pessoasReu.map((p) => p?.id).filter(Boolean),
             quantidadeAnexos: linhasP7s.length,
             processoIdOrigem: dadosProcesso?.processoApiId,
+            anexos: linhasP7s.map((linha) => ({
+              nomeArquivo: linha.file?.name ?? 'arquivo',
+              tamanhoBytes: Number(linha.file?.size) || 0,
+            })),
           });
           if (!cancelado) {
             setValidacaoProntidao(res);
@@ -521,7 +538,7 @@ export function DistribuicaoInicialProjudi() {
     idsAssuntosSelecionados,
     pessoaAutor?.id,
     pessoasReu,
-    linhasP7s.length,
+    linhasP7s,
   ]);
 
   useEffect(() => {
@@ -839,7 +856,14 @@ export function DistribuicaoInicialProjudi() {
       } else if (res?.ok) {
         setToast('Dry-run concluído até revisão.');
       } else {
-        setApiError(res?.passoAlcancado ? `Interrompido em ${res.passoAlcancado}.` : 'Distribuição não concluída.');
+        aplicarLinhasP7s([]);
+        assinadosAutoCarregadosRef.current = '';
+        setApiError(
+          res?.passoAlcancado
+            ? `Interrompido em ${res.passoAlcancado}. Fila de assinatura limpa — assine novamente os anexos.`
+            : 'Distribuição não concluída. Fila de assinatura limpa — assine novamente os anexos.',
+        );
+        setToast('Erro no protocolo: fila de assinatura limpa automaticamente.');
       }
     } catch (err) {
       setApiError(err?.message || 'Falha ao distribuir inicial.');
@@ -1356,12 +1380,20 @@ export function DistribuicaoInicialProjudi() {
             </div>
             {linhasP7s.length > 0 ? (
               <ul className="max-h-[min(24rem,50vh)] space-y-1 overflow-y-auto rounded-lg border border-slate-100 bg-slate-50/50 p-2">
-                {linhasP7s.map((linha) => (
+                {linhasP7s.map((linha) => {
+                  const excedeLimite = anexoExcedeLimiteProjudi(linha.file);
+                  return (
                   <li
                     key={linha.key}
-                    className="flex items-center gap-2 text-sm rounded-md px-1 py-1 hover:bg-white/80"
+                    className={`flex items-center gap-2 text-sm rounded-md px-1 py-1 hover:bg-white/80 ${
+                      excedeLimite ? 'bg-rose-50/80 ring-1 ring-rose-200' : ''
+                    }`}
                   >
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" aria-hidden />
+                    {excedeLimite ? (
+                      <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" aria-hidden />
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" aria-hidden />
+                    )}
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium" title={linha.file?.name}>
                         {linha.file?.name}
@@ -1376,6 +1408,21 @@ export function DistribuicaoInicialProjudi() {
                             Processo
                           </span>
                         )}
+                        <span
+                          className={`text-[10px] rounded px-1.5 py-0.5 shrink-0 ${
+                            excedeLimite
+                              ? 'bg-rose-200 text-rose-950 font-semibold'
+                              : 'bg-slate-200 text-slate-700'
+                          }`}
+                          title={
+                            excedeLimite
+                              ? 'Acima do limite de 3 MB do PROJUDI'
+                              : 'Tamanho do arquivo'
+                          }
+                        >
+                          {formatarMb(linha.file?.size)}
+                          {excedeLimite ? ' · acima de 3 MB' : ''}
+                        </span>
                         <select
                           className={`${inputClass} w-auto text-xs py-0.5`}
                           value={linha.idArquivoTipo}
@@ -1408,7 +1455,8 @@ export function DistribuicaoInicialProjudi() {
                       <Trash2 className="h-4 w-4" aria-hidden />
                     </button>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             ) : null}
           </section>

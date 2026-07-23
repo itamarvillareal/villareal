@@ -13,6 +13,7 @@ import br.com.vilareal.projudi.ProjudiAssuntoCatalogoService;
 import br.com.vilareal.projudi.ProjudiAssuntoCatalogoService.ClasseItem;
 import br.com.vilareal.projudi.ProjudiAssuntoCatalogoService.ModalidadeSugeridaResponse;
 import br.com.vilareal.projudi.ProjudiDistribuicaoService;
+import br.com.vilareal.projudi.ProjudiDistribuicaoService.AnexoMeta;
 import br.com.vilareal.projudi.ProjudiDistribuicaoService.InicialRequest;
 import br.com.vilareal.projudi.ProjudiDistribuicaoService.ResultadoDistribuicaoInicial;
 import br.com.vilareal.projudi.ProjudiDistribuicaoService.ResultadoPreparacaoInicial;
@@ -111,7 +112,8 @@ public class ProjudiInicialController {
     @GetMapping("/validar-prontidao")
     @Operation(
             summary = "Lista motivos que impedem preparar/distribuir a inicial",
-            description = "Validação local + resolução de partes no PROJUDI. Não executa o fluxo ProcessoCivel.")
+            description = "Validação local + resolução de partes no PROJUDI. Não executa o fluxo ProcessoCivel. "
+                    + "Aceita metadados dos anexos (nomes e tamanhos) para bloquear .p7s acima de 3 MB.")
     public ValidacaoProntidaoInicial validarProntidao(
             @RequestParam Long credencialId,
             @RequestParam(required = false) String valorCausa,
@@ -121,7 +123,9 @@ public class ProjudiInicialController {
             @RequestParam(required = false) String pessoaIdsReu,
             @RequestParam(required = false) List<Long> pessoaIdsReuList,
             @RequestParam(defaultValue = "0") int quantidadeAnexos,
-            @RequestParam(required = false) Long processoIdOrigem) {
+            @RequestParam(required = false) Long processoIdOrigem,
+            @RequestParam(required = false) String anexosNomes,
+            @RequestParam(required = false) String anexosTamanhosBytes) {
         return distribuicaoService.validarProntidao(
                 credencialId,
                 valorCausa,
@@ -129,7 +133,8 @@ public class ProjudiInicialController {
                 pessoaIdAutor,
                 normalizarPessoaIdsReu(pessoaIdReu, pessoaIdsReu, pessoaIdsReuList),
                 quantidadeAnexos,
-                processoIdOrigem);
+                processoIdOrigem,
+                parseAnexosMeta(anexosNomes, anexosTamanhosBytes));
     }
 
     /**
@@ -448,6 +453,35 @@ public class ProjudiInicialController {
             out.add(Integer.parseInt(parte.trim()));
         }
         return out;
+    }
+
+    /**
+     * {@code anexosNomes}: nomes separados por {@code |} (pipe).
+     * {@code anexosTamanhosBytes}: tamanhos em bytes separados por vírgula, na mesma ordem.
+     */
+    static List<AnexoMeta> parseAnexosMeta(String anexosNomes, String anexosTamanhosBytes) {
+        if (!StringUtils.hasText(anexosTamanhosBytes)) {
+            return List.of();
+        }
+        String[] tamanhosRaw = anexosTamanhosBytes.split(",");
+        String[] nomesRaw =
+                StringUtils.hasText(anexosNomes) ? anexosNomes.split("\\|", -1) : new String[0];
+        List<AnexoMeta> out = new ArrayList<>();
+        for (int i = 0; i < tamanhosRaw.length; i++) {
+            String t = tamanhosRaw[i] != null ? tamanhosRaw[i].trim() : "";
+            if (t.isEmpty()) {
+                continue;
+            }
+            long bytes;
+            try {
+                bytes = Long.parseLong(t);
+            } catch (NumberFormatException e) {
+                continue;
+            }
+            String nome = i < nomesRaw.length ? nomesRaw[i].trim() : ("arquivo " + (i + 1));
+            out.add(new AnexoMeta(nome, bytes));
+        }
+        return List.copyOf(out);
     }
 
     private static int resolverIdArquivoTipo(int indice, List<Integer> idArquivoTipos) {

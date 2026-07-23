@@ -161,8 +161,19 @@ export async function validarProntidaoInicial({
   pessoaIdReu,
   quantidadeAnexos = 0,
   processoIdOrigem,
+  anexos = [],
 }) {
   const idsReu = normalizarPessoaIdsReu(pessoaIdsReu, pessoaIdReu);
+  const lista = Array.isArray(anexos) ? anexos : [];
+  const anexosNomes = lista
+    .map((a) => String(a?.nomeArquivo ?? a?.name ?? 'arquivo').replaceAll('|', '/'))
+    .join('|');
+  const anexosTamanhosBytes = lista
+    .map((a) => {
+      const n = Number(a?.tamanhoBytes ?? a?.size ?? 0);
+      return Number.isFinite(n) && n >= 0 ? String(Math.trunc(n)) : '0';
+    })
+    .join(',');
   return request('/api/projudi/iniciais/validar-prontidao', {
     query: {
       credencialId,
@@ -172,6 +183,8 @@ export async function validarProntidaoInicial({
       pessoaIdsReu: idsReu.join(','),
       quantidadeAnexos,
       processoIdOrigem: processoIdOrigem ?? '',
+      anexosNomes,
+      anexosTamanhosBytes,
     },
   });
 }
