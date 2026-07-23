@@ -127,10 +127,33 @@ public final class PortuguesHifenizacaoUtil {
             }
             String tag = html.substring(tagStart, tagEnd + 1);
             out.append(tag);
-            skipDepth += deltaSkipHifenizacao(tag, skipDepth);
             i = tagEnd + 1;
+            String fechamentoRaw = tagConteudoRaw(tag);
+            if (fechamentoRaw != null) {
+                int fim = html.toLowerCase(Locale.ROOT).indexOf(fechamentoRaw, i);
+                if (fim < 0) {
+                    out.append(html.substring(i));
+                    break;
+                }
+                out.append(html, i, fim);
+                i = fim;
+                continue;
+            }
+            skipDepth += deltaSkipHifenizacao(tag, skipDepth);
         }
         return out.toString();
+    }
+
+    /** CSS/JS não são texto: hifenizar dentro de style/script corrompe {@code position: running()}. */
+    private static String tagConteudoRaw(String tag) {
+        String lower = tag.toLowerCase(Locale.ROOT);
+        if (lower.startsWith("<style") && !lower.endsWith("/>")) {
+            return "</style";
+        }
+        if (lower.startsWith("<script") && !lower.endsWith("/>")) {
+            return "</script";
+        }
+        return null;
     }
 
     private static int deltaSkipHifenizacao(String tag, int depth) {

@@ -41,6 +41,16 @@ class PortuguesHifenizacaoUtilTest {
     }
 
     @Test
+    void inserirHifensSilabicosNoHtml_naoAlteraConteudoDeStyle() {
+        String html =
+                "<style type=\"text/css\">.cabecalho-padrao { position: running(cabecalho-padrao); }</style>"
+                        + "<p>documento reformatado</p>";
+        String out = PortuguesHifenizacaoUtil.inserirHifensSilabicosNoHtml(html);
+        assertThat(out).contains("position: running(cabecalho-padrao);");
+        assertThat(out).contains("do" + SHY + "cu" + SHY + "men" + SHY + "to");
+    }
+
+    @Test
     void inserirHifensSilabicos_palavrasCurtasPermanecemIntactas() {
         assertThat(PortuguesHifenizacaoUtil.inserirHifensSilabicos("RUA")).isEqualTo("RUA");
         assertThat(PortuguesHifenizacaoUtil.inserirHifensSilabicos("DE")).isEqualTo("DE");
