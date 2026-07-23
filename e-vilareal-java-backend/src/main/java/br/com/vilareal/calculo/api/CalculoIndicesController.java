@@ -14,7 +14,9 @@ import java.time.LocalDate;
 
 @RestController
 @RequestMapping("/api/calculos/indices-mensais")
-@Tag(name = "Cálculos — índices", description = "SGS BCB (INPC 1649, IPCA 433) — paridade monetaryIndicesService.js")
+@Tag(
+        name = "Cálculos — índices",
+        description = "Séries mensais SGS/BCB persistidas (INPC, IPCA, IPCA-E, IGPM, SELIC, CDI, TR, POUPANCA)")
 public class CalculoIndicesController {
 
     private final CalculoIndicesBcbService indicesBcbService;
@@ -24,7 +26,9 @@ public class CalculoIndicesController {
     }
 
     @GetMapping
-    @Operation(summary = "Índices mensais (% variação)", description = "Chaves `yyyy-MM` como no front; competências sem dado retornam 0.")
+    @Operation(
+            summary = "Índices mensais (% variação)",
+            description = "Chaves `yyyy-MM`; contém apenas competências publicadas (ausente = trate como 0).")
     public CalculoIndicesMensaisResponse obter(
             @RequestParam String indice,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataInicial,

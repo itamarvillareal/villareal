@@ -10,17 +10,19 @@ const MESES_PT = [
   'jul', 'ago', 'set', 'out', 'nov', 'dez',
 ];
 
-const FATORES_FIXOS_MENSais = {
-  INPC: 1.045,
-  IPCA: 1.052,
-  'IPCA-E': 1.052,
-  IGPM: 1.063,
-  SELIC: 1.078,
-  TR: 1.008,
-  CDI: 1.071,
-  POUPANÇA: 1.034,
-  NENHUM: 1.0,
-};
+/** Índices (nome canônico) com série mensal real BCB além de INPC/IPCA. IPCA-E usa série própria (IPCA-15). */
+export const INDICES_SERIE_OUTROS = ['IPCA-E', 'IGPM', 'SELIC', 'CDI', 'TR', 'POUPANCA'];
+
+/** Normaliza nome da tela para o canônico da série (POUPANÇA→POUPANCA, IGP-M→IGPM). */
+export function nomeCanonicoIndiceConferencia(nome) {
+  const u = String(nome ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/Ç/g, 'C');
+  if (u === 'IGP-M') return 'IGPM';
+  if (u === 'IPCAE') return 'IPCA-E';
+  return u;
+}
 
 function parseDataEntrada(v) {
   if (!v) return null;
@@ -47,10 +49,6 @@ export function formatPercentualBr(n, casas = 4) {
   const v = Number(n);
   if (!Number.isFinite(v)) return '—';
   return `${v.toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas })} %`;
-}
-
-function fatorFixoMensal(nomeIndice) {
-  return FATORES_FIXOS_MENSais[String(nomeIndice ?? 'NENHUM').toUpperCase()] ?? 1.0;
 }
 
 /** Fator mensal → variação % equivalente (fator 1,045 → 4,5 %). */
@@ -112,9 +110,10 @@ export function listarCompetenciasMensais(inicio, fim) {
  * @param {Record<string, number>|null} mapInpc
  * @param {Record<string, number>|null} mapIpca
  * @param {{ inicio: Date, fim: Date, fimIpca?: Date }} intervalo
+ * @param {Record<string, Record<string, number>>|null} [mapOutros] séries por nome canônico (IGPM, SELIC, …)
  */
-export function montarLinhasIndicesConferencia(indice, mapInpc, mapIpca, intervalo) {
-  const idx = String(indice ?? 'INPC').toUpperCase();
+export function montarLinhasIndicesConferencia(indice, mapInpc, mapIpca, intervalo, mapOutros = null) {
+  const idx = nomeCanonicoIndiceConferencia(indice ?? 'INPC');
   const { inicio, fim, fimIpca } = intervalo;
 
   if (idx === 'INPC') {
@@ -141,6 +140,8 @@ export function montarLinhasIndicesConferencia(indice, mapInpc, mapIpca, interva
   }
 
   if (idx === 'IPCA' || idx === 'IPCA-E') {
+    // IPCA-E tem série própria (IPCA-15 — fidelidade aos txt legados); IPCA usa a série 433.
+    const mapa = idx === 'IPCA-E' ? (mapOutros && typeof mapOutros === 'object' ? mapOutros['IPCA-E'] : null) : mapIpca;
     const end = fimIpca && fimIpca < fim ? fimIpca : new Date(fim.getFullYear(), fim.getMonth() - 1, 1);
     const keys = listarCompetenciasMensais(inicio, end);
     return {
@@ -148,7 +149,7 @@ export function montarLinhasIndicesConferencia(indice, mapInpc, mapIpca, interva
       indice: idx,
       colunas: ['competencia', 'valor'],
       linhas: keys.map((mk) => {
-        const v = Number(mapIpca?.[mk] ?? 0);
+        const v = Number(mapa?.[mk] ?? 0);
         return {
           competencia: mk,
           competenciaLabel: formatCompetenciaLabel(mk),
@@ -156,7 +157,10 @@ export function montarLinhasIndicesConferencia(indice, mapInpc, mapIpca, interva
           valorLabel: formatPercentualBr(v),
         };
       }),
-      nota: 'Competências até o mês anterior à data final do cálculo (regra do relatório IPCA).',
+      nota:
+        idx === 'IPCA-E'
+          ? 'Série IPCA-15 (SGS 7478 — mesma dos txt legados); competências até o mês anterior à data final (regra do relatório).'
+          : 'Competências até o mês anterior à data final do cálculo (regra do relatório IPCA).',
     };
   }
 
@@ -170,20 +174,24 @@ export function montarLinhasIndicesConferencia(indice, mapInpc, mapIpca, interva
     };
   }
 
-  const fator = fatorFixoMensal(idx);
-  const pct = fatorParaVariacaoPercentual(fator);
+  // IGPM / SELIC / CDI / TR / POUPANCA: série mensal real (BCB, persistida no backend).
+  const serie = mapOutros && typeof mapOutros === 'object' ? mapOutros[idx] : null;
   const keys = listarCompetenciasMensais(inicio, fim);
   return {
-    tipo: 'fixo',
+    tipo: 'serie',
     indice: idx,
     colunas: ['competencia', 'valor'],
-    linhas: keys.map((mk) => ({
-      competencia: mk,
-      competenciaLabel: formatCompetenciaLabel(mk),
-      valor: pct,
-      valorLabel: formatPercentualBr(pct),
-      fatorLabel: fator.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 }),
-    })),
-    nota: `Fator fixo mensal ${fator.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} (≈ ${formatPercentualBr(pct)} a.m.) — sem série histórica BCB nesta tela.`,
+    linhas: keys.map((mk) => {
+      const v = Number(serie?.[mk] ?? 0);
+      return {
+        competencia: mk,
+        competenciaLabel: formatCompetenciaLabel(mk),
+        valor: v,
+        valorLabel: formatPercentualBr(v),
+      };
+    }),
+    nota: serie
+      ? 'Variação mensal real (SGS/BCB); competência sem dado publicado aparece como 0.'
+      : 'Série mensal ainda não carregada — valores exibidos como 0 até a busca concluir.',
   };
 }

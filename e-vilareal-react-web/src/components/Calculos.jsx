@@ -40,7 +40,12 @@ import {
   gerarTitulosMock,
   linhaVaziaParcela,
 } from '../data/calculosRodadasMockGeracao.js';
-import { obterIndicesMensaisINPC, obterIndicesMensaisIPCA } from '../services/monetaryIndicesService.js';
+import {
+  obterIndicesMensais,
+  obterIndicesMensaisINPC,
+  obterIndicesMensaisIPCA,
+  nomeCanonicoIndice,
+} from '../services/monetaryIndicesService.js';
 import { construirRelatorioCalculoPdf } from '../data/relatorioCalculoPdf.js';
 import { baixarBlobDocx, gerarDocumentoListaDebitosWord } from '../utils/gerarDocumentoListaDebitosWord';
 import { INDICES_CALCULO, PERIODICIDADE_OPCOES } from '../data/calculosIndices.js';
@@ -420,6 +425,8 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
   const [modoAlteracao, setModoAlteracao] = useState(false);
   const [indicesMensaisINPC, setIndicesMensaisINPC] = useState(null);
   const [indicesMensaisIPCA, setIndicesMensaisIPCA] = useState(null);
+  // Séries mensais reais (SGS/BCB via backend) dos demais índices, por nome canônico (IGPM, SELIC, CDI, TR, POUPANCA).
+  const [indicesMensaisOutros, setIndicesMensaisOutros] = useState({});
   // Cada (cliente + proc + dimensão) representa uma rodada independente de cálculos (estado próprio).
   // Com API ativa não carregamos localStorage (quota); o GET em hydrate preenche via evento + espelho em memória.
   const [rodadasState, setRodadasState] = useState(() =>
@@ -1584,7 +1591,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       atualizarTituloNaRodada(globalIdx, patch);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rodadaKey, calculoTravadoAceito, aceitarPagamento, indicesMensaisINPC, indicesMensaisIPCA, pagina]
+    [rodadaKey, calculoTravadoAceito, aceitarPagamento, indicesMensaisINPC, indicesMensaisIPCA, indicesMensaisOutros, pagina]
   );
 
   const handleCustasFieldChange = useCallback(
@@ -1592,7 +1599,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       atualizarCustasNaRodada(globalIdx, patch);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rodadaKey, calculoAceito, aceitarPagamento, indicesMensaisINPC, indicesMensaisIPCA, pagina]
+    [rodadaKey, calculoAceito, aceitarPagamento, indicesMensaisINPC, indicesMensaisIPCA, indicesMensaisOutros, pagina]
   );
 
   const handleAbrirDatasEspeciais = useCallback((globalIdx) => {
@@ -1978,20 +1985,32 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     return atualizacaoArred < 0 ? 0 : atualizacaoArred;
   }
 
-  function fatorIndiceSelecionado(nomeIndice) {
-    // Mock simples para demonstrar recálculo; depois será substituído por série histórica real.
-    const map = {
-      INPC: 1.045,
-      IPCA: 1.052,
-      'IPCA-E': 1.052,
-      IGPM: 1.063,
-      SELIC: 1.078,
-      TR: 1.008,
-      CDI: 1.071,
-      'POUPANÇA': 1.034,
-      NENHUM: 1.0,
-    };
-    return map[String(nomeIndice ?? 'NENHUM').toUpperCase()] ?? 1.0;
+  /**
+   * Índices (nome canônico) com série mensal real além de INPC/IPCA.
+   * IPCA-E entra aqui porque tem série própria (IPCA-15, SGS 7478 — fidelidade aos txt legados),
+   * embora aplique a mesma mecânica de cálculo do IPCA (lógica do relatório).
+   */
+  const INDICES_OUTROS_SERIE = ['IPCA-E', 'IGPM', 'SELIC', 'CDI', 'TR', 'POUPANCA'];
+
+  // Atualização monetária fiel ao legado (Atualizacao_Monet) para os índices com série real
+  // além do INPC: aplica a variação mensal publicada mês a mês, truncando o acumulado a cada mês.
+  // A diferença final negativa é zerada pelo chamador (regra do legado).
+  function calcularAtualizacaoMonetariaSerie(principal, dataInicialVenc, dataFinalCalc, serieMensalMap) {
+    if (!principal || !dataInicialVenc || !dataFinalCalc) return principal;
+
+    let calculo = Number(principal) || 0;
+    const startMonth = new Date(dataInicialVenc.getFullYear(), dataInicialVenc.getMonth(), 1);
+    const endMonth = new Date(dataFinalCalc.getFullYear(), dataFinalCalc.getMonth(), 1);
+
+    const monthKeyFromDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+
+    for (let cur = new Date(startMonth); cur <= endMonth; cur.setMonth(cur.getMonth() + 1)) {
+      const mk = monthKeyFromDate(cur);
+      // Índice vazio no legado vira 0 (coerção do VBA); negativos são aplicados como publicados.
+      const idxMes = Number(serieMensalMap?.[mk] ?? 0) || 0;
+      calculo = trunc2(calculo + calculo * (idxMes / 100));
+    }
+    return trunc2(calculo);
   }
 
   function recalcularTitulos(lista, indicesMensaisINPCMap, indicesMensaisIPCAMap, dataOverride) {
@@ -2012,7 +2031,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
 
       const indiceLinha = String(esp.indiceEspecial ?? '').trim() !== '' ? esp.indiceEspecial : indice;
       const idxUpperLinha = String(indiceLinha).toUpperCase();
-      const fatorLinha = fatorIndiceSelecionado(indiceLinha);
+      const idxCanonicoLinha = nomeCanonicoIndice(indiceLinha);
 
       const dataInicialAtual = parseDateBR(esp.dataInicialAtual) ?? venc;
       const dataFinalAtual = parseDateBR(esp.dataFinalAtual) ?? dataCalcGlobal;
@@ -2049,13 +2068,23 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
 
       if (idxUpperLinha === 'INPC' && indicesMensaisINPCMap) {
         atualizado = calcularAtualizacaoMonetariaINPC(principal, dataInicialAtual, dataFinalAtual, indicesMensaisINPCMap);
-      } else if ((idxUpperLinha === 'IPCA-E' || idxUpperLinha === 'IPCA') && indicesMensaisIPCAMap) {
+      } else if (idxUpperLinha === 'IPCA' && indicesMensaisIPCAMap) {
         // O relatório usa uma lógica própria (ver calcularAtualizacaoMonetariaIPCA).
         atualizacaoMonetariaValor = calcularAtualizacaoMonetariaIPCA(principal, dataInicialAtual, dataFinalAtual, indicesMensaisIPCAMap);
         atualizado = principal + atualizacaoMonetariaValor;
-      } else if (idxUpperLinha !== 'NENHUM') {
-        // Fallback (mock) para índices ainda não integrados 100% (mantém comportamento atual).
-        atualizado = trunc2(principal * fatorLinha);
+      } else if (idxCanonicoLinha === 'IPCA-E') {
+        // Mesma mecânica do relatório IPCA, porém com a série própria do legado (IPCA-15).
+        const serieIpcaE = indicesMensaisOutros?.['IPCA-E'];
+        if (serieIpcaE) {
+          atualizacaoMonetariaValor = calcularAtualizacaoMonetariaIPCA(principal, dataInicialAtual, dataFinalAtual, serieIpcaE);
+          atualizado = principal + atualizacaoMonetariaValor;
+        }
+      } else if (INDICES_OUTROS_SERIE.includes(idxCanonicoLinha)) {
+        // IGPM / SELIC / CDI / TR / POUPANÇA: série mensal real (SGS/BCB via backend).
+        const serie = indicesMensaisOutros?.[idxCanonicoLinha];
+        atualizado = serie
+          ? calcularAtualizacaoMonetariaSerie(principal, dataInicialAtual, dataFinalAtual, serie)
+          : principal;
       }
 
       // Legado: AtualMonet(Linha) = Arredondamento(atualizado - principal, 2) e zera se negativo.
@@ -2103,6 +2132,19 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     return { next, changed };
   }
 
+  /** Índices canônicos (além de INPC/IPCA) exigidos pelo índice geral e pelos especiais das linhas. */
+  function indicesOutrosNecessarios(lista) {
+    const arr = Array.isArray(lista) ? lista : [];
+    const nomes = new Set();
+    const geral = nomeCanonicoIndice(indice);
+    if (INDICES_OUTROS_SERIE.includes(geral)) nomes.add(geral);
+    for (const t of arr) {
+      const v = nomeCanonicoIndice(t?.datasEspeciais?.indiceEspecial ?? '');
+      if (INDICES_OUTROS_SERIE.includes(v)) nomes.add(v);
+    }
+    return [...nomes];
+  }
+
   function indicesProntosParaRecalcTitulos(lista) {
     const arr = Array.isArray(lista) ? lista : [];
     const idxUpperGeral = String(indice).toUpperCase();
@@ -2110,14 +2152,13 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       idxUpperGeral === 'INPC' ||
       arr.some((t) => String(t?.datasEspeciais?.indiceEspecial ?? '').toUpperCase() === 'INPC');
     const precisaIPCA =
-      idxUpperGeral === 'IPCA-E' ||
       idxUpperGeral === 'IPCA' ||
-      arr.some((t) => {
-        const v = String(t?.datasEspeciais?.indiceEspecial ?? '').toUpperCase();
-        return v === 'IPCA-E' || v === 'IPCA';
-      });
+      arr.some((t) => String(t?.datasEspeciais?.indiceEspecial ?? '').toUpperCase() === 'IPCA');
     if (precisaINPC && indicesMensaisINPC == null) return false;
     if (precisaIPCA && indicesMensaisIPCA == null) return false;
+    for (const nome of indicesOutrosNecessarios(arr)) {
+      if (indicesMensaisOutros?.[nome] == null) return false;
+    }
     return true;
   }
 
@@ -2150,6 +2191,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     dataCalculo,
     indicesMensaisINPC,
     indicesMensaisIPCA,
+    indicesMensaisOutros,
   ]);
 
   const titulosPaginaVisiveis = useMemo(
@@ -2222,11 +2264,20 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
 
       if (idxUpperGeral === 'INPC' && indicesMensaisINPCMap) {
         atualizado = calcularAtualizacaoMonetariaINPC(principal, dataPag, dataCalcGlobal, indicesMensaisINPCMap);
-      } else if ((idxUpperGeral === 'IPCA-E' || idxUpperGeral === 'IPCA') && indicesMensaisIPCAMap) {
+      } else if (idxUpperGeral === 'IPCA' && indicesMensaisIPCAMap) {
         atualizacaoMonetariaValor = calcularAtualizacaoMonetariaIPCA(principal, dataPag, dataCalcGlobal, indicesMensaisIPCAMap);
         atualizado = principal + atualizacaoMonetariaValor;
-      } else if (idxUpperGeral !== 'NENHUM') {
-        atualizado = trunc2(principal * fatorIndiceSelecionado(indice));
+      } else if (nomeCanonicoIndice(indice) === 'IPCA-E') {
+        const serieIpcaE = indicesMensaisOutros?.['IPCA-E'];
+        if (serieIpcaE) {
+          atualizacaoMonetariaValor = calcularAtualizacaoMonetariaIPCA(principal, dataPag, dataCalcGlobal, serieIpcaE);
+          atualizado = principal + atualizacaoMonetariaValor;
+        }
+      } else if (INDICES_OUTROS_SERIE.includes(nomeCanonicoIndice(indice))) {
+        const serie = indicesMensaisOutros?.[nomeCanonicoIndice(indice)];
+        atualizado = serie
+          ? calcularAtualizacaoMonetariaSerie(principal, dataPag, dataCalcGlobal, serie)
+          : principal;
       }
 
       if (atualizacaoMonetariaValor == null) {
@@ -2267,15 +2318,16 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       idxUpperGeral === 'INPC' ||
       (rodadaAtual.titulos || []).some((t) => String(t?.datasEspeciais?.indiceEspecial ?? '').toUpperCase() === 'INPC');
     const precisaIPCA =
-      idxUpperGeral === 'IPCA-E' ||
       idxUpperGeral === 'IPCA' ||
-      (rodadaAtual.titulos || []).some((t) => {
-        const v = String(t?.datasEspeciais?.indiceEspecial ?? '').toUpperCase();
-        return v === 'IPCA-E' || v === 'IPCA';
-      });
+      (rodadaAtual.titulos || []).some(
+        (t) => String(t?.datasEspeciais?.indiceEspecial ?? '').toUpperCase() === 'IPCA'
+      );
 
     if (precisaINPC && indicesMensaisINPC == null) return;
     if (precisaIPCA && indicesMensaisIPCA == null) return;
+    for (const nome of indicesOutrosNecessarios(rodadaAtual.titulos)) {
+      if (indicesMensaisOutros?.[nome] == null) return;
+    }
     const gravados = rodadaAtual.titulosGravadosAceito;
     const temGravadosImutaveis = Array.isArray(gravados) && gravados.length > 0;
     setRodadasState((prev) => {
@@ -2313,6 +2365,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     pagina,
     indicesMensaisINPC,
     indicesMensaisIPCA,
+    indicesMensaisOutros,
     titulosChaveRecalculo,
     titulosEncargosSnapshot,
     carregandoRodadaApi,
@@ -2323,9 +2376,11 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     if (featureFlags.useApiCalculos && !rodadaExisteNoEstado) return;
     const idxUpperGeral = String(indice).toUpperCase();
     const precisaINPC = idxUpperGeral === 'INPC';
-    const precisaIPCA = idxUpperGeral === 'IPCA-E' || idxUpperGeral === 'IPCA';
+    const precisaIPCA = idxUpperGeral === 'IPCA';
     if (precisaINPC && indicesMensaisINPC == null) return;
     if (precisaIPCA && indicesMensaisIPCA == null) return;
+    const idxCanonicoGeral = nomeCanonicoIndice(indice);
+    if (INDICES_OUTROS_SERIE.includes(idxCanonicoGeral) && indicesMensaisOutros?.[idxCanonicoGeral] == null) return;
     const gravados = rodadaAtual.custasGravadasAceito;
     const temGravadosImutaveis = Array.isArray(gravados) && gravados.length > 0;
     setRodadasState((prev) => {
@@ -2354,6 +2409,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     rodadaKey,
     indicesMensaisINPC,
     indicesMensaisIPCA,
+    indicesMensaisOutros,
     custasChaveRecalculo,
   ]);
 
@@ -2413,17 +2469,15 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [calculoAceito, modoAlteracao, indice, dataCalculo, rodadaKey, indicesRefreshToken, titulosChaveRecalculo, custasChaveRecalculo]);
 
-  // Carrega índices mensais do IPCA (IPCA / “IPCA-E”) antes de recalcular.
+  // Carrega índices mensais do IPCA antes de recalcular (IPCA-E tem série própria via «outros»).
   useEffect(() => {
     if (calculoAceito && !modoAlteracao) return;
     const idxUpper = String(indice).toUpperCase();
     const precisaIPCA =
-      idxUpper === 'IPCA-E' ||
       idxUpper === 'IPCA' ||
-      (rodadaAtual.titulos || []).some((t) => {
-        const v = String(t?.datasEspeciais?.indiceEspecial ?? '').toUpperCase();
-        return v === 'IPCA-E' || v === 'IPCA';
-      });
+      (rodadaAtual.titulos || []).some(
+        (t) => String(t?.datasEspeciais?.indiceEspecial ?? '').toUpperCase() === 'IPCA'
+      );
 
     if (!precisaIPCA) {
       setIndicesMensaisIPCA(null);
@@ -2468,6 +2522,62 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
         // Se falhar a busca, não quebra a tela; cai no zero.
         setIndicesMensaisIPCA({});
       });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calculoAceito, modoAlteracao, indice, dataCalculo, rodadaKey, indicesRefreshToken, titulosChaveRecalculo, custasChaveRecalculo]);
+
+  // Carrega as séries mensais reais dos demais índices (IGPM/SELIC/CDI/TR/POUPANÇA) antes de recalcular.
+  useEffect(() => {
+    if (calculoAceito && !modoAlteracao) return;
+    const necessarios = indicesOutrosNecessarios(rodadaAtual.titulos);
+    if (necessarios.length === 0) {
+      setIndicesMensaisOutros((prev) => (Object.keys(prev || {}).length === 0 ? prev : {}));
+      return;
+    }
+
+    const dataCalcDate = parseDateBR(dataCalculo) ?? parseDateBR(hojeBR());
+    if (!dataCalcDate) return;
+
+    // Mesmo intervalo monetário do INPC: “Datas Especiais” por linha + data geral + custas.
+    let minDataInicialAtual = null;
+    let maxDataFinalAtual = dataCalcDate;
+    for (const t of (rodadaAtual.titulos || [])) {
+      const venc = parseDateBR(t.dataVencimento);
+      if (!venc) continue;
+      const esp = t.datasEspeciais && typeof t.datasEspeciais === 'object' ? t.datasEspeciais : {};
+      const diAtual = parseDateBR(esp.dataInicialAtual) ?? venc;
+      const dfAtual = parseDateBR(esp.dataFinalAtual) ?? dataCalcDate;
+
+      if (diAtual && (!minDataInicialAtual || diAtual < minDataInicialAtual)) minDataInicialAtual = diAtual;
+      if (dfAtual && dfAtual > maxDataFinalAtual) maxDataFinalAtual = dfAtual;
+    }
+    for (const c of garantirArrayCustas(rodadaAtual.custas)) {
+      const dataPag = parseDateBR(c.dataPagamento);
+      if (!dataPag) continue;
+      if (!minDataInicialAtual || dataPag < minDataInicialAtual) minDataInicialAtual = dataPag;
+      if (dataCalcDate > maxDataFinalAtual) maxDataFinalAtual = dataCalcDate;
+    }
+    const inicio = minDataInicialAtual || dataCalcDate;
+    const fim = maxDataFinalAtual || dataCalcDate;
+
+    let cancelled = false;
+    Promise.all(
+      necessarios.map(async (nome) => {
+        try {
+          const map = await obterIndicesMensais(nome, inicio, fim);
+          return [nome, map];
+        } catch {
+          // Se falhar a busca, não quebra a tela (competências ausentes contam como 0).
+          return [nome, {}];
+        }
+      }),
+    ).then((entries) => {
+      if (cancelled) return;
+      setIndicesMensaisOutros(Object.fromEntries(entries));
+    });
 
     return () => {
       cancelled = true;
@@ -2811,6 +2921,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     rodadaAtual.titulosGravadosAceito,
     indicesMensaisINPC,
     indicesMensaisIPCA,
+    indicesMensaisOutros,
     juros,
     multa,
     honorariosTipo,
@@ -2839,6 +2950,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     rodadaAtual.custasGravadasAceito,
     indicesMensaisINPC,
     indicesMensaisIPCA,
+    indicesMensaisOutros,
     juros,
     indice,
   ]);
@@ -4398,6 +4510,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
         hojeBR={hojeBR}
         indicesMensaisINPC={indicesMensaisINPC}
         indicesMensaisIPCA={indicesMensaisIPCA}
+        indicesMensaisOutros={indicesMensaisOutros}
       />
 
       <ModalCobrancaWhatsAppCalculos

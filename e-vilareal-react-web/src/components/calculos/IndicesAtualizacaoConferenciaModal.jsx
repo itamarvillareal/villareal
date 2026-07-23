@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 import { X } from 'lucide-react';
-import { obterIndicesMensaisINPC, obterIndicesMensaisIPCA } from '../../services/monetaryIndicesService.js';
+import {
+  obterIndicesMensais,
+  obterIndicesMensaisINPC,
+  obterIndicesMensaisIPCA,
+  nomeCanonicoIndice,
+} from '../../services/monetaryIndicesService.js';
 import {
   calcularIntervaloIndicesRodada,
   formatCompetenciaLabel,
   montarLinhasIndicesConferencia,
+  INDICES_SERIE_OUTROS,
 } from '../../utils/calculosIndicesConferencia.js';
 
 /**
@@ -21,11 +27,13 @@ export function IndicesAtualizacaoConferenciaModal({
   hojeBR,
   indicesMensaisINPC,
   indicesMensaisIPCA,
+  indicesMensaisOutros,
 }) {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState('');
   const [mapInpc, setMapInpc] = useState(null);
   const [mapIpca, setMapIpca] = useState(null);
+  const [mapOutros, setMapOutros] = useState(null);
 
   const intervalo = useMemo(
     () =>
@@ -51,11 +59,7 @@ export function IndicesAtualizacaoConferenciaModal({
         titulos.some((t) => String(t?.datasEspeciais?.indiceEspecial ?? '').toUpperCase() === 'INPC');
       const precisaIpca =
         idx === 'IPCA' ||
-        idx === 'IPCA-E' ||
-        titulos.some((t) => {
-          const v = String(t?.datasEspeciais?.indiceEspecial ?? '').toUpperCase();
-          return v === 'IPCA' || v === 'IPCA-E';
-        });
+        titulos.some((t) => String(t?.datasEspeciais?.indiceEspecial ?? '').toUpperCase() === 'IPCA');
 
       if (precisaInpc && (!inpc || typeof inpc !== 'object')) {
         inpc = await obterIndicesMensaisINPC(intervalo.inicio, intervalo.fim);
@@ -64,16 +68,26 @@ export function IndicesAtualizacaoConferenciaModal({
         ipca = await obterIndicesMensaisIPCA(intervalo.inicio, intervalo.fimIpca);
       }
 
+      // IGPM / SELIC / CDI / TR / POUPANÇA: série mensal real via backend.
+      let outros = indicesMensaisOutros;
+      const idxCanonico = nomeCanonicoIndice(idx);
+      if (INDICES_SERIE_OUTROS.includes(idxCanonico) && !(outros && typeof outros === 'object' && outros[idxCanonico])) {
+        const serie = await obterIndicesMensais(idxCanonico, intervalo.inicio, intervalo.fim);
+        outros = { ...(outros || {}), [idxCanonico]: serie };
+      }
+
       setMapInpc(inpc ?? {});
       setMapIpca(ipca ?? {});
+      setMapOutros(outros ?? {});
     } catch (e) {
       setErro(e?.message || 'Falha ao carregar índices.');
       setMapInpc({});
       setMapIpca({});
+      setMapOutros({});
     } finally {
       setCarregando(false);
     }
-  }, [indice, titulos, intervalo, indicesMensaisINPC, indicesMensaisIPCA]);
+  }, [indice, titulos, intervalo, indicesMensaisINPC, indicesMensaisIPCA, indicesMensaisOutros]);
 
   useCloseOnEscape(open, onClose);
 
@@ -81,15 +95,17 @@ export function IndicesAtualizacaoConferenciaModal({
     if (!open) return undefined;
     setMapInpc(indicesMensaisINPC);
     setMapIpca(indicesMensaisIPCA);
+    setMapOutros(indicesMensaisOutros ?? null);
     carregarSeries();
-  }, [open, carregarSeries, indicesMensaisINPC, indicesMensaisIPCA]);
+  }, [open, carregarSeries, indicesMensaisINPC, indicesMensaisIPCA, indicesMensaisOutros]);
 
   const tabela = useMemo(() => {
     if (!open) return null;
     const inpc = mapInpc ?? indicesMensaisINPC ?? {};
     const ipca = mapIpca ?? indicesMensaisIPCA ?? {};
-    return montarLinhasIndicesConferencia(indice, inpc, ipca, intervalo);
-  }, [open, indice, mapInpc, mapIpca, indicesMensaisINPC, indicesMensaisIPCA, intervalo]);
+    const outros = mapOutros ?? indicesMensaisOutros ?? {};
+    return montarLinhasIndicesConferencia(indice, inpc, ipca, intervalo, outros);
+  }, [open, indice, mapInpc, mapIpca, mapOutros, indicesMensaisINPC, indicesMensaisIPCA, indicesMensaisOutros, intervalo]);
 
   if (!open) return null;
 

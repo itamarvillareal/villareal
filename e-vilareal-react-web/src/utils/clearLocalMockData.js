@@ -26,6 +26,7 @@ const LOCAL_STORAGE_KEYS = [
   'vilareal.cliente.configCalculo.v1',
   'vilareal.cadastroPessoas.documentos.v1',
   'vilareal:indices-mensais:v1',
+  'vilareal:indices-mensais:v2',
   'pendencias_por_usuario_v1',
   'pendencias_por_usuario_v2',
   'vilareal:processos-historico:v1',

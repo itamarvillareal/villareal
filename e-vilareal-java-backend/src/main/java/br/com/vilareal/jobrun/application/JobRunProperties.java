@@ -74,6 +74,8 @@ public class JobRunProperties {
         m.put("whatsapp_lembrete_audiencia", new JobDefinition(1500, 30, "WhatsApp — lembrete audiência"));
         m.put("whatsapp_reforco_audiencia", new JobDefinition(1500, 30, "WhatsApp — reforço audiência"));
         m.put("whatsapp_aniversario", new JobDefinition(1500, 30, "WhatsApp — felicitações aniversário"));
+        // Executa (tracked) só a partir do dia 10 de cada mês: intervalo esperado tolera a janela dos dias 1–9.
+        m.put("calculo_indices_mensais", new JobDefinition(20160, 15, "Cálculos — índices mensais BCB"));
         return m;
     }
 
