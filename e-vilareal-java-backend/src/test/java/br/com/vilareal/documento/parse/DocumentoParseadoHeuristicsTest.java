@@ -23,4 +23,11 @@ class DocumentoParseadoHeuristicsTest {
         assertThat(DocumentoParseadoHeuristics.ehNomePeca("RAZÕES FINAIS ESCRITAS", true, true))
                 .isTrue();
     }
+
+    @Test
+    void reconheceEnderecamentoFemininoExcelentissima() {
+        assertThat(DocumentoParseadoHeuristics.pareceEnderecamentoJuizo(
+                        "EXCELENTÍSSIMA SENHORA DOUTORA JUÍZA DE DIREITO DA 3ª VARA CÍVEL DA COMARCA DE ANÁPOLIS – ESTADO DE GOIÁS"))
+                .isTrue();
+    }
 }

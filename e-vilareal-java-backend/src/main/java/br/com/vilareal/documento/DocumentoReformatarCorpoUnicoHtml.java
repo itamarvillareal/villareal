@@ -251,13 +251,42 @@ public final class DocumentoReformatarCorpoUnicoHtml {
         }
         Document doc = Jsoup.parseBodyFragment(corpoUnicoHtml.trim());
         doc.select("[data-doc-part=cabecalho]").remove();
+        doc.select("[data-doc-part=logo]").remove();
+        doc.select("img[data-doc-part=logo]").remove();
         doc.select("[data-doc-part=local-data]").remove();
         doc.select("[data-doc-part=assinatura]").remove();
+        removerLogosPreviewHeuristico(doc);
         Element root = doc.selectFirst(".doc-edicao-preview");
         if (root == null) {
             root = doc.body();
         }
         return sanitizarHtmlParaPdf(root.html());
+    }
+
+    /** Remove logos embutidos na prévia WYSIWYG quando o editor perde {@code data-doc-part}. */
+    static void removerLogosPreviewHeuristico(Document doc) {
+        for (Element img : doc.select("img")) {
+            String src = img.attr("src");
+            String alt = img.attr("alt");
+            boolean logoPreview = img.hasAttr("data-doc-part")
+                    && "logo".equalsIgnoreCase(img.attr("data-doc-part"));
+            boolean logoDataUri = StringUtils.hasText(src) && src.startsWith("data:image");
+            boolean logoAlt = StringUtils.hasText(alt)
+                    && alt.toLowerCase(Locale.ROOT).contains("villa real");
+            if (!logoPreview && !(logoDataUri && logoAlt)) {
+                continue;
+            }
+            Element container = img.parent();
+            img.remove();
+            while (container != null
+                    && !container.tagName().equals("body")
+                    && container.children().isEmpty()
+                    && container.text().isBlank()) {
+                Element pai = container.parent();
+                container.remove();
+                container = pai;
+            }
+        }
     }
 
     /** Normaliza HTML do contentEditable para XHTML exigido pelo OpenHTMLToPDF. */
