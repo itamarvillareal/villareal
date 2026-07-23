@@ -6465,6 +6465,8 @@ export function Processos({ embedIntent, embedIntentRevision = 0, onFecharEmbed 
         onClose={() => setModalPeticionamentoProjudi(false)}
         numeroCnj={numeroProcessoNovo}
         clienteNome={cliente}
+        codigoCliente={codigoCliente}
+        numeroInterno={processo}
       />
 
       <ModalCriarTarefaContextual

@@ -27,6 +27,7 @@ import { useCloseOnEscape } from '../../hooks/useCloseOnEscape.js';
 import { PeticaoArquivoLinhaExcluir } from './PeticaoArquivosTabela.jsx';
 import { PeticaoHistoricoLista } from './PeticaoHistoricoLista.jsx';
 import { PeticaoProtocoloConfirmModal } from './PeticaoProtocoloConfirmModal.jsx';
+import { AssinaturaAutomaticaProcessoPanel } from './AssinaturaAutomaticaProcessoPanel.jsx';
 
 const inputClass =
   'w-full px-2 py-1.5 border border-slate-300 rounded text-sm bg-white text-slate-900';
@@ -56,9 +57,16 @@ function classeResultadoProtocolo(resultado) {
 }
 
 /**
- * @param {{ open: boolean, onClose?: () => void, numeroCnj?: string, clienteNome?: string }} props
+ * @param {{ open: boolean, onClose?: () => void, numeroCnj?: string, clienteNome?: string, codigoCliente?: string, numeroInterno?: string|number }} props
  */
-export function ModalPeticionamentoProcesso({ open, onClose, numeroCnj, clienteNome }) {
+export function ModalPeticionamentoProcesso({
+  open,
+  onClose,
+  numeroCnj,
+  clienteNome,
+  codigoCliente,
+  numeroInterno,
+}) {
   useCloseOnEscape(open, onClose);
 
   const [aba, setAba] = useState('protocolar');
@@ -391,6 +399,16 @@ export function ModalPeticionamentoProcesso({ open, onClose, numeroCnj, clienteN
 
             {aba === 'protocolar' ? (
               <>
+                <AssinaturaAutomaticaProcessoPanel
+                  credencialId={credencialId}
+                  codigoCliente={codigoCliente}
+                  numeroInterno={numeroInterno}
+                  numeroCnj={cnj}
+                  disabled={!cnj || operacao === 'protocolo'}
+                  onConcluido={() => void recarregar()}
+                  onErro={setErro}
+                />
+
                 <form onSubmit={(e) => void registrarP7s(e)} className="rounded-lg border border-slate-200 p-3 space-y-2">
                   <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-wide">
                     Registrar .p7s
