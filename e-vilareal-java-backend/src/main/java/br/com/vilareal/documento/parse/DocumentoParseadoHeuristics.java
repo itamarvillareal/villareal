@@ -20,8 +20,8 @@ final class DocumentoParseadoHeuristics {
             Pattern.compile("(?i)^\\s*(?:\\(?[a-z]\\)?|[ivx]+|\\d+)\\s*[\\.\\)]\\s+.+");
     static final Pattern LOCAL_DATA = Pattern.compile(
             "(?i)(Anápolis|Goiânia|[A-ZÁÉÍÓÚÂÊÔÃÇ][a-záéíóúâêôãç]+).+(?:de\\s+)?(?:janeiro|fevereiro|março|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro).+\\d{4}");
-    static final Pattern ENDERECAMENTO_JUIZO =
-            Pattern.compile("(?i)^(MERITÍSSIMO|EXCELENTÍSSIMO|ILUSTRÍSSIMO|COLENDO|EGRÉGIO|MM\\.|JUÍZO|VARA)");
+    static final Pattern ENDERECAMENTO_JUIZO = Pattern.compile(
+            "(?i)^(MERITÍSSIM[OA]|EXCELENTÍSSIM[OA]|ILUSTRÍSSIM[OA]|COLEND[OA]|EGRÉGI[OA]|MM\\.|JUÍZO|VARA)");
 
     private static final Pattern RUIDO_ESCRITORIO = Pattern.compile(
             "(?i)villa\\s*real|pinheiro\\s+chagas|villarealadvocacia|3321-2374|98129-6212");

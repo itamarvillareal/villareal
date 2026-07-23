@@ -104,8 +104,9 @@ export function ModoEnviarArquivo({ dadosProcesso, onErro, onSucesso, onLoadingC
       numeroProcesso: form.numeroProcesso?.trim() || undefined,
       cidadeEstado: localData,
       data: dataIso,
+      processoId: dadosProcesso?.processoApiId,
     };
-  }, [form]);
+  }, [form, dadosProcesso?.processoApiId]);
 
   const montarOpcoesGeracao = useCallback(
     (preview) => {

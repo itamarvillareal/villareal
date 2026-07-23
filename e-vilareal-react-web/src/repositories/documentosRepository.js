@@ -107,6 +107,9 @@ export async function extrairConteudoArquivo(arquivo, opts = {}) {
   if (opts.numeroProcesso) fd.append('numeroProcesso', opts.numeroProcesso);
   if (opts.cidadeEstado) fd.append('cidadeEstado', opts.cidadeEstado);
   if (opts.data) fd.append('data', opts.data);
+  if (opts.processoId != null && opts.processoId !== '') {
+    fd.append('processoId', String(opts.processoId));
+  }
 
   const res = await fetch(`${API_BASE_URL}/api/documentos/reformatar/conteudo`, {
     method: 'POST',
@@ -131,6 +134,9 @@ export async function gerarPdfReformatado(conteudo, opts = {}) {
   if (opts.codigoCliente) params.set('codigoCliente', String(opts.codigoCliente));
   if (opts.numeroInterno != null && opts.numeroInterno !== '') {
     params.set('numeroInterno', String(opts.numeroInterno));
+  }
+  if (opts.processoId != null && opts.processoId !== '') {
+    params.set('processoId', String(opts.processoId));
   }
   const qs = params.toString();
   const url = `${API_BASE_URL}/api/documentos/reformatar/gerar-pdf${qs ? `?${qs}` : ''}`;
