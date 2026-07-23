@@ -1338,39 +1338,54 @@ export function DistribuicaoInicialProjudi() {
             </div>
             {linhasP7s.length > 0 ? (
               <ul className="max-h-[min(24rem,50vh)] space-y-1 overflow-y-auto rounded-lg border border-slate-100 bg-slate-50/50 p-2">
-                {linhasP7s.map((linha, idx) => (
-                  <li key={linha.key} className="flex flex-wrap items-center gap-2 text-sm">
+                {linhasP7s.map((linha) => (
+                  <li
+                    key={linha.key}
+                    className="flex items-center gap-2 text-sm rounded-md px-1 py-1 hover:bg-white/80"
+                  >
                     <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" aria-hidden />
-                    <span className="truncate flex-1 min-w-0 font-medium">{linha.file?.name}</span>
-                    {linha.origem === 'pessoa' && linha.rotulo ? (
-                      <span className="text-[10px] rounded bg-indigo-100 px-1.5 py-0.5 text-indigo-900 shrink-0">
-                        Pessoas · {linha.rotulo}
-                      </span>
-                    ) : linha.origem !== 'pessoa' ? (
-                      <span className="text-[10px] rounded bg-rose-100 px-1.5 py-0.5 text-rose-900 shrink-0">
-                        Processo
-                      </span>
-                    ) : null}
-                    <select
-                      className={`${inputClass} w-auto text-xs py-1`}
-                      value={linha.idArquivoTipo}
-                      onChange={(ev) => {
-                        const v = Number(ev.target.value);
-                        aplicarLinhasP7s((rows) =>
-                          rows.map((r, i) => (i === idx ? { ...r, idArquivoTipo: v } : r)),
-                        );
-                      }}
-                    >
-                      {TIPOS_ARQUIVO.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.label}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium" title={linha.file?.name}>
+                        {linha.file?.name}
+                      </p>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                        {linha.origem === 'pessoa' && linha.rotulo ? (
+                          <span className="text-[10px] rounded bg-indigo-100 px-1.5 py-0.5 text-indigo-900 shrink-0">
+                            Pessoas · {linha.rotulo}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] rounded bg-rose-100 px-1.5 py-0.5 text-rose-900 shrink-0">
+                            Processo
+                          </span>
+                        )}
+                        <select
+                          className={`${inputClass} w-auto text-xs py-0.5`}
+                          value={linha.idArquivoTipo}
+                          onChange={(ev) => {
+                            const v = Number(ev.target.value);
+                            aplicarLinhasP7s((rows) =>
+                              rows.map((r) =>
+                                r.key === linha.key ? { ...r, idArquivoTipo: v } : r,
+                              ),
+                            );
+                          }}
+                        >
+                          {TIPOS_ARQUIVO.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
                     <button
                       type="button"
-                      className="text-slate-400 hover:text-rose-600"
-                      onClick={() => aplicarLinhasP7s((rows) => rows.filter((_, i) => i !== idx))}
+                      className="shrink-0 rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                      title={`Remover «${linha.file?.name ?? 'arquivo'}» da lista de protocolo`}
+                      aria-label={`Remover ${linha.file?.name ?? 'arquivo'} da lista`}
+                      onClick={() =>
+                        aplicarLinhasP7s((rows) => rows.filter((r) => r.key !== linha.key))
+                      }
                     >
                       <Trash2 className="h-4 w-4" aria-hidden />
                     </button>
