@@ -170,12 +170,22 @@ export function CalculosPainelLateral({
         </div>
         <div>
           <label className="mb-0.5 block text-xs font-medium text-slate-700">Juros:</label>
-          <input
-            type="text"
-            value={juros}
-            onChange={(e) => onUpdatePainelCampo({ juros: e.target.value })}
-            className={inputClass}
-          />
+          <div className="relative">
+            <input
+              type="text"
+              inputMode="decimal"
+              value={percentualFixoParaCampo(juros)}
+              onChange={(e) => onUpdatePainelCampo({ juros: editarPercentualFixoCampo(e.target.value) })}
+              onBlur={(e) =>
+                onUpdatePainelCampo({ juros: normalizarHonorariosValorFixo(e.target.value) })
+              }
+              placeholder="1"
+              className={`${inputClass} pr-7`}
+            />
+            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-500" aria-hidden>
+              %
+            </span>
+          </div>
         </div>
         <div>
           <label className="mb-0.5 block text-xs font-medium text-slate-700">Multa:</label>

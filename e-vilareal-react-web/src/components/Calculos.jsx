@@ -20,6 +20,7 @@ import {
   parcelamentoAceitoResumoParaChave,
   saveRodadasCalculos,
   persistirRodadaCalculosAgora,
+  persistirPanelConfigRodadaAgora,
 } from '../data/calculosRodadasStorage';
 import {
   calcularResumoTitulosGrade,
@@ -61,6 +62,7 @@ import {
   extrairPanelConfig,
   listarChavesRodadasClienteProc,
   propagarPanelConfigEmRodadas,
+  resolverPanelConfigAoMesclarRodadaApi,
 } from '../data/calculosPanelConfigSync.js';
 import {
   calcularResumoPlanoPagamento,
@@ -442,6 +444,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     () => !featureFlags.useApiCalculos || isCalculosRodadasApiHidratacaoConcluida()
   );
   const saveRodadasTimerRef = useRef(null);
+  const panelConfigPersistTimerRef = useRef(null);
   const fetchRodadaReqIdRef = useRef(0);
   const fetchRodadaAbortRef = useRef(null);
   /** `${rodadaKey}:page:${n}` → payload normalizado da página */
@@ -822,31 +825,74 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
       if (partial.periodicidade !== undefined) setPeriodicidade(partial.periodicidade);
       if (partial.modeloListaDebitos !== undefined) setModeloListaDebitos(partial.modeloListaDebitos);
       setRodadasState((prev) => {
-        const cur = prev[rodadaKey];
-        if (!cur) return prev;
+        const cur = prev[rodadaKey] ?? {
+          pagina: 1,
+          paginaParcelamento: 1,
+          titulos: [],
+          custas: gerarCustasMock(),
+          parcelas: [],
+          quantidadeParcelasInformada: '00',
+          taxaJurosParcelamento: '0,00',
+          entradaParcelamentoModo: 'nenhuma',
+          entradaParcelamentoValor: '',
+          entradaParcelamentoPercentual: '',
+          entradaParcelamentoDataVenc: '',
+          limpezaAtiva: false,
+          snapshotAntesLimpeza: null,
+          cabecalho: gerarCabecalhoMock(codigoClienteNorm, procNorm),
+          honorariosDataRecebimento: {},
+          parcelamentoAceito: false,
+          panelConfig: undefined,
+        };
+        const baseMap = prev[rodadaKey] ? prev : { ...prev, [rodadaKey]: cur };
         const def = loadConfigCalculoCliente(codigoClienteNorm);
         const mergedBase = mergeConfigPainelCalculo(def, cur.panelConfig);
         const nextPanel = extrairPanelConfig({ ...mergedBase, ...partial });
-        const chaves = listarChavesRodadasClienteProc(prev, codigoClienteNorm, procNorm);
-        const { nextMap, chavesAlteradas } = propagarPanelConfigEmRodadas(prev, chaves, nextPanel);
+        let chaves = listarChavesRodadasClienteProc(baseMap, codigoClienteNorm, procNorm);
+        if (!chaves.includes(rodadaKey)) chaves = [...chaves, rodadaKey];
+        const { nextMap, chavesAlteradas } = propagarPanelConfigEmRodadas(baseMap, chaves, nextPanel);
         if (chavesAlteradas.length === 0) return prev;
         isDirtyRodadaRef.current = true;
         persistRodadaKeysRef.current = chavesAlteradas;
-        // Parâmetros do painel (multa, honorários, índice…) persistem mesmo com cálculo aceito.
+        // Limpa cache de páginas: evita GET/cache antigo sobrescrever panelConfig recém-editado.
+        for (const k of paginasRodadaCacheRef.current.keys()) {
+          if (String(k).startsWith(`${rodadaKey}:`)) {
+            paginasRodadaCacheRef.current.delete(k);
+          }
+        }
+        // Persistência segura do painel (debounce: evita PUT a cada tecla).
         if (featureFlags.useApiCalculos && hidratacaoConcluida) {
           if (saveRodadasTimerRef.current) {
             window.clearTimeout(saveRodadasTimerRef.current);
             saveRodadasTimerRef.current = null;
           }
-          for (const chave of chavesAlteradas) {
-            void persistirRodadaCalculosAgora(nextMap, chave);
+          if (panelConfigPersistTimerRef.current) {
+            window.clearTimeout(panelConfigPersistTimerRef.current);
           }
+          const chavesParaPersistir = [...chavesAlteradas];
+          panelConfigPersistTimerRef.current = window.setTimeout(() => {
+            panelConfigPersistTimerRef.current = null;
+            const latest = rodadasStateRef.current;
+            for (const chave of chavesParaPersistir) {
+              void persistirPanelConfigRodadaAgora(latest, chave);
+            }
+          }, 450);
         }
         return nextMap;
       });
     },
     [rodadaKey, codigoClienteNorm, procNorm, hidratacaoConcluida]
   );
+
+  const panelConfigRodadaSnapshot = useMemo(() => {
+    const p = rodadasState[rodadaKey]?.panelConfig;
+    if (!p || typeof p !== 'object') return '';
+    try {
+      return JSON.stringify(p);
+    } catch {
+      return '';
+    }
+  }, [rodadasState, rodadaKey]);
 
   useEffect(() => {
     const def = loadConfigCalculoCliente(codigoClienteNorm);
@@ -860,7 +906,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     setIndice(merged.indice);
     setPeriodicidade(merged.periodicidade ?? 'mensal');
     setModeloListaDebitos(merged.modeloListaDebitos ?? '01');
-  }, [rodadaKey, codigoClienteNorm]);
+  }, [rodadaKey, codigoClienteNorm, panelConfigRodadaSnapshot]);
 
   useEffect(() => {
     const h = (ev) => {
@@ -1018,6 +1064,10 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
             paginaFetch,
             TITULOS_POR_PAGINA_API
           );
+          const panelConfigMerged = resolverPanelConfigAoMesclarRodadaApi(
+            cur?.panelConfig,
+            cached?.panelConfig,
+          );
           return {
             ...prev,
             [key]: {
@@ -1025,6 +1075,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
               ...cached,
               titulos: mergedTitulos,
               pagina: paginaFetch,
+              ...(panelConfigMerged !== undefined ? { panelConfig: panelConfigMerged } : { panelConfig: cur?.panelConfig }),
             },
           };
         });
@@ -1114,6 +1165,10 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
               TITULOS_POR_PAGINA_API
             );
           }
+          const panelConfigMerged = resolverPanelConfigAoMesclarRodadaApi(
+            cur?.panelConfig,
+            one?.panelConfig,
+          );
           return {
             ...prev,
             [key]: {
@@ -1123,6 +1178,9 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
               pagina: paginaFetch,
               titulosPagination: paginationFinal ?? cur?.titulosPagination,
               titulosResumo: rawFinal.titulosResumo ?? cur?.titulosResumo,
+              ...(panelConfigMerged !== undefined
+                ? { panelConfig: panelConfigMerged }
+                : { panelConfig: cur?.panelConfig }),
             },
           };
         });
@@ -1447,6 +1505,8 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
     if (!total || !totalPages || totalPages <= 1) return undefined;
 
     const qtdCarregada = contarTitulosComValorInicial(rodadaAtual.titulos);
+    const qtdResumoApi = Number(rodadaAtual.titulosResumo?.quantidadeTitulos) || 0;
+    if (qtdResumoApi > 0 && qtdCarregada >= qtdResumoApi) return undefined;
     if (qtdCarregada >= Number(total)) return undefined;
 
     const key = rodadaKey;
@@ -1495,12 +1555,19 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
             );
           }
 
+          const panelConfigMerged = resolverPanelConfigAoMesclarRodadaApi(
+            cur.panelConfig,
+            one?.panelConfig,
+          );
           return {
             ...prev,
             [key]: {
               ...cur,
               titulos: titulosMerged,
               titulosResumo: rawFull.titulosResumo ?? cur.titulosResumo,
+              ...(panelConfigMerged !== undefined
+                ? { panelConfig: panelConfigMerged }
+                : {}),
             },
           };
         });
@@ -2342,11 +2409,16 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
           paginasRodadaCacheRef.current.delete(k);
         }
       }
+      const qtdNext = contarTitulosComValorInicial(next);
+      const qtdApi = Number(cur.titulosResumo?.quantidadeTitulos) || 0;
+      // Só descarta titulosResumo antigo quando todos os títulos com valor já foram recalculados.
+      const resumoCompletoLocal = qtdApi > 0 && qtdNext >= qtdApi;
       return {
         ...prev,
         [rodadaKey]: {
           ...cur,
           titulos: next,
+          ...(resumoCompletoLocal ? { titulosResumo: undefined } : {}),
         },
       };
     });

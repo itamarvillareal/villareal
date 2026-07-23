@@ -202,16 +202,22 @@ export function resumoTitulosFromApi(apiResumo) {
 }
 
 /**
- * Resumo geral da grade: soma local quando todos os títulos estão materializados;
+ * Resumo geral da grade: soma local quando todos os títulos com valor estão materializados;
  * enquanto a paginação da API ainda não trouxe todas as páginas, usa {@code titulosResumo} da API.
  * @param {Array<Record<string, unknown>> | undefined} titulosDimensao
- * @param {number | null | undefined} totalEsperado
+ * @param {number | null | undefined} totalEsperado slots totais da paginação (inclui linhas vazias)
  * @param {Record<string, unknown> | null | undefined} titulosResumoApi
  */
 export function resolverResumoGeralTitulos(titulosDimensao, totalEsperado, titulosResumoApi) {
   const local = calcularResumoTitulosGrade(titulosDimensao);
-  const total = totalEsperado != null ? Number(totalEsperado) : NaN;
-  if (!Number.isFinite(total) || total <= 0) return local;
-  if (contarTitulosComValorInicial(titulosDimensao) >= total) return local;
+  const qtdLocal = contarTitulosComValorInicial(titulosDimensao);
+  const qtdApi = Number(titulosResumoApi?.quantidadeTitulos) || 0;
+
+  // Todos os títulos com valor já no cliente → recálculo local (multa/honorários do painel).
+  if (qtdApi > 0 && qtdLocal >= qtdApi) return local;
+
+  const totalSlots = totalEsperado != null ? Number(totalEsperado) : NaN;
+  if (Number.isFinite(totalSlots) && totalSlots > 0 && qtdLocal >= totalSlots) return local;
+
   return resumoTitulosFromApi(titulosResumoApi) ?? local;
 }

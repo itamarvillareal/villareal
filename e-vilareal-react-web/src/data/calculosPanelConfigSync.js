@@ -28,6 +28,27 @@ function panelConfigsIguais(a, b) {
   return CAMPOS_PANEL_CONFIG_CALCULO.every((k) => String(pa[k] ?? '') === String(pb[k] ?? ''));
 }
 
+/**
+ * Mescla {@code panelConfig} ao receber rodada da API: preserva edição local enquanto
+ * difere do servidor (PUT pendente ou GET paginado desatualizado).
+ * @param {Record<string, unknown> | null | undefined} panelConfigLocal
+ * @param {Record<string, unknown> | null | undefined} panelConfigApi
+ */
+export function resolverPanelConfigAoMesclarRodadaApi(panelConfigLocal, panelConfigApi) {
+  const localObj =
+    panelConfigLocal != null && typeof panelConfigLocal === 'object' && !Array.isArray(panelConfigLocal)
+      ? panelConfigLocal
+      : null;
+  const apiObj =
+    panelConfigApi != null && typeof panelConfigApi === 'object' && !Array.isArray(panelConfigApi)
+      ? panelConfigApi
+      : null;
+  if (!localObj) return apiObj ?? undefined;
+  if (!apiObj) return localObj;
+  if (panelConfigsIguais(localObj, apiObj)) return extrairPanelConfig(apiObj);
+  return extrairPanelConfig(localObj);
+}
+
 export function chaveRodadaPertenceAoCliente(chave, codCliente) {
   const sp = splitRodadaCalculosKey(chave);
   if (!sp) return false;

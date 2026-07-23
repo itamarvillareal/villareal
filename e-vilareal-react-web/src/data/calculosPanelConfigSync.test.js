@@ -3,6 +3,7 @@ import {
   extrairPanelConfig,
   listarChavesRodadasClienteProc,
   propagarPanelConfigEmRodadas,
+  resolverPanelConfigAoMesclarRodadaApi,
 } from './calculosPanelConfigSync.js';
 
 describe('calculosPanelConfigSync', () => {
@@ -31,5 +32,34 @@ describe('calculosPanelConfigSync', () => {
     const p = extrairPanelConfig({ juros: '1 %', regraInicioCobrancaDias: 61, foo: 'bar' });
     expect(p.juros).toBe('1 %');
     expect(p.foo).toBeUndefined();
+  });
+
+  it('resolverPanelConfigAoMesclarRodadaApi preserva edição local divergente do GET', () => {
+    const merged = resolverPanelConfigAoMesclarRodadaApi(
+      { juros: '2 %', multa: '1 %', indice: 'INPC' },
+      { juros: '1 %', multa: '0 %', indice: 'INPC' },
+    );
+    expect(merged.juros).toBe('2 %');
+    expect(merged.multa).toBe('1 %');
+  });
+
+  it('resolverPanelConfigAoMesclarRodadaApi usa API quando não há local', () => {
+    const merged = resolverPanelConfigAoMesclarRodadaApi(undefined, {
+      juros: '1,5 %',
+      multa: '2 %',
+      indice: 'IPCA',
+    });
+    expect(merged.juros).toBe('1,5 %');
+    expect(merged.indice).toBe('IPCA');
+  });
+
+  it('resolverPanelConfigAoMesclarRodadaApi preserva local quando API manda null', () => {
+    const merged = resolverPanelConfigAoMesclarRodadaApi(
+      { juros: '2 %', multa: '2 %', honorariosValor: '20 %' },
+      null,
+    );
+    expect(merged.juros).toBe('2 %');
+    expect(merged.multa).toBe('2 %');
+    expect(merged.honorariosValor).toBe('20 %');
   });
 });

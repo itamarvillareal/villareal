@@ -5,8 +5,11 @@ import {
   putCalculoRodadas,
   fetchCalculoRodadas,
   fetchCalculoRodadasResumo,
+  fetchCalculoRodada,
   putCalculoRodada,
 } from '../repositories/calculosRepository.js';
+import { contarTitulosComValorInicial } from './calculosRodadaTitulosPaginacao.js';
+import { extrairPanelConfig } from './calculosConfigDefaults.js';
 import { fetchWithCrossTabCache, invalidateCrossTabCache } from '../utils/crossTabFetchCache.js';
 
 const CACHE_KEY_RODADAS_RESUMO = 'calculos.rodadas.resumo';
@@ -306,6 +309,67 @@ export function aguardarPersistenciaRodadasCalculos() {
   return __rodadasApiSaveChain;
 }
 
+/** True se o cliente ainda não materializou todos os títulos com valor da rodada. */
+function titulosLocaisIncompletosParaPut(payload) {
+  if (!payload || typeof payload !== 'object') return false;
+  const qtdLocal = contarTitulosComValorInicial(payload.titulos);
+  const qtdApi = Number(payload.titulosResumo?.quantidadeTitulos) || 0;
+  return qtdApi > 0 && qtdLocal < qtdApi;
+}
+
+/**
+ * Evita PUT com array de títulos incompleto (apagaria débitos não carregados da paginação).
+ * Mescla panelConfig/edições locais sobre o payload completo do servidor.
+ */
+async function montarPayloadCompletoParaPut(chave, payloadLocal) {
+  const sp = splitRodadaCalculosKey(chave);
+  if (!sp || !payloadLocal || typeof payloadLocal !== 'object') return payloadLocal;
+
+  const panelLocal =
+    payloadLocal.panelConfig != null && typeof payloadLocal.panelConfig === 'object'
+      ? extrairPanelConfig(payloadLocal.panelConfig)
+      : null;
+
+  if (!titulosLocaisIncompletosParaPut(payloadLocal)) {
+    return panelLocal
+      ? { ...payloadLocal, panelConfig: panelLocal }
+      : payloadLocal;
+  }
+
+  try {
+    const rawFull = await fetchCalculoRodada(sp.cod, sp.proc, sp.dim);
+    if (!rawFull || typeof rawFull !== 'object') {
+      return panelLocal ? { ...payloadLocal, panelConfig: panelLocal } : payloadLocal;
+    }
+    const titulosServer = Array.isArray(rawFull.titulos) ? rawFull.titulos : [];
+    const titulosLocal = Array.isArray(payloadLocal.titulos) ? payloadLocal.titulos : [];
+    // Overlay das linhas já materializadas/recalculadas no cliente; restante vem do servidor.
+    const titulosMerged = titulosServer.map((t, i) => {
+      const local = titulosLocal[i];
+      if (local && String(local?.valorInicial ?? '').trim() !== '') return local;
+      return t;
+    });
+    // Linhas novas digitadas além do total do servidor.
+    for (let i = titulosServer.length; i < titulosLocal.length; i++) {
+      if (String(titulosLocal[i]?.valorInicial ?? '').trim() !== '') {
+        titulosMerged.push(titulosLocal[i]);
+      }
+    }
+    return {
+      ...rawFull,
+      ...payloadLocal,
+      titulos: titulosMerged,
+      panelConfig: panelLocal ?? rawFull.panelConfig ?? null,
+      // Evita reenviar metadados de fatia que não existem no payload completo.
+      titulosPagination: undefined,
+      titulosResumo: undefined,
+    };
+  } catch (err) {
+    console.warn(`${LOG_CALC_API} merge GET completo antes do PUT falhou:`, err);
+    return panelLocal ? { ...payloadLocal, panelConfig: panelLocal } : payloadLocal;
+  }
+}
+
 function putRodadaCalculosNaApi(prepared, chave) {
   const payload = prepared[chave];
   if (!payload || typeof payload !== 'object') return Promise.resolve();
@@ -313,13 +377,15 @@ function putRodadaCalculosNaApi(prepared, chave) {
   if (!sp) return Promise.resolve();
   const slice = { [chave]: payload };
   if (!mapaRodadasTemValorTituloOuParcela(slice)) return Promise.resolve();
-  return putCalculoRodada(sp.cod, sp.proc, sp.dim, payload).then((saved) => {
-    if (saved && typeof saved === 'object') {
-      lruSet(chave, saved);
-      __resumoParcelamentoAceito.set(chave, Boolean(saved.parcelamentoAceito));
-      invalidateRodadasResumoCache();
-    }
-  });
+  return montarPayloadCompletoParaPut(chave, payload)
+    .then((payloadFinal) => putCalculoRodada(sp.cod, sp.proc, sp.dim, payloadFinal))
+    .then((saved) => {
+      if (saved && typeof saved === 'object') {
+        lruSet(chave, saved);
+        __resumoParcelamentoAceito.set(chave, Boolean(saved.parcelamentoAceito));
+        invalidateRodadasResumoCache();
+      }
+    });
 }
 
 /**
@@ -336,6 +402,67 @@ export function persistirRodadaCalculosAgora(rodadas, rodadaKey) {
   const run = putRodadaCalculosNaApi(prepared, rodadaKey).catch((err) => {
     console.error('[vilareal] Falha ao gravar rodada de cálculo na API (imediato):', err);
   });
+  __rodadasApiSaveChain = __rodadasApiSaveChain.then(() => run);
+  emitRodadasAtualizadas();
+  return __rodadasApiSaveChain;
+}
+
+/**
+ * Persiste só o {@code panelConfig} (juros/multa/honorários/índice) com segurança:
+ * GET completo → overlay do panel → PUT, sem depender da página atual da grade.
+ */
+export function persistirPanelConfigRodadaAgora(rodadas, rodadaKey) {
+  if (typeof window === 'undefined' || !featureFlags.useApiCalculos || !__hidratacaoCalculosConcluida) {
+    return Promise.resolve();
+  }
+  if (typeof rodadaKey !== 'string' || !rodadaKey) return Promise.resolve();
+  const src = rodadas && typeof rodadas === 'object' && !Array.isArray(rodadas) ? rodadas : {};
+  const local = src[rodadaKey];
+  if (!local || typeof local !== 'object') return Promise.resolve();
+  const sp = splitRodadaCalculosKey(rodadaKey);
+  if (!sp) return Promise.resolve();
+  const panel = extrairPanelConfig(local.panelConfig ?? {});
+
+  const run = (async () => {
+    let base = local;
+    try {
+      const rawFull = await fetchCalculoRodada(sp.cod, sp.proc, sp.dim);
+      if (rawFull && typeof rawFull === 'object') base = rawFull;
+    } catch (err) {
+      console.warn(`${LOG_CALC_API} GET completo para panelConfig falhou; usando estado local.`, err);
+    }
+    const titulosLocal = Array.isArray(local.titulos) ? local.titulos : [];
+    const titulosBase = Array.isArray(base.titulos) ? base.titulos : [];
+    const qtdLocal = contarTitulosComValorInicial(titulosLocal);
+    const qtdBase = contarTitulosComValorInicial(titulosBase);
+    const titulos =
+      qtdLocal > 0 && qtdLocal >= qtdBase
+        ? titulosLocal.filter((t, i) => i < Math.max(titulosLocal.length, titulosBase.length))
+        : titulosBase.map((t, i) =>
+            titulosLocal[i] && String(titulosLocal[i]?.valorInicial ?? '').trim() !== ''
+              ? titulosLocal[i]
+              : t,
+          );
+
+    const payload = {
+      ...base,
+      titulos,
+      panelConfig: panel,
+      dataCalculoRodada: local.dataCalculoRodada ?? base.dataCalculoRodada,
+    };
+    delete payload.titulosPagination;
+    delete payload.titulosResumo;
+
+    const saved = await putCalculoRodada(sp.cod, sp.proc, sp.dim, payload);
+    if (saved && typeof saved === 'object') {
+      lruSet(rodadaKey, { ...saved, panelConfig: panel });
+      __resumoParcelamentoAceito.set(rodadaKey, Boolean(saved.parcelamentoAceito));
+      invalidateRodadasResumoCache();
+    }
+  })().catch((err) => {
+    console.error('[vilareal] Falha ao gravar panelConfig da rodada na API:', err);
+  });
+
   __rodadasApiSaveChain = __rodadasApiSaveChain.then(() => run);
   emitRodadasAtualizadas();
   return __rodadasApiSaveChain;

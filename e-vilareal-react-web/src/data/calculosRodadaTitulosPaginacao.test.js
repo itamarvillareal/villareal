@@ -122,6 +122,29 @@ describe('calculosRodadaTitulosPaginacao', () => {
     expect(resumo.qtd).toContain('02');
   });
 
+  it('resolverResumoGeralTitulos usa local quando quantidadeTitulos da API já está toda carregada (slots vazios)', () => {
+    const dimensao = Array.from({ length: 60 }, (_, i) =>
+      i < 8
+        ? {
+            valorInicial: 'R$ 100,00',
+            juros: 'R$ 10,00',
+            multa: 'R$ 2,00',
+            honorarios: 'R$ 20,00',
+          }
+        : { valorInicial: '' },
+    );
+    const resumo = resolverResumoGeralTitulos(dimensao, 60, {
+      quantidadeTitulos: 8,
+      totalValorInicial: 800,
+      totalMulta: 0,
+      totalHonorarios: 0,
+      totalGeral: 4000,
+    });
+    expect(resumo.qtd).toContain('08');
+    expect(resumo.multa).toBe('R$ 16,00');
+    expect(resumo.honorarios).toBe('R$ 160,00');
+  });
+
   it('resumoTitulosFromApi formata totais', () => {
     const r = resumoTitulosFromApi({
       quantidadeTitulos: 3,
