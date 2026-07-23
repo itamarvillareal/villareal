@@ -28,6 +28,7 @@ import {
 import { listarCredenciais } from '../../api/peticoesProjudiApi.js';
 import { AssinaturaAutomaticaInicialPanel } from './AssinaturaAutomaticaInicialPanel.jsx';
 import { isArquivoP7s } from '../../domain/peticaoArquivo.js';
+import { ordenarLinhasP7s } from '../../domain/ordenarAnexosP7sInicial.js';
 import { SeletorPessoaParteImovel } from '../imoveis/SeletorPessoaParteImovel.jsx';
 import { buildLinkDestinoProcesso } from '../../domain/camposProcessoCliente.js';
 import { ProcessosToast, processosBtnPrimary } from '../processos/ProcessosAdminLayout.jsx';
@@ -141,23 +142,6 @@ function montarFormDataInicial({
 
 function linhaP7sComArquivo(file) {
   return { key: crypto.randomUUID(), file, idArquivoTipo: 16 };
-}
-
-/** Prefixo numérico do nome (ex.: `12.Anexo.pdf.p7s` → 12). Sem prefixo → fim da lista. */
-function prefixoNumericoNomeArquivo(nome) {
-  const m = String(nome ?? '').trim().match(/^(\d{1,2})\./);
-  return m ? Number.parseInt(m[1], 10) : 9999;
-}
-
-function ordenarLinhasP7s(linhas) {
-  return [...linhas].sort((a, b) => {
-    const pa = prefixoNumericoNomeArquivo(a.file?.name);
-    const pb = prefixoNumericoNomeArquivo(b.file?.name);
-    if (pa !== pb) return pa - pb;
-    return String(a.file?.name ?? '').localeCompare(String(b.file?.name ?? ''), 'pt-BR', {
-      sensitivity: 'base',
-    });
-  });
 }
 
 function BadgeCampo({ nivel, label, motivo }) {
