@@ -21,10 +21,9 @@
         }
 
         @page :first {
-            margin: 28.5mm 15mm 15mm 15mm;
+            margin: 0 15mm 15mm 15mm;
             @top-center {
-                content: element(cabecalho-padrao);
-                vertical-align: top;
+                content: none;
             }
             @bottom-center {
                 content: element(rodape-primeira);
@@ -307,7 +306,7 @@
 </head>
 <body>
 
-<th:block th:replace="~{documentos/fragments-peca :: cabecalho-peticao}"/>
+<th:block th:replace="~{documentos/fragments-peca :: cabecalho}"/>
 
 <th:block th:replace="~{documentos/fragments-peca :: rodape}"/>
 
