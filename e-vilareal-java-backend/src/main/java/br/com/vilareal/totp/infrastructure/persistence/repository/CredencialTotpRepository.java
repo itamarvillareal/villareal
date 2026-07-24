@@ -16,4 +16,6 @@ public interface CredencialTotpRepository extends JpaRepository<CredencialTotpEn
     Optional<CredencialTotpEntity> findByTribunalAndLoginAndAtivoTrue(TribunalIntegracao tribunal, String login);
 
     List<CredencialTotpEntity> findAllByTribunalAndAtivoTrue(TribunalIntegracao tribunal);
+
+    List<CredencialTotpEntity> findAllByTribunalOrderByIdDesc(TribunalIntegracao tribunal);
 }

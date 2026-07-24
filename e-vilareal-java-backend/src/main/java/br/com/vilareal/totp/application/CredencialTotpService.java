@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -106,6 +107,11 @@ public class CredencialTotpService {
         CredencialTotpEntity entity = buscar(id);
         entity.setSenhaCriptografada(cipherService.cifrar(senha.trim()));
         return repository.save(entity);
+    }
+
+    @Transactional(readOnly = true)
+    public List<CredencialTotpEntity> listarPorTribunal(TribunalIntegracao tribunal) {
+        return repository.findAllByTribunalOrderByIdDesc(tribunal);
     }
 
     @Transactional(readOnly = true)

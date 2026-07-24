@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Settings, Moon, Mail, Loader2, Plug, Landmark, ChevronRight } from 'lucide-react';
+import { Settings, Moon, Plug, Landmark, ChevronRight } from 'lucide-react';
 import { useTheme } from '../theme/ThemeProvider.jsx';
 import { isUsuarioMaster, setUsuarioMaster } from '../data/consultasVinculoHistoricoStorage.js';
 import { getColaboradoresHumanosAtivos } from '../data/agendaPersistenciaData.js';
@@ -12,13 +12,9 @@ import {
   USUARIO_MASTER_ID,
 } from '../data/usuarioPermissoesStorage.js';
 import { featureFlags } from '../config/featureFlags.js';
-import {
-  obterConfigProjudiProtocoloEmail,
-  salvarConfigProjudiProtocoloEmail,
-} from '../repositories/configuracaoRepository.js';
-import { VisorCodigoPdpj } from './VisorCodigoPdpj.jsx';
 import { ConfiguracoesLocalHelper } from './ConfiguracoesLocalHelper.jsx';
 import { ConfiguracaoMenuLateral } from './ConfiguracaoMenuLateral.jsx';
+import { ConfiguracaoIntegracoesSistema } from './ConfiguracaoIntegracoesSistema.jsx';
 
 /**
  * Tela de configurações do sistema.
@@ -27,36 +23,10 @@ export function Configuracoes() {
   const { dark, setDark } = useTheme();
   const [usuarioMaster, setUsuarioMasterState] = useState(() => isUsuarioMaster());
   const [operadorEstacao, setOperadorEstacaoState] = useState(() => getOperadorEstacaoId());
-  const [emailProtocolo, setEmailProtocolo] = useState('jr.villareal@gmail.com');
-  const [emailProtocoloCarregando, setEmailProtocoloCarregando] = useState(true);
-  const [emailProtocoloSalvando, setEmailProtocoloSalvando] = useState(false);
-  const [emailProtocoloErro, setEmailProtocoloErro] = useState('');
-  const [emailProtocoloOk, setEmailProtocoloOk] = useState('');
 
   useEffect(() => {
     setUsuarioMasterState(isUsuarioMaster());
     setOperadorEstacaoState(getOperadorEstacaoId());
-  }, []);
-
-  useEffect(() => {
-    let cancelado = false;
-    setEmailProtocoloCarregando(true);
-    setEmailProtocoloErro('');
-    void obterConfigProjudiProtocoloEmail()
-      .then((cfg) => {
-        if (cancelado) return;
-        const lista = Array.isArray(cfg?.destinatarios) ? cfg.destinatarios.filter(Boolean) : [];
-        setEmailProtocolo(lista.length ? lista.join(', ') : 'jr.villareal@gmail.com');
-      })
-      .catch((e) => {
-        if (!cancelado) setEmailProtocoloErro(e?.message || 'Falha ao carregar e-mails do protocolo PROJUDI.');
-      })
-      .finally(() => {
-        if (!cancelado) setEmailProtocoloCarregando(false);
-      });
-    return () => {
-      cancelado = true;
-    };
   }, []);
 
   function onToggleMaster(checked) {
@@ -68,30 +38,6 @@ export function Configuracoes() {
     setOperadorEstacaoId(novoId);
     setOperadorEstacaoState(novoId);
     setUsuarioSessaoAtualId(novoId);
-  }
-
-  async function onSalvarEmailProtocolo() {
-    setEmailProtocoloErro('');
-    setEmailProtocoloOk('');
-    const destinatarios = emailProtocolo
-      .split(/[,;\n]/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (!destinatarios.length) {
-      setEmailProtocoloErro('Informe ao menos um e-mail.');
-      return;
-    }
-    setEmailProtocoloSalvando(true);
-    try {
-      const cfg = await salvarConfigProjudiProtocoloEmail(destinatarios);
-      const lista = Array.isArray(cfg?.destinatarios) ? cfg.destinatarios : destinatarios;
-      setEmailProtocolo(lista.join(', '));
-      setEmailProtocoloOk('Destinatários salvos. E-mails de agendamento automático usarão esta lista.');
-    } catch (e) {
-      setEmailProtocoloErro(e?.message || 'Falha ao salvar destinatários.');
-    } finally {
-      setEmailProtocoloSalvando(false);
-    }
   }
 
   const listaUsuarios = getColaboradoresHumanosAtivos() || [];
@@ -111,7 +57,7 @@ export function Configuracoes() {
           <p className="text-sm text-slate-500">Preferências e opções do aplicativo.</p>
         </div>
       </header>
-      <section className="rounded-2xl border border-slate-200/90 bg-white/95 backdrop-blur-sm p-6 shadow-xl ring-1 ring-indigo-500/10 max-w-2xl space-y-6">
+      <section className="rounded-2xl border border-slate-200/90 bg-white/95 backdrop-blur-sm p-6 shadow-xl ring-1 ring-indigo-500/10 max-w-3xl space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2">
           <div className="flex items-start gap-3 min-w-0">
             <div className="p-2 rounded-lg bg-slate-100 border border-slate-200 shrink-0">
@@ -178,7 +124,7 @@ export function Configuracoes() {
           </div>
         </div>
 
-        <VisorCodigoPdpj />
+        <ConfiguracaoIntegracoesSistema />
 
         <ConfiguracoesLocalHelper />
 
@@ -222,57 +168,6 @@ export function Configuracoes() {
             )}
           </div>
         ) : null}
-
-        <div className="border-t border-slate-200 pt-6">
-          <div className="flex items-start gap-3">
-            <div className="p-2 rounded-lg bg-violet-100 border border-violet-200 shrink-0">
-              <Mail className="w-5 h-5 text-violet-800" aria-hidden />
-            </div>
-            <div className="min-w-0 flex-1 space-y-3">
-              <div>
-                <h2 className="text-sm font-semibold text-slate-800">Protocolo PROJUDI — e-mails</h2>
-                <p className="text-sm text-slate-600 mt-1">
-                  E-mail enviado <strong>somente</strong> quando o protocolo é disparado por{' '}
-                  <strong>agendamento automático</strong> (não no protocolo manual pela tela). Assunto{' '}
-                  <strong>OK</strong> em sucesso ou <strong>Erro</strong> em falha (ex.: .p7s ausente, robô ocupado).
-                </p>
-              </div>
-              <label className="block text-xs font-medium text-slate-600">
-                Destinatários (separe por vírgula)
-                <textarea
-                  rows={2}
-                  value={emailProtocolo}
-                  onChange={(e) => {
-                    setEmailProtocolo(e.target.value);
-                    setEmailProtocoloOk('');
-                  }}
-                  disabled={emailProtocoloCarregando || emailProtocoloSalvando}
-                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 disabled:opacity-60"
-                  placeholder="jr.villareal@gmail.com"
-                />
-              </label>
-              {emailProtocoloErro ? (
-                <p className="text-xs text-rose-700">{emailProtocoloErro}</p>
-              ) : null}
-              {emailProtocoloOk ? (
-                <p className="text-xs text-emerald-700">{emailProtocoloOk}</p>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => void onSalvarEmailProtocolo()}
-                disabled={emailProtocoloCarregando || emailProtocoloSalvando}
-                className="inline-flex items-center gap-2 rounded-lg bg-violet-700 px-4 py-2 text-sm font-medium text-white hover:bg-violet-800 disabled:opacity-60"
-              >
-                {emailProtocoloSalvando ? (
-                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
-                ) : (
-                  <Mail className="w-4 h-4" aria-hidden />
-                )}
-                Salvar destinatários
-              </button>
-            </div>
-          </div>
-        </div>
 
         <div className="border-t border-slate-200 pt-6">
           <h2 className="text-sm font-semibold text-slate-800">Financeiro — relatório de consultas de vínculo</h2>

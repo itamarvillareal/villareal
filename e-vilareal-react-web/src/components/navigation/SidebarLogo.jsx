@@ -5,11 +5,12 @@ import {
   getLogoSistemaSrc,
   limparLogoSistemaCustomizada,
   lerArquivoLogoComoDataUrl,
-  LOGO_SISTEMA_DEFAULT,
+  getLogoInstanciaDefault,
   LOGO_SISTEMA_EVENT,
   setLogoSistemaCustomizada,
   getLogoSistemaCustomizada,
 } from '../../data/logoSistemaStorage.js';
+import { isPortal1Instancia } from '../../config/instanciaPortal.js';
 
 /**
  * Logo do menu lateral com botão de editar no canto (aparece no hover).
@@ -60,6 +61,9 @@ export function SidebarLogo() {
     limparLogoSistemaCustomizada();
   }
 
+  const instanciaPortal1 = isPortal1Instancia();
+  const logoPadrao = getLogoInstanciaDefault();
+
   return (
     <div className="vl-sidebar-header shrink-0 border-b border-gray-300 bg-gray-100 px-2 py-1.5">
       <div className="relative">
@@ -70,19 +74,23 @@ export function SidebarLogo() {
         >
           <img
             src={src}
-            alt="Logo do sistema"
-            className="mx-auto max-h-[2.85rem] w-full object-contain object-center"
+            alt={instanciaPortal1 ? 'FFM Advogados & Associados' : 'Logo do sistema'}
+            className={`mx-auto w-full object-contain object-center ${
+              instanciaPortal1 ? 'max-h-[3.25rem]' : 'max-h-[2.85rem]'
+            }`}
             width={200}
             height={88}
             decoding="async"
             onError={(ev) => {
-              if (ev.currentTarget.src !== LOGO_SISTEMA_DEFAULT) {
-                ev.currentTarget.src = LOGO_SISTEMA_DEFAULT;
+              if (ev.currentTarget.src !== logoPadrao) {
+                ev.currentTarget.src = logoPadrao;
               }
             }}
           />
         </Link>
 
+        {!instanciaPortal1 ? (
+          <>
         {/* Zona do canto superior direito: o lápis só aparece ao passar o mouse nessa área */}
         <div className="group/corner absolute right-0 top-0 z-10 flex h-8 w-8 items-start justify-end">
           <button
@@ -116,6 +124,8 @@ export function SidebarLogo() {
           className="hidden"
           onChange={(e) => void onArquivo(e)}
         />
+          </>
+        ) : null}
       </div>
       {erro ? (
         <p className="mt-1 px-0.5 text-[10px] leading-tight text-rose-600 dark:text-rose-400" role="alert">

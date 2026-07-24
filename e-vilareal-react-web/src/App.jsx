@@ -6,7 +6,7 @@ import { Login } from './components/Login.jsx';
 import { featureFlags } from './config/featureFlags.js';
 import { Sidebar } from './components/Sidebar';
 import { useLogoSistemaSrc } from './components/navigation/SidebarLogo.jsx';
-import { LOGO_SISTEMA_DEFAULT } from './data/logoSistemaStorage.js';
+import { getLogoInstanciaDefault } from './data/logoSistemaStorage.js';
 import {
   LazyAgenda,
   LazyJuliaCaixa,
@@ -146,6 +146,7 @@ function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const logoSrc = useLogoSistemaSrc();
+  const logoPadraoInstancia = getLogoInstanciaDefault();
   const [accessTick, setAccessTick] = useState(0);
   /** Drawer de navegação só abaixo do breakpoint lg: menu hamburger no topo (consulta rápida; bottom nav roubaría área de conteúdo). */
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -261,8 +262,8 @@ function Layout() {
             height={56}
             decoding="async"
             onError={(ev) => {
-              if (ev.currentTarget.src !== LOGO_SISTEMA_DEFAULT) {
-                ev.currentTarget.src = LOGO_SISTEMA_DEFAULT;
+              if (ev.currentTarget.src !== logoPadraoInstancia) {
+                ev.currentTarget.src = logoPadraoInstancia;
               }
             }}
           />

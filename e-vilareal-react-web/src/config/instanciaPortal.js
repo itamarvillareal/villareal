@@ -1,5 +1,8 @@
-/** Logo da instância portal1 (FFM Advogados) na tela de login. */
-export const LOGO_LOGIN_PORTAL1 = '/logo-ffm-advogados.png';
+/** Logo da instância portal1 (FFM Advogados). */
+export const LOGO_PORTAL1 = '/logo-ffm-advogados.png';
+
+/** @deprecated use LOGO_PORTAL1 */
+export const LOGO_LOGIN_PORTAL1 = LOGO_PORTAL1;
 
 /** Detecta portal1 pelo hostname (mesmo build compartilhado entre instâncias). */
 export function isPortal1Instancia() {
