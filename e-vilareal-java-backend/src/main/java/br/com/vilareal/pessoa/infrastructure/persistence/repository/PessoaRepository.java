@@ -90,7 +90,22 @@ public interface PessoaRepository extends JpaRepository<PessoaEntity, Long>, Jpa
 
     Optional<PessoaEntity> findByCpf(String cpf);
 
-    @Query("SELECT COALESCE(MAX(p.id), 0) + 1 FROM PessoaEntity p")
+    /**
+     * Menor id ≥ 1 ainda não usado (preenche buracos: se faltar 1, devolve 1).
+     * Candidatos = {1} ∪ {id+1 de cada pessoa existente}.
+     */
+    @Query(
+            value =
+                    """
+                    SELECT COALESCE(MIN(c.candidato), 1)
+                    FROM (
+                        SELECT 1 AS candidato
+                        UNION
+                        SELECT p.id + 1 FROM pessoa p
+                    ) c
+                    WHERE NOT EXISTS (SELECT 1 FROM pessoa x WHERE x.id = c.candidato)
+                    """,
+            nativeQuery = true)
     long calcularProximoId();
 
     long countByImportacaoId(String importacaoId);

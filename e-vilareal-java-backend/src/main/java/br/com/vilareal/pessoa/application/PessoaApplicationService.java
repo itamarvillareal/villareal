@@ -195,13 +195,56 @@ public class PessoaApplicationService {
         validarUnicidadeCpf(cpf, null);
         validarResponsavel(null, req.getResponsavelId());
 
-        PessoaEntity p = new PessoaEntity();
-        aplicarNucleo(p, req, cpf);
-        p = pessoaRepository.save(p);
+        // Id explícito = menor número livre (gap-fill). IDENTITY sozinho só faria MAX+1.
+        PessoaEntity p = criarComMenorIdLivre(req, cpf);
         if (Boolean.TRUE.equals(req.getCriarCliente())) {
             garantirClienteParaPessoa(p);
         }
         return toResponseCompleto(pessoaRepository.findDetailById(p.getId()).orElse(p));
+    }
+
+    /**
+     * Insere pessoa no menor id disponível e aplica o núcleo do cadastro.
+     * Em corrida (dois creates no mesmo buraco), tenta de novo com o próximo livre.
+     */
+    private PessoaEntity criarComMenorIdLivre(PessoaCadastroRequest req, String cpf) {
+        String nome = Utf8MojibakeUtil.corrigir(req.getNome().trim());
+        for (int tentativa = 0; tentativa < 5; tentativa++) {
+            long id = pessoaRepository.calcularProximoId();
+            try {
+                int rows = jdbcTemplate.update(
+                        """
+                        INSERT INTO pessoa (
+                            id, nome, ativo, marcado_monitoramento, polo_monitorado,
+                            aceita_aviso_processo_novo, created_at, updated_at
+                        ) VALUES (?, ?, TRUE, FALSE, 'AMBOS', FALSE, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))
+                        """,
+                        id,
+                        nome);
+                if (rows != 1) {
+                    throw new BusinessRuleException("Falha ao reservar código de pessoa " + id + ".");
+                }
+            } catch (org.springframework.dao.DataIntegrityViolationException dup) {
+                // Corrida: outro create pegou o mesmo buraco — recalcula e tenta de novo.
+                continue;
+            }
+            PessoaEntity p = pessoaRepository
+                    .findById(id)
+                    .orElseThrow(() -> new BusinessRuleException("Pessoa " + id + " não encontrada após insert."));
+            aplicarNucleo(p, req, cpf);
+            p = pessoaRepository.save(p);
+            realinharAutoIncrementPessoa();
+            return p;
+        }
+        throw new BusinessRuleException(
+                "Não foi possível obter um código de pessoa livre após várias tentativas.");
+    }
+
+    /** Mantém AUTO_INCREMENT em MAX(id)+1 para não colidir com inserts IDENTITY futuros. */
+    private void realinharAutoIncrementPessoa() {
+        Long max = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(id), 0) FROM pessoa", Long.class);
+        long next = max == null || max < 1 ? 1L : max + 1L;
+        jdbcTemplate.execute("ALTER TABLE pessoa AUTO_INCREMENT = " + next);
     }
 
     @Transactional
