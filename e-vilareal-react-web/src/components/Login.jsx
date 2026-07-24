@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { LogIn, Lock, User } from 'lucide-react';
 import { useAuth, IDLE_SESSION_MESSAGE_STORAGE_KEY } from '../context/AuthContext.jsx';
 import { featureFlags } from '../config/featureFlags.js';
+import { isPortal1Instancia, LOGO_LOGIN_PORTAL1 } from '../config/instanciaPortal.js';
 
 /** Após autenticação bem-sucedida, entrada no sistema abre sempre a agenda. */
 const ROTA_APOS_LOGIN = '/agenda';
@@ -56,11 +57,22 @@ export function Login() {
     }
   }
 
+  const portal1 = isPortal1Instancia();
+
   return (
     <div
       className="min-h-screen min-h-dvh flex flex-col items-center justify-center px-4 py-10 bg-gradient-to-br from-slate-900 via-indigo-950/80 to-slate-900"
       style={{ minHeight: '100dvh', backgroundColor: '#0f172a', color: '#e2e8f0' }}
     >
+      {portal1 ? (
+        <div className="absolute top-4 left-4 sm:top-6 sm:left-6 z-10 pointer-events-none">
+          <img
+            src={LOGO_LOGIN_PORTAL1}
+            alt="FFM Advogados & Associados"
+            className="h-14 sm:h-20 w-auto max-w-[min(72vw,280px)] object-contain object-left rounded-md shadow-lg shadow-black/40"
+          />
+        </div>
+      ) : null}
       <div
         className="absolute inset-0 opacity-[0.07] pointer-events-none"
         style={{
