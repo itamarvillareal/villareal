@@ -63,7 +63,7 @@ export function PatrimonioDashboard() {
   }
 
   const alav = Number(data?.alavancagem || 0);
-  const reservaOk = Number(data?.reservaEmergenciaLiquida ?? data?.reservaEmergencia || 0) >= Number(data?.pisoReserva || 0);
+  const reservaOk = Number((data?.reservaEmergenciaLiquida ?? data?.reservaEmergencia) || 0) >= Number(data?.pisoReserva || 0);
   const comprom = Number(data?.comprometimentoRenda || 0);
 
   return (
