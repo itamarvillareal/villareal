@@ -43,6 +43,16 @@ public class AmortizacaoController {
         return service.solicitar(request);
     }
 
+    @PostMapping("/registrar-executada")
+    @ResponseStatus(HttpStatus.CREATED)
+    @Operation(description = """
+            Registra a posteriori amortização já executada na instituição financeira.
+            Persiste o fato, abate o teto anual e regenera o cronograma. Não executa operação bancária.
+            """)
+    public AmortizacaoResponse registrarExecutada(@Valid @RequestBody AmortizacaoRegistroRequest request) {
+        return service.registrarExecutada(request);
+    }
+
     @PostMapping("/{id}/confirmar")
     @Operation(description = "Confirma decisão após período de reflexão. O sistema registra; não executa operação bancária.")
     public AmortizacaoResponse confirmar(@PathVariable Long id) {

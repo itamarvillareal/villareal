@@ -95,6 +95,8 @@ public class AmortizacaoEntity {
         createdAt = now;
         updatedAt = now;
         if (dataSolicitacao == null) dataSolicitacao = now;
+        if (origem == null) origem = "SOLICITACAO";
+        if (ultrapassouTeto == null) ultrapassouTeto = false;
     }
 
     @PreUpdate
