@@ -170,13 +170,11 @@ public class DocumentoController {
                 // mantém hoje
             }
         }
-        String nomeSaida = nomeArquivo != null && !nomeArquivo.isBlank()
-                ? nomeArquivo.replaceAll("[^a-zA-Z0-9._\\- ]", "_")
-                : DocumentoDrivePastaService.formatarNomeArquivoPeticao("Documento_Formatado", dataDoc);
+        String nomeSalva = nomeArquivoPeticaoReformatada(dataDoc);
         if (!preview) {
-            salvarPeticaoGeradaNoDriveAsync(processoId, codigoCliente, numeroInterno, pdf, nomeSaida);
+            salvarPeticaoGeradaNoDriveAsync(processoId, codigoCliente, numeroInterno, pdf, nomeSalva);
         }
-        return respostaPdf(nomeSaida, pdf, preview);
+        return respostaPdf(nomeSalva, pdf, preview);
     }
 
     @PostMapping("/reformatar/inserir-pasta-assinar")
@@ -195,11 +193,9 @@ public class DocumentoController {
                 // mantém hoje
             }
         }
-        String nomeSaida = nomeArquivo != null && !nomeArquivo.isBlank()
-                ? nomeArquivo.replaceAll("[^a-zA-Z0-9._\\- ]", "_")
-                : DocumentoDrivePastaService.formatarNomeArquivoPeticao("Documento_Formatado", dataDoc);
+        String nomeSalva = nomeArquivoPeticaoReformatada(dataDoc);
         DocumentoInserirPastaAssinarResponse resp =
-                pastaAssinarService.inserirPdf(processoId, codigoCliente, numeroInterno, pdf, nomeSaida);
+                pastaAssinarService.inserirPdf(processoId, codigoCliente, numeroInterno, pdf, nomeSalva);
         return ResponseEntity.ok(resp);
     }
 
@@ -254,12 +250,13 @@ public class DocumentoController {
         return respostaPdf(nomeSaida, pdf, preview);
     }
 
-    private static String nomePdfReformatado(String nomeOriginal, LocalDate data) {
-        if (nomeOriginal != null && !nomeOriginal.isBlank()) {
-            String base = nomeOriginal.replaceAll("(?i)\\.(docx|pdf)$", "") + "_formatado.pdf";
-            return base.replaceAll("[^a-zA-Z0-9._\\- ]", "_");
-        }
+    /** Petições reformatadas (upload Word/PDF) usam sempre o prefixo {@code 01.} no Drive. */
+    static String nomeArquivoPeticaoReformatada(LocalDate data) {
         return DocumentoDrivePastaService.formatarNomeArquivoPeticao("Documento_Formatado", data);
+    }
+
+    private static String nomePdfReformatado(String nomeOriginal, LocalDate data) {
+        return nomeArquivoPeticaoReformatada(data);
     }
 
     @PostMapping("/procuracao")

@@ -15,6 +15,8 @@ class DocumentoNomeNumeracaoUtilTest {
                 .isEqualTo("01.PeticaoInicial.pdf");
         assertThat(DocumentoNomeNumeracaoUtil.formatarNomeArquivoPeticao("Execucao", LocalDate.of(2026, 7, 22)))
                 .isEqualTo("01.PeticaoExecucao.pdf");
+        assertThat(DocumentoNomeNumeracaoUtil.formatarNomeArquivoPeticao("Documento_Formatado", LocalDate.of(2026, 7, 22)))
+                .isEqualTo("01.PeticaoFormatada.pdf");
     }
 
     @Test

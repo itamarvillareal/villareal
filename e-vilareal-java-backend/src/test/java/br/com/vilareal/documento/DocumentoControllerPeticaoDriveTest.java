@@ -21,4 +21,10 @@ class DocumentoControllerPeticaoDriveTest {
         assertThat(DocumentoController.temContextoProcesso(null, null, null)).isFalse();
         assertThat(DocumentoController.temContextoProcesso(0L, " ", null)).isFalse();
     }
+
+    @Test
+    void nomeArquivoPeticaoReformatada_usaPrefixo01() {
+        assertThat(DocumentoController.nomeArquivoPeticaoReformatada(java.time.LocalDate.of(2026, 7, 24)))
+                .isEqualTo("01.PeticaoFormatada.pdf");
+    }
 }

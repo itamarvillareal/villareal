@@ -5,7 +5,7 @@ import {
   extrairConteudoArquivo,
   gerarPdfReformatado,
   inserirPdfReformatadoNaPastaAssinar,
-  nomeArquivoPeticaoPdf,
+  NOME_ARQUIVO_PETICAO_FORMATADA,
 } from '../../../repositories/documentosRepository.js';
 import { resolveSelectExato, extrairDataIsoDeLocalData, formatarLocalData, LOCAL_DATA_PADRAO } from '../../../helpers/documentoHelper.js';
 import { salvarHistoricoDoProcesso } from '../../../data/processosHistoricoData.js';
@@ -109,17 +109,13 @@ export function ModoEnviarArquivo({ dadosProcesso, onErro, onSucesso, onLoadingC
   }, [form, dadosProcesso?.processoApiId]);
 
   const montarOpcoesGeracao = useCallback(
-    (preview) => {
-      const baseNome = (arquivo?.name || 'documento').replace(/\.[^.]+$/, '');
-      return {
-        preview,
-        nomeArquivo: `${baseNome}_formatado.pdf`,
-        codigoCliente: dadosProcesso?.codigoCliente,
-        numeroInterno: dadosProcesso?.numeroInterno,
-        processoId: dadosProcesso?.processoApiId,
-      };
-    },
-    [arquivo, dadosProcesso],
+    (preview) => ({
+      preview,
+      codigoCliente: dadosProcesso?.codigoCliente,
+      numeroInterno: dadosProcesso?.numeroInterno,
+      processoId: dadosProcesso?.processoApiId,
+    }),
+    [dadosProcesso],
   );
 
   const podeInserirPastaAssinar = Boolean(
@@ -190,8 +186,7 @@ export function ModoEnviarArquivo({ dadosProcesso, onErro, onSucesso, onLoadingC
     setOcupado(true);
     try {
       const blob = await gerarPdfReformatado(conteudoEditavel, montarOpcoesGeracao(false));
-      const baseNome = (arquivo.name || 'documento').replace(/\.[^.]+$/, '');
-      downloadPdfBlob(blob, nomeArquivoPeticaoPdf(baseNome));
+      downloadPdfBlob(blob, NOME_ARQUIVO_PETICAO_FORMATADA);
     } catch (e) {
       onErro?.(e?.message || 'Falha ao gerar PDF final.');
     } finally {

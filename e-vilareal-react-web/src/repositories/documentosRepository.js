@@ -46,6 +46,9 @@ export function downloadPdfBlob(blob, filename) {
   dispararDownloadBlob(blob, filename);
 }
 
+/** Nome padrão de petição reformatada (upload Word/PDF) — prefixo 01 no Drive. */
+export const NOME_ARQUIVO_PETICAO_FORMATADA = '01.PeticaoFormatada.pdf';
+
 export function nomeArquivoPeticaoPdf(sufixo) {
   const base = sufixo
     ? String(sufixo)
