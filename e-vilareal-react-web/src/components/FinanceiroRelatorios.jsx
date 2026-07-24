@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RefreshCw } from 'lucide-react';
+import { FileDown, RefreshCw } from 'lucide-react';
 import { featureFlags } from '../config/featureFlags.js';
 import {
   buildLetraToContaMerge,
@@ -209,22 +209,40 @@ export function FinanceiroRelatorios() {
   };
 
   return (
-    <div className="flex-1 px-3 py-4 md:px-5 md:py-5 space-y-5 overflow-auto min-h-0">
-      <div className="flex flex-wrap items-center justify-between gap-3 mx-1">
+    <div className="flex-1 px-3 py-4 md:px-5 md:py-5 space-y-5 overflow-auto min-h-0 financeiro-relatorios-print">
+      <div className="flex flex-wrap items-center justify-between gap-3 mx-1 print:hidden">
         <p className="text-sm text-slate-600 max-w-3xl">
           Saldos calculados pela <strong>soma de todos os lançamentos</strong> carregados em cada extrato ou conta
           contábil. Reflete o histórico importado — não substitui o saldo oficial do banco na data de hoje.
         </p>
-        <button
-          type="button"
-          onClick={() => void recarregar()}
-          disabled={loading}
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-800 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} aria-hidden />
-          Atualizar
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => window.print()}
+            disabled={loading}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-800 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
+            title="Exportar relatórios em PDF (Imprimir do navegador)"
+          >
+            <FileDown className="w-4 h-4" aria-hidden />
+            Exportar PDF
+          </button>
+          <button
+            type="button"
+            onClick={() => void recarregar()}
+            disabled={loading}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-800 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} aria-hidden />
+            Atualizar
+          </button>
+        </div>
       </div>
+      <header className="hidden print:block mx-1 mb-3">
+        <h1 className="text-base font-bold">Relatórios financeiros — saldos</h1>
+        <p className="text-xs text-slate-600">
+          Emitido em {new Date().toLocaleDateString('pt-BR')} · saldo líquido {fmtReais(saldoGeralExtratos)}
+        </p>
+      </header>
 
       {erro ? (
         <p className="mx-1 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{erro}</p>

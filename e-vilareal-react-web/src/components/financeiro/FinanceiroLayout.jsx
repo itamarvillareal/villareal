@@ -284,7 +284,7 @@ function FinanceiroShell({
 
   return (
     <div className="flex w-full flex-1 flex-col min-h-[60dvh] lg:min-h-0 lg:h-full overflow-hidden bg-slate-50 dark:bg-slate-950">
-      <header className="h-11 shrink-0 flex items-center justify-between gap-2 px-2 sm:px-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+      <header className="h-11 shrink-0 flex items-center justify-between gap-2 px-2 sm:px-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 print:hidden">
         <div className="flex items-center gap-1.5 min-w-0">
           <button
             type="button"
@@ -346,7 +346,7 @@ function FinanceiroShell({
         ) : null}
 
         <aside
-          className={`fixed inset-y-0 left-0 z-[80] flex w-[min(280px,88vw)] flex-col overflow-y-auto overscroll-y-contain border-r border-slate-200 bg-slate-50 transition-transform duration-200 dark:border-slate-800 dark:bg-slate-900/95 lg:hidden ${
+          className={`fixed inset-y-0 left-0 z-[80] flex w-[min(280px,88vw)] flex-col overflow-y-auto overscroll-y-contain border-r border-slate-200 bg-slate-50 transition-transform duration-200 dark:border-slate-800 dark:bg-slate-900/95 lg:hidden print:hidden ${
             mobileNavOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none'
           }`}
           aria-hidden={!mobileNavOpen}
@@ -355,7 +355,7 @@ function FinanceiroShell({
         </aside>
 
         <aside
-          className={`hidden lg:flex lg:flex-col shrink-0 h-full min-h-0 overflow-y-auto overscroll-y-contain border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/80 transition-[width] ${
+          className={`hidden lg:flex lg:flex-col shrink-0 h-full min-h-0 overflow-y-auto overscroll-y-contain border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/80 transition-[width] print:hidden ${
             sidebarCollapsed ? 'w-12' : 'w-[180px]'
           }`}
         >
@@ -372,7 +372,7 @@ function FinanceiroShell({
           {!sidebarCollapsed ? <FinanceiroSidebarContent {...sidebarProps} /> : null}
         </aside>
 
-        <main className="flex flex-1 flex-col min-h-0 min-w-0 overflow-hidden">
+        <main className="flex flex-1 flex-col min-h-0 min-w-0 overflow-hidden print:overflow-visible">
           <Suspense fallback={<DashboardSkeleton />}>
             <Outlet />
           </Suspense>

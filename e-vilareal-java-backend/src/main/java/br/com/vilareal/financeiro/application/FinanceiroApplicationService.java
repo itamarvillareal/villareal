@@ -269,13 +269,14 @@ public class FinanceiroApplicationService {
             Boolean visivelCliente,
             Boolean conferido,
             NaturezaLancamento natureza,
+            java.math.BigDecimal valorExato,
             Boolean semProcesso,
             Pageable pageable) {
         var spec = specExtrato(
                 clienteId, processoId, contaContabilId, dataInicio, dataFim, etapa, numeroBanco,
                 busca, semClienteId, semGrupoCompensacao, ano, mes, contaCodigos, contaCodigosExcluir,
                 cadastroPlenitude, codigoCliente, numeroInternoProcesso, numeroImovel,
-                compensacaoSemPar, visivelCliente, conferido, natureza, semProcesso);
+                compensacaoSemPar, visivelCliente, conferido, natureza, valorExato, semProcesso);
         return lancamentoRepository.findAll(spec, pageable).map(this::toExtratoListItem);
     }
 
@@ -307,12 +308,13 @@ public class FinanceiroApplicationService {
             Boolean visivelCliente,
             Boolean conferido,
             NaturezaLancamento natureza,
+            java.math.BigDecimal valorExato,
             Boolean semProcesso) {
         var spec = specExtrato(
                 clienteId, processoId, contaContabilId, dataInicio, dataFim, etapa, numeroBanco,
                 busca, semClienteId, semGrupoCompensacao, ano, mes, contaCodigos, contaCodigosExcluir,
                 cadastroPlenitude, codigoCliente, numeroInternoProcesso, numeroImovel,
-                compensacaoSemPar, visivelCliente, conferido, natureza, semProcesso);
+                compensacaoSemPar, visivelCliente, conferido, natureza, valorExato, semProcesso);
 
         var cb = entityManager.getCriteriaBuilder();
         var cq = cb.createQuery(Object[].class);
@@ -384,6 +386,7 @@ public class FinanceiroApplicationService {
             Boolean visivelCliente,
             Boolean conferido,
             NaturezaLancamento natureza,
+            java.math.BigDecimal valorExato,
             Boolean semProcesso) {
         var codigos = LancamentoFinanceiroSpecifications.parseContaCodigosParam(contaCodigos);
         boolean excluir = Boolean.TRUE.equals(contaCodigosExcluir);
@@ -409,6 +412,9 @@ public class FinanceiroApplicationService {
         spec = spec.and(LancamentoFinanceiroSpecifications.comVisivelCliente(visivelCliente));
         spec = spec.and(LancamentoFinanceiroSpecifications.comConferido(conferido));
         spec = spec.and(LancamentoFinanceiroSpecifications.comNatureza(natureza));
+        java.math.BigDecimal moduloValor =
+                valorExato == null ? null : valorExato.abs().setScale(2, java.math.RoundingMode.HALF_UP);
+        spec = spec.and(LancamentoFinanceiroSpecifications.comValorExato(moduloValor));
         spec = spec.and(LancamentoFinanceiroSpecifications.semProcesso(semProcesso));
         return aplicarRestricaoExtratoBancos(spec, numeroBanco);
     }

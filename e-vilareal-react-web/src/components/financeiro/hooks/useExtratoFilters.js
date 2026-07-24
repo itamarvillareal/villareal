@@ -12,6 +12,11 @@ import {
   cadastroParaQueryApi,
   parseCadastroFiltroParam,
 } from '../extrato/extratoCadastroFiltro.js';
+import {
+  VALOR_FILTRO_TODOS,
+  parseValorFiltroParam,
+  valorFiltroParaQueryApi,
+} from '../extrato/extratoValorFiltro.js';
 import { filtroCompensacaoSemParAtivo } from '../extrato/compensacaoSemPar.js';
 import { normalizarBancosFiltro, parseBancosFiltroParam } from '../inbox/inboxBancosFiltro.js';
 import { isNumeroCartaoFinanceiro } from '../../../data/financeiroData.js';
@@ -96,6 +101,7 @@ function readFilters(params) {
     letras,
     letrasModo,
     cadastro: parseCadastroFiltroParam(params),
+    ...parseValorFiltroParam(params),
     etapa: params.get('etapa') || null,
     confianca: readConfiancaParam(params),
     contaCodigo: null,
@@ -150,6 +156,16 @@ function writeFilters(params, f) {
   setOrDel(
     'cadastro',
     f.cadastro && f.cadastro !== CADASTRO_TODOS ? f.cadastro : null,
+  );
+  setOrDel(
+    'valorFiltro',
+    f.valorFiltro && f.valorFiltro !== VALOR_FILTRO_TODOS ? f.valorFiltro : null,
+  );
+  setOrDel(
+    'valorExato',
+    f.valorFiltro === 'exato' && f.valorExato != null && Number.isFinite(f.valorExato)
+      ? f.valorExato
+      : null,
   );
   setOrDel('etapa', f.etapa);
   setOrDel('confianca', f.confianca);
@@ -229,6 +245,7 @@ export function useExtratoFilters() {
     const buscaPendente = busca !== String(filters.busca ?? '').trim();
     const letrasQuery = letrasParaQueryApi(filters);
     const cadastroQuery = cadastroParaQueryApi(filters.cadastro);
+    const valorQuery = valorFiltroParaQueryApi(filters);
     const semParCompensacao = filtroCompensacaoSemParAtivo(filters);
     const bancos = normalizarBancosFiltro(filters.bancos);
     return {
@@ -242,6 +259,7 @@ export function useExtratoFilters() {
       semGrupoCompensacao: filters.semGrupoCompensacao || undefined,
       ...letrasQuery,
       ...cadastroQuery,
+      ...valorQuery,
       page: buscaPendente ? 0 : filters.page,
       size: filters.size,
       sort: filters.sort,
@@ -254,6 +272,8 @@ export function useExtratoFilters() {
     filters.letras,
     filters.letrasModo,
     filters.cadastro,
+    filters.valorFiltro,
+    filters.valorExato,
     debouncedBusca,
     filters.semClienteId,
     filters.semGrupoCompensacao,
@@ -310,6 +330,15 @@ export function useExtratoFilters() {
     (cadastro) => syncUrl({ cadastro: cadastro || CADASTRO_TODOS, resetPage: true }),
     [syncUrl],
   );
+  const setValorFiltro = useCallback(
+    (valorFiltro, valorExato = null) =>
+      syncUrl({
+        valorFiltro: valorFiltro || VALOR_FILTRO_TODOS,
+        valorExato: valorFiltro === 'exato' ? valorExato : null,
+        resetPage: true,
+      }),
+    [syncUrl],
+  );
   const setContaCodigo = useCallback(
     (contaCodigo) =>
       syncUrl({
@@ -362,6 +391,7 @@ export function useExtratoFilters() {
     setContaCodigo,
     setLetrasFiltro,
     setCadastroFiltro,
+    setValorFiltro,
     setBusca,
     setSemClienteId,
     setSemGrupoCompensacao,

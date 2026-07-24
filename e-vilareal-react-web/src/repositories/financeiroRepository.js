@@ -404,6 +404,7 @@ function queryLancamentosPaginados(filtros = {}) {
     visivelCliente: typeof filtros.visivelCliente === 'boolean' ? filtros.visivelCliente : undefined,
     conferido: typeof filtros.conferido === 'boolean' ? filtros.conferido : undefined,
     natureza: filtros.natureza ?? undefined,
+    valorExato: filtros.valorExato != null && filtros.valorExato !== '' ? filtros.valorExato : undefined,
     semProcesso: filtros.semProcesso === true ? true : undefined,
   };
 }

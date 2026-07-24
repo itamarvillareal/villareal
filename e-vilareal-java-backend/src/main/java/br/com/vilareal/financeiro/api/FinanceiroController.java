@@ -255,6 +255,7 @@ public class FinanceiroController {
             @RequestParam(value = "visivelCliente", required = false) Boolean visivelCliente,
             @RequestParam(value = "conferido", required = false) Boolean conferido,
             @RequestParam(value = "natureza", required = false) String natureza,
+            @RequestParam(value = "valorExato", required = false) java.math.BigDecimal valorExato,
             @RequestParam(value = "semProcesso", required = false) Boolean semProcesso,
             @PageableDefault(size = 20, sort = "dataLancamento", direction = Sort.Direction.ASC) Pageable pageable) {
         EtapaLancamento etapaEnum = null;
@@ -284,6 +285,7 @@ public class FinanceiroController {
                 visivelCliente,
                 conferido,
                 parseNatureza(natureza),
+                valorExato,
                 semProcesso,
                 pageable);
     }
@@ -313,6 +315,7 @@ public class FinanceiroController {
             @RequestParam(value = "visivelCliente", required = false) Boolean visivelCliente,
             @RequestParam(value = "conferido", required = false) Boolean conferido,
             @RequestParam(value = "natureza", required = false) String natureza,
+            @RequestParam(value = "valorExato", required = false) java.math.BigDecimal valorExato,
             @RequestParam(value = "semProcesso", required = false) Boolean semProcesso) {
         EtapaLancamento etapaEnum = null;
         if (!Boolean.TRUE.equals(compensacaoSemPar) && etapa != null && !etapa.isBlank()) {
@@ -341,6 +344,7 @@ public class FinanceiroController {
                 visivelCliente,
                 conferido,
                 parseNatureza(natureza),
+                valorExato,
                 semProcesso);
     }
 

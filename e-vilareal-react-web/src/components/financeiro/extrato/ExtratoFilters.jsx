@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pencil, Search, Trash2, Wrench } from 'lucide-react';
+import { FileDown, Pencil, Search, Trash2, Wrench } from 'lucide-react';
 import { useFinanceiroChrome, useFinanceiroFilters } from '../FinanceiroContext.jsx';
 import { PeriodoSelector } from '../shared/PeriodoSelector.jsx';
 import { isPeriodoTotal } from '../shared/periodoFinanceiro.js';
@@ -8,6 +8,8 @@ import { EtapaFiltroSelect } from '../shared/EtapaFiltroSelect.jsx';
 import { LimparContaDialog } from '../shared/LimparContaDialog.jsx';
 import { SaldoInicialDialog } from '../shared/SaldoInicialDialog.jsx';
 import { ExtratoRepararDialog } from './ExtratoRepararDialog.jsx';
+import { ExtratoValorFiltro } from './ExtratoValorFiltro.jsx';
+import { ExtratoImpressaoModal } from './ExtratoImpressaoModal.jsx';
 import { formatDataCurta, formatMoeda } from '../shared/financeiroFormat.js';
 import { FINANCEIRO_REFRESH_PENDENTES } from '../hooks/useKeyboardShortcuts.js';
 import { LetrasFiltroExtrato } from './LetrasFiltroExtrato.jsx';
@@ -17,6 +19,7 @@ import {
   CADASTRO_TODOS,
   rotuloCadastroFiltro,
 } from './extratoCadastroFiltro.js';
+import { VALOR_FILTRO_TODOS } from './extratoValorFiltro.js';
 
 export function ExtratoFilters({
   totalNaPagina = 0,
@@ -26,10 +29,12 @@ export function ExtratoFilters({
 }) {
   const {
     filters,
+    apiQuery,
     setMes,
     setEtapa,
     setLetrasFiltro,
     setCadastroFiltro,
+    setValorFiltro,
     setBusca,
     setSemClienteId,
     setSemGrupoCompensacao,
@@ -41,6 +46,7 @@ export function ExtratoFilters({
   const [limparOpen, setLimparOpen] = useState(false);
   const [saldoInicialOpen, setSaldoInicialOpen] = useState(false);
   const [repararOpen, setRepararOpen] = useState(false);
+  const [pdfOpen, setPdfOpen] = useState(false);
 
   useEffect(() => {
     setBuscaLocal(filters.busca ?? '');
@@ -54,6 +60,22 @@ export function ExtratoFilters({
       <div className="flex flex-wrap items-center gap-2">
         <PeriodoSelector value={filters.mes} onChange={setMes} incluirTotal />
         <EtapaFiltroSelect value={filters.etapa ?? ''} onChange={(v) => setEtapa(v || null)} />
+        <div className="md:hidden">
+          <ExtratoValorFiltro
+            valorFiltro={filters.valorFiltro ?? VALOR_FILTRO_TODOS}
+            valorExato={filters.valorExato}
+            onChange={setValorFiltro}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => setPdfOpen(true)}
+          className="md:hidden inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 shrink-0"
+          title="Exportar extrato filtrado em PDF"
+        >
+          <FileDown className="w-3 h-3" aria-hidden />
+          PDF
+        </button>
         {bancoAtivo && bancoNome ? <FilterTag label={bancoNome} onRemove={() => setBanco(null)} /> : null}
         {bancoAtivo ? (
           <div
@@ -105,6 +127,20 @@ export function ExtratoFilters({
           <option value={CADASTRO_PLENO}>{rotuloCadastroFiltro(CADASTRO_PLENO)}</option>
           <option value={CADASTRO_PARCIAL}>{rotuloCadastroFiltro(CADASTRO_PARCIAL)}</option>
         </select>
+        <ExtratoValorFiltro
+          valorFiltro={filters.valorFiltro ?? VALOR_FILTRO_TODOS}
+          valorExato={filters.valorExato}
+          onChange={setValorFiltro}
+        />
+        <button
+          type="button"
+          onClick={() => setPdfOpen(true)}
+          className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 shrink-0"
+          title="Exportar extrato filtrado em PDF"
+        >
+          <FileDown className="w-3 h-3" aria-hidden />
+          Exportar PDF
+        </button>
         {filters.semClienteId ? (
           <FilterTag label="Sem cliente" onRemove={() => setSemClienteId(false)} />
         ) : (
@@ -209,6 +245,15 @@ export function ExtratoFilters({
         bancoNome={bancoNome}
         onClose={() => setSaldoInicialOpen(false)}
         onSaved={() => window.dispatchEvent(new CustomEvent(FINANCEIRO_REFRESH_PENDENTES))}
+      />
+    ) : null}
+
+    {pdfOpen ? (
+      <ExtratoImpressaoModal
+        apiQuery={apiQuery}
+        titulo={bancoNome ? `Extrato — ${bancoNome}` : 'Extrato financeiro'}
+        subtitulo={isPeriodoTotal(filters.mes) ? 'Todos os lançamentos' : `Período ${filters.mes}`}
+        onClose={() => setPdfOpen(false)}
       />
     ) : null}
     </>
