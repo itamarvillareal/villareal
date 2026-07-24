@@ -22,6 +22,30 @@ export const LazyJuliaCaixa = fromNamed(() => import('../components/JuliaCaixa.j
 export const LazyAnaLuisa = fromNamed(() => import('../components/AnaLuisa.jsx'), 'AnaLuisa');
 export const LazyAtividade = fromNamed(() => import('../components/Atividade.jsx'), 'Atividade');
 export const LazyPatrimonio = fromNamed(() => import('../components/Patrimonio.jsx'), 'Patrimonio');
+export const LazyPatrimonioLayout = fromNamed(
+  () => import('../components/patrimonio/PatrimonioLayout.jsx'),
+  'PatrimonioLayout'
+);
+export const LazyPatrimonioDashboard = fromNamed(
+  () => import('../components/patrimonio/PatrimonioDashboard.jsx'),
+  'PatrimonioDashboard'
+);
+export const LazyPatrimonioPassivos = fromNamed(
+  () => import('../components/patrimonio/PatrimonioPassivos.jsx'),
+  'PatrimonioPassivos'
+);
+export const LazyPatrimonioAmortizacao = fromNamed(
+  () => import('../components/patrimonio/PatrimonioAmortizacao.jsx'),
+  'PatrimonioAmortizacao'
+);
+export const LazyPatrimonioComparador = fromNamed(
+  () => import('../components/patrimonio/PatrimonioComparador.jsx'),
+  'PatrimonioComparador'
+);
+export const LazyPatrimonioAtivos = fromNamed(
+  () => import('../components/patrimonio/PatrimonioAtivos.jsx'),
+  'PatrimonioAtivos'
+);
 export const LazyAtividadesEmLote = fromNamed(
   () => import('../components/AtividadesEmLote.jsx'),
   'AtividadesEmLote'

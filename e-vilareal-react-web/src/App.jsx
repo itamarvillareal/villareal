@@ -13,6 +13,12 @@ import {
   LazyAnaLuisa,
   LazyAtividade,
   LazyPatrimonio,
+  LazyPatrimonioLayout,
+  LazyPatrimonioDashboard,
+  LazyPatrimonioPassivos,
+  LazyPatrimonioAmortizacao,
+  LazyPatrimonioComparador,
+  LazyPatrimonioAtivos,
   LazyAtividadesEmLote,
   LazyBoard,
   LazyCadastroClientes,
@@ -199,7 +205,7 @@ function Layout() {
       navigate(getPrimeiraRotaPermitida(uid), { replace: true });
       return;
     }
-    if (pathNorm === '/patrimonio' && !perfilAtivoEhMasterEstacao()) {
+    if ((pathNorm === '/patrimonio' || pathNorm.startsWith('/patrimonio/')) && !perfilAtivoEhMasterEstacao()) {
       navigate(getPrimeiraRotaPermitida(uid), { replace: true });
       return;
     }
@@ -471,7 +477,14 @@ function App() {
               <Route path="/julia/caixa" element={<LazyJuliaCaixa />} />
               <Route path="/ana-luisa" element={<LazyAnaLuisa />} />
               <Route path="/atividade" element={<LazyAtividade />} />
-              <Route path="/patrimonio" element={<LazyPatrimonio />} />
+              <Route path="/patrimonio" element={<LazyPatrimonioLayout />}>
+                <Route index element={<LazyPatrimonioDashboard />} />
+                <Route path="passivos" element={<LazyPatrimonioPassivos />} />
+                <Route path="amortizacao" element={<LazyPatrimonioAmortizacao />} />
+                <Route path="comparador" element={<LazyPatrimonioComparador />} />
+                <Route path="ativos" element={<LazyPatrimonioAtivos />} />
+                <Route path="legado" element={<LazyPatrimonio />} />
+              </Route>
               <Route path="/atividades-em-lote" element={<LazyAtividadesEmLote />} />
               <Route path="/processos" element={<LazyProcessos />} />
               <Route path="/processos/publicacoes" element={<LazyPublicacoesProcessos />} />
