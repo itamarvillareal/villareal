@@ -1,24 +1,33 @@
 # Stack VilaReal (API, front). MySQL local opcional: docker-compose.local-db.yml
 #
-# Banco oficial em dev: container vilareal-db (compose.local-db.yml), host localhost:3307.
-# Sem MySQL local: backend usa túnel VPS (3308) via .env.docker — ver .env.docker.example
+# Instâncias na mesma VPS (project name + env file):
+#   docker compose -p villareal --env-file .env.docker  up -d   # portal
+#   docker compose -p portal1  --env-file .env.portal1 up -d   # clone
+#
+# Imagens COMPARTILHADAS entre instâncias (build uma vez, sobe nas duas):
+#   vilareal-backend:latest / vilareal-frontend:latest
+# Containers/portas/volumes/env continuam isolados por instância.
+#
+# Variáveis de instância (defaults = portal atual / compatível com .env.docker):
+#   COMPOSE_CONTAINER_PREFIX, HOST_BACKEND_PORT, HOST_FRONTEND_PORT, INSTANCE_DATA_ROOT
 
 services:
   backend:
+    image: vilareal-backend:latest
     build:
       context: .
       dockerfile: e-vilareal-java-backend/Dockerfile
-    container_name: vilareal-backend
+    container_name: ${COMPOSE_CONTAINER_PREFIX:-vilareal}-backend
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?defina ANTHROPIC_API_KEY no .env.docker}
-      # Variáveis VILLAREAL_COMPOSE_* vêm de `.env.docker` (evita colidir com um `.env` genérico na raiz).
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?defina ANTHROPIC_API_KEY no env file}
+      # Variáveis VILLAREAL_COMPOSE_* vêm do env-file da instância.
       SPRING_DATASOURCE_URL: ${VILLAREAL_COMPOSE_JDBC_URL:-jdbc:mysql://host.docker.internal:3308/vilareal?createDatabaseIfNotExist=false&useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=utf8&serverTimezone=UTC}
       SPRING_DATASOURCE_USERNAME: ${VILLAREAL_COMPOSE_JDBC_USER:-villareal_remote}
-      SPRING_DATASOURCE_PASSWORD: ${VILLAREAL_COMPOSE_JDBC_PASSWORD:?Crie .env.docker a partir de .env.docker.example e defina VILLAREAL_COMPOSE_JDBC_PASSWORD}
+      SPRING_DATASOURCE_PASSWORD: ${VILLAREAL_COMPOSE_JDBC_PASSWORD:?Defina VILLAREAL_COMPOSE_JDBC_PASSWORD no env file}
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-min-32-chars-long!!}
       GMAIL_TOKENS_DIRECTORY: /home/vilareal/gmail-tokens
-      GOOGLE_DRIVE_SHARED_DRIVE_ID: ${GOOGLE_DRIVE_SHARED_DRIVE_ID:-0ANU_zUd2tFQ7Uk9PVA}
+      GOOGLE_DRIVE_SHARED_DRIVE_ID: ${GOOGLE_DRIVE_SHARED_DRIVE_ID:-}
       GOOGLE_DRIVE_ROOT_FOLDER_ID: ${GOOGLE_DRIVE_ROOT_FOLDER_ID:-}
       GOOGLE_DRIVE_IMPERSONATE_USER: ${GOOGLE_DRIVE_IMPERSONATE_USER:-}
       PROJUDI_CRED_KEY: ${PROJUDI_CRED_KEY:-}
@@ -26,56 +35,48 @@ services:
       LC_ALL: C.UTF-8
       TZ: UTC
       PROJUDI_ORQUESTRADOR_CREDENCIAL_ID: ${PROJUDI_ORQUESTRADOR_CREDENCIAL_ID:-1}
-      # Pipeline Movimentações Email (Gmail + Drive progressivo; perfis noturno/comercial/fim de semana)
       VILAREAL_EMAIL_PROJUDI_PIPELINE_ENABLED: ${VILAREAL_EMAIL_PROJUDI_PIPELINE_ENABLED:-true}
-      # WhatsApp Cloud API — valores reais em `.env.docker` na VPS (ver WHATSAPP_SETUP.md)
       WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
       WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN:-}
       WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
       WHATSAPP_WABA_ID: ${WHATSAPP_WABA_ID:-}
       WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
       WHATSAPP_VALIDATE_SIGNATURE: ${WHATSAPP_VALIDATE_SIGNATURE:-false}
-      # Cora Integração Direta (mTLS) — certificados em volume; desligado por padrão
       CORA_ENABLED: ${CORA_ENABLED:-false}
       CORA_CLIENT_ID: ${CORA_CLIENT_ID:-}
       CORA_CERT_PATH: ${CORA_CERT_PATH:-/home/vilareal/cora-certs/certificate.pem}
       CORA_KEY_PATH: ${CORA_KEY_PATH:-/home/vilareal/cora-certs/private-key.pem}
       CORA_BASE_URL: ${CORA_BASE_URL:-https://matls-clients.api.stage.cora.com.br}
-      TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY:?defina TOTP_ENCRYPTION_KEY no .env.docker}
+      TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY:?defina TOTP_ENCRYPTION_KEY no env file}
       PJE_BROWSER_ENABLED: ${PJE_BROWSER_ENABLED:-true}
       PJE_BROWSER_HEADLESS: ${PJE_BROWSER_HEADLESS:-true}
       PJE_BROWSER_PROXY: ${PJE_BROWSER_PROXY:-}
       PJE_TRT18_LOGIN_PADRAO: ${PJE_TRT18_LOGIN_PADRAO:-00733235190}
       PJE_EMAIL_TRIGGER_ENABLED: ${PJE_EMAIL_TRIGGER_ENABLED:-false}
-      # Download da cópia integral: PJe gera o PDF sob demanda; processos grandes + proxy SOCKS5 passam de 60s
       PJE_COPIA_INTEGRAL_DOWNLOAD_TIMEOUT_MS: ${PJE_COPIA_INTEGRAL_DOWNLOAD_TIMEOUT_MS:-900000}
-      # DataJud / CNJ — chave real só em .env.docker na VPS (não commitar valor)
       DATAJUD_API_KEY: ${DATAJUD_API_KEY:-}
       DATAJUD_BASE_URL: ${DATAJUD_BASE_URL:-https://api-publica.datajud.cnj.jus.br}
-      # Assinador local Windows (pull HTTPS + token A3) — segredo só em .env.docker na VPS
-      ASSINADOR_API_SECRET: ${ASSINADOR_API_SECRET:?defina ASSINADOR_API_SECRET no .env.docker}
+      ASSINADOR_API_SECRET: ${ASSINADOR_API_SECRET:?defina ASSINADOR_API_SECRET no env file}
       ASSINADOR_REQUIRE_HTTPS: ${ASSINADOR_REQUIRE_HTTPS:-true}
-      # Diagnóstico temporário assinador: LOGGING_LEVEL_BR_COM_VILAREAL_ASSINADOR_SECURITY=DEBUG no .env.docker
       LOGGING_LEVEL_BR_COM_VILAREAL_ASSINADOR_SECURITY: ${LOGGING_LEVEL_BR_COM_VILAREAL_ASSINADOR_SECURITY:-}
 
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "8081:8080"
+      - "${HOST_BACKEND_PORT:-8081}:8080"
     volumes:
-      - /home/vilareal/gmail-tokens:/home/vilareal/gmail-tokens
-      - /home/vilareal/cora-certs:/home/vilareal/cora-certs:ro
-      # Persistência dos .p7s assinados e das sessões PROJUDI: SEM estes mounts, os arquivos vivem
-      # no filesystem efêmero do container e somem a cada recreate (causando ".p7s não encontrado").
-      - /home/vilareal/projudi-peticoes:/home/vilareal/projudi-peticoes
-      - /home/vilareal/projudi-sessions:/home/vilareal/projudi-sessions
+      - ${INSTANCE_DATA_ROOT:-/home/vilareal}/gmail-tokens:/home/vilareal/gmail-tokens
+      - ${INSTANCE_DATA_ROOT:-/home/vilareal}/cora-certs:/home/vilareal/cora-certs:ro
+      - ${INSTANCE_DATA_ROOT:-/home/vilareal}/projudi-peticoes:/home/vilareal/projudi-peticoes
+      - ${INSTANCE_DATA_ROOT:-/home/vilareal}/projudi-sessions:/home/vilareal/projudi-sessions
 
   frontend:
+    image: vilareal-frontend:latest
     build:
       context: ./e-vilareal-react-web
       dockerfile: Dockerfile
-    container_name: vilareal-frontend
+    container_name: ${COMPOSE_CONTAINER_PREFIX:-vilareal}-frontend
     ports:
-      - "5173:80"
+      - "${HOST_FRONTEND_PORT:-5173}:80"
     depends_on:
       - backend
