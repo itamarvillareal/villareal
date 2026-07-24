@@ -157,7 +157,18 @@ describe('extratoMappers', () => {
     ).toBe('938');
   });
 
-  it('codigoClienteExtrato lê tag CC_CLI quando API devolve pessoaRefId', () => {
+  it('codigoClienteExtrato ignora tag CC_CLI quando API já tem código real do cliente', () => {
+    expect(
+      codigoClienteExtratoDesdeApiDto({
+        codigoCliente: '00000938',
+        clienteId: 938,
+        pessoaRefId: 1985,
+        descricaoDetalhada: 'OLIVIO x FABRICIA [CC_CLI:804]',
+      }),
+    ).toBe('938');
+  });
+
+  it('codigoClienteExtrato lê tag CC_CLI quando API devolve só LPAD(pessoaRefId)', () => {
     expect(
       codigoClienteExtratoDesdeApiDto({
         codigoCliente: '00000084',

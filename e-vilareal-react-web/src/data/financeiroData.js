@@ -1535,28 +1535,31 @@ export function anexarCodigoClienteTagDescricaoDetalhada(descricaoDetalhada, cod
 
 /**
  * Código do cliente para coluna / formulário do extrato (DTO da API ou linha mapeada).
- * @param {{ codigoCliente?: string|null, clienteId?: number|null, descricaoDetalhada?: string|null }} dto
+ * Prefere o código do FK/API. A tag [CC_CLI:n] só prevalece quando o código da API é o
+ * legado enganoso LPAD(pessoaRefId) (ex.: pessoa 84 → "00000084") e a tag traz o código real.
+ * @param {{ codigoCliente?: string|null, clienteId?: number|null, pessoaRefId?: number|null, descricaoDetalhada?: string|null }} dto
  */
 export function codigoClienteExtratoDesdeApiDto(dto) {
   const pessoaRefId = Number(dto?.pessoaRefId ?? dto?.pessoaId);
   const fromTag = extrairCodigoClienteTagDescricaoDetalhada(dto?.descricaoDetalhada);
-  if (fromTag) {
-    if (Number.isFinite(pessoaRefId) && pessoaRefId > 0) {
-      registrarCodigoClienteFinanceiroPorPessoaId(pessoaRefId, fromTag);
-    }
-    return fromTag;
-  }
+
+  let fromApi = '';
   const raw = dto?.codigoCliente != null ? String(dto.codigoCliente).trim() : '';
   if (raw) {
     const digits = raw.replace(/\D/g, '');
     const n = Number(digits);
-    const cod = normalizarCodigoClienteFinanceiro(Number.isFinite(n) && n >= 1 ? n : '');
-    if (cod) {
-      if (Number.isFinite(pessoaRefId) && pessoaRefId > 0) {
-        registrarCodigoClienteFinanceiroPorPessoaId(pessoaRefId, cod);
-      }
-      return cod;
+    fromApi = normalizarCodigoClienteFinanceiro(Number.isFinite(n) && n >= 1 ? n : '');
+  }
+
+  const apiEhSoPessoa =
+    Boolean(fromApi) && Number.isFinite(pessoaRefId) && pessoaRefId > 0 && Number(fromApi) === pessoaRefId;
+
+  const escolhido = fromApi && !apiEhSoPessoa ? fromApi : fromTag || fromApi;
+  if (escolhido) {
+    if (Number.isFinite(pessoaRefId) && pessoaRefId > 0) {
+      registrarCodigoClienteFinanceiroPorPessoaId(pessoaRefId, escolhido);
     }
+    return escolhido;
   }
   return obterCodigoClienteFinanceiroPorPessoaId(pessoaRefId);
 }
