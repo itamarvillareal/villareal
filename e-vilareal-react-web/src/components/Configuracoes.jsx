@@ -18,6 +18,7 @@ import {
 } from '../repositories/configuracaoRepository.js';
 import { VisorCodigoPdpj } from './VisorCodigoPdpj.jsx';
 import { ConfiguracoesLocalHelper } from './ConfiguracoesLocalHelper.jsx';
+import { ConfiguracaoMenuLateral } from './ConfiguracaoMenuLateral.jsx';
 
 /**
  * Tela de configurações do sistema.
@@ -180,6 +181,8 @@ export function Configuracoes() {
         <VisorCodigoPdpj />
 
         <ConfiguracoesLocalHelper />
+
+        <ConfiguracaoMenuLateral />
 
         {mostrarEstacaoMock ? (
           <div className="border-t border-slate-200 pt-6">

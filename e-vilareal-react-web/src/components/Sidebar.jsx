@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { NavLink, useLocation, Link, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { ChevronDown, ChevronRight, X } from 'lucide-react';
 import { navItems } from '../data/navConfig.js';
 import { SidebarMenuIcon } from './navigation/SidebarMenuIcons.jsx';
@@ -16,6 +16,11 @@ import {
   perfilAtivoEhMasterEstacao,
   getApiUsuarioSessao,
 } from '../data/usuarioPermissoesStorage.js';
+import {
+  ordenarNavItemsPorPreferencia,
+  usuarioMenuExibeModulo,
+} from '../data/menuVisivelStorage.js';
+import { carregarMenuPreferenciaUsuario } from '../repositories/menuPreferenciaRepository.js';
 import { getNomeExibicaoUsuario } from '../data/usuarioDisplayHelpers.js';
 import { SeloAssistenteIa } from './ui/AutorUsuarioExibicao.jsx';
 import { registrarAuditoria } from '../services/auditoriaCliente.js';
@@ -23,6 +28,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { featureFlags } from '../config/featureFlags.js';
 import { fetchParcelamentosResumoKpi } from '../repositories/calculosAcordosRepository.js';
 import { useWhatsAppNotificationContext } from './whatsapp/WhatsAppNotificationProvider.jsx';
+import { SidebarLogo } from './navigation/SidebarLogo.jsx';
 
 function itemMenuPermitido(item, podeFn) {
   if (Array.isArray(item.children) && item.children.length > 0) {
@@ -77,14 +83,34 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange, onMenu
     window.addEventListener('vilareal:usuarios-agenda-atualizados', h);
     window.addEventListener('vilareal:usuario-sessao-atualizada', h);
     window.addEventListener('vilareal:permissoes-usuarios-atualizadas', h);
+    window.addEventListener('vilareal:menu-visivel-atualizado', h);
     window.addEventListener('vilareal:operador-estacao-atualizado', h);
     return () => {
       window.removeEventListener('vilareal:usuarios-agenda-atualizados', h);
       window.removeEventListener('vilareal:usuario-sessao-atualizada', h);
       window.removeEventListener('vilareal:permissoes-usuarios-atualizadas', h);
+      window.removeEventListener('vilareal:menu-visivel-atualizado', h);
       window.removeEventListener('vilareal:operador-estacao-atualizado', h);
     };
   }, []);
+
+  useEffect(() => {
+    let cancelado = false;
+    const sync = () => {
+      const perfil = getPerfilAtivoParaPermissoes();
+      void carregarMenuPreferenciaUsuario(perfil).then(() => {
+        if (!cancelado) setMenuTick((t) => t + 1);
+      });
+    };
+    sync();
+    window.addEventListener('vilareal:usuario-sessao-atualizada', sync);
+    window.addEventListener('vilareal:operador-estacao-atualizado', sync);
+    return () => {
+      cancelado = true;
+      window.removeEventListener('vilareal:usuario-sessao-atualizada', sync);
+      window.removeEventListener('vilareal:operador-estacao-atualizado', sync);
+    };
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (!featureFlags.useApiCalculos) return undefined;
@@ -111,9 +137,11 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange, onMenu
   const apiSessao = getApiUsuarioSessao();
   const nomeOperador = getNomeExibicaoUsuario(usuariosLista?.find((u) => u.id === operadorId)) ?? operadorId;
 
-  const pode = (modId) => usuarioPodeAcessarModulo(perfilId, modId);
-  const navFiltrado = navItems
+  const pode = (modId) =>
+    usuarioPodeAcessarModulo(perfilId, modId) && usuarioMenuExibeModulo(perfilId, modId);
+  const navFiltrado = ordenarNavItemsPorPreferencia(navItems, perfilId)
     .filter((item) => item.id !== 'integracoes-grupo' || featureFlags.showTribunalScraperLab)
+    .filter((item) => usuarioMenuExibeModulo(perfilId, item.id))
     .filter((item) => itemMenuPermitido(item, pode))
     .filter((item) => item.id !== 'atividade' || isUsuarioMasterEstacao())
     .filter((item) => item.id !== 'patrimonio' || perfilAtivoEhMasterEstacao());
@@ -207,22 +235,7 @@ export function Sidebar({ mobileDrawerOpen = false, onMobileDrawerChange, onMenu
           <X className="h-6 w-6" strokeWidth={2} aria-hidden />
         </button>
       </div>
-      <div className="vl-sidebar-header shrink-0 px-2 py-1.5 border-b border-gray-300 bg-gray-100">
-        <Link
-          to="/"
-          className="block rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-100 dark:focus-visible:ring-offset-[#0f141c]"
-          title="Ir para a agenda"
-        >
-          <img
-            src="/logo-villareal.png"
-            alt="Villa Real e advogados associados"
-            className="w-full max-h-[2.85rem] object-contain object-center mx-auto"
-            width={200}
-            height={88}
-            decoding="async"
-          />
-        </Link>
-      </div>
+      <SidebarLogo />
       <nav className="flex-1 min-h-0 p-1.5 overflow-y-auto overflow-x-hidden space-y-0 leading-tight [scrollbar-width:thin]">
         {navFiltrado.map((item) => {
           if (Array.isArray(item.children) && item.children.length > 0) {

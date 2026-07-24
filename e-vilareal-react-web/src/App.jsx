@@ -5,6 +5,8 @@ import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import { Login } from './components/Login.jsx';
 import { featureFlags } from './config/featureFlags.js';
 import { Sidebar } from './components/Sidebar';
+import { useLogoSistemaSrc } from './components/navigation/SidebarLogo.jsx';
+import { LOGO_SISTEMA_DEFAULT } from './data/logoSistemaStorage.js';
 import {
   LazyAgenda,
   LazyJuliaCaixa,
@@ -137,6 +139,7 @@ let __ultimoLogNavegacao = { path: '', t: 0 };
 function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
+  const logoSrc = useLogoSistemaSrc();
   const [accessTick, setAccessTick] = useState(0);
   /** Drawer de navegação só abaixo do breakpoint lg: menu hamburger no topo (consulta rápida; bottom nav roubaría área de conteúdo). */
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -245,12 +248,17 @@ function Layout() {
           title="Ir para a agenda"
         >
           <img
-            src="/logo-villareal.png"
-            alt="Villa Real"
+            src={logoSrc}
+            alt="Logo do sistema"
             className="h-9 max-h-9 w-auto max-w-[10rem] object-contain object-center"
             width={160}
             height={56}
             decoding="async"
+            onError={(ev) => {
+              if (ev.currentTarget.src !== LOGO_SISTEMA_DEFAULT) {
+                ev.currentTarget.src = LOGO_SISTEMA_DEFAULT;
+              }
+            }}
           />
         </Link>
         <div
