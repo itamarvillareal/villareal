@@ -70,16 +70,16 @@ export function Login() {
       <div className="relative w-full max-w-[420px]">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-cyan-500/15 border border-cyan-400/30 mb-4 shadow-lg shadow-cyan-500/10">
-            <span className="text-xl font-bold tracking-tight text-cyan-300">VR</span>
+            <span className="text-xl font-bold tracking-tight text-cyan-300">S</span>
           </div>
-          <h1 className="text-2xl font-semibold text-white tracking-tight">VilaReal</h1>
+          <h1 className="text-2xl font-semibold text-white tracking-tight">Sistema</h1>
           <p className="mt-2 text-sm text-slate-400">Entre com sua conta para acessar o sistema</p>
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-slate-900/80 backdrop-blur-xl shadow-2xl shadow-black/40 p-8">
           <div className="flex items-center gap-2 text-slate-200 mb-6">
             <LogIn className="w-5 h-5 text-cyan-400 shrink-0" aria-hidden />
-            <span className="text-sm font-medium">Acesso à API</span>
+            <span className="text-sm font-medium">Acesso ao sistema</span>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">

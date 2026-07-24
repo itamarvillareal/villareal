@@ -77,7 +77,7 @@ import {
   valorTotalLinhaPlanoPagamento,
 } from '../data/parcelamentoEntrada.js';
 import { featureFlags } from '../config/featureFlags.js';
-import { resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
+import { formatarDataBrInput, resolverAliasHojeEmTexto } from '../services/hjDateAliasService.js';
 import { buildRouterStateChaveClienteProcesso, extrairIntentNavegacaoProcessos } from '../domain/camposProcessoCliente.js';
 import { getContextoAuditoriaUsuario, registrarAuditoria } from '../services/auditoriaCliente.js';
 import { getRotuloModuloPorPathname } from '../data/usuarioPermissoesStorage.js';
@@ -3582,7 +3582,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                                   onChange={(e) => {
                                     const v = e.target.value;
                                     const r = resolverAliasHojeEmTexto(v, 'br');
-                                    atualizarParcelaNaRodada(globalIdx, { dataVencimento: r ?? v });
+                                    atualizarParcelaNaRodada(globalIdx, { dataVencimento: r ?? formatarDataBrInput(v) });
                                   }}
                                   onFocus={() => handleFocusDataVencimentoParcela(globalIdx, row.dataVencimento)}
                                   onBlur={(e) => handleBlurDataVencimentoParcela(globalIdx, e.target.value)}
@@ -3856,7 +3856,7 @@ export function Calculos({ embedIntent, embedIntentRevision = 0, onFecharEmbed }
                                 onChange={(e) => {
                                   const v = e.target.value;
                                   const r = resolverAliasHojeEmTexto(v, 'br');
-                                  atualizarParcelaNaRodada(globalIdx, { dataVencimento: r ?? v });
+                                  atualizarParcelaNaRodada(globalIdx, { dataVencimento: r ?? formatarDataBrInput(v) });
                                 }}
                                 onFocus={() => handleFocusDataVencimentoParcela(globalIdx, row.dataVencimento)}
                                 onBlur={(e) => handleBlurDataVencimentoParcela(globalIdx, e.target.value)}

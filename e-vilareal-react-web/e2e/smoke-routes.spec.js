@@ -22,7 +22,7 @@ test.describe('Smoke rotas', () => {
       await expect(page.locator('body')).toBeVisible();
 
       const noCrash =
-        (await page.getByRole('heading', { name: /VilaReal/i }).count()) > 0 ||
+        (await page.getByRole('heading', { name: /Sistema/i }).count()) > 0 ||
         (await page.getByRole('navigation').count()) > 0 ||
         (await page.locator('main').count()) > 0;
       expect(noCrash).toBeTruthy();

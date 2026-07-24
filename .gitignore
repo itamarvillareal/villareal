@@ -3,6 +3,8 @@ dist/
 build/
 .env
 .env.docker
+.env.portal
+.env.portal1
 docker-compose.override.yml
 .DS_Store
 *.log
