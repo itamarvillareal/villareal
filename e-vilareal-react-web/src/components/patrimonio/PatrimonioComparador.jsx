@@ -1,15 +1,25 @@
 import { useEffect, useMemo, useState } from 'react';
-import { listarComparadorApi } from '../../repositories/patrimonioRepository.js';
+import {
+  listarComparadorApi,
+  obterConsolidacaoApi,
+  atualizarTaxaReferenciaApi,
+} from '../../repositories/patrimonioRepository.js';
 import { fmtBRL, fmtPct } from './patrimonioFormat.js';
 
 export function PatrimonioComparador() {
   const [itens, setItens] = useState([]);
+  const [cons, setCons] = useState(null);
   const [erro, setErro] = useState('');
   const [ord, setOrd] = useState('taxa');
+  const [taxaInput, setTaxaInput] = useState('');
 
   useEffect(() => {
-    listarComparadorApi()
-      .then(setItens)
+    Promise.all([listarComparadorApi(), obterConsolidacaoApi()])
+      .then(([items, c]) => {
+        setItens(items);
+        setCons(c);
+        if (c?.taxaReferenciaLiquidaAa != null) setTaxaInput(String(c.taxaReferenciaLiquidaAa));
+      })
       .catch((e) => setErro(e?.message || 'Erro'));
   }, []);
 
@@ -22,6 +32,17 @@ export function PatrimonioComparador() {
     }
     return copy;
   }, [itens, ord]);
+
+  async function salvarTaxa() {
+    try {
+      await atualizarTaxaReferenciaApi(Number(String(taxaInput).replace(',', '.')));
+      const [items, c] = await Promise.all([listarComparadorApi(), obterConsolidacaoApi()]);
+      setItens(items);
+      setCons(c);
+    } catch (e) {
+      setErro(e?.message || 'Falha ao atualizar taxa');
+    }
+  }
 
   return (
     <div className="space-y-4 max-w-5xl">
@@ -41,6 +62,34 @@ export function PatrimonioComparador() {
           <option value="valor">Ordenar por valor</option>
         </select>
       </header>
+
+      <div className="rounded-lg border border-slate-200 dark:border-slate-700 px-4 py-3 text-sm space-y-2">
+        <p>
+          Taxa de referência líquida:{' '}
+          <strong>{cons ? fmtPct(cons.taxaReferenciaLiquidaAa) : '—'}</strong>
+          {cons?.taxaReferenciaAtualizadaEm
+            ? ` · atualizada em ${new Date(cons.taxaReferenciaAtualizadaEm).toLocaleString('pt-BR')}`
+            : ' · sem data de atualização'}
+        </p>
+        {cons?.taxaReferenciaDesatualizada ? (
+          <p className="text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+            Aviso: taxa desatualizada (&gt; {cons.taxaReferenciaStaleDias ?? 30} dias). O comparador depende deste número.
+          </p>
+        ) : null}
+        <div className="flex gap-2 items-end">
+          <label>
+            <span className="text-xs text-slate-500">Atualizar (% a.a. líquido)</span>
+            <input
+              className="mt-0.5 block w-28 rounded-md border border-slate-300 dark:border-slate-600 bg-transparent px-2 py-1"
+              value={taxaInput}
+              onChange={(e) => setTaxaInput(e.target.value)}
+            />
+          </label>
+          <button type="button" onClick={salvarTaxa} className="text-xs px-2 py-1.5 rounded-md bg-teal-700 text-white">
+            Salvar taxa
+          </button>
+        </div>
+      </div>
 
       {erro ? <p className="text-sm text-red-700">{erro}</p> : null}
 

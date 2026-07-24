@@ -38,7 +38,7 @@ public class AmortizacaoEntity {
     @Column(nullable = false, length = 30)
     private String origem = "SOLICITACAO";
 
-    @Lob
+    @Column(columnDefinition = "TEXT")
     private String racional;
 
     @Column(name = "justificativa_reserva", columnDefinition = "TEXT")

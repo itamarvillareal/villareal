@@ -6,12 +6,14 @@ import {
   solicitarAmortizacaoApi,
   confirmarAmortizacaoApi,
   listarAmortizacoesApi,
+  registrarAmortizacaoExecutadaApi,
+  atualizarTetoAmortizacaoApi,
 } from '../../repositories/patrimonioRepository.js';
 import { fmtBRL, fmtPct, recomendacaoLabel, recomendacaoTom } from './patrimonioFormat.js';
 
 /**
  * Coração do módulo: compara amortizar vs. investir com governança anti-impulso.
- * Regra de UI: meses eliminados NUNCA aparecem sem VP e taxa implícita em igual destaque.
+ * Regra de UI: meses/nominal/VP/taxa implícita na MESMA altura, peso visual equivalente.
  */
 export function PatrimonioAmortizacao() {
   const [passivos, setPassivos] = useState([]);
@@ -24,9 +26,13 @@ export function PatrimonioAmortizacao() {
   const [resultado, setResultado] = useState(null);
   const [racional, setRacional] = useState('');
   const [justReserva, setJustReserva] = useState('');
+  const [justTeto, setJustTeto] = useState('');
   const [solicitacao, setSolicitacao] = useState(null);
   const [erro, setErro] = useState('');
   const [loading, setLoading] = useState(false);
+  const [tetoInput, setTetoInput] = useState('');
+  const [regData, setRegData] = useState(new Date().toISOString().slice(0, 10));
+  const [mostrarRegistro, setMostrarRegistro] = useState(false);
 
   async function carregarBase() {
     try {
@@ -86,6 +92,7 @@ export function PatrimonioAmortizacao() {
         modalidade,
         racional: racional.trim(),
         justificativaReserva: justReserva.trim() || undefined,
+        justificativaTeto: justTeto.trim() || undefined,
       };
       if (retornoAlt) body.retornoAlternativaLiquidaAa = Number(String(retornoAlt).replace(',', '.'));
       const s = await solicitarAmortizacaoApi(body);
@@ -93,6 +100,36 @@ export function PatrimonioAmortizacao() {
       await carregarBase();
     } catch (err) {
       setErro(err?.message || 'Falha ao solicitar');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function registrarExecutada() {
+    setErro('');
+    if (!racional.trim()) {
+      setErro('Racional obrigatório para registro a posteriori.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const body = {
+        passivoId: Number(passivoId),
+        valor: Number(String(valor).replace(',', '.')),
+        modalidade,
+        dataEfetivacao: regData,
+        racional: racional.trim(),
+        justificativaReserva: justReserva.trim() || undefined,
+        justificativaTeto: justTeto.trim() || undefined,
+      };
+      if (retornoAlt) body.retornoAlternativaLiquidaAa = Number(String(retornoAlt).replace(',', '.'));
+      const s = await registrarAmortizacaoExecutadaApi(body);
+      setSolicitacao(s);
+      setMostrarRegistro(false);
+      await carregarBase();
+      await simular();
+    } catch (err) {
+      setErro(err?.message || 'Falha ao registrar');
     } finally {
       setLoading(false);
     }
@@ -112,6 +149,15 @@ export function PatrimonioAmortizacao() {
     }
   }
 
+  async function salvarTeto() {
+    try {
+      await atualizarTetoAmortizacaoApi(Number(String(tetoInput).replace(',', '.')));
+      await simular();
+    } catch (err) {
+      setErro(err?.message || 'Falha ao salvar teto');
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-5xl">
       <header>
@@ -126,6 +172,41 @@ export function PatrimonioAmortizacao() {
       {erro ? (
         <div className="rounded-md border border-red-200 bg-red-50 text-red-800 text-sm px-3 py-2">{erro}</div>
       ) : null}
+
+      {/* Consumo do teto anual — sempre visível */}
+      <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 flex flex-wrap items-end gap-4">
+        <div className="flex-1 min-w-[200px]">
+          <p className="text-[11px] uppercase tracking-wide text-slate-500">Teto anual de amortização extraordinária</p>
+          <p className="text-lg font-semibold tabular-nums mt-0.5">
+            {resultado?.tetoAmortizacaoAnual != null
+              ? `${fmtBRL(resultado.tetoAmortizacaoUsadoAno)} usados / ${fmtBRL(resultado.tetoAmortizacaoAnual)}`
+              : 'não definido'}
+          </p>
+          <p className="text-xs text-slate-500">
+            {resultado?.tetoAmortizacaoDisponivel != null
+              ? `Disponível ${fmtBRL(resultado.tetoAmortizacaoDisponivel)}`
+              : 'Defina um teto para enxergar a sequência de operações'}
+          </p>
+        </div>
+        <div className="flex gap-2 items-end">
+          <label className="text-sm">
+            <span className="text-slate-500 text-xs">Definir teto (R$)</span>
+            <input
+              className="mt-0.5 block w-36 rounded-md border border-slate-300 dark:border-slate-600 bg-transparent px-2 py-1"
+              value={tetoInput}
+              onChange={(e) => setTetoInput(e.target.value)}
+            />
+          </label>
+          <button type="button" onClick={salvarTeto} className="text-xs px-2 py-1.5 rounded-md border border-slate-300">
+            Salvar
+          </button>
+        </div>
+        {resultado?.ultrapassaTetoComEstaOperacao ? (
+          <p className="w-full text-sm text-red-700 font-medium">
+            Esta operação ultrapassa o teto — justificativa reforçada obrigatória.
+          </p>
+        ) : null}
+      </div>
 
       <form onSubmit={simular} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
         <label className="text-sm block">
@@ -200,33 +281,36 @@ export function PatrimonioAmortizacao() {
             <Metric label="Impacto PL 12m" value={fmtBRL(resultado.impactoPl12m)} />
           </div>
 
-          {/* Anti-gatilho: meses e nominal NÃO sozinhos */}
-          <div className="rounded-lg border-2 border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/60 p-4">
-            <p className="text-[11px] uppercase tracking-wide text-slate-500 mb-2">
-              Armadilha nominal × decisão real
+          {/* Bloco 4: quatro métricas na mesma altura, peso visual idêntico */}
+          <div
+            data-testid="armadilha-nominal"
+            className="rounded-lg border-2 border-slate-400 dark:border-slate-500 bg-slate-50 dark:bg-slate-900/60 p-4"
+          >
+            <p className="text-[11px] uppercase tracking-wide text-slate-500 mb-3">
+              Armadilha nominal × decisão real — peso visual equivalente
             </p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <Metric
-                label="Meses eliminados (gatilho emocional)"
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <MetricIgual
+                label="Meses eliminados"
+                sub="gatilho emocional"
                 value={String(resultado.mesesEliminados ?? 0)}
-                muted
               />
-              <Metric
+              <MetricIgual
                 label="Valor nominal eliminado"
+                sub="não é o ganho"
                 value={fmtBRL(resultado.valorNominalEliminado)}
-                muted
               />
-              <Metric
-                label="Economia real em valor presente"
+              <MetricIgual
+                label="Economia em valor presente"
+                sub="ganho real"
                 value={fmtBRL(resultado.economiaValorPresente)}
-                highlight
+                decisoria
               />
-            </div>
-            <div className="mt-3">
-              <Metric
-                label="Taxa de retorno implícita da amortização"
+              <MetricIgual
+                label="Taxa implícita da amortização"
+                sub="métrica decisória"
                 value={fmtPct(resultado.taxaImplicitaAa)}
-                highlight
+                decisoria
               />
             </div>
             <p className="text-xs text-slate-500 mt-3">
@@ -235,48 +319,108 @@ export function PatrimonioAmortizacao() {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <Metric label="Caixa livre disponível" value={fmtBRL(resultado.caixaLivre)} />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+            <Metric label="Caixa livre" value={fmtBRL(resultado.caixaLivre)} />
             <Metric
-              label="Reserva / piso"
-              value={`${fmtBRL(resultado.reservaAtual)} / ${fmtBRL(resultado.pisoReserva)}`}
+              label="RF total × reserva líquida"
+              value={`${fmtBRL(resultado.rendaFixaTotal)} / ${fmtBRL(resultado.reservaEmergenciaLiquida)}`}
+            />
+            <Metric label="Piso reserva" value={fmtBRL(resultado.pisoReserva)} />
+            <Metric
+              label="Base da comparação"
+              value={resultado.baseComparacao || '—'}
             />
           </div>
 
+          {resultado.taxaReferenciaDesatualizada ? (
+            <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+              Taxa de referência desatualizada
+              {resultado.taxaReferenciaAtualizadaEm
+                ? ` (desde ${new Date(resultado.taxaReferenciaAtualizadaEm).toLocaleDateString('pt-BR')})`
+                : ''}
+              . O comparador inteiro depende deste número.
+            </p>
+          ) : null}
+
           <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-4 space-y-3">
-            <h2 className="text-sm font-medium">Governança — solicitar amortização extraordinária</h2>
+            <h2 className="text-sm font-medium">Governança — solicitar ou registrar</h2>
             <label className="text-sm block">
               <span className="text-slate-500">Racional (obrigatório)</span>
               <textarea
                 className="mt-1 w-full rounded-md border border-slate-300 dark:border-slate-600 bg-transparent px-2 py-1.5 min-h-[72px]"
                 value={racional}
                 onChange={(e) => setRacional(e.target.value)}
-                placeholder="Por que esta operação agora? Quais alternativas foram descartadas?"
               />
             </label>
-            {resultado.recomendacao === 'BLOQUEADO_RESERVA' || Number(resultado.reservaAtual) < Number(resultado.pisoReserva) ? (
+            {resultado.recomendacao === 'BLOQUEADO_RESERVA' && (
               <label className="text-sm block">
-                <span className="text-slate-500">Justificativa de reserva (se abaixo do piso)</span>
+                <span className="text-slate-500">Justificativa de reserva</span>
                 <textarea
                   className="mt-1 w-full rounded-md border border-slate-300 dark:border-slate-600 bg-transparent px-2 py-1.5"
                   value={justReserva}
                   onChange={(e) => setJustReserva(e.target.value)}
                 />
               </label>
+            )}
+            {resultado.ultrapassaTetoComEstaOperacao ? (
+              <label className="text-sm block">
+                <span className="text-slate-500">Justificativa reforçada de desvio do teto anual (obrigatória)</span>
+                <textarea
+                  className="mt-1 w-full rounded-md border border-red-300 dark:border-red-700 bg-transparent px-2 py-1.5"
+                  value={justTeto}
+                  onChange={(e) => setJustTeto(e.target.value)}
+                />
+              </label>
             ) : null}
-            <button
-              type="button"
-              disabled={loading}
-              onClick={solicitar}
-              className="px-4 py-2 rounded-md border border-teal-700 text-teal-800 dark:text-teal-300 text-sm hover:bg-teal-50 dark:hover:bg-teal-950/40 disabled:opacity-50"
-            >
-              Solicitar (com período de reflexão se ≥ 1 parcela)
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={loading}
+                onClick={solicitar}
+                className="px-4 py-2 rounded-md border border-teal-700 text-teal-800 dark:text-teal-300 text-sm hover:bg-teal-50 disabled:opacity-50"
+              >
+                Solicitar (reflexão 48h se ≥ 1 parcela)
+              </button>
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => setMostrarRegistro((v) => !v)}
+                className="px-4 py-2 rounded-md border border-slate-400 text-sm"
+              >
+                Registrar executada (a posteriori)
+              </button>
+            </div>
+            {mostrarRegistro ? (
+              <div className="rounded-md bg-slate-100 dark:bg-slate-800 px-3 py-3 space-y-2">
+                <p className="text-xs text-slate-600 dark:text-slate-300">
+                  Use quando a amortização já foi feita no banco/credora. Atualiza saldo, teto e cronograma.
+                </p>
+                <label className="text-sm block">
+                  Data da efetivação
+                  <input
+                    type="date"
+                    className="mt-1 block rounded-md border border-slate-300 dark:border-slate-600 bg-transparent px-2 py-1"
+                    value={regData}
+                    onChange={(e) => setRegData(e.target.value)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={registrarExecutada}
+                  className="px-3 py-1.5 rounded-md bg-slate-800 text-white text-xs"
+                >
+                  Confirmar registro
+                </button>
+              </div>
+            ) : null}
             {solicitacao ? (
               <div className="text-sm rounded-md bg-slate-100 dark:bg-slate-800 px-3 py-2 space-y-2">
                 <p>
                   Status: <strong>{solicitacao.status}</strong>
-                  {solicitacao.pendenteAte ? ` · reflexão até ${new Date(solicitacao.pendenteAte).toLocaleString('pt-BR')}` : ''}
+                  {solicitacao.origem ? ` · origem ${solicitacao.origem}` : ''}
+                  {solicitacao.pendenteAte
+                    ? ` · reflexão até ${new Date(solicitacao.pendenteAte).toLocaleString('pt-BR')}`
+                    : ''}
                 </p>
                 <p className="text-slate-600 dark:text-slate-300">{solicitacao.explicacaoGovernanca}</p>
                 {(solicitacao.status === 'PRONTA' || solicitacao.status === 'PENDENTE_REFLEXAO') && (
@@ -337,6 +481,7 @@ export function PatrimonioAmortizacao() {
                 <span>#{h.id}</span>
                 <span>{fmtBRL(h.valor)}</span>
                 <span>{h.status}</span>
+                <span>{h.origem}</span>
                 <span>{h.recomendacao}</span>
                 {h.status === 'PENDENTE_REFLEXAO' || h.status === 'PRONTA' ? (
                   <button type="button" className="underline text-teal-700" onClick={() => confirmar(h.id)}>
@@ -365,6 +510,27 @@ function Metric({ label, value, highlight, muted }) {
     >
       <p className="text-[11px] uppercase tracking-wide text-slate-500">{label}</p>
       <p className={`text-lg font-semibold tabular-nums mt-0.5 ${highlight ? 'text-teal-800 dark:text-teal-200' : ''}`}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+/** Quatro células idênticas em altura/tipografia — Bloco 4. */
+function MetricIgual({ label, sub, value, decisoria }) {
+  return (
+    <div
+      className={`rounded-md border px-3 py-3 min-h-[104px] flex flex-col justify-between ${
+        decisoria
+          ? 'border-teal-700 bg-teal-50 dark:bg-teal-950/40'
+          : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900'
+      }`}
+    >
+      <div>
+        <p className="text-[11px] uppercase tracking-wide text-slate-500 leading-tight">{label}</p>
+        <p className="text-[10px] text-slate-400 mt-0.5">{sub}</p>
+      </div>
+      <p className={`text-xl font-semibold tabular-nums leading-none ${decisoria ? 'text-teal-900 dark:text-teal-100' : 'text-slate-900 dark:text-slate-100'}`}>
         {value}
       </p>
     </div>

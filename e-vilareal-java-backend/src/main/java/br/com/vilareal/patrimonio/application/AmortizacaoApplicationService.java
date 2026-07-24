@@ -250,8 +250,15 @@ public class AmortizacaoApplicationService {
         BigDecimal alt = retornoAltLiquida != null ? retornoAltLiquida : cons.taxaReferenciaLiquidaAa();
         AmortizacaoComparacao.ModalidadeAmortizacao mod = resolverModalidade(modalidade, param);
 
-        // Reserva líquida (só RF com liquidez diária) — operação abate do disponível líquido
-        BigDecimal reservaApos = cons.reservaEmergenciaLiquida().subtract(valor);
+        // Reserva só é abatida se o valor exceder o caixa livre (aí invade a reserva líquida).
+        // Se não há invasão, o piso não bloqueia — condição pré-existente ≠ efeito da operação.
+        BigDecimal caixaLivre = nz(cons.caixaLivre());
+        BigDecimal reservaAtual = nz(cons.reservaEmergenciaLiquida());
+        BigDecimal invasaoReserva = valor.subtract(caixaLivre).max(BigDecimal.ZERO);
+        BigDecimal reservaApos = reservaAtual.subtract(invasaoReserva);
+        BigDecimal pisoParaChecagem = invasaoReserva.compareTo(BigDecimal.ZERO) > 0
+                ? cons.pisoReserva()
+                : null;
 
         BigDecimal seguros = nz(p.getSeguroMipMensal())
                 .add(nz(p.getSeguroDfiMensal()))
@@ -278,7 +285,7 @@ public class AmortizacaoApplicationService {
                 Boolean.TRUE.equals(p.getConsorcioContemplado()),
                 cons.caixaLivre(),
                 reservaApos,
-                cons.pisoReserva(),
+                pisoParaChecagem,
                 p.getIndexador(),
                 "CDI",
                 inflacaoProjetada,

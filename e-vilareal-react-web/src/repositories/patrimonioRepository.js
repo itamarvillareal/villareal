@@ -46,8 +46,26 @@ export function solicitarAmortizacaoApi(body) {
   return request(`${BASE}/amortizacoes`, { method: 'POST', body });
 }
 
+export function registrarAmortizacaoExecutadaApi(body) {
+  return request(`${BASE}/amortizacoes/registrar-executada`, { method: 'POST', body });
+}
+
 export function confirmarAmortizacaoApi(id) {
   return request(`${BASE}/amortizacoes/${id}/confirmar`, { method: 'POST' });
+}
+
+export function atualizarTaxaReferenciaApi(taxaReferenciaLiquidaAa) {
+  return request(`${BASE}/parametros/taxa-referencia`, {
+    method: 'PUT',
+    body: { taxaReferenciaLiquidaAa },
+  });
+}
+
+export function atualizarTetoAmortizacaoApi(tetoAmortizacaoAnual) {
+  return request(`${BASE}/parametros/teto-amortizacao`, {
+    method: 'PUT',
+    body: { tetoAmortizacaoAnual },
+  });
 }
 
 export function listarAmortizacoesApi(passivoId) {

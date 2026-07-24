@@ -63,7 +63,8 @@ export function PatrimonioDashboard() {
   }
 
   const alav = Number(data?.alavancagem || 0);
-  const reservaOk = Number(data?.reservaEmergencia || 0) >= Number(data?.pisoReserva || 0);
+  const reservaOk = Number(data?.reservaEmergenciaLiquida ?? data?.reservaEmergencia || 0) >= Number(data?.pisoReserva || 0);
+  const comprom = Number(data?.comprometimentoRenda || 0);
 
   return (
     <div className="space-y-5 max-w-6xl">
@@ -99,6 +100,30 @@ export function PatrimonioDashboard() {
         </div>
       ) : null}
 
+      {data?.comprometimentoAcimaLimite ? (
+        <div className="rounded-md border border-amber-300 bg-amber-50 text-amber-900 text-sm px-3 py-2">
+          Comprometimento de renda com parcelas ({fmtPct(comprom * 100)}) acima do limite (
+          {fmtPct(Number(data.comprometimentoRendaMax || 0) * 100)}).
+        </div>
+      ) : null}
+
+      {data?.tetoAmortizacaoUltrapassado ? (
+        <div className="rounded-md border border-red-300 bg-red-50 text-red-900 text-sm px-3 py-2">
+          Teto anual de amortização extraordinária ultrapassado: usado {fmtBRL(data.tetoAmortizacaoUsadoAno)} /{' '}
+          {fmtBRL(data.tetoAmortizacaoAnual)}.
+        </div>
+      ) : null}
+
+      {data?.taxaReferenciaDesatualizada ? (
+        <div className="rounded-md border border-amber-300 bg-amber-50 text-amber-900 text-sm px-3 py-2">
+          Taxa de referência desatualizada
+          {data.taxaReferenciaAtualizadaEm
+            ? ` (última atualização: ${new Date(data.taxaReferenciaAtualizadaEm).toLocaleDateString('pt-BR')})`
+            : ' (nunca atualizada)'}
+          . Limite: {data.taxaReferenciaStaleDias ?? 30} dias. Atualize em Parâmetros / comparador.
+        </div>
+      ) : null}
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Kpi label="Ativo total" value={fmtBRL(data?.ativoTotal)} />
         <Kpi label="Passivo total" value={fmtBRL(data?.passivoTotal)} />
@@ -119,15 +144,43 @@ export function PatrimonioDashboard() {
           tone={Number(data?.caixaLivre) <= 0 ? 'bad' : 'default'}
         />
         <Kpi
-          label="Reserva de emergência"
-          value={fmtBRL(data?.reservaEmergencia)}
-          hint={`Piso ${fmtBRL(data?.pisoReserva)}`}
+          label="Reserva líquida (liquidez diária)"
+          value={fmtBRL(data?.reservaEmergenciaLiquida ?? data?.reservaEmergencia)}
+          hint={`RF total ${fmtBRL(data?.rendaFixaTotal)} · piso ${fmtBRL(data?.pisoReserva)}`}
           tone={reservaOk ? 'good' : 'bad'}
         />
         <Kpi
+          label="Comprometimento de renda"
+          value={fmtPct(comprom * 100)}
+          hint={`Parcelas ${fmtBRL(data?.parcelasMensaisTotal)} / renda ${fmtBRL(data?.rendaMensalRecorrente)} · máx ${fmtPct(Number(data?.comprometimentoRendaMax || 0) * 100)}`}
+          tone={data?.comprometimentoAcimaLimite ? 'bad' : 'default'}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <Kpi
           label="Taxa referência (líquida)"
           value={fmtPct(data?.taxaReferenciaLiquidaAa)}
-          hint="CDI líquido / melhor RF — base do comparador"
+          hint={
+            data?.taxaReferenciaAtualizadaEm
+              ? `Atualizada em ${new Date(data.taxaReferenciaAtualizadaEm).toLocaleString('pt-BR')}`
+              : 'Sem data de atualização — trate como desatualizada'
+          }
+          tone={data?.taxaReferenciaDesatualizada ? 'warn' : 'default'}
+        />
+        <Kpi
+          label="Teto amortização extraordinária (ano)"
+          value={
+            data?.tetoAmortizacaoAnual != null
+              ? `${fmtBRL(data.tetoAmortizacaoUsadoAno)} / ${fmtBRL(data.tetoAmortizacaoAnual)}`
+              : 'não definido'
+          }
+          hint={
+            data?.tetoAmortizacaoDisponivel != null
+              ? `Disponível ${fmtBRL(data.tetoAmortizacaoDisponivel)}`
+              : 'Defina o teto anual nos parâmetros'
+          }
+          tone={data?.tetoAmortizacaoUltrapassado ? 'bad' : 'default'}
         />
       </div>
 
